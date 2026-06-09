@@ -3,7 +3,7 @@ const direct = require('../../middleware/directManager');
 const ownership = require('../../middleware/ownership');
 const repo = require('./repository');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
-const { sendNotification } = require('../notifications/repository');
+const { send: sendNotification } = require('../notifications/repository');
 
 async function routes(fastify) {
   // Mark attendance (direct manager)

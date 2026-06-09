@@ -58,6 +58,7 @@ app.register(require('./modules/auth/routes'), { prefix: '/api/auth' });
 app.register(require('./modules/users/routes'), { prefix: '/api/users' });
 app.register(require('./modules/departments/routes'), { prefix: '/api/departments' });
 app.register(require('./modules/hierarchy/routes'), { prefix: '/api/hierarchy' });
+app.register(require('./modules/team/routes'), { prefix: '/api/team' });
 app.register(require('./modules/attendance/routes'), { prefix: '/api/attendance' });
 app.register(require('./modules/ratings/routes'), { prefix: '/api/ratings' });
 app.register(require('./modules/social-tasks/routes'), { prefix: '/api/tasks' });
