@@ -1,6 +1,6 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 
-async function departmentAttendanceRate(departmentId, month, year) {
+async function departmentAttendanceRate(departmentId, month, year, role = null) {
   const res = await pool.query(`
     SELECT u.id, u.full_name, u.email,
       COUNT(a.id) FILTER (WHERE a.status='PRESENT') as present,
@@ -9,9 +9,9 @@ async function departmentAttendanceRate(departmentId, month, year) {
       COUNT(a.id) as total_marked
     FROM users u
     LEFT JOIN attendance a ON u.id = a.user_id AND EXTRACT(MONTH FROM a.date)=$2 AND EXTRACT(YEAR FROM a.date)=$3 AND a.deleted_at IS NULL
-    WHERE u.department_id=$1 AND u.deleted_at IS NULL AND u.role='INTERN'
+    WHERE u.department_id=$1 AND u.deleted_at IS NULL AND ($4::text IS NULL OR u.role::text = $4)
     GROUP BY u.id, u.full_name, u.email
-  `, [departmentId, month, year]);
+  `, [departmentId, month, year, role]);
   return res.rows;
 }
 

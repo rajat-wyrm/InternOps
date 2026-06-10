@@ -1,4 +1,4 @@
-﻿const auth = require('../../middleware/auth');
+const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 
@@ -11,9 +11,9 @@ async function routes(fastify) {
 
   // Department attendance rate (admin/senior TL)
   fastify.get('/department-attendance', { preHandler: [auth, rbac('ADMIN','SENIOR_TL')] }, async (req) => {
-    const { departmentId, month, year } = req.query;
+    const { departmentId, month, year, role } = req.query;
     if (!departmentId || !month || !year) throw new Error('departmentId, month, year required');
-    return repo.departmentAttendanceRate(departmentId, month, year);
+    return repo.departmentAttendanceRate(departmentId, month, year, role);
   });
 
   // Top performers

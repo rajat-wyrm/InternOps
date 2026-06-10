@@ -1,4 +1,4 @@
-﻿const repo = require('./repository');
+const repo = require('./repository');
 const { generateAccessToken, generateRefreshToken, hashToken, verifyRefreshToken } = require('../../utils/tokens');
 const { createAuditLog } = require('../../utils/audit');
 const { recordLoginAttempt } = require('../../middleware/bruteForce');
@@ -46,9 +46,8 @@ async function refreshTokens(token, ip) {
   let decoded;
   try { decoded = verifyRefreshToken(token); } catch { throw new Error('Invalid refresh token'); }
   const hash = hashToken(token);
-  const pool = require('../../config/db');
-  const { rows } = await pool.query('SELECT * FROM refresh_tokens WHERE token_hash=$1 AND revoked=FALSE AND expires_at>NOW()', [hash]);
-  if(rows.length===0) throw new Error('Token revoked/expired');
+  const isValid = await repo.isRefreshTokenValid(hash);
+  if(!isValid) throw new Error('Token revoked/expired');
   await repo.revokeRefreshTokenRedis(hash);
   const user = await repo.findById(decoded.id);
   if(!user||user.suspended) throw new Error('User not found/suspended');

@@ -1,4 +1,4 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 const argon2 = require('argon2');
 
 async function createUser({ email, password, role, managerId, departmentId, fullName }) {
@@ -95,6 +95,19 @@ async function revokeAllUserTokensRedis(userId) {
   await revokeAllUserTokens(userId);
 }
 
+async function isRefreshTokenValid(tokenHash) {
+  const redis = await getRedisClient();
+  if (redis) {
+    const userId = await redis.get(`refresh_token:${tokenHash}`);
+    return userId !== null;
+  }
+  const res = await pool.query(
+    'SELECT 1 FROM refresh_tokens WHERE token_hash = $1 AND revoked = FALSE AND expires_at > NOW()',
+    [tokenHash]
+  );
+  return res.rowCount > 0;
+}
+
 module.exports = {
   createUser,
   findByEmail,
@@ -107,5 +120,6 @@ module.exports = {
   updateProfile,
   storeRefreshTokenRedis,
   revokeRefreshTokenRedis,
-  revokeAllUserTokensRedis
+  revokeAllUserTokensRedis,
+  isRefreshTokenValid
 };

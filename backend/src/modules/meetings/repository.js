@@ -1,4 +1,4 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 
 async function createMeeting({ title, description, meetingDate, startTime, endTime, createdBy, departmentId }) {
   const res = await pool.query(
@@ -63,11 +63,20 @@ async function getMeetingById(meetingId) {
 }
 
 async function updateMeeting(meetingId, fields) {
+  console.log('updateMeeting input fields:', fields);
   const set = [];
   const vals = [];
   let idx = 1;
-  for (const [key, val] of Object.entries(fields)) {
-    if (['title','description','meeting_date','start_time','end_time'].includes(key)) {
+  const dbFields = {
+    title: fields.title,
+    description: fields.description,
+    meeting_date: fields.meeting_date !== undefined ? fields.meeting_date : fields.meetingDate,
+    start_time: fields.start_time !== undefined ? fields.start_time : fields.startTime,
+    end_time: fields.end_time !== undefined ? fields.end_time : fields.endTime
+  };
+  console.log('updateMeeting mapped dbFields:', dbFields);
+  for (const [key, val] of Object.entries(dbFields)) {
+    if (val !== undefined) {
       set.push(`${key} = $${idx}`);
       vals.push(val);
       idx++;
@@ -75,6 +84,7 @@ async function updateMeeting(meetingId, fields) {
   }
   if (set.length === 0) return null;
   vals.push(meetingId);
+  console.log('updateMeeting SQL:', `UPDATE meetings SET ${set.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`, 'vals:', vals);
   const res = await pool.query(`UPDATE meetings SET ${set.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`, vals);
   return res.rows[0];
 }

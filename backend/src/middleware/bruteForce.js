@@ -22,7 +22,7 @@ async function recordLoginAttempt(email, ip, success) {
 
 // Middleware to be applied before login route – async with 2 args, no done
 async function bruteForceCheck(request, reply) {
-  const { email } = request.body;
+  const { email } = request.body || {};
   if (!email) return; // skip if no email (will fail validation later)
   const locked = await isAccountLocked(email);
   if (locked) {

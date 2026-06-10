@@ -4,7 +4,13 @@ const EXEMPT = ['/api/auth/login','/api/auth/refresh','/api/auth/forgot-password
 function csrfProtection(request, reply, done) {
   if (['GET','HEAD','OPTIONS'].includes(request.method)) return done();
   if (EXEMPT.some(p => request.url.startsWith(p))) return done();
-  if (!request.headers['x-csrf-token']) return reply.status(403).send({ error: 'CSRF token missing' });
+  
+  const tokenFromHeader = request.headers['x-xsrf-token'] || request.headers['x-csrf-token'];
+  const tokenFromCookie = request.cookies['XSRF-TOKEN'];
+  
+  if (!tokenFromHeader || !tokenFromCookie || tokenFromHeader !== tokenFromCookie) {
+    return reply.status(403).send({ error: 'CSRF token verification failed' });
+  }
   done();
 }
 module.exports = { generateToken, csrfProtection };

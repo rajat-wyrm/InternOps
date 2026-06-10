@@ -1,12 +1,13 @@
 const service = require('./service');
 const { z } = require('zod');
+const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const { bruteForceCheck } = require('../../middleware/bruteForce');
 const { extractRequestInfo } = require('../../utils/audit');
 
 async function routes(fastify) {
   // Register
-  fastify.post('/register', { preHandler: [rbac('ADMIN')], schema: { tags: ['Authentication'], description: 'Register a new user (Admin only)' } }, async (req, reply) => {
+  fastify.post('/register', { preHandler: [auth, rbac('ADMIN')], schema: { tags: ['Authentication'], description: 'Register a new user (Admin only)' } }, async (req, reply) => {
     const schema = z.object({
       email: z.string().email(),
       password: z.string().min(8),
@@ -25,6 +26,11 @@ async function routes(fastify) {
     const { email, password } = z.object({ email: z.string().email(), password: z.string() }).parse(req.body);
     const result = await service.login(email, password, req.ip, req.headers['user-agent']);
     reply.setCookie('refreshToken', result.refreshToken, { httpOnly: true, secure: false, sameSite: 'strict', path: '/api/auth/refresh' });
+    
+    const { generateToken } = require('../../middleware/csrf');
+    const csrfToken = generateToken();
+    reply.setCookie('XSRF-TOKEN', csrfToken, { path: '/', httpOnly: false, secure: false, sameSite: 'strict' });
+
     return { accessToken: result.accessToken, user: result.user };
   });
 
@@ -34,6 +40,11 @@ async function routes(fastify) {
     if (!token) return reply.status(400).send({ error: 'Refresh token required' });
     const tokens = await service.refreshTokens(token, req.ip);
     reply.setCookie('refreshToken', tokens.refreshToken, { httpOnly: true, secure: false, sameSite: 'strict', path: '/api/auth/refresh' });
+    
+    const { generateToken } = require('../../middleware/csrf');
+    const csrfToken = generateToken();
+    reply.setCookie('XSRF-TOKEN', csrfToken, { path: '/', httpOnly: false, secure: false, sameSite: 'strict' });
+
     return { accessToken: tokens.accessToken };
   });
 
@@ -48,7 +59,9 @@ async function routes(fastify) {
   // Get CSRF token
   fastify.get('/csrf-token', async (req, reply) => {
     const { generateToken } = require('../../middleware/csrf');
-    return { csrfToken: generateToken() };
+    const csrfToken = generateToken();
+    reply.setCookie('XSRF-TOKEN', csrfToken, { path: '/', httpOnly: false, secure: false, sameSite: 'strict' });
+    return { csrfToken };
   });
 
   // Forgot password
