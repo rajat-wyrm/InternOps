@@ -2,6 +2,9 @@
     "name": "internops-backend",
     "version": "1.0.0",
     "private": true,
+    "engines": {
+        "node": ">=18"
+    },
     "scripts": {
         "dev": "node --watch src/app.js",
         "start": "NODE_ENV=production node src/app.js",
