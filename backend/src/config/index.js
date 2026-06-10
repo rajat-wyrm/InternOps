@@ -1,4 +1,4 @@
-﻿require('dotenv').config();
+require('dotenv').config();
 
 function buildRedisUrl() {
   const restUrl = process.env.UPSTASH_REDIS_REST_URL;
