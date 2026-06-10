@@ -13,6 +13,7 @@ const pool = new Pool({
 // created on the next query, so we log and keep running.
 pool.on('error', (err) => {
   console.error('Unexpected error on idle DB client:', err);
+  process.exit(-1);
 });
 
 module.exports = pool;
