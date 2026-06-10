@@ -18,7 +18,10 @@ module.exports = {
     secret: process.env.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     accessSecret: process.env.JWT_SECRET,
-    refreshSecret: process.env.JWT_SECRET + '_refresh',
+    // Prefer an independent secret for refresh tokens. Fall back to the
+    // derived value only when JWT_REFRESH_SECRET is not set, so existing
+    // deployments keep working until they configure a dedicated secret.
+    refreshSecret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET + '_refresh',
     accessExpiry: '15m',
     refreshExpiry: process.env.JWT_EXPIRES_IN || '7d',
   },
