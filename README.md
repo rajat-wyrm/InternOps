@@ -354,13 +354,13 @@ npm run build
 
 ## Testing
 
-The repository includes PowerShell-based integration test scripts that verify every API endpoint with proper authentication and CSRF tokens. Run from the project root:
+Backend tests run with [Jest](https://jestjs.io/) (with [supertest](https://github.com/ladjs/supertest) for HTTP assertions). From the `backend` directory:
 
-```powershell
-. \scripts\full-test.ps1
+```bash
+npm test
 ```
 
-Unit and integration tests (to be added) will use a dedicated test framework.
+Additional unit and integration coverage is being expanded.
 
 ## API Documentation
 
