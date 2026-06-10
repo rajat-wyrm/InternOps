@@ -21,7 +21,7 @@ app.register(async function sanitize(instance) {
       if (typeof obj !== "object" || !obj) return;
       for (let k in obj) {
         if (typeof obj[k] === "string")
-          obj[k] = obj[k].replace(/<[^>]*>/g, "").replace(/['"]/g, "");
+          obj[k] = obj[k].replace(/<[^>]*>/g, "");
         else s(obj[k]);
       }
     };
