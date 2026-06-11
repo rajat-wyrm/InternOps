@@ -5,7 +5,10 @@ let csrfToken, accessToken, meetingId;
 
 beforeAll(async () => {
   await app.ready();
-  const csrfRes = await app.inject({ method: 'GET', url: '/api/auth/csrf-token' });
+  const csrfRes = await app.inject({
+    method: 'GET',
+    url: '/api/auth/csrf-token',
+  });
   csrfToken = JSON.parse(csrfRes.body).csrfToken;
   const loginRes = await app.inject({
     method: 'POST',
@@ -29,7 +32,6 @@ function authHeaders() {
 }
 
 describe('Meetings Integration Tests', () => {
-
   describe('POST /api/meetings', () => {
     it('should create a new meeting', async () => {
       const res = await app.inject({

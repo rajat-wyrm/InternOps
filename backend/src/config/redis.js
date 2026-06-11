@@ -12,19 +12,19 @@ function getLogger() {
   return {
     warn: (...args) => console.warn(...args),
     info: (...args) => console.info(...args),
-    error: (...args) => console.error(...args)
+    error: (...args) => console.error(...args),
   };
 }
 
 async function getRedisClient() {
   if (process.env.NODE_ENV === 'test') return null;
-  if (!config.redisUrl) return null;   // No URL -> no Redis
+  if (!config.redisUrl) return null; // No URL -> no Redis
   if (client) return client;
 
   try {
     client = redis.createClient({
       url: config.redisUrl,
-      socket: { connectTimeout: 1000, reconnectStrategy: false }
+      socket: { connectTimeout: 1000, reconnectStrategy: false },
     });
 
     client.on('error', (err) => {
@@ -60,6 +60,3 @@ function getRedisStatus() {
 }
 
 module.exports = { getRedisClient, getRedisStatus };
-
-
-
