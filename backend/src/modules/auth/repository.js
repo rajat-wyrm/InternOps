@@ -93,7 +93,6 @@ async function revokeRefreshTokenRedis(tokenHash) {
       await redis.del(`refresh_token:${tokenHash}`);
       await redis.sRem(`user_tokens:${userId}`, tokenHash);
     }
-    return;
   }
   await revokeRefreshToken(tokenHash);
 }
@@ -106,7 +105,6 @@ async function revokeAllUserTokensRedis(userId) {
       await redis.del(`refresh_token:${token}`);
     }
     await redis.del(`user_tokens:${userId}`);
-    return;
   }
   await revokeAllUserTokens(userId);
 }
