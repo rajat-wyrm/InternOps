@@ -105,7 +105,7 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/logout',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${accessToken}`, 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
         payload: { refreshToken },
       });
       expect(res.statusCode).toBe(200);
