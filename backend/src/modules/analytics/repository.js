@@ -34,7 +34,7 @@ async function attendanceTrends(months = 6) {
     SELECT TO_CHAR(date,'YYYY-MM') as month, status, COUNT(*) as count
     FROM attendance
     WHERE deleted_at IS NULL
-      AND date >= date_trunc('month', CURRENT_DATE) - INTERVAL '$1 months'
+      AND date >= date_trunc('month', CURRENT_DATE) - make_interval(months => $1::int)
     GROUP BY TO_CHAR(date,'YYYY-MM'), status
     ORDER BY month, status
   `, [months]);

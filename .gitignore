@@ -6,9 +6,17 @@ dist/
 build/
 coverage/
 logs/
-uploads/
+# Runtime upload storage only — must NOT match the source module
+# backend/src/modules/uploads/. Anchor to the actual storage directory and
+# keep the folder itself (via .gitkeep) so @fastify/static has a valid root.
+/backend/uploads/*
+!/backend/uploads/.gitkeep
+/uploads/
+!backend/src/modules/uploads/
 tmp/
 .cache/
+.vite/
+**/.vite/
 secrets/
 *.pem
 *.key
@@ -32,3 +40,9 @@ db-test.js
 fix_async_done.js
 *.log
 *-report.txt
+
+# Docker volumes
+postgres_data/
+
+# Backup files
+*.bak

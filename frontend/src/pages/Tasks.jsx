@@ -1,21 +1,25 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/axios'
 import useAuthStore from '../store/auth'
 import CreateTaskForm from '../components/CreateTaskForm'
+import { PageHeader, Card, Btn, Badge, EmptyState, Spinner } from '../components/ui'
+
+const PLATFORM_ICON = { LinkedIn: '💼', Instagram: '📸', Twitter: '🐦', Facebook: '👍', YouTube: '▶️' }
 
 export default function Tasks() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const [selectedTask, setSelectedTask] = useState(null)
+  const [showForm, setShowForm] = useState(false)
 
   const canCreateTask = ['ADMIN', 'SENIOR_TL'].includes(user?.role)
+  const canVerify = ['CAPTAIN', 'TL', 'SENIOR_TL'].includes(user?.role)
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['tasks'],
     queryFn: () => api.get('/tasks').then(res => res.data),
   })
-
   const { data: proofs, refetch: refetchProofs } = useQuery({
     queryKey: ['proofs', selectedTask],
     queryFn: () => api.get(`/proofs/task/${selectedTask}`).then(res => res.data),
@@ -29,67 +33,82 @@ export default function Tasks() {
       form.append('image', file)
       return api.post('/proofs/submit', form, { headers: { 'Content-Type': 'multipart/form-data' } })
     },
-    onSuccess: () => { refetchProofs(); queryClient.invalidateQueries('proofs') }
+    onSuccess: () => { refetchProofs(); queryClient.invalidateQueries(['proofs']) },
   })
-
-  const verifyMutation = useMutation({
-    mutationFn: (proofId) => api.patch(`/proofs/${proofId}/verify`),
-    onSuccess: () => refetchProofs()
-  })
+  const verifyMutation = useMutation({ mutationFn: (proofId) => api.patch(`/proofs/${proofId}/verify`), onSuccess: () => refetchProofs() })
 
   const handleUpload = (e, taskId) => {
     const file = e.target.files[0]
     if (file) submitMutation.mutate({ taskId, file })
   }
 
+  const overdue = (d) => new Date(d) < new Date()
+
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">Social Tasks</h2>
-      {canCreateTask && <CreateTaskForm />}
-      {isLoading && <p>Loading tasks...</p>}
-      {tasks && (
-        <div className="space-y-4">
+      <PageHeader
+        title="Social Media Tasks" icon="🎯" subtitle="Campaigns & proof verification"
+        actions={canCreateTask && <Btn onClick={() => setShowForm(s => !s)}>{showForm ? '✕ Cancel' : '+ Create task'}</Btn>}
+      />
+
+      {showForm && canCreateTask && <div className="mb-5 animate-fade-in-up"><CreateTaskForm /></div>}
+
+      {isLoading ? <Spinner /> : !tasks?.length ? (
+        <EmptyState icon="🎯" title="No tasks yet" text={canCreateTask ? 'Create a campaign to get started.' : 'New tasks will appear here.'} />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {tasks.map(t => (
-            <div key={t.id} className="border p-3 rounded">
-              <h3 className="font-bold">{t.title}</h3>
-              <p>{t.description}</p>
-              <p className="text-sm">Platform: {t.target_platform}</p>
-              <a href={t.task_link} className="text-blue-500" target="_blank">Task Link</a>
-              <p className="text-sm">Deadline: {new Date(t.deadline).toLocaleString()}</p>
-              <button
-                onClick={() => setSelectedTask(t.id === selectedTask ? null : t.id)}
-                className="mt-2 bg-blue-500 text-white px-3 py-1 rounded"
-              >
-                {selectedTask === t.id ? 'Hide Proofs' : 'View Proofs'}
-              </button>
-              {user?.role === 'INTERN' && (
-                <div className="mt-2">
-                  <input type="file" accept="image/*" onChange={(e) => handleUpload(e, t.id)} className="text-sm" />
+            <Card key={t.id} className="p-5 card-hover">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500 to-fuchsia-600 text-white flex items-center justify-center text-xl shrink-0">
+                  {PLATFORM_ICON[t.target_platform] || '🎯'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-gray-800">{t.title}</h3>
+                    {t.target_platform && <Badge color="purple">{t.target_platform}</Badge>}
+                    {t.deadline && <Badge color={overdue(t.deadline) ? 'red' : 'green'}>{overdue(t.deadline) ? 'Overdue' : 'Active'}</Badge>}
+                  </div>
+                  {t.description && <p className="text-sm text-gray-600 mt-1">{t.description}</p>}
+                  <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                    {t.task_link && <a href={t.task_link} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">🔗 Task link</a>}
+                    {t.deadline && <span>⏰ {new Date(t.deadline).toLocaleString()}</span>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 mt-4">
+                {canVerify && (
+                  <Btn variant="outline" onClick={() => setSelectedTask(selectedTask === t.id ? null : t.id)}>
+                    {selectedTask === t.id ? 'Hide proofs' : 'View proofs'}
+                  </Btn>
+                )}
+                {user?.role === 'INTERN' && (
+                  <label className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-emerald-500 to-green-600 text-white cursor-pointer hover:shadow-lg transition">
+                    📤 Upload proof
+                    <input type="file" accept="image/*" onChange={(e) => handleUpload(e, t.id)} className="hidden" />
+                  </label>
+                )}
+              </div>
+
+              {selectedTask === t.id && (
+                <div className="mt-4 border-t pt-4 space-y-2 animate-fade-in">
+                  <h4 className="text-sm font-semibold text-gray-700">Proof submissions</h4>
+                  {!proofs?.length ? <p className="text-xs text-gray-400">No submissions yet.</p> : proofs.map(p => (
+                    <div key={p.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2">
+                      {p.image_path && <img src={'/' + p.image_path.replace(/^\/?/, '')} alt="proof" className="w-14 h-14 rounded-lg object-cover border" />}
+                      <div className="flex-1 min-w-0 text-xs">
+                        <Badge color={p.status === 'VERIFIED' ? 'green' : 'yellow'}>{p.status}</Badge>
+                        <p className="text-gray-400 mt-1 truncate">Intern: {p.intern_id.slice(0, 8)}…</p>
+                      </div>
+                      {canVerify && p.status === 'PENDING' && (
+                        <Btn variant="success" onClick={() => verifyMutation.mutate(p.id)}>✓ Verify</Btn>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
-          ))}
-        </div>
-      )}
-      {selectedTask && (
-        <div className="mt-6">
-          <h3 className="text-lg font-semibold">Proof Submissions</h3>
-          {proofs?.map(p => (
-            <div key={p.id} className="border p-2 my-2 flex items-center gap-4">
-              <div>
-                <p>Status: {p.status}</p>
-                <p>Intern: {p.intern_id}</p>
-                {p.image_path && <img src={p.image_path} alt="proof" className="max-w-xs max-h-40" />}
-              </div>
-              {(user?.role === 'CAPTAIN' || user?.role === 'TL' || user?.role === 'SENIOR_TL') && p.status === 'PENDING' && (
-                <button
-                  onClick={() => verifyMutation.mutate(p.id)}
-                  className="bg-green-500 text-white px-3 py-1 rounded"
-                >
-                  Verify
-                </button>
-              )}
-            </div>
+            </Card>
           ))}
         </div>
       )}

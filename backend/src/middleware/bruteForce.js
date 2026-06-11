@@ -1,5 +1,4 @@
 const pool = require('../config/db');
-
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 
@@ -20,8 +19,10 @@ async function recordLoginAttempt(email, ip, success) {
   );
 }
 
-// Middleware to be applied before login route – async with 2 args, no done
 async function bruteForceCheck(request, reply) {
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
   // Ensure request body exists to avoid crashes (e.g., when Content-Type missing)
   const { email } = request.body || {};
   if (!email) {

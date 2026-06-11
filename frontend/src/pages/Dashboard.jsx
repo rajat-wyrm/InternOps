@@ -1,5 +1,10 @@
-﻿import { Link, Routes, Route, useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Link, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import api from '../lib/axios'
+import { UserAvatar } from '../components/ui'
 import Home from './Home'
+import Team from './Team'
 import Attendance from './Attendance'
 import Ratings from './Ratings'
 import Tasks from './Tasks'
@@ -12,73 +17,170 @@ import Analytics from './admin/Analytics'
 import AdminDashboard from './admin/AdminDashboard'
 import AuditLog from './admin/AuditLog'
 import Exports from './admin/Exports'
+import Departments from './admin/Departments'
+import useAuthStore from '../store/auth'
+
+const ROLE_LABEL = { ADMIN: 'Admin', SENIOR_TL: 'Senior TL', TL: 'Team Lead', CAPTAIN: 'Captain', INTERN: 'Intern' }
 
 const nav = [
-  { path:'/', label:'Dashboard' },
-  { path:'/attendance', label:'Attendance' },
-  { path:'/ratings', label:'Ratings' },
-  { path:'/tasks', label:'Tasks' },
-  { path:'/meetings', label:'Meetings' },
-  { path:'/notifications', label:'Notifications' },
-  { path:'/profile', label:'Profile' },
-  { path:'/sessions', label:'Sessions' },
-  { path:'/reports', label:'Reports' },
+  { path: '/', label: 'Dashboard', icon: '🏠' },
+  { path: '/team', label: 'My Team', icon: '👥', managerOnly: true },
+  { path: '/attendance', label: 'Attendance', icon: '📅' },
+  { path: '/ratings', label: 'Ratings', icon: '⭐' },
+  { path: '/tasks', label: 'Tasks', icon: '🎯' },
+  { path: '/meetings', label: 'Meetings', icon: '📹' },
+  { path: '/notifications', label: 'Notifications', icon: '🔔' },
+  { path: '/profile', label: 'Profile', icon: '👤' },
+  { path: '/sessions', label: 'Sessions', icon: '🔐' },
+  { path: '/reports', label: 'Reports', icon: '📈' },
 ]
 
 const adminNav = [
-  { path:'/admin', label:'Admin Panel' },
-  { path:'/analytics', label:'Analytics' },
-  { path:'/audit', label:'Audit Log' },
-  { path:'/exports', label:'Exports' },
+  { path: '/admin', label: 'Admin Panel', icon: '🛡️' },
+  { path: '/departments', label: 'Departments', icon: '🏢' },
+  { path: '/analytics', label: 'Analytics', icon: '📊' },
+  { path: '/audit', label: 'Audit Log', icon: '🧾' },
+  { path: '/exports', label: 'Exports', icon: '⬇️' },
 ]
+
+function initials(u) {
+  const n = (u?.fullName || u?.email || '?').trim()
+  return n.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase()).join('')
+}
 
 export default function Dashboard() {
   const loc = useLocation()
-  const isAdmin = JSON.parse(localStorage.getItem('user')||'{}').role === 'ADMIN'
+  const navigate = useNavigate()
+  const { user, logout } = useAuthStore()
+  const role = user?.role
+  const isAdmin = role === 'ADMIN'
+  const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(role)
+
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar') === 'collapsed')
+  const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark')
+
+  // Live profile so name + avatar update everywhere right after editing.
+  const { data: me } = useQuery({ queryKey: ['myProfile'], queryFn: () => api.get('/users/me').then(r => r.data) })
+  const displayName = me?.full_name || user?.fullName || user?.email
+  const avatarUrl = me?.avatar_url || null
+
+  useEffect(() => { localStorage.setItem('sidebar', collapsed ? 'collapsed' : 'open') }, [collapsed])
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+    localStorage.setItem('theme', dark ? 'dark' : 'light')
+  }, [dark])
+
+  const visibleNav = nav.filter(n => !n.managerOnly || isManager)
+  const allItems = [...visibleNav, ...(isAdmin ? adminNav : [])]
+  const current = allItems.find(n => n.path === loc.pathname) || { label: 'Dashboard', icon: '🏠' }
+
+  const handleLogout = () => { logout(); navigate('/login') }
+
+  const NavLink = ({ n }) => {
+    const active = loc.pathname === n.path
+    return (
+      <Link to={n.path} title={collapsed ? n.label : undefined}
+        className={`group flex items-center gap-3 rounded-xl text-sm font-medium transition-all
+          ${collapsed ? 'justify-center px-0 py-3' : 'px-3 py-2.5'}
+          ${active ? 'bg-white text-indigo-700 shadow-lg shadow-indigo-900/20' : 'text-indigo-100 hover:bg-white/10 hover:translate-x-1'}`}>
+        <span className="text-lg">{n.icon}</span>
+        {!collapsed && <span className="whitespace-nowrap">{n.label}</span>}
+        {!collapsed && active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600" />}
+      </Link>
+    )
+  }
 
   return (
-    <div className="flex h-screen">
-      <aside className="w-64 bg-gray-800 text-white p-4">
-        <h2 className="text-xl font-bold mb-4">InternOps</h2>
-        <nav className="flex flex-col gap-2">
-          {nav.map(n => (
-            <Link key={n.path} to={n.path} className={`p-2 rounded hover:bg-gray-700 ${loc.pathname===n.path?'bg-gray-700':''}`}>
-              {n.label}
-            </Link>
-          ))}
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-indigo-50/50">
+      {/* Sidebar */}
+      <aside className={`${collapsed ? 'w-20' : 'w-64'} shrink-0 bg-gradient-to-b from-indigo-700 via-indigo-800 to-purple-900 text-white flex flex-col transition-all duration-300 ease-in-out`}>
+        <div className={`p-5 flex items-center gap-2 ${collapsed ? 'justify-center' : ''}`}>
+          <div className="w-10 h-10 rounded-xl bg-white/20 glass flex items-center justify-center text-xl shrink-0">⚡</div>
+          {!collapsed && (
+            <div className="overflow-hidden">
+              <h2 className="text-lg font-extrabold leading-none whitespace-nowrap">InternOps</h2>
+              <p className="text-[10px] text-indigo-200 mt-0.5 whitespace-nowrap">Workforce Platform</p>
+            </div>
+          )}
+        </div>
+
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 space-y-1">
+          {visibleNav.map(n => <NavLink key={n.path} n={n} />)}
           {isAdmin && (
             <>
-              <hr className="border-gray-600 my-2" />
-              {adminNav.map(n => (
-                <Link key={n.path} to={n.path} className={`p-2 rounded hover:bg-gray-700 ${loc.pathname===n.path?'bg-gray-700':''}`}>
-                  {n.label}
-                </Link>
-              ))}
+              {!collapsed && <p className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-indigo-300">Admin</p>}
+              {collapsed && <div className="my-2 mx-3 border-t border-white/10" />}
+              {adminNav.map(n => <NavLink key={n.path} n={n} />)}
             </>
           )}
         </nav>
+
+        {/* User card */}
+        <div className="p-3">
+          <div className={`glass rounded-2xl border border-white/10 flex items-center ${collapsed ? 'justify-center p-2' : 'gap-3 p-3'}`}>
+            <UserAvatar name={displayName} email={user?.email} src={avatarUrl} />
+            {!collapsed && (
+              <>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{displayName}</p>
+                  <p className="text-[10px] text-indigo-200">{ROLE_LABEL[role] || role}</p>
+                </div>
+                <button onClick={handleLogout} title="Logout" className="text-indigo-200 hover:text-white hover:scale-110 transition">⏻</button>
+              </>
+            )}
+          </div>
+        </div>
       </aside>
-      <main className="flex-1 p-6 overflow-auto">
-        <Routes>
-          <Route index element={<Home />} />
-          <Route path="attendance" element={<Attendance />} />
-          <Route path="ratings" element={<Ratings />} />
-          <Route path="tasks" element={<Tasks />} />
-          <Route path="meetings" element={<Meetings />} />
-          <Route path="notifications" element={<Notifications />} />
-          <Route path="profile" element={<Profile />} />
-          <Route path="sessions" element={<Sessions />} />
-          <Route path="reports" element={<Reports />} />
-          {isAdmin && (
-            <>
-              <Route path="admin" element={<AdminDashboard />} />
-              <Route path="analytics" element={<Analytics />} />
-              <Route path="audit" element={<AuditLog />} />
-              <Route path="exports" element={<Exports />} />
-            </>
-          )}
-        </Routes>
-      </main>
+
+      {/* Main */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Topbar */}
+        <header className="h-16 bg-white/80 backdrop-blur border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 shrink-0">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setCollapsed(c => !c)} title="Toggle sidebar"
+              className="w-9 h-9 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center text-gray-600 transition">
+              {collapsed ? '»' : '«'}
+            </button>
+            <span className="text-xl">{current.icon}</span>
+            <h1 className="text-lg font-bold text-gray-800">{current.label}</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setDark(d => !d)} title={dark ? 'Light mode' : 'Dark mode'}
+              className="w-9 h-9 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition text-lg">
+              {dark ? '☀️' : '🌙'}
+            </button>
+            <Link to="/notifications" className="w-9 h-9 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition">🔔</Link>
+            <Link to="/profile" className="rounded-full hover:scale-105 transition" title={displayName}>
+              <UserAvatar name={displayName} email={user?.email} src={avatarUrl} text="text-xs" />
+            </Link>
+          </div>
+        </header>
+
+        {/* Content */}
+        <main key={loc.pathname} className="flex-1 p-6 overflow-auto animate-fade-in-up">
+          <Routes>
+            <Route index element={<Home />} />
+            {isManager && <Route path="team" element={<Team />} />}
+            <Route path="attendance" element={<Attendance />} />
+            <Route path="ratings" element={<Ratings />} />
+            <Route path="tasks" element={<Tasks />} />
+            <Route path="meetings" element={<Meetings />} />
+            <Route path="notifications" element={<Notifications />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="sessions" element={<Sessions />} />
+            <Route path="reports" element={<Reports />} />
+            {isAdmin && (
+              <>
+                <Route path="admin" element={<AdminDashboard />} />
+                <Route path="departments" element={<Departments />} />
+                <Route path="analytics" element={<Analytics />} />
+                <Route path="audit" element={<AuditLog />} />
+                <Route path="exports" element={<Exports />} />
+              </>
+            )}
+          </Routes>
+        </main>
+      </div>
     </div>
   )
 }

@@ -1,8 +1,10 @@
+const { UnauthorizedError } = require('../../utils/errors');
 const repo = require('./repository');
 const { generateAccessToken, generateRefreshToken, hashToken, verifyRefreshToken } = require('../../utils/tokens');
 const { createAuditLog } = require('../../utils/audit');
 const { recordLoginAttempt } = require('../../middleware/bruteForce');
 const { isValidStep } = require('../../utils/hierarchy');
+const { sendVerificationEmail } = require('./verificationService');
 
 async function register(data, creator) {
   if (data.managerId) {
@@ -15,6 +17,7 @@ async function register(data, creator) {
   }
   const user = await repo.createUser(data);
   await createAuditLog({ userId:creator.id, action:'USER_CREATED', resourceType:'user', resourceId:user.id, details:{email:user.email,role:user.role} });
+  sendVerificationEmail(user.id, user.email).catch(err => console.error('[Verification] Failed to send:', err.message));
   return user;
 }
 
@@ -22,12 +25,12 @@ async function login(email, password, ip, userAgent) {
   const user = await repo.findByEmail(email);
   if (!user || user.suspended) {
     await recordLoginAttempt(email, ip, false);
-    throw new Error('Invalid credentials or suspended');
+    throw new UnauthorizedError('Invalid credentials or suspended');
   }
   const valid = await repo.verifyPassword(user, password);
   if (!valid) {
     await recordLoginAttempt(email, ip, false);
-    throw new Error('Invalid credentials');
+    throw new UnauthorizedError('Invalid credentials');
   }
   await recordLoginAttempt(email, ip, true);
   const access = generateAccessToken(user);
@@ -44,21 +47,67 @@ async function login(email, password, ip, userAgent) {
 
 async function refreshTokens(token, ip) {
   let decoded;
-  try { decoded = verifyRefreshToken(token); } catch { throw new Error('Invalid refresh token'); }
+
+  try {
+    decoded = verifyRefreshToken(token);
+  } catch {
+    throw new UnauthorizedError('Invalid refresh token');
+  }
+
   const hash = hashToken(token);
   const isValid = await repo.isRefreshTokenValid(hash);
-  if(!isValid) throw new Error('Token revoked/expired');
+  if (!isValid) {
+    throw new UnauthorizedError('Token revoked/expired');
+  }
   await repo.revokeRefreshTokenRedis(hash);
+
   const user = await repo.findById(decoded.id);
-  if(!user||user.suspended) throw new Error('User not found/suspended');
+
+  if (!user || user.suspended) {
+    throw new UnauthorizedError('User not found/suspended');
+  }
+
   const newAccess = generateAccessToken(user);
   const newRefresh = generateRefreshToken(user);
-  const newExpiry = new Date(Date.now()+7*24*60*60*1000);
+  const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
   await repo.storeRefreshTokenRedis(user.id, hashToken(newRefresh), newExpiry);
-  return { accessToken:newAccess, refreshToken:newRefresh };
+
+  return {
+    accessToken: newAccess,
+    refreshToken: newRefresh,
+  };
 }
+async function logout(
+  token,
+  authenticatedUserId,
+  ip,
+  userAgent
+) {
+  let decoded;
 
-async function logout(token) { await repo.revokeRefreshTokenRedis(hashToken(token)); }
+  try {
+    decoded = verifyRefreshToken(token);
+  } catch {
+    throw new UnauthorizedError('Invalid refresh token');
+  }
 
+  if (String(decoded.id) !== String(authenticatedUserId)) {
+    throw new UnauthorizedError(
+      'Token does not belong to authenticated user'
+    );
+  }
+
+  await repo.revokeRefreshTokenRedis(
+    hashToken(token)
+  );
+
+  await createAuditLog({
+    userId: authenticatedUserId,
+    action: 'LOGOUT',
+    ipAddress: ip,
+    userAgent
+  });
+}
 module.exports = { register, login, refreshTokens, logout };
 

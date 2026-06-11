@@ -1,5 +1,6 @@
-﻿import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/axios'
+import { PageHeader, Card, Btn, EmptyState, Spinner } from '../components/ui'
 
 export default function Sessions() {
   const queryClient = useQueryClient()
@@ -10,28 +11,38 @@ export default function Sessions() {
 
   const revokeMut = useMutation({
     mutationFn: (sessionId) => api.delete(`/sessions/me/${sessionId}`),
-    onSuccess: () => queryClient.invalidateQueries('sessions')
+    onSuccess: () => queryClient.invalidateQueries(['sessions']),
   })
-
   const revokeAllMut = useMutation({
-    mutationFn: () => api.post('/sessions/me/revoke-all'),
-    onSuccess: () => { queryClient.invalidateQueries('sessions'); alert('All sessions revoked. You will be logged out.'); window.location.href = '/login'; }
+    mutationFn: () => api.post('/sessions/me/revoke-all', {}),
+    onSuccess: () => { window.location.href = '/login' },
   })
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">Active Sessions</h2>
-      <button onClick={() => revokeAllMut.mutate()} className="bg-red-500 text-white px-3 py-1 rounded mb-4">Revoke All Other Sessions</button>
-      {isLoading && <p>Loading...</p>}
-      {sessions?.map(s => (
-        <div key={s.sessionId} className="border p-2 mb-2 flex justify-between items-center">
-          <div>
-            <p className="text-sm">Created: {new Date(s.createdAt).toLocaleString()}</p>
-            <p className="text-sm">Expires: {new Date(s.expiresAt).toLocaleString()}</p>
-          </div>
-          <button onClick={() => revokeMut.mutate(s.sessionId)} className="bg-gray-300 px-2 py-1 rounded text-sm">Revoke</button>
+      <PageHeader
+        title="Active Sessions" icon="🔐"
+        subtitle="Devices currently signed in to your account"
+        actions={<Btn variant="danger" onClick={() => revokeAllMut.mutate()}>Revoke all others</Btn>}
+      />
+
+      {isLoading ? <Spinner /> : !sessions?.length ? (
+        <EmptyState icon="💻" title="No active sessions" />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {sessions.map(s => (
+            <Card key={s.sessionId} className="p-4 flex items-center gap-3 card-hover">
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-slate-600 to-slate-800 text-white flex items-center justify-center text-xl">💻</div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-gray-800 text-sm">Session</p>
+                <p className="text-xs text-gray-500">Started {new Date(s.createdAt).toLocaleString()}</p>
+                <p className="text-xs text-gray-400">Expires {new Date(s.expiresAt).toLocaleDateString()}</p>
+              </div>
+              <Btn variant="outline" onClick={() => revokeMut.mutate(s.sessionId)}>Revoke</Btn>
+            </Card>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }

@@ -28,10 +28,31 @@ async function markTokenUsed(rawToken) {
 }
 
 async function updateUserPassword(userId, newPassword) {
-  const hash = await argon2.hash(newPassword);
-  await pool.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hash, userId]);
-  // Revoke all refresh tokens to force re-login
-  await pool.query('UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1', [userId]);
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const hash = await argon2.hash(newPassword);
+
+    await client.query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [hash, userId]
+    );
+
+    // Revoke all refresh tokens to force re-login
+    await client.query(
+      'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1',
+      [userId]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 module.exports = { createResetToken, verifyResetToken, markTokenUsed, updateUserPassword };

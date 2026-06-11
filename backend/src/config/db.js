@@ -1,11 +1,10 @@
-﻿const { Pool } = require('pg');
+const { Pool } = require('pg');
 const config = require('./index');
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
   max: 20,
   idleTimeoutMillis: 30000,
-  statement_timeout: 10000,   // 10 seconds max per query
 });
 
 pool.on('error', (err) => {

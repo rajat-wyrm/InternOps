@@ -20,14 +20,15 @@ CREATE TABLE IF NOT EXISTS users (
   department_id UUID REFERENCES departments(id),
   full_name VARCHAR(255),
   suspended BOOLEAN DEFAULT FALSE,
+  avatar_url VARCHAR(500),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
 );
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_role ON users(role);
-CREATE INDEX idx_users_manager ON users(manager_id);
-CREATE INDEX idx_users_department ON users(department_id);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_manager ON users(manager_id);
+CREATE INDEX IF NOT EXISTS idx_users_department ON users(department_id);
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -37,7 +38,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   revoked BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_refresh_token_user ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_token_user ON refresh_tokens(user_id);
 
 CREATE TABLE IF NOT EXISTS attendance (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -45,13 +46,14 @@ CREATE TABLE IF NOT EXISTS attendance (
   marked_by UUID NOT NULL REFERENCES users(id),
   date DATE NOT NULL,
   status attendance_status NOT NULL,
+  remarks TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ,
   UNIQUE(user_id, date)
 );
-CREATE INDEX idx_attendance_user_date ON attendance(user_id, date);
-CREATE INDEX idx_attendance_marked_by ON attendance(marked_by);
+CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_attendance_marked_by ON attendance(marked_by);
 
 CREATE TABLE IF NOT EXISTS ratings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -63,8 +65,8 @@ CREATE TABLE IF NOT EXISTS ratings (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
 );
-CREATE INDEX idx_ratings_rated_user ON ratings(rated_user_id);
-CREATE INDEX idx_ratings_rated_by ON ratings(rated_by);
+CREATE INDEX IF NOT EXISTS idx_ratings_rated_user ON ratings(rated_user_id);
+CREATE INDEX IF NOT EXISTS idx_ratings_rated_by ON ratings(rated_by);
 
 CREATE TABLE IF NOT EXISTS social_tasks (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -78,7 +80,7 @@ CREATE TABLE IF NOT EXISTS social_tasks (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
 );
-CREATE INDEX idx_social_tasks_deadline ON social_tasks(deadline);
+CREATE INDEX IF NOT EXISTS idx_social_tasks_deadline ON social_tasks(deadline);
 
 CREATE TABLE IF NOT EXISTS proof_submissions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -92,8 +94,8 @@ CREATE TABLE IF NOT EXISTS proof_submissions (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
 );
-CREATE INDEX idx_proof_task ON proof_submissions(task_id);
-CREATE INDEX idx_proof_intern ON proof_submissions(intern_id);
+CREATE INDEX IF NOT EXISTS idx_proof_task ON proof_submissions(task_id);
+CREATE INDEX IF NOT EXISTS idx_proof_intern ON proof_submissions(intern_id);
 
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -102,7 +104,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   read BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_notifications_user ON notifications(user_id, read);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -111,9 +113,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   resource_type VARCHAR(50),
   resource_id UUID,
   details JSONB,
+  old_value JSONB,
+  new_value JSONB,
   ip_address VARCHAR(45),
+  user_agent VARCHAR(500),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_audit_user ON audit_logs(user_id);
-CREATE INDEX idx_audit_action ON audit_logs(action);
-CREATE INDEX idx_audit_created ON audit_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);

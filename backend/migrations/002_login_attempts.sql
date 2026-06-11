@@ -5,6 +5,5 @@
   success BOOLEAN NOT NULL,
   attempted_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_login_attempts_email ON login_attempts(email);
-CREATE INDEX idx_login_attempts_ip ON login_attempts(ip_address);
-CREATE INDEX idx_login_attempts_time ON login_attempts(attempted_at);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip_address);

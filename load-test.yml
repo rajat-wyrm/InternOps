@@ -1,0 +1,52 @@
+﻿config:
+  target: "http://localhost:5000"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      name: "Warm up"
+    - duration: 120
+      arrivalRate: 50
+      rampTo: 100
+      name: "Ramp up to 100 users"
+    - duration: 60
+      arrivalRate: 100
+      name: "Sustained load"
+  processor: "./load-processor.js"
+  variables:
+    email:
+      - "user1@test.com"
+      - "user2@test.com"
+      - "user3@test.com"
+    password: "LoadTest123!"
+  ensure:
+    p95: 500
+    p99: 1000
+
+scenarios:
+  - name: "Authenticate and access APIs"
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ $randomEmail }}"
+            password: "{{ password }}"
+          capture:
+            json: "$.accessToken"
+            as: "accessToken"
+          capture:
+            json: "$.refreshToken"
+            as: "refreshToken"
+      - get:
+          url: "/api/users/me"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+      - get:
+          url: "/api/notifications"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+      - post:
+          url: "/api/auth/refresh"
+          json:
+            refreshToken: "{{ refreshToken }}"
+      - get:
+          url: "/api/health"

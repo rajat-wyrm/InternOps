@@ -11,9 +11,6 @@
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
 );
-CREATE INDEX idx_meetings_date ON meetings(meeting_date);
-CREATE INDEX idx_meetings_created_by ON meetings(created_by);
-
 CREATE TABLE IF NOT EXISTS meeting_attendees (
   meeting_id UUID REFERENCES meetings(id) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,

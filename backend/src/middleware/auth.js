@@ -1,5 +1,4 @@
-﻿const { verifyAccessToken } = require('../utils/tokens');
-
+const { verifyAccessToken } = require('../utils/tokens');
 async function authMiddleware(request, reply) {
   const auth = request.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {

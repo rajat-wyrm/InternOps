@@ -16,7 +16,7 @@ function sanitizationMiddleware(request, reply, done) {
   if (request.body) sanitizeInput(request.body);
   if (request.query) sanitizeInput(request.query);
   if (request.params) sanitizeInput(request.params);
-  
+  done(); // ✅ Call done to pass control to the next handler/route
 }
 
 module.exports = sanitizationMiddleware;
