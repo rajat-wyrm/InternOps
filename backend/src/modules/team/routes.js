@@ -107,11 +107,9 @@ async function routes(fastify) {
         ROLE_RANK[data.role] === undefined ||
         ROLE_RANK[data.role] >= ROLE_RANK[managerRole]
       ) {
-        return reply
-          .status(400)
-          .send({
-            error: `You can only add members below your own role (${managerRole})`,
-          });
+        return reply.status(400).send({
+          error: `You can only add members below your own role (${managerRole})`,
+        });
       }
       if (await repo.emailExists(data.email)) {
         return reply
