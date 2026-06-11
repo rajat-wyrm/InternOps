@@ -22,8 +22,12 @@ async function recordLoginAttempt(email, ip, success) {
 
 // Middleware to be applied before login route – async with 2 args, no done
 async function bruteForceCheck(request, reply) {
+  // Ensure request body exists to avoid crashes (e.g., when Content-Type missing)
   const { email } = request.body || {};
-  if (!email) return; // skip if no email (will fail validation later)
+  if (!email) {
+    // No email provided; let downstream validation handle the error
+    return;
+  }
   const locked = await isAccountLocked(email);
   if (locked) {
     return reply.status(429).send({ error: 'Account temporarily locked due to too many failed attempts. Please try again later.' });
