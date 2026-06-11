@@ -94,9 +94,9 @@ app.register(require("@fastify/swagger-ui"), {
 app.register(require("./modules/auth/routes"), {
   prefix: "/api/auth",
 });
-app.register(require("@fastify/swagger-ui"), { routePrefix: "/docs" });
-// registerRoutes();
-app.register(require("./modules/auth/routes"), { prefix: "/api/auth" });
+app.register(require("./modules/uploads/routes"), {
+  prefix: "/api/uploads",
+});
 app.register(require("./modules/users/routes"), { prefix: "/api/users" });
 app.register(require("./modules/departments/routes"), {
   prefix: "/api/departments",
