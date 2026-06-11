@@ -2,9 +2,8 @@ name: Auto Format Code
 
 on:
   push:
-    # Run on all branches so formatting happens on your fork before/during PR
     branches:
-      - '**'
+      - 'master'
 
 jobs:
   format:
