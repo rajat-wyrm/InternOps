@@ -21,17 +21,17 @@ async function forgotPassword(email, requestInfo) {
 }
 
 async function resetPassword(token, newPassword, requestInfo) {
-  const record = await repo.verifyResetToken(token);
-  if (!record) throw new BadRequestError('Invalid or expired reset token');
-  await repo.updateUserPassword(record.user_id, newPassword);
-  await repo.markTokenUsed(token);
+  const userId = await repo.resetPasswordAtomic(
+    token,
+    newPassword
+  );
+
   await createAuditLog({
-    userId: record.user_id,
+    userId,
     action: 'PASSWORD_RESET_COMPLETED',
     resourceType: 'user',
-    resourceId: record.user_id,
+    resourceId: userId,
     ...requestInfo,
   });
 }
-
 module.exports = { forgotPassword, resetPassword };
