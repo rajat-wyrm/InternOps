@@ -173,7 +173,7 @@ export default function Dashboard() {
             <Route path="sessions" element={<Sessions />} />
             <Route path="reports" element={<Reports />} />
              <Route path="assistant" element={<InternOpsAssistant />} />
-} />
+
             {isAdmin && (
               <>
                 <Route path="admin" element={<AdminDashboard />} />

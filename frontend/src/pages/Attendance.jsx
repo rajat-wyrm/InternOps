@@ -66,6 +66,7 @@ export default function Attendance() {
                   <th className="p-3">Date</th>
                   <th className="p-3">Status</th>
                   <th className="p-3">Remarks</th>
+                  <th className="p-3">Marked By</th>
                 </tr>
               </thead>
               <tbody>
@@ -74,6 +75,7 @@ export default function Attendance() {
                     <td className="p-3">{new Date(a.date).toLocaleDateString()}</td>
                     <td className="p-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[a.status] || ''}`}>{a.status}</span></td>
                     <td className="p-3">{a.remarks || '—'}</td>
+                    <td className="p-3">{a.marked_by_name || '—'}</td>
                   </tr>
                 ))}
               </tbody>
