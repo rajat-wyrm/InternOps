@@ -20,19 +20,17 @@ async function routes(fastify) {
     return repo.get(req.user.id, query);
   });
 
-
   // Unread count (useful for badges)
   fastify.get('/unread-count', { preHandler: [auth] }, async (req) => {
     const count = await repo.getUnreadCount(req.user.id);
     return { unread: count };
   });
 
- // Mark all as read
+  // Mark all as read
   fastify.post('/read-all', { preHandler: [auth] }, async (req) => {
     await repo.markAllRead(req.user.id);
     return { success: true };
   });
-
 
   // Mark single as read
   fastify.patch('/:id/read', { preHandler: [auth] }, async (req) => {
@@ -40,15 +38,11 @@ async function routes(fastify) {
     return { success: true };
   });
 
- 
-
   // Delete a notification
   fastify.delete('/:id', { preHandler: [auth] }, async (req) => {
     await repo.deleteNotification(req.params.id, req.user.id);
     return { success: true };
   });
-
-  
 }
 
 module.exports = routes;
