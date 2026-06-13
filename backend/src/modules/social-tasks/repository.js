@@ -1,4 +1,4 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 async function createTask({
   title,
   description,
@@ -13,14 +13,23 @@ async function createTask({
   );
   return res.rows[0];
 }
-async function getTasks(filters) {
-  let q = 'SELECT * FROM social_tasks WHERE deleted_at IS NULL';
+async function getTasks(filters, userId, userRole) {
+  let q = `
+    SELECT st.* FROM social_tasks st
+    WHERE st.deleted_at IS NULL
+  `;
   const params = [];
-  if (filters.deadlineBefore) {
-    q += ' AND deadline<=$' + (params.length + 1);
-    params.push(filters.deadlineBefore);
+  if (!['ADMIN', 'SENIOR_TL'].includes(userRole)) {
+    params.push(userId);
+    q += ` AND st.id IN (
+      SELECT task_id FROM task_assignments WHERE user_id = $${params.length}
+    )`;
   }
-  q += ' ORDER BY created_at DESC';
+  if (filters.deadlineBefore) {
+    params.push(filters.deadlineBefore);
+    q += ` AND st.deadline <= $${params.length}`;
+  }
+  q += ' ORDER BY st.created_at DESC';
   return (await pool.query(q, params)).rows;
 }
 async function submitProof(taskId, internId, imagePath) {
