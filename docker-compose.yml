@@ -6,11 +6,11 @@ services:
       POSTGRES_PASSWORD: internops123
       POSTGRES_DB: internops
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U internops"]
+      test: ['CMD-SHELL', 'pg_isready -U internops']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -18,7 +18,7 @@ services:
   backend:
     build: .
     ports:
-      - "5000:5000"
+      - '5000:5000'
     depends_on:
       postgres:
         condition: service_healthy

@@ -8,7 +8,7 @@ async function getUserSessions(userId) {
      ORDER BY created_at DESC`,
     [userId]
   );
-  return res.rows.map(row => ({
+  return res.rows.map((row) => ({
     sessionId: row.id,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
@@ -25,7 +25,10 @@ async function revokeSession(sessionId, userId) {
 }
 
 async function revokeAllUserSessions(userId) {
-  await pool.query('UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE', [userId]);
+  await pool.query(
+    'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
+    [userId]
+  );
 }
 
 module.exports = { getUserSessions, revokeSession, revokeAllUserSessions };

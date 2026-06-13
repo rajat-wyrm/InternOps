@@ -1,14 +1,6 @@
-const REQUIRED_VARS = [
-  "JWT_SECRET",
-  "DATABASE_URL",
-  "NODE_ENV"
-];
+const REQUIRED_VARS = ['JWT_SECRET', 'DATABASE_URL', 'NODE_ENV'];
 
-const OPTIONAL_VARS = [
-  "REDIS_URL",
-  "GOOGLE_CLIENT_ID",
-  "EMAIL_API_KEY"
-];
+const OPTIONAL_VARS = ['REDIS_URL', 'GOOGLE_CLIENT_ID', 'EMAIL_API_KEY'];
 
 function validateEnv() {
   // Skip validation in test environment
@@ -21,31 +13,31 @@ function validateEnv() {
 
   for (const key of REQUIRED_VARS) {
     const val = process.env[key];
-    if (val === undefined || val === null || String(val).trim() === "") {
+    if (val === undefined || val === null || String(val).trim() === '') {
       missingRequired.push(key);
     }
   }
 
   for (const key of OPTIONAL_VARS) {
     const val = process.env[key];
-    if (val === undefined || val === null || String(val).trim() === "") {
+    if (val === undefined || val === null || String(val).trim() === '') {
       missingOptional.push(key);
     }
   }
 
   if (missingOptional.length > 0) {
-    console.warn("⚠️ Missing optional environment variables:");
+    console.warn('⚠️ Missing optional environment variables:');
     for (const key of missingOptional) {
       console.warn(`   • ${key}`);
     }
   }
 
   if (missingRequired.length > 0) {
-    console.error("❌ Missing required environment variables:");
+    console.error('❌ Missing required environment variables:');
     for (const key of missingRequired) {
       console.error(`   • ${key}`);
     }
-    
+
     process.exit(1);
   }
 }

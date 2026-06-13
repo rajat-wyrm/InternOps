@@ -74,8 +74,16 @@ async function getMemberById(id) {
 }
 
 const EDITABLE_FIELDS = [
-  'full_name', 'phone', 'college', 'course', 'year_of_study',
-  'position', 'joining_date', 'internship_status', 'location', 'notes',
+  'full_name',
+  'phone',
+  'college',
+  'course',
+  'year_of_study',
+  'position',
+  'joining_date',
+  'internship_status',
+  'location',
+  'notes',
 ];
 
 async function updateMember(id, data) {
@@ -99,29 +107,48 @@ async function updateMember(id, data) {
 // Create a new member under the given manager, with optional detail fields.
 async function createMember(data) {
   const hash = await argon2.hash(data.password);
-  const { rows: [created] } = await pool.query(
+  const {
+    rows: [created],
+  } = await pool.query(
     `INSERT INTO users
        (email, password_hash, role, manager_id, department_id, full_name,
         phone, college, course, year_of_study, position, joining_date, internship_status, location, notes)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING id`,
     [
-      data.email, hash, data.role, data.manager_id, data.department_id || null, data.full_name || null,
-      data.phone || null, data.college || null, data.course || null, data.year_of_study || null,
-      data.position || null, data.joining_date || null, data.internship_status || 'ACTIVE',
-      data.location || null, data.notes || null,
+      data.email,
+      hash,
+      data.role,
+      data.manager_id,
+      data.department_id || null,
+      data.full_name || null,
+      data.phone || null,
+      data.college || null,
+      data.course || null,
+      data.year_of_study || null,
+      data.position || null,
+      data.joining_date || null,
+      data.internship_status || 'ACTIVE',
+      data.location || null,
+      data.notes || null,
     ]
   );
   return getMemberById(created.id);
 }
 
 async function emailExists(email) {
-  const { rowCount } = await pool.query('SELECT 1 FROM users WHERE email = $1 AND deleted_at IS NULL', [email]);
+  const { rowCount } = await pool.query(
+    'SELECT 1 FROM users WHERE email = $1 AND deleted_at IS NULL',
+    [email]
+  );
   return rowCount > 0;
 }
 
 async function getUserRole(id) {
-  const { rows } = await pool.query('SELECT role FROM users WHERE id = $1 AND deleted_at IS NULL', [id]);
+  const { rows } = await pool.query(
+    'SELECT role FROM users WHERE id = $1 AND deleted_at IS NULL',
+    [id]
+  );
   return rows[0]?.role || null;
 }
 
@@ -147,11 +174,21 @@ async function getMemberHistory(id) {
 }
 
 async function setMemberStatus(id, suspended) {
-  await pool.query('UPDATE users SET suspended = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL', [suspended, id]);
+  await pool.query(
+    'UPDATE users SET suspended = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
+    [suspended, id]
+  );
   return getMemberById(id);
 }
 
 module.exports = {
-  getTeamMembers, getMemberById, updateMember, EDITABLE_FIELDS,
-  createMember, emailExists, getUserRole, getMemberHistory, setMemberStatus,
+  getTeamMembers,
+  getMemberById,
+  updateMember,
+  EDITABLE_FIELDS,
+  createMember,
+  emailExists,
+  getUserRole,
+  getMemberHistory,
+  setMemberStatus,
 };
