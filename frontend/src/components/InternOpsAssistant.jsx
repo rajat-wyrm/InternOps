@@ -328,12 +328,10 @@ Give concise, role-aware answers. Use markdown formatting with bullet points. Ke
           max_tokens: 1000,
           system: systemPrompt,
           messages: [
-            ...history
-              .slice(-6)
-              .map((h) => ({
-                role: h.role === 'bot' ? 'assistant' : h.role,
-                content: h.content,
-              })),
+            ...history.slice(-6).map((h) => ({
+              role: h.role === 'bot' ? 'assistant' : h.role,
+              content: h.content,
+            })),
             { role: 'user', content: msg },
           ],
         }),
