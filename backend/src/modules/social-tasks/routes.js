@@ -6,6 +6,7 @@ const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 const { z } = require('zod');
 const emailService = require('../../services/email');
 
+
 module.exports = async function socialTasksRoutes(fastify) {
   // Create a social task (Admin / Senior TL).
   fastify.post(
@@ -34,14 +35,22 @@ module.exports = async function socialTasksRoutes(fastify) {
         resourceId: task.id,
         details: { title: task.title },
       });
-      await emailService.sendNotification(req.user.email, {
-        title: 'Task Created',
-        message: `Task "${task.title}" has been created successfully.`,
-        actionUrl: `${process.env.APP_URL || 'http://localhost:5173'}/tasks`,
-        actionText: 'View Task',
-      });
-      return task;
-    }
+      try {
+          const pool = require('../../config/db');
+          const result = await pool.query('SELECT email FROM users WHERE id = $1', [req.user.id]);
+          const creatorEmail = result.rows[0]?.email;
+          if (creatorEmail) {
+            await emailService.sendNotification(creatorEmail, {
+              title: 'Task Created',
+              message: `Task "${task.title}" has been created successfully.`,
+              recipient: req.user.id,
+            });
+          }
+        } catch (emailErr) {
+          req.log.warn({ emailErr }, 'Task created but notification email failed');
+        }
+          return task;
+       }
   );
 
   // List social tasks (any authenticated user). Optional ?deadlineBefore=ISO date.
