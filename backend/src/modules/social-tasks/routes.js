@@ -45,7 +45,14 @@ module.exports = async function socialTasksRoutes(fastify) {
   );
 
   // List social tasks (any authenticated user). Optional ?deadlineBefore=ISO date.
-  fastify.get('/', { schema: { tags: ['Tasks'], description: 'List social tasks' }, preHandler: [auth] }, async (req) => {
-    return repo.getTasks(req.query || {}, req.user.id, req.user.role);
-  });
+  fastify.get(
+    '/',
+    {
+      schema: { tags: ['Tasks'], description: 'List social tasks' },
+      preHandler: [auth],
+    },
+    async (req) => {
+      return repo.getTasks(req.query || {}, req.user.id, req.user.role);
+    }
+  );
 };
