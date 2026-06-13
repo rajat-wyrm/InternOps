@@ -1,12 +1,12 @@
-﻿const cron = require("node-cron");
-const fs = require("fs");
-const path = require("path");
-const pool = require("../config/db");
+﻿const cron = require('node-cron');
+const fs = require('fs');
+const path = require('path');
+const pool = require('../config/db');
 
 function setupCronJobs() {
   // Schedule: 0 * * * * (Runs exactly at the top of every hour: 01:00, 02:00, etc.)
-  cron.schedule("0 * * * *", async () => {
-    const jobName = "proof-image-cleanup";
+  cron.schedule('0 * * * *', async () => {
+    const jobName = 'proof-image-cleanup';
     const startTime = Date.now();
 
     // 1. Log Job Start
@@ -15,7 +15,7 @@ function setupCronJobs() {
         job: jobName,
         startedAt: new Date(startTime),
       }),
-      "Cron job started",
+      'Cron job started'
     );
 
     try {
@@ -24,14 +24,14 @@ function setupCronJobs() {
       // Find eligible records
       const { rows } = await pool.query(
         "SELECT id, image_path FROM proof_submissions WHERE status='VERIFIED' AND verified_at < $1 AND image_path IS NOT NULL",
-        [cutoff],
+        [cutoff]
       );
 
       let filesDeleted = 0;
 
       // Delete physical files
       for (const row of rows) {
-        const fp = path.join(__dirname, "..", "..", row.image_path);
+        const fp = path.join(__dirname, '..', '..', row.image_path);
         if (fs.existsSync(fp)) {
           fs.unlinkSync(fp);
           filesDeleted++;
@@ -41,7 +41,7 @@ function setupCronJobs() {
       // Update database records
       await pool.query(
         "UPDATE proof_submissions SET image_path=NULL WHERE status='VERIFIED' AND verified_at < $1",
-        [cutoff],
+        [cutoff]
       );
 
       const durationMs = Date.now() - startTime;
@@ -54,7 +54,7 @@ function setupCronJobs() {
           recordsProcessed: rows.length,
           filesDeleted: filesDeleted,
         }),
-        "Cron job completed",
+        'Cron job completed'
       );
     } catch (err) {
       // 3. Log Job Failure
@@ -64,7 +64,7 @@ function setupCronJobs() {
           err: err.message,
           stack: err.stack,
         }),
-        "Cron job failed",
+        'Cron job failed'
       );
     }
   });

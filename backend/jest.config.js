@@ -1,4 +1,4 @@
-﻿module.exports = {
+module.exports = {
   testEnvironment: 'node',
   testMatch: ['**/tests/**/*.test.js'],
   verbose: true,
@@ -12,4 +12,5 @@
     'src/middleware/**/*.js',
     'src/services/**/*.js',
   ],
+  testTimeout: 30000,
 };

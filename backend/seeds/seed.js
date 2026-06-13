@@ -7,7 +7,10 @@ async function seedAdmin() {
   try {
     const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@internops.com';
     const adminPass = process.env.SEED_ADMIN_PASSWORD || 'Admin@123';
-    const existing = await client.query('SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL', [adminEmail]);
+    const existing = await client.query(
+      'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
+      [adminEmail]
+    );
     if (existing.rowCount > 0) {
       console.log('Admin user already exists');
       return;
@@ -23,4 +26,9 @@ async function seedAdmin() {
   }
 }
 
-seedAdmin().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+seedAdmin()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });

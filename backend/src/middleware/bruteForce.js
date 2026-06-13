@@ -27,7 +27,10 @@ async function bruteForceCheck(request, reply) {
   if (!email) return;
   const locked = await isAccountLocked(email);
   if (locked) {
-    return reply.status(429).send({ error: 'Account temporarily locked due to too many failed attempts. Please try again later.' });
+    return reply.status(429).send({
+      error:
+        'Account temporarily locked due to too many failed attempts. Please try again later.',
+    });
   }
 }
 
