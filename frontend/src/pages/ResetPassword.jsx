@@ -1,18 +1,18 @@
-import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import api from "../lib/axios";
+import { useEffect, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import api from '../lib/axios';
 
 export default function ResetPassword() {
-  const [token, setToken] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [token, setToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const hash = window.location.hash.slice(1);
     const params = new URLSearchParams(hash);
-    const resetToken = params.get("token");
+    const resetToken = params.get('token');
 
     if (!resetToken) {
       return;
@@ -24,19 +24,19 @@ export default function ResetPassword() {
   }, []);
 
   const resetMut = useMutation({
-    mutationFn: (data) => api.post("/auth/reset-password", data),
+    mutationFn: (data) => api.post('/auth/reset-password', data),
     onSuccess: (res) => {
       setMessage(res.data.message);
-      setError("");
+      setError('');
     },
-    onError: (err) => setError(err.response?.data?.error || "Reset failed"),
+    onError: (err) => setError(err.response?.data?.error || 'Reset failed'),
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
 
     if (!token) {
-      setError("Reset token is missing or invalid");
+      setError('Reset token is missing or invalid');
       return;
     }
 
@@ -87,7 +87,7 @@ export default function ResetPassword() {
               disabled={resetMut.isPending}
               className="w-full py-3 rounded-xl bg-white text-indigo-700 font-semibold shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 transition disabled:opacity-70"
             >
-              {resetMut.isPending ? "Resetting..." : "Reset password →"}
+              {resetMut.isPending ? 'Resetting...' : 'Reset password →'}
             </button>
           </form>
           <div className="mt-5 text-center">
