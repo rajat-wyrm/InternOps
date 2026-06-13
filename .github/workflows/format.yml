@@ -15,6 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.PAT_TOKEN }}
           # On push, github.ref is the branch that was pushed
           ref: ${{ github.ref }}
 

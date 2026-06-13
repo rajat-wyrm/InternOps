@@ -5,4 +5,3 @@ coverage/
 .env*
 *.log
 package-lock.json
-.github/workflows/
