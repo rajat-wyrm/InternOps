@@ -85,7 +85,15 @@ export default function Tasks() {
                   {t.description && <p className="text-sm text-gray-600 mt-1">{t.description}</p>}
                   <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
                     {t.task_link && <a href={t.task_link} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">🔗 Task link</a>}
-                    {t.deadline && <span>⏰ {new Date(t.deadline).toLocaleString()}</span>}
+                    {t.deadline && (
+                     <span>
+                      ⏰ {new Date(t.deadline).toLocaleString('en-IN', {
+                       dateStyle: 'medium',
+                       timeStyle: 'short',
+                       timeZone: 'Asia/Kolkata',
+                     })} IST
+                   </span>
+                    )}
                   </div>
                 </div>
               </div>
