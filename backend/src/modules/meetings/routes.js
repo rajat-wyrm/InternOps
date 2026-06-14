@@ -24,43 +24,43 @@ async function routes(fastify) {
   });
 
   // Get single meeting
-fastify.get('/:id', { preHandler: [auth] }, async (req, reply) => {
-  const meeting = await repo.getMeetingById(req.params.id);
-  if (!meeting) return reply.status(404).send({ error: 'Meeting not found' });
+  fastify.get('/:id', { preHandler: [auth] }, async (req, reply) => {
+    const meeting = await repo.getMeetingById(req.params.id);
+    if (!meeting) return reply.status(404).send({ error: 'Meeting not found' });
 
-  // Fetch attendees first — used for both isAttendee and isManager below.
-  // This replaces the inline raw pool.query() that was checking attendance
-  // separately and eliminates the second repo.getAttendees() call that was
-  // previously below the access gate.
-  const attendees = await repo.getAttendees(meeting.id);
+    // Fetch attendees first — used for both isAttendee and isManager below.
+    // This replaces the inline raw pool.query() that was checking attendance
+    // separately and eliminates the second repo.getAttendees() call that was
+    // previously below the access gate.
+    const attendees = await repo.getAttendees(meeting.id);
 
-  const isCreator = meeting.created_by === req.user.id;
+    const isCreator = meeting.created_by === req.user.id;
 
-  //  Derived from the already-fetched attendees list — no extra DB call.
-  const isAttendee = attendees.some((a) => a.id === req.user.id);
+    //  Derived from the already-fetched attendees list — no extra DB call.
+    const isAttendee = attendees.some((a) => a.id === req.user.id);
 
-  //  isManager now checks hierarchy against attendees — not the creator.
-  // Access is granted only if the requester directly manages at least one
-  // participant of this specific meeting. This prevents a manager of the
-  // creator from gaining access to meetings they have no connection to.
-  const isManager =
-    req.user.role !== 'INTERN' &&
-    attendees.filter((a) => a.id !== req.user.id).length > 0 &&
-    (
-      await Promise.all(
-        attendees
-          .filter((a) => a.id !== req.user.id)
-          .map((a) => checkHierarchyAccess(req.user.id, a.id))
-      )
-    ).some(Boolean);
+    //  isManager now checks hierarchy against attendees — not the creator.
+    // Access is granted only if the requester directly manages at least one
+    // participant of this specific meeting. This prevents a manager of the
+    // creator from gaining access to meetings they have no connection to.
+    const isManager =
+      req.user.role !== 'INTERN' &&
+      attendees.filter((a) => a.id !== req.user.id).length > 0 &&
+      (
+        await Promise.all(
+          attendees
+            .filter((a) => a.id !== req.user.id)
+            .map((a) => checkHierarchyAccess(req.user.id, a.id))
+        )
+      ).some(Boolean);
 
-  if (!isCreator && !isAttendee && !isManager && req.user.role !== 'ADMIN') {
-    return reply.status(403).send({ error: 'Access denied' });
-  }
+    if (!isCreator && !isAttendee && !isManager && req.user.role !== 'ADMIN') {
+      return reply.status(403).send({ error: 'Access denied' });
+    }
 
-  //  Reuse already-fetched attendees in response — no second DB round-trip.
-  return { ...meeting, attendees };
-});
+    //  Reuse already-fetched attendees in response — no second DB round-trip.
+    return { ...meeting, attendees };
+  });
 
   // Create meeting
   fastify.post(
