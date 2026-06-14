@@ -1,7 +1,6 @@
 const emailService = require('../../src/services/email');
 
 describe('Email Service', () => {
-
   beforeEach(() => {
     emailService.resetMetrics();
     emailService._clearRateLimits();
@@ -22,8 +21,12 @@ describe('Email Service', () => {
     });
 
     it('should reject missing required fields', async () => {
-      await expect(emailService.send({ to: 'test@example.com' })).rejects.toThrow('Missing required fields');
-      await expect(emailService.send({ subject: 'hi' })).rejects.toThrow('Missing required fields');
+      await expect(
+        emailService.send({ to: 'test@example.com' })
+      ).rejects.toThrow('Missing required fields');
+      await expect(emailService.send({ subject: 'hi' })).rejects.toThrow(
+        'Missing required fields'
+      );
     });
 
     it('should strip HTML for plaintext fallback', async () => {
@@ -39,13 +42,19 @@ describe('Email Service', () => {
   // ---------- Template Rendering ----------
   describe('templates', () => {
     it('should render password-reset template', async () => {
-      const result = await emailService.sendPasswordReset('user@example.com', 'token123');
+      const result = await emailService.sendPasswordReset(
+        'user@example.com',
+        'token123'
+      );
       expect(result).toBeDefined();
       expect(result.accepted).toContain('user@example.com');
     });
 
     it('should render account-verification template', async () => {
-      const result = await emailService.sendAccountVerification('user@example.com', 'verify123');
+      const result = await emailService.sendAccountVerification(
+        'user@example.com',
+        'verify123'
+      );
       expect(result).toBeDefined();
     });
 
@@ -75,10 +84,18 @@ describe('Email Service', () => {
 
     it('should reject emails exceeding rate limit', async () => {
       for (let i = 0; i < 5; i++) {
-        await emailService.send({ to: 'burst@example.com', subject: `Test ${i}`, text: 'ok' });
+        await emailService.send({
+          to: 'burst@example.com',
+          subject: `Test ${i}`,
+          text: 'ok',
+        });
       }
       await expect(
-        emailService.send({ to: 'burst@example.com', subject: 'Exceed', text: 'fail' })
+        emailService.send({
+          to: 'burst@example.com',
+          subject: 'Exceed',
+          text: 'fail',
+        })
       ).rejects.toThrow('Rate limit exceeded');
     });
 
@@ -103,7 +120,11 @@ describe('Email Service', () => {
       emailService._trackBounce('bounce@example.com');
 
       await expect(
-        emailService.send({ to: 'bounce@example.com', subject: 'Retry', text: 'fail' })
+        emailService.send({
+          to: 'bounce@example.com',
+          subject: 'Retry',
+          text: 'fail',
+        })
       ).rejects.toThrow('Bounced address suppressed');
     });
   });
@@ -111,7 +132,11 @@ describe('Email Service', () => {
   // ---------- Metrics ----------
   describe('metrics', () => {
     it('should track sent count', async () => {
-      await emailService.send({ to: 'metrics@example.com', subject: 'Test', text: 'ok' });
+      await emailService.send({
+        to: 'metrics@example.com',
+        subject: 'Test',
+        text: 'ok',
+      });
       const m = emailService.getMetrics();
       expect(m.sent).toBe(1);
     });
@@ -122,7 +147,11 @@ describe('Email Service', () => {
     });
 
     it('should reset metrics', async () => {
-      await emailService.send({ to: 'reset@example.com', subject: 'Test', text: 'ok' });
+      await emailService.send({
+        to: 'reset@example.com',
+        subject: 'Test',
+        text: 'ok',
+      });
       emailService.resetMetrics();
       const m = emailService.getMetrics();
       expect(m.sent).toBe(0);

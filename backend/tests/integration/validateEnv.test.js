@@ -63,8 +63,12 @@ describe('Environment Variable Validation Tests', () => {
     validateEnv();
 
     expect(exitMock).toHaveBeenCalledWith(1);
-    expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('❌ Missing required environment variables:'));
-    expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('• JWT_SECRET'));
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('❌ Missing required environment variables:')
+    );
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('• JWT_SECRET')
+    );
   });
 
   it('should terminate the process if DATABASE_URL is missing', () => {
@@ -75,8 +79,12 @@ describe('Environment Variable Validation Tests', () => {
     validateEnv();
 
     expect(exitMock).toHaveBeenCalledWith(1);
-    expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('❌ Missing required environment variables:'));
-    expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('• DATABASE_URL'));
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('❌ Missing required environment variables:')
+    );
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('• DATABASE_URL')
+    );
   });
 
   it('should terminate the process if NODE_ENV is missing', () => {
@@ -87,8 +95,12 @@ describe('Environment Variable Validation Tests', () => {
     validateEnv();
 
     expect(exitMock).toHaveBeenCalledWith(1);
-    expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('❌ Missing required environment variables:'));
-    expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('• NODE_ENV'));
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('❌ Missing required environment variables:')
+    );
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('• NODE_ENV')
+    );
   });
 
   it('should terminate the process if a required variable is whitespace only', () => {
@@ -99,8 +111,12 @@ describe('Environment Variable Validation Tests', () => {
     validateEnv();
 
     expect(exitMock).toHaveBeenCalledWith(1);
-    expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('❌ Missing required environment variables:'));
-    expect(errorMock).toHaveBeenCalledWith(expect.stringContaining('• JWT_SECRET'));
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('❌ Missing required environment variables:')
+    );
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('• JWT_SECRET')
+    );
   });
 
   it('should print warnings but not terminate if optional variables are missing', () => {
@@ -114,9 +130,17 @@ describe('Environment Variable Validation Tests', () => {
     validateEnv();
 
     expect(exitMock).not.toHaveBeenCalled();
-    expect(warnMock).toHaveBeenCalledWith(expect.stringContaining('⚠️ Missing optional environment variables:'));
-    expect(warnMock).toHaveBeenCalledWith(expect.stringContaining('• REDIS_URL'));
-    expect(warnMock).toHaveBeenCalledWith(expect.stringContaining('• GOOGLE_CLIENT_ID'));
-    expect(warnMock).toHaveBeenCalledWith(expect.stringContaining('• EMAIL_API_KEY'));
+    expect(warnMock).toHaveBeenCalledWith(
+      expect.stringContaining('⚠️ Missing optional environment variables:')
+    );
+    expect(warnMock).toHaveBeenCalledWith(
+      expect.stringContaining('• REDIS_URL')
+    );
+    expect(warnMock).toHaveBeenCalledWith(
+      expect.stringContaining('• GOOGLE_CLIENT_ID')
+    );
+    expect(warnMock).toHaveBeenCalledWith(
+      expect.stringContaining('• EMAIL_API_KEY')
+    );
   });
 });
