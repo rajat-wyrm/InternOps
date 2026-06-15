@@ -23,16 +23,21 @@ class EmailService {
         const name = file.replace(/\.(html|txt)$/, '');
         const ext = file.endsWith('.html') ? 'html' : 'txt';
         if (!this.templates[name]) this.templates[name] = {};
-        this.templates[name][ext] = fs.readFileSync(path.join(dir, file), 'utf-8');
+        this.templates[name][ext] = fs.readFileSync(
+          path.join(dir, file),
+          'utf-8'
+        );
       }
     }
   }
 
   getTransporter() {
     if (this.transporter) return this.transporter;
-    const hasValidCreds = config.email.user && config.email.pass
-      && config.email.pass !== 'your-smtp-password'
-      && !config.email.pass.startsWith('your-');
+    const hasValidCreds =
+      config.email.user &&
+      config.email.pass &&
+      config.email.pass !== 'your-smtp-password' &&
+      !config.email.pass.startsWith('your-');
     if (!config.email.host || !hasValidCreds) {
       console.warn('[Email] SMTP not configured – using console fallback');
       return null;
@@ -51,7 +56,7 @@ class EmailService {
     const windowMs = config.email.rateLimitWindowMs || 60000;
     const max = config.email.rateLimitPerRecipient || 5;
     if (!rateLimitMap.has(to)) rateLimitMap.set(to, []);
-    const timestamps = rateLimitMap.get(to).filter(t => now - t < windowMs);
+    const timestamps = rateLimitMap.get(to).filter((t) => now - t < windowMs);
     if (timestamps.length >= max) {
       throw new Error(`Rate limit exceeded for ${to}`);
     }
@@ -70,7 +75,15 @@ class EmailService {
     if (!tpl) return { html: null, text: null };
     const render = (str) => {
       if (!str) return null;
-      return str.replace(/\{\{(\w+)\}\}/g, (_, k) => data[k] != null ? data[k] : '').replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, k, content) => data[k] ? content.replace(/\{\{(\w+)\}\}/g, (__, kk) => data[kk] != null ? data[kk] : '') : '');
+      return str
+        .replace(/\{\{(\w+)\}\}/g, (_, k) => (data[k] != null ? data[k] : ''))
+        .replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, k, content) =>
+          data[k]
+            ? content.replace(/\{\{(\w+)\}\}/g, (__, kk) =>
+                data[kk] != null ? data[kk] : ''
+              )
+            : ''
+        );
     };
     return {
       html: render(tpl.html),
@@ -79,11 +92,17 @@ class EmailService {
   }
 
   _stripHtml(html) {
-    return html ? html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : '';
+    return html
+      ? html
+          .replace(/<[^>]*>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+      : '';
   }
 
   async send({ to, subject, template, data, html, text }) {
-    if (!to || !subject) throw new Error('Missing required fields: to, subject');
+    if (!to || !subject)
+      throw new Error('Missing required fields: to, subject');
     this._checkBounce(to);
     this._checkRateLimit(to);
 
@@ -112,7 +131,11 @@ class EmailService {
     if (!transporter) {
       console.log(`[Email] Placeholder -> To: ${to}, Subject: "${subject}"`);
       metrics.sent++;
-      return { messageId: 'console-' + Date.now(), accepted: [to], rejected: [] };
+      return {
+        messageId: 'console-' + Date.now(),
+        accepted: [to],
+        rejected: [],
+      };
     }
 
     const maxRetries = config.email.retryMax || 3;
@@ -123,18 +146,20 @@ class EmailService {
         if (attempt > 0) {
           metrics.retried++;
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-          await new Promise(r => setTimeout(r, delay));
+          await new Promise((r) => setTimeout(r, delay));
         }
         const info = await transporter.sendMail(mailOptions);
         metrics.sent++;
         if (info.rejected && info.rejected.length > 0) {
-          info.rejected.forEach(addr => bounceList.add(addr));
+          info.rejected.forEach((addr) => bounceList.add(addr));
           metrics.bounced += info.rejected.length;
         }
         return info;
       } catch (err) {
         lastError = err;
-        console.error(`[Email] Attempt ${attempt + 1}/${maxRetries + 1} failed for ${to}: ${err.message}`);
+        console.error(
+          `[Email] Attempt ${attempt + 1}/${maxRetries + 1} failed for ${to}: ${err.message}`
+        );
         if (err.responseCode >= 500 || /55[0135]/.test(err.message)) {
           bounceList.add(to);
           metrics.bounced++;
@@ -144,7 +169,9 @@ class EmailService {
     }
 
     metrics.failed++;
-    console.error(`[Email] All attempts failed for ${to}: ${lastError?.message}`);
+    console.error(
+      `[Email] All attempts failed for ${to}: ${lastError?.message}`
+    );
     throw lastError || new Error(`Failed to send email to ${to}`);
   }
 

@@ -1,10 +1,26 @@
 ﻿const pool = require('../../config/db');
 
-async function createMeeting({ title, description, meetingDate, startTime, endTime, createdBy, departmentId }) {
+async function createMeeting({
+  title,
+  description,
+  meetingDate,
+  startTime,
+  endTime,
+  createdBy,
+  departmentId,
+}) {
   const res = await pool.query(
     `INSERT INTO meetings (title, description, meeting_date, start_time, end_time, created_by, department_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [title, description, meetingDate, startTime, endTime, createdBy, departmentId]
+    [
+      title,
+      description,
+      meetingDate,
+      startTime,
+      endTime,
+      createdBy,
+      departmentId,
+    ]
   );
   return res.rows[0];
 }
@@ -17,7 +33,10 @@ async function addAttendee(meetingId, userId) {
 }
 
 async function removeAttendee(meetingId, userId) {
-  await pool.query('DELETE FROM meeting_attendees WHERE meeting_id=$1 AND user_id=$2', [meetingId, userId]);
+  await pool.query(
+    'DELETE FROM meeting_attendees WHERE meeting_id=$1 AND user_id=$2',
+    [meetingId, userId]
+  );
 }
 
 async function listMeetings({ userId, departmentId, fromDate, toDate }) {
@@ -58,7 +77,10 @@ async function listMeetings({ userId, departmentId, fromDate, toDate }) {
 }
 
 async function getMeetingById(meetingId) {
-  const res = await pool.query('SELECT * FROM meetings WHERE id=$1 AND deleted_at IS NULL', [meetingId]);
+  const res = await pool.query(
+    'SELECT * FROM meetings WHERE id=$1 AND deleted_at IS NULL',
+    [meetingId]
+  );
   return res.rows[0] || null;
 }
 
@@ -67,7 +89,15 @@ async function updateMeeting(meetingId, fields) {
   const vals = [];
   let idx = 1;
   for (const [key, val] of Object.entries(fields)) {
-    if (['title','description','meeting_date','start_time','end_time'].includes(key)) {
+    if (
+      [
+        'title',
+        'description',
+        'meeting_date',
+        'start_time',
+        'end_time',
+      ].includes(key)
+    ) {
       set.push(`${key} = $${idx}`);
       vals.push(val);
       idx++;
@@ -75,12 +105,17 @@ async function updateMeeting(meetingId, fields) {
   }
   if (set.length === 0) return null;
   vals.push(meetingId);
-  const res = await pool.query(`UPDATE meetings SET ${set.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`, vals);
+  const res = await pool.query(
+    `UPDATE meetings SET ${set.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`,
+    vals
+  );
   return res.rows[0];
 }
 
 async function softDeleteMeeting(meetingId) {
-  await pool.query('UPDATE meetings SET deleted_at = NOW() WHERE id=$1', [meetingId]);
+  await pool.query('UPDATE meetings SET deleted_at = NOW() WHERE id=$1', [
+    meetingId,
+  ]);
 }
 
 async function getAttendees(meetingId) {
@@ -94,4 +129,13 @@ async function getAttendees(meetingId) {
   return res.rows;
 }
 
-module.exports = { createMeeting, addAttendee, removeAttendee, listMeetings, getMeetingById, updateMeeting, softDeleteMeeting, getAttendees };
+module.exports = {
+  createMeeting,
+  addAttendee,
+  removeAttendee,
+  listMeetings,
+  getMeetingById,
+  updateMeeting,
+  softDeleteMeeting,
+  getAttendees,
+};

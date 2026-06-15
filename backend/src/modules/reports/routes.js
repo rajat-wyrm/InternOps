@@ -4,36 +4,49 @@ const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 
 async function routes(fastify) {
+  fastify.get(
+    '/attendance-summary',
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+    },
+    async (req) => {
+      const { from, to } = req.query;
+      if (!from || !to) throw new Error('from and to dates required');
+      return repo.attendanceSummaryByRole(from, to);
+    }
+  );
 
-  fastify.get('/attendance-summary', {
-    preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')]
-  }, async (req) => {
-    const { from, to } = req.query;
-    if (!from || !to) throw new Error('from and to dates required');
-    return repo.attendanceSummaryByRole(from, to);
-  });
+  fastify.get(
+    '/ratings-summary',
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+    },
+    async (req) => {
+      const { from, to } = req.query;
+      if (!from || !to) throw new Error('from and to dates required');
+      return repo.ratingsSummary(from, to);
+    }
+  );
 
-  fastify.get('/ratings-summary', {
-    preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')]
-  }, async (req) => {
-    const { from, to } = req.query;
-    if (!from || !to) throw new Error('from and to dates required');
-    return repo.ratingsSummary(from, to);
-  });
+  fastify.get(
+    '/task-completion',
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+    },
+    async () => {
+      return repo.taskCompletionStats();
+    }
+  );
 
-  fastify.get('/task-completion', {
-    preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')]
-  }, async () => {
-    return repo.taskCompletionStats();
-  });
+  fastify.get(
+    '/department-attendance',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+    },
+    async (req) => {
+      const { from, to, departmentId } = req.query;
 
-  fastify.get('/department-attendance', {
-    preHandler: [auth, rbac('ADMIN')]
-  }, async (req) => {
-
-    const { from, to, departmentId } = req.query;
-
-    let query = `
+      let query = `
       SELECT d.name AS department,
              COUNT(a.id) AS total,
              SUM(CASE WHEN a.status='PRESENT' THEN 1 ELSE 0 END) AS present,
@@ -45,40 +58,44 @@ async function routes(fastify) {
       WHERE a.deleted_at IS NULL
     `;
 
-    const params = [];
+      const params = [];
 
-    if (from) {
-      query += ` AND a.date >= $${params.length + 1}`;
-      params.push(from);
+      if (from) {
+        query += ` AND a.date >= $${params.length + 1}`;
+        params.push(from);
+      }
+
+      if (to) {
+        query += ` AND a.date <= $${params.length + 1}`;
+        params.push(to);
+      }
+
+      if (departmentId) {
+        query += ` AND d.id = $${params.length + 1}`;
+        params.push(departmentId);
+      }
+
+      query += ` GROUP BY d.id, d.name ORDER BY d.name`;
+
+      const { rows } = await pool.query(query, params);
+      return rows;
     }
+  );
 
-    if (to) {
-      query += ` AND a.date <= $${params.length + 1}`;
-      params.push(to);
-    }
+  fastify.get(
+    '/custom-summary',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+    },
+    async (req) => {
+      const { from, to } = req.query;
 
-    if (departmentId) {
-      query += ` AND d.id = $${params.length + 1}`;
-      params.push(departmentId);
-    }
+      if (!from || !to) {
+        throw new Error('from and to dates required');
+      }
 
-    query += ` GROUP BY d.id, d.name ORDER BY d.name`;
-
-    const { rows } = await pool.query(query, params);
-    return rows;
-  });
-
-  fastify.get('/custom-summary', {
-    preHandler: [auth, rbac('ADMIN')]
-  }, async (req) => {
-
-    const { from, to } = req.query;
-
-    if (!from || !to) {
-      throw new Error('from and to dates required');
-    }
-
-    const { rows } = await pool.query(`
+      const { rows } = await pool.query(
+        `
       SELECT DATE(a.date) AS date,
              COUNT(*) AS total,
              SUM(CASE WHEN a.status='PRESENT' THEN 1 ELSE 0 END) AS present,
@@ -89,11 +106,13 @@ async function routes(fastify) {
       AND a.deleted_at IS NULL
       GROUP BY DATE(a.date)
       ORDER BY DATE(a.date)
-    `, [from, to]);
+    `,
+        [from, to]
+      );
 
-    return rows;
-  });
-
+      return rows;
+    }
+  );
 }
 
 module.exports = routes;

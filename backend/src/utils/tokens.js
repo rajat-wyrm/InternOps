@@ -7,22 +7,20 @@ function hashToken(token) {
 }
 
 function generateAccessToken(user) {
-  return jwt.sign(
-    { id: user.id, role: user.role },
-    config.jwt.secret,
-    { expiresIn: config.jwt.expiry || '15m' }
-  );
+  return jwt.sign({ id: user.id, role: user.role }, config.jwt.secret, {
+    expiresIn: config.jwt.expiry || '15m',
+  });
 }
 
 function generateRefreshToken(user) {
   return jwt.sign(
     {
       id: user.id,
-      jti: crypto.randomUUID()
+      jti: crypto.randomUUID(),
     },
     config.jwt.refreshSecret || config.jwt.secret,
     {
-      expiresIn: config.jwt.refreshExpiry || '7d'
+      expiresIn: config.jwt.refreshExpiry || '7d',
     }
   );
 }
@@ -40,5 +38,5 @@ module.exports = {
   generateAccessToken,
   generateRefreshToken,
   verifyAccessToken,
-  verifyRefreshToken
+  verifyRefreshToken,
 };

@@ -31,6 +31,8 @@ jobs:
       JWT_SECRET: ci-test-secret-do-not-use-in-prod
       PORT: 5000
       CORS_ORIGIN: http://localhost:5173
+      SEED_ADMIN_EMAIL: admin@internops.com
+      SEED_ADMIN_PASSWORD: Admin@123
 
     steps:
       - name: Checkout code
