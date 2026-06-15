@@ -12,19 +12,37 @@ async function markAttendance(userId, markedBy, date, status, remarks) {
   return res.rows[0];
 }
 
-async function getAttendance(userId, from, to) {
-  let q = 'SELECT * FROM attendance WHERE user_id=$1 AND deleted_at IS NULL';
+async function getAttendance(userId, { from, to, page = 1, limit = 30 } = {}) {
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 30, 1), 100);
+  const safePage = Math.max(parseInt(page, 10) || 1, 1);
+  const offset = (safePage - 1) * safeLimit;
+
+  const where = ['user_id=$1', 'deleted_at IS NULL'];
   const params = [userId];
   if (from) {
     params.push(from);
-    q += ` AND date >= $${params.length}`;
+    where.push(`date >= $${params.length}`);
   }
   if (to) {
     params.push(to);
-    q += ` AND date <= $${params.length}`;
+    where.push(`date <= $${params.length}`);
   }
-  const res = await pool.query(q, params);
-  return res.rows;
+  const whereClause = where.join(' AND ');
+
+  const countRes = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM attendance WHERE ${whereClause}`,
+    params
+  );
+  const total = countRes.rows[0].total;
+
+  params.push(safeLimit, offset);
+  const res = await pool.query(
+    `SELECT * FROM attendance WHERE ${whereClause}
+     ORDER BY date DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
+  );
+
+  return { records: res.rows, total, page: safePage, limit: safeLimit };
 }
 
 async function getMonthlyStats(userId, month, year) {
