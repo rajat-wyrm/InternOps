@@ -149,7 +149,15 @@ export default function Tasks() {
                       </a>
                     )}
                     {t.deadline && (
-                      <span>⏰ {new Date(t.deadline).toLocaleString()}</span>
+                      <span>
+                        ⏰{' '}
+                        {new Date(t.deadline).toLocaleString('en-IN', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                          timeZone: 'Asia/Kolkata',
+                        })}{' '}
+                        IST
+                      </span>
                     )}
                   </div>
                 </div>
@@ -206,7 +214,10 @@ export default function Tasks() {
                             {p.status}
                           </Badge>
                           <p className="text-gray-400 mt-1 truncate">
-                            Intern: {p.intern_id.slice(0, 8)}…
+                            Intern:{' '}
+                            {p.intern_name ||
+                              p.intern_email ||
+                              `${p.intern_id.slice(0, 8)}…`}
                           </p>
                         </div>
                         {canVerify && p.status === 'PENDING' && (

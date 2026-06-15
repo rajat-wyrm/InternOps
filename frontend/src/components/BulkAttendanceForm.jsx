@@ -38,6 +38,9 @@ export default function BulkAttendanceForm() {
     e.preventDefault();
     if (selectedUsers.length === 0)
       return setError('Select at least one member');
+    if (date > new Date().toISOString().slice(0, 10)) {
+      return setError('Future dates cannot be selected for bulk operations');
+    }
     bulkMutation.mutate({
       entries: selectedUsers.map((uid) => ({
         user_id: uid,
@@ -78,6 +81,7 @@ export default function BulkAttendanceForm() {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
+            max={new Date().toISOString().slice(0, 10)}
             required
           />
           <Select value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -91,11 +95,17 @@ export default function BulkAttendanceForm() {
             onChange={(e) => setRemarks(e.target.value)}
           />
         </div>
-        <Btn type="submit" variant="primary" disabled={bulkMutation.isPending}>
-          {bulkMutation.isPending
-            ? 'Marking…'
-            : `Bulk mark ${selectedUsers.length || ''}`}
-        </Btn>
+        <div className="pt-1">
+          <Btn
+            type="submit"
+            variant="primary"
+            disabled={bulkMutation.isPending}
+          >
+            {bulkMutation.isPending
+              ? 'Marking…'
+              : `Bulk mark ${selectedUsers.length || ''}`}
+          </Btn>
+        </div>
       </form>
     </Card>
   );

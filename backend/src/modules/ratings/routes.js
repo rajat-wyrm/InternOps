@@ -54,9 +54,10 @@ module.exports = async function ratingsRoutes(fastify) {
         `You received a new rating: ${score}/5.`
       );
       await notifyUser(rating.rated_user_id, 'rating-received', { rating });
+
+      return reply.status(201).send(rating);
     }
   );
-
   // View a user's rating history (must be self or within hierarchy).
   fastify.get(
     '/:userId',

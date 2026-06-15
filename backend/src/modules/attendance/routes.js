@@ -50,6 +50,8 @@ async function routes(fastify) {
         `Your attendance for ${date} has been marked as ${status}.`
       );
       await notifyUser(att.user_id, 'attendance-marked', { attendance: att });
+
+      return reply.status(201).send(att);
     }
   );
 
@@ -105,8 +107,8 @@ async function routes(fastify) {
       preHandler: [auth, ownership('userId')],
     },
     async (req) => {
-      const { from, to } = req.query;
-      return repo.getAttendance(req.params.userId, from, to);
+      const { from, to, page, limit } = req.query;
+      return repo.getAttendance(req.params.userId, { from, to, page, limit });
     }
   );
 

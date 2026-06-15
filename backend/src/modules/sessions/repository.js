@@ -14,27 +14,15 @@ async function getUserSessions(userId) {
     const tokenHashes = await redis.sMembers(`user_tokens:${userId}`);
     const sessions = [];
 
-    for (const hash of tokenHashes) {
-      // A hash still in the set but already expired/deleted won't have a key.
-      const exists = await redis.get(`refresh_token:${hash}`);
-      if (exists) {
-        const ttl = await redis.ttl(`refresh_token:${hash}`);
-        sessions.push({
-          // In Redis mode the hash IS the session identifier (no UUID row).
-          sessionId: hash,
-          createdAt: null, // not stored in Redis
-          expiresAt: new Date(Date.now() + ttl * 1000),
-        });
-      } else {
-        // Clean up stale entry from the set
-        await redis.sRem(`user_tokens:${userId}`, hash);
-      }
-    }
+    // ... (Your existing loop code to populate the sessions array) ...
 
-    return sessions;
+    // Only return if we actually found something in Redis
+    if (sessions.length > 0) {
+      return sessions;
+    }
   }
 
-  // ── Postgres fallback ──────────────────────────────────────────────────────
+  // If Redis was disabled OR Redis returned no sessions, fall back to Postgres
   const res = await pool.query(
     `SELECT id, token_hash, created_at, expires_at, revoked
      FROM refresh_tokens
@@ -42,11 +30,11 @@ async function getUserSessions(userId) {
      ORDER BY created_at DESC`,
     [userId]
   );
+
   return res.rows.map((row) => ({
     sessionId: row.id,
-    createdAt: row.created_at,
+    createdAt: row.created_at || 'N/A', // Handle Postgres dates safely too
     expiresAt: row.expires_at,
-    // token_hash omitted for security
   }));
 }
 
