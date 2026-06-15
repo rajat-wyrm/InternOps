@@ -3,7 +3,6 @@ const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
-const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const { z } = require('zod');
 
 async function routes(fastify) {
