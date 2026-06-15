@@ -13,6 +13,7 @@ Enterprise Workforce Management and Intern Operations Platform
 - Executive Summary
 - Key Features
 - System Architecture
+- Project
 - Technology Stack
 - Design Principles
 - Backend Architecture
