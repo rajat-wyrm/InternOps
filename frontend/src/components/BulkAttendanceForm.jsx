@@ -12,7 +12,7 @@ export default function BulkAttendanceForm() {
   const [msg, setMsg] = useState('')
   const [error, setError] = useState('')
 
-  const { data: reports } = useQuery({
+  const { data: reports, isLoading: loadingReports } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then(res => res.data),
   })
@@ -40,12 +40,30 @@ export default function BulkAttendanceForm() {
         <div>
           <label className="text-xs text-gray-500">Select members ({selectedUsers.length} selected)</label>
           <div className="flex flex-wrap gap-2 mt-1 max-h-36 overflow-auto p-1">
-            {reports?.map(u => (
-              <button type="button" key={u.id} onClick={() => toggleUser(u.id)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${selectedUsers.includes(u.id) ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                {u.full_name || u.email}
-              </button>
-            ))}
+            {loadingReports ? (
+  <p className="text-gray-500 text-sm">
+    Loading team members...
+  </p>
+) : reports?.length === 0 ? (
+  <p className="text-gray-500 text-sm">
+    No team members found.
+  </p>
+) : (
+  reports?.map(u => (
+    <button
+      type="button"
+      key={u.id}
+      onClick={() => toggleUser(u.id)}
+      className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+        selectedUsers.includes(u.id)
+          ? 'bg-blue-600 text-white'
+          : 'bg-gray-100 text-gray-700'
+      }`}
+    >
+      {u.full_name || u.email}
+    </button>
+  ))
+)}
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
