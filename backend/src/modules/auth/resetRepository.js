@@ -4,12 +4,17 @@ const argon2 = require('argon2');
 
 async function createResetToken(userId) {
   // Remove old unused tokens for this user
-  await pool.query('UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE', [userId]);
+  await pool.query(
+    'UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE',
+    [userId]
+  );
   const token = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-  await pool.query('INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1,$2,$3)',
-    [userId, tokenHash, expires]);
+  await pool.query(
+    'INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1,$2,$3)',
+    [userId, tokenHash, expires]
+  );
   return token; // return raw token (not hashed) for email
 }
 
@@ -24,14 +29,43 @@ async function verifyResetToken(rawToken) {
 
 async function markTokenUsed(rawToken) {
   const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
-  await pool.query('UPDATE password_reset_tokens SET used = TRUE WHERE token_hash = $1', [hash]);
+  await pool.query(
+    'UPDATE password_reset_tokens SET used = TRUE WHERE token_hash = $1',
+    [hash]
+  );
 }
 
 async function updateUserPassword(userId, newPassword) {
-  const hash = await argon2.hash(newPassword);
-  await pool.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hash, userId]);
-  // Revoke all refresh tokens to force re-login
-  await pool.query('UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1', [userId]);
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const hash = await argon2.hash(newPassword);
+
+    await client.query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [hash, userId]
+    );
+
+    // Revoke all refresh tokens to force re-login
+    await client.query(
+      'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1',
+      [userId]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
-module.exports = { createResetToken, verifyResetToken, markTokenUsed, updateUserPassword };
+module.exports = {
+  createResetToken,
+  verifyResetToken,
+  markTokenUsed,
+  updateUserPassword,
+};
