@@ -2,6 +2,7 @@ const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
+const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const { z } = require('zod');
 
 async function routes(fastify) {
@@ -68,11 +69,23 @@ async function routes(fastify) {
         ...data,
         createdBy: req.user.id,
       });
+      const skippedAttendees = [];
       if (data.attendeeIds) {
         for (const uid of data.attendeeIds) {
+          if (req.user.role !== 'ADMIN') {
+            const allowed = await checkHierarchyAccess(req.user.id, uid);
+            if (!allowed) {
+              skippedAttendees.push({
+                userId: uid,
+                reason: 'Not in your hierarchy',
+              });
+              continue;
+            }
+          }
           await repo.addAttendee(meeting.id, uid);
         }
       }
+      const attendees = await repo.getAttendees(meeting.id);
       await createAuditLog({
         userId: req.user.id,
         action: 'MEETING_CREATED',
@@ -80,7 +93,11 @@ async function routes(fastify) {
         resourceId: meeting.id,
         ...extractRequestInfo(req),
       });
-      return reply.status(201).send(meeting);
+      return reply.status(201).send({
+        ...meeting,
+        attendees,
+        skippedAttendees,
+      });
     }
   );
 
