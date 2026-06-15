@@ -15,8 +15,14 @@ async function markAttendance(userId, markedBy, date, status, remarks) {
 async function getAttendance(userId, from, to) {
   let q = 'SELECT * FROM attendance WHERE user_id=$1 AND deleted_at IS NULL';
   const params = [userId];
-  if (from) { q += ' AND date>=$2'; params.push(from); }
-  if (to) { q += ' AND date<=$'+(params.length+1); params.push(to); }
+  if (from) {
+    params.push(from);
+    q += ` AND date >= $${params.length}`;
+  }
+  if (to) {
+    params.push(to);
+    q += ` AND date <= $${params.length}`;
+  }
   const res = await pool.query(q, params);
   return res.rows;
 }

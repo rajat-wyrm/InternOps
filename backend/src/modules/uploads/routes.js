@@ -5,7 +5,13 @@ const auth = require('../../middleware/auth');
 const pool = require('../../config/db');
 const config = require('../../config');
 
-const ALLOWED = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+const ALLOWED = [
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+];
 
 async function routes(fastify) {
   // Upload / replace the current user's avatar
@@ -24,7 +30,10 @@ async function routes(fastify) {
     fs.writeFileSync(path.join(uploadPath, fileName), buffer);
 
     const url = `/uploads/${fileName}`;
-    await pool.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [url, req.user.id]);
+    await pool.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [
+      url,
+      req.user.id,
+    ]);
 
     return { success: true, avatar_url: url };
   });
