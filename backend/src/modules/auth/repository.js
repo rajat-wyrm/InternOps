@@ -118,6 +118,19 @@ async function getRefreshTokenRedis(tokenHash) {
   return res.rows[0] || null;
 }
 
+async function validateRefreshToken(tokenHash) {
+  const redis = await getRedisClient();
+  if (redis) {
+    const userId = await redis.get(`refresh_token:${tokenHash}`);
+    if (userId) return true;
+  }
+  const { rows } = await pool.query(
+    'SELECT 1 FROM refresh_tokens WHERE token_hash=$1 AND revoked=FALSE AND expires_at>NOW()',
+    [tokenHash]
+  );
+  return rows.length > 0;
+}
+
 async function revokeRefreshTokenRedis(tokenHash) {
   const redis = await getRedisClient();
   if (redis) {
@@ -126,7 +139,6 @@ async function revokeRefreshTokenRedis(tokenHash) {
       await redis.del(`refresh_token:${tokenHash}`);
       await redis.sRem(`user_tokens:${userId}`, tokenHash);
     }
-    return;
   }
   await revokeRefreshToken(tokenHash);
 }
@@ -139,7 +151,6 @@ async function revokeAllUserTokensRedis(userId) {
       await redis.del(`refresh_token:${token}`);
     }
     await redis.del(`user_tokens:${userId}`);
-    return;
   }
   await revokeAllUserTokens(userId);
 }
@@ -158,4 +169,5 @@ module.exports = {
   revokeRefreshTokenRedis,
   revokeAllUserTokensRedis,
   getRefreshTokenRedis,
+  validateRefreshToken,
 };

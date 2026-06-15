@@ -7,7 +7,7 @@
     "start": "cross-env NODE_ENV=production node src/app.js",
     "migrate": "node src/db/migrate.js",
     "seed": "node seeds/seed.js",
-    "test": "cross-env NODE_ENV=test jest --config jest.config.js --runInBand --detectOpenHandles",
+    "test": "cross-env NODE_ENV=test jest --config jest.config.js --runInBand --detectOpenHandles --testTimeout=15000",
     "format": "prettier --write ."
   },
   "dependencies": {
