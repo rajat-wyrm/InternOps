@@ -206,7 +206,10 @@ export default function Tasks() {
                             {p.status}
                           </Badge>
                           <p className="text-gray-400 mt-1 truncate">
-                            Intern: {p.intern_id.slice(0, 8)}…
+                            Intern:{' '}
+                            {p.intern_name ||
+                              p.intern_email ||
+                              `${p.intern_id.slice(0, 8)}…`}
                           </p>
                         </div>
                         {canVerify && p.status === 'PENDING' && (

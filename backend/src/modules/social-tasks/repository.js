@@ -49,7 +49,10 @@ async function verifyProof(proofId, verifierId) {
 async function getProofsByTask(taskId) {
   return (
     await pool.query(
-      'SELECT * FROM proof_submissions WHERE task_id=$1 AND deleted_at IS NULL',
+      `SELECT ps.*, u.full_name AS intern_name, u.email AS intern_email
+       FROM proof_submissions ps
+       LEFT JOIN users u ON u.id = ps.intern_id
+       WHERE ps.task_id = $1 AND ps.deleted_at IS NULL`,
       [taskId]
     )
   ).rows;
