@@ -25,7 +25,7 @@ app.register(require('@fastify/cors'), {
 app.register(require('@fastify/helmet'));
 
 app.register(async function sanitizationPlugin(instance) {
-  instance.addHook('onRequest', async (request) => {
+   instance.addHook('preValidation', async (request) => {
     const sanitize = (obj) => {
       if (!obj || typeof obj !== 'object') return;
 
