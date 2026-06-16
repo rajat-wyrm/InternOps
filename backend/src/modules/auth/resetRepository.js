@@ -1,7 +1,7 @@
 ﻿const pool = require('../../config/db');
 const crypto = require('crypto');
 const argon2 = require('argon2');
-
+const { revokeAllUserTokensRedis } = require('./repository');
 async function createResetToken(userId) {
   // Remove old unused tokens for this user
   await pool.query(
@@ -61,8 +61,10 @@ async function updateUserPassword(userId, newPassword) {
   } finally {
     client.release();
   }
-}
 
+  // Revoke all Redis-cached active tokens to prevent session hijacking
+  await revokeAllUserTokensRedis(userId);
+}
 module.exports = {
   createResetToken,
   verifyResetToken,

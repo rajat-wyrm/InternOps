@@ -106,8 +106,15 @@ async function getRefreshTokenRedis(tokenHash) {
   const redis = await getRedisClient();
 
   if (redis) {
-    const userId = await redis.get(`refresh_token:${tokenHash}`);
-    return userId ? { user_id: userId } : null;
+    const raw = await redis.get(`refresh_token:${tokenHash}`);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return { user_id: parsed.userId };
+    } catch {
+      // Legacy fallback: plain string stored before JSON format was introduced
+      return { user_id: raw };
+    }
   }
 
   const res = await pool.query(
@@ -118,15 +125,33 @@ async function getRefreshTokenRedis(tokenHash) {
   return res.rows[0] || null;
 }
 
-async function revokeRefreshTokenRedis(tokenHash) {
+async function validateRefreshToken(tokenHash) {
   const redis = await getRedisClient();
   if (redis) {
     const userId = await redis.get(`refresh_token:${tokenHash}`);
-    if (userId) {
+    if (userId) return true;
+  }
+  const { rows } = await pool.query(
+    'SELECT 1 FROM refresh_tokens WHERE token_hash=$1 AND revoked=FALSE AND expires_at>NOW()',
+    [tokenHash]
+  );
+  return rows.length > 0;
+}
+
+async function revokeRefreshTokenRedis(tokenHash) {
+  const redis = await getRedisClient();
+  if (redis) {
+    const raw = await redis.get(`refresh_token:${tokenHash}`);
+    if (raw) {
+      let actualUserId;
+      try {
+        actualUserId = JSON.parse(raw).userId;
+      } catch {
+        actualUserId = raw; // legacy plain-string fallback
+      }
       await redis.del(`refresh_token:${tokenHash}`);
-      await redis.sRem(`user_tokens:${userId}`, tokenHash);
+      await redis.sRem(`user_tokens:${actualUserId}`, tokenHash); // ✅ correct key
     }
-    return;
   }
   await revokeRefreshToken(tokenHash);
 }
@@ -139,7 +164,6 @@ async function revokeAllUserTokensRedis(userId) {
       await redis.del(`refresh_token:${token}`);
     }
     await redis.del(`user_tokens:${userId}`);
-    return;
   }
   await revokeAllUserTokens(userId);
 }
@@ -158,4 +182,5 @@ module.exports = {
   revokeRefreshTokenRedis,
   revokeAllUserTokensRedis,
   getRefreshTokenRedis,
+  validateRefreshToken,
 };

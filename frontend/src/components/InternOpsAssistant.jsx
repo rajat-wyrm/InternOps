@@ -78,6 +78,14 @@ const ROLE_PERMISSIONS = {
 
 const QUICK_FAQS = [
   {
+    q: 'What is UptoSkills?',
+    a: "UptoSkills (est. 2018, Delhi) is India's AI-powered platform connecting Candidates, Colleges & Corporates. It offers gamified learning, smart assessments, hackathons, job/internship matching, AI Practice Hub, and Aura Rewards — all in one place.",
+  },
+  {
+    q: 'What features does UptoSkills offer?',
+    a: 'UptoSkills offers: AI-personalized learning, hackathons (UptoHacks), job & internship matching, leagues & competitions, AI Practice Hub, smart assessments, Aura Rewards, certificates, Refer & Earn, and a mobile app on Play Store.',
+  },
+  {
     q: 'How does the rating system work?',
     a: 'Ratings are **permanent and immutable** — each rating is stored as a new row in the database. You can only rate someone who is directly below you in the hierarchy chain. For example, a TL can rate Captains, and a Captain can rate Interns.',
   },
@@ -104,6 +112,7 @@ const QUICK_FAQS = [
 ];
 
 const QUICK_ACTIONS = [
+  { label: 'About UptoSkills', prompt: 'What is UptoSkills?' },
   { label: 'Submit rating', prompt: 'How do I submit a rating?' },
   { label: 'Create task', prompt: 'How do I create a social task?' },
   { label: 'Upload proof', prompt: 'How do I upload proof for a task?' },
@@ -112,6 +121,7 @@ const QUICK_ACTIONS = [
 ];
 
 const CONTEXT_BUTTONS = [
+  { label: 'About UptoSkills', prompt: 'What is UptoSkills?' },
   { label: 'Submit a rating', prompt: 'How do I submit a rating?' },
   { label: 'Create a social task', prompt: 'How do I create a social task?' },
   { label: 'Mark attendance', prompt: 'How do I mark attendance?' },
@@ -119,6 +129,8 @@ const CONTEXT_BUTTONS = [
 ];
 
 const KB = {
+  uptoskills: `**About UptoSkills 🚀**\n\n**"Let's Make Freshers Employable!"**\n\nUptoSkills is India's **AI-powered ecosystem** connecting **Candidates, Colleges & Corporates** on a single unified platform.\n\n🏢 **Company Details:**\n- Founded: 2018 | Headquarters: Delhi, India\n- Type: Private Company | Size: 11–50 employees\n- Associated Members: 1232+\n\n🎯 **Core Mission:**\nBridge the critical skills gap — transform unemployable graduates into industry-ready talent and make hiring seamless, efficient, and data-driven.\n\n⚙️ **What We Offer:**\n- 🎮 Gamified & AI-Personalized Learning\n- 🧠 Smart Assessments & AI Mock Interviews\n- 🏆 Hackathons & Corporate Events (UptoHacks 2026)\n- 💼 Direct Job & Internship Matching\n- 🏅 Leagues, Aura Rewards & Competitions\n- 📜 Certificates & Academic Tracking\n- 🤖 AI Practice Hub\n- 🔁 Refer & Earn Program\n- 📱 UptoSkills App (now live on Play Store!)\n\n🌐 Visit: uptoskills.com`,
+  platform: `**UptoSkills Platform Features:**\n\n**Student Dashboard includes:**\n- 🏆 My Competitions — register & track hackathons\n- 💼 My Jobs — browse & apply for openings\n- 🎓 My Internships — find & manage internships\n- 🤖 AI Practice Hub — mock interviews & assessments\n- 🏅 My Leagues — compete in skill leagues\n- 📅 My Events — webinars & corporate events\n- ⭐ Aura Rewards — earn points for activities\n- 🎓 Academics — track academic progress\n- 📜 My Certificates — view earned certificates\n- 🏆 Awards — achievements & recognition\n- 💳 Subscription — manage your plan\n- 🔁 Refer & Earn — invite friends & earn rewards\n\n**Quick Actions available:**\n- Refer and Earn\n- Intern at UptoSkills\n- Blog Shorts\n- Guides and FAQs`,
   rating: `**Submitting a Rating:**\n\n1. Navigate to the Ratings section.\n2. Select the team member you want to rate (must be directly below you in the hierarchy).\n3. Enter a score and optional remarks.\n4. Submit — ratings are permanent and cannot be edited.\n\n> ⚠️ Only direct managers can rate their reports. A TL cannot skip-level rate an Intern.`,
   task: `**Creating a Social Task:**\n\n1. Go to Tasks → Create Task (Admin / Senior TL only).\n2. Set a title, description, and deadline.\n3. Assign to relevant interns or teams.\n4. Interns will receive a notification and can upload proof.\n5. Captains/TLs verify the submissions.\n\n> 📸 Verified proof images are auto-deleted after 24 hours.`,
   proof: `**Uploading Proof for a Task:**\n\n1. Open the task assigned to you.\n2. Click **Upload Proof** and select a screenshot or image.\n3. The file is submitted for verification.\n4. You'll receive a notification once verified.\n\n> Only Interns can submit proofs. Supported formats: JPG, PNG.`,
@@ -133,6 +145,29 @@ const KB = {
 
 function getKBResponse(text) {
   const t = text.toLowerCase();
+  // UptoSkills info — check first
+  if (
+    t.includes('uptoskills') ||
+    t.includes('upskill') ||
+    t.includes('about this platform') ||
+    t.includes('about the platform') ||
+    t.includes('what is this') ||
+    t.includes('who made') ||
+    t.includes('company info') ||
+    t.includes('about us') ||
+    t.includes('what is uptoskills')
+  )
+    return KB.uptoskills;
+  if (
+    t.includes('dashboard') ||
+    t.includes('aura') ||
+    t.includes('leagues') ||
+    t.includes('hackathon') ||
+    t.includes('competitions') ||
+    t.includes('platform features') ||
+    t.includes('what can i find')
+  )
+    return KB.platform;
   if (t.includes('rating') || t.includes('rate')) return KB.rating;
   if (t.includes('social task') || t.includes('create task')) return KB.task;
   if (t.includes('upload proof') || t.includes('proof')) return KB.proof;
@@ -264,7 +299,7 @@ export default function InternOpsAssistant() {
   useEffect(() => {
     const welcome = {
       role: 'bot',
-      content: `Hi! I'm the InternOps Assistant.\n\nSelect your **role** in the top-right to get role-specific answers. I can help with:\n\n- Ratings — submit, view history, permissions\n- Social tasks — create, upload proof, verify\n- Attendance, meetings, sessions, reports`,
+      content: `Hi! I'm the **UptoSkills InternOps Assistant** 👋\n\nSelect your **role** in the top-right to get role-specific answers. I can help with:\n\n- 🏢 About UptoSkills platform\n- ⭐ Ratings — submit, view history, permissions\n- 📋 Social tasks — create, upload proof, verify\n- 📅 Attendance, meetings, sessions, reports`,
       time: now(),
       buttons: CONTEXT_BUTTONS.map((b) => ({
         label: b.label,

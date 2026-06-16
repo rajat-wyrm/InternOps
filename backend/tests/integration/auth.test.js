@@ -1,10 +1,20 @@
 const supertest = require('supertest');
 const app = require('../../src/app');
-
+const emailService = require('../../src/services/email');
 let csrfToken, accessToken, refreshToken, freshAccessToken;
 
 beforeAll(async () => {
   await app.ready();
+
+  // Restore admin password to Admin@123 in case a previous run left it modified
+  const argon2 = require('argon2');
+  const pool = require('../../src/config/db');
+  const restoreHash = await argon2.hash('Admin@123');
+  await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [
+    restoreHash,
+    'admin@internops.com',
+  ]);
+
   // Get CSRF token
   const csrfRes = await app.inject({
     method: 'GET',
@@ -262,6 +272,77 @@ describe('Auth Integration Tests', () => {
         payload: { token: 'invalid', newPassword: 'ValidPass123!' },
       });
       expect(res.statusCode).toBe(400);
+    });
+
+    it('should revoke all refresh tokens and Redis cache on password reset', async () => {
+      // Step 1: Login and get refresh token
+      const loginRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
+        payload: { email: 'admin@internops.com', password: 'Admin@123' },
+      });
+      expect(loginRes.statusCode).toBe(200);
+      const oldRefreshToken = JSON.parse(loginRes.body).refreshToken;
+
+      // Step 2: Request password reset (gets email with token)
+      const sendSpy = jest.spyOn(emailService, 'sendPasswordReset');
+      try {
+        const forgotRes = await app.inject({
+          method: 'POST',
+          url: '/api/auth/forgot-password',
+          headers: {
+            'X-CSRF-Token': csrfToken,
+            'Content-Type': 'application/json',
+          },
+          payload: { email: 'admin@internops.com' },
+        });
+        expect(forgotRes.statusCode).toBe(200);
+
+        // Step 3: Get reset token from database or response
+        expect(sendSpy).toHaveBeenCalled();
+        const resetToken = sendSpy.mock.calls[0][1];
+
+        // Step 4: Reset password with REAL token
+        const resetRes = await app.inject({
+          method: 'POST',
+          url: '/api/auth/reset-password',
+          headers: {
+            'X-CSRF-Token': csrfToken,
+            'Content-Type': 'application/json',
+          },
+          payload: { token: resetToken, newPassword: 'NewPassword@123!' },
+        });
+        // IMPORTANT: Verify reset succeeded
+        expect(resetRes.statusCode).toBe(200);
+
+        // Step 5: Try to use OLD refresh token - should be rejected
+        const reuseTokenRes = await app.inject({
+          method: 'POST',
+          url: '/api/auth/refresh',
+          headers: {
+            'X-CSRF-Token': csrfToken,
+            'Content-Type': 'application/json',
+          },
+          payload: { refreshToken: oldRefreshToken },
+        });
+
+        // Token should be revoked (401) or invalid (400)
+        expect([401, 400]).toContain(reuseTokenRes.statusCode);
+      } finally {
+        sendSpy.mockRestore();
+        // Restore password back to Admin@123
+        const argon2 = require('argon2');
+        const pool = require('../../src/config/db');
+        const restoreHash = await argon2.hash('Admin@123');
+        await pool.query(
+          'UPDATE users SET password_hash = $1 WHERE email = $2',
+          [restoreHash, 'admin@internops.com']
+        );
+      }
     });
   });
 });
