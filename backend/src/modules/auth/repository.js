@@ -65,18 +65,35 @@ async function updatePassword(userId, newHash) {
   );
 }
 
+// User-editable profile columns that exist in the users schema.
+const PROFILE_FIELDS = [
+  'full_name',
+  'phone',
+  'college',
+  'course',
+  'year_of_study',
+  'position',
+  'joining_date',
+  'internship_status',
+  'location',
+  'notes',
+  'avatar_url',
+];
+
 async function updateProfile(userId, fields) {
   const set = [];
   const vals = [];
   let idx = 1;
   for (const [key, val] of Object.entries(fields)) {
-    if (['full_name'].includes(key)) {
+    if (PROFILE_FIELDS.includes(key)) {
       set.push(`${key} = $${idx}`);
       vals.push(val);
       idx++;
     }
   }
-  if (set.length === 0) return;
+  if (set.length === 0) {
+    throw new Error('No valid fields provided for profile update');
+  }
   vals.push(userId);
   await pool.query(
     `UPDATE users SET ${set.join(', ')}, updated_at = NOW() WHERE id = $${idx}`,

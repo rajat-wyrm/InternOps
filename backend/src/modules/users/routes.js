@@ -110,7 +110,19 @@ async function routes(fastify) {
 
   // Update own profile
   fastify.patch('/me', { preHandler: [auth] }, async (req) => {
-    const schema = z.object({ full_name: z.string().optional() });
+    const schema = z.object({
+      full_name: z.string().optional(),
+      phone: z.string().optional(),
+      college: z.string().optional(),
+      course: z.string().optional(),
+      year_of_study: z.string().optional(),
+      position: z.string().optional(),
+      joining_date: z.string().optional(),
+      internship_status: z.string().optional(),
+      location: z.string().optional(),
+      notes: z.string().optional(),
+      avatar_url: z.string().optional(),
+    });
     const data = schema.parse(req.body);
     await authRepo.updateProfile(req.user.id, data);
     return { message: 'Profile updated' };
