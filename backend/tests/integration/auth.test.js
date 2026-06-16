@@ -10,7 +10,10 @@ beforeAll(async () => {
   const argon2 = require('argon2');
   const pool = require('../../src/config/db');
   const restoreHash = await argon2.hash('Admin@123');
-  await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [restoreHash, 'admin@internops.com']);
+  await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [
+    restoreHash,
+    'admin@internops.com',
+  ]);
 
   // Get CSRF token
   const csrfRes = await app.inject({
@@ -335,7 +338,10 @@ describe('Auth Integration Tests', () => {
         const argon2 = require('argon2');
         const pool = require('../../src/config/db');
         const restoreHash = await argon2.hash('Admin@123');
-        await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [restoreHash, 'admin@internops.com']);
+        await pool.query(
+          'UPDATE users SET password_hash = $1 WHERE email = $2',
+          [restoreHash, 'admin@internops.com']
+        );
       }
     });
   });
