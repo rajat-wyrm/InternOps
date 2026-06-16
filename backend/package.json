@@ -19,7 +19,7 @@
         "@fastify/swagger": "^8.14.0",
         "@fastify/swagger-ui": "^3.0.0",
         "argon2": "^0.31.2",
-        "dotenv": "^16.4.5",
+        "dotenv": "^16.6.1",
         "fastify": "^4.27.0",
         "jsonwebtoken": "^9.0.2",
         "node-cron": "^3.0.3",
