@@ -16,13 +16,16 @@ async function routes(fastify) {
     '/submit',
     { preHandler: [auth, rbac('INTERN')] },
     async (req, reply) => {
-      const { task_id } = req.body;
-      if (!task_id)
-        return reply.status(400).send({ error: 'task_id required' });
-
+      // With @fastify/multipart, req.body is not populated until the
+      // multipart stream is consumed via req.file(). Parse the file first,
+      // then read task_id from the parsed fields.
       const data = await req.file();
       if (!data)
         return reply.status(400).send({ error: 'Image file required' });
+
+      const task_id = data.fields?.task_id?.value;
+      if (!task_id)
+        return reply.status(400).send({ error: 'task_id required' });
 
       // Validate MIME type and extension
       const ext = path.extname(data.filename).toLowerCase();
