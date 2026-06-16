@@ -5,6 +5,16 @@ let csrfToken, accessToken, meetingId;
 
 beforeAll(async () => {
   await app.ready();
+
+  // Clean up any previously created hierarchy test users to avoid duplicate email key violations
+  const pool = require('../../src/config/db');
+  await pool.query(
+    "DELETE FROM meetings WHERE created_by IN (SELECT id FROM users WHERE email IN ('manager@internops.com', 'subordinate@internops.com', 'outsider@internops.com'))"
+  );
+  await pool.query(
+    "DELETE FROM users WHERE email IN ('manager@internops.com', 'subordinate@internops.com', 'outsider@internops.com')"
+  );
+
   const csrfRes = await app.inject({
     method: 'GET',
     url: '/api/auth/csrf-token',
@@ -18,7 +28,6 @@ beforeAll(async () => {
   });
   accessToken = JSON.parse(loginRes.body).accessToken;
 });
-
 afterAll(async () => {
   await app.close();
 });
