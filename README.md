@@ -7,6 +7,7 @@ Enterprise Workforce Management and Intern Operations Platform
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Fastify](https://img.shields.io/badge/Fastify-4.x-000000?style=for-the-badge&logo=fastify&logoColor=white)](https://fastify.dev/)
 [![React](https://img.shields.io/badge/React-18.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+
 ## Table of Contents
 
 - Executive Summary
@@ -17,33 +18,33 @@ Enterprise Workforce Management and Intern Operations Platform
 - Backend Architecture
 - Frontend Architecture
 - Authentication Flow
--  Authorization Model
+- Authorization Model
 - Hierarchy Model
 - Database Design
 - Database Schema Tables
--  Security Architecture
+- Security Architecture
 - API Overview
--  Major Modules
--  Reports and Analytics
--  Session Management
+- Major Modules
+- Reports and Analytics
+- Session Management
 - Audit Logging
--  Notifications
+- Notifications
 - Deployment Architecture
--  Environment Variables
+- Environment Variables
 - Installation
 - Quick Start
--  Database Migration
+- Database Migration
 - Seed Data
 - Running Backend
 - Running Frontend
--  Testing
+- Testing
 - API Documentation
--  Performance Considerations
--  Scalability Considerations
--  Future Integrations
--  Production Checklist
--  Troubleshooting
--  Contributing
+- Performance Considerations
+- Scalability Considerations
+- Future Integrations
+- Production Checklist
+- Troubleshooting
+- Contributing
 - License
 - Maintainer
 
@@ -74,6 +75,7 @@ Built with a modern Node.js/Fastify backend and a React/Vite frontend, InternOps
 InternOps follows a monolithic backend with a separate React frontend, communicating via REST APIs. The backend is built on Fastify and uses raw SQL queries through the `pg` driver. Redis is optionally used for refresh token storage and can be enabled for production scaling.
 
 The architecture emphasizes:
+
 - Clear separation of concerns (routes, services, repositories, middleware)
 - Centralized error handling and request logging
 - Idempotent database migrations
@@ -81,19 +83,19 @@ The architecture emphasizes:
 
 ## Technology Stack
 
-| Component          | Technology                        |
-|---------------------|-------------------------------------|
-| Backend runtime    | Node.js (>=18)                    |
-| Framework          | Fastify v4                        |
-| Frontend           | React 18, Vite, TailwindCSS, Axios|
-| Database           | PostgreSQL (via `pg` driver)      |
-| Authentication     | JWT, Argon2                       |
-| Caching            | Redis (optional)                  |
-| Documentation      | Swagger (OpenAPI)                 |
-| Security           | Helmet, CORS, CSRF, Rate Limiting |
-| Validation         | Zod                               |
-| Logging            | Pino                              |
-| DevOps             | Git, GitHub, PowerShell scripts   |
+| Component       | Technology                         |
+| --------------- | ---------------------------------- |
+| Backend runtime | Node.js (>=18)                     |
+| Framework       | Fastify v4                         |
+| Frontend        | React 18, Vite, TailwindCSS, Axios |
+| Database        | PostgreSQL (via `pg` driver)       |
+| Authentication  | JWT, Argon2                        |
+| Caching         | Redis (optional)                   |
+| Documentation   | Swagger (OpenAPI)                  |
+| Security        | Helmet, CORS, CSRF, Rate Limiting  |
+| Validation      | Zod                                |
+| Logging         | Pino                               |
+| DevOps          | Git, GitHub, PowerShell scripts    |
 
 ## Design Principles
 
@@ -158,21 +160,21 @@ Ownership is validated recursively using a `WITH RECURSIVE` cte that walks the m
 
 ## Database Schema Tables
 
-| Table                  | Description                                      |
-|------------------------|--------------------------------------------------|
-| `users`                | All platform users with role, manager, department|
-| `departments`          | Organizational departments                       |
-| `attendance`          | Daily attendance records (user, date, status)    |
-| `ratings`              | Performance ratings with score and remarks       |
-| `social_tasks`         | Tasks created by Admin/Senior TL                 |
-| `proof_submissions`    | Image proofs submitted by interns                |
-| `notifications`        | In-app notifications per user                    |
-| `meetings`             | Scheduled meetings                               |
-| `meeting_attendees`    | Junction table for meeting participants          |
-| `audit_logs`          | Immutable audit trail for sensitive actions      |
-| `refresh_tokens`       | Hashed refresh tokens for session management     |
-| `password_reset_tokens` | Time-limited password reset tokens               |
-| `login_attempts`       | Failed/successful login tracking (brute force)   |
+| Table                   | Description                                       |
+| ----------------------- | ------------------------------------------------- |
+| `users`                 | All platform users with role, manager, department |
+| `departments`           | Organizational departments                        |
+| `attendance`            | Daily attendance records (user, date, status)     |
+| `ratings`               | Performance ratings with score and remarks        |
+| `social_tasks`          | Tasks created by Admin/Senior TL                  |
+| `proof_submissions`     | Image proofs submitted by interns                 |
+| `notifications`         | In-app notifications per user                     |
+| `meetings`              | Scheduled meetings                                |
+| `meeting_attendees`     | Junction table for meeting participants           |
+| `audit_logs`            | Immutable audit trail for sensitive actions       |
+| `refresh_tokens`        | Hashed refresh tokens for session management      |
+| `password_reset_tokens` | Time-limited password reset tokens                |
+| `login_attempts`        | Failed/successful login tracking (brute force)    |
 
 ## Security Architecture
 
@@ -192,24 +194,24 @@ Ownership is validated recursively using a `WITH RECURSIVE` cte that walks the m
 
 All API endpoints are prefixed with `/api`. Interactive documentation is available at `/docs` when the server is running.
 
-| Module          | Endpoint Prefix         | Description                           |
-|------------------|--------------------------|--------------------------------------------|
-| Auth            | `/api/auth`             | Login, register, refresh, logout, password reset, CSRF token |
-| Users           | `/api/users`            | CRUD operations, profile, password change |
-| Departments     | `/api/departments`      | Create and list departments               |
-| Hierarchy       | `/api/hierarchy`        | Direct reports, full team, upward chain   |
-| Attendance      | `/api/attendance`       | Mark, bulk mark, view, monthly stats      |
-| Ratings         | `/api/ratings`          | Submit rating, view rating history        |
-| Tasks           | `/api/tasks`             | Create and list social tasks              |
-| Proofs          | `/api/proofs`           | Submit proof (intern), verify (captain+)  |
-| Notifications   | `/api/notifications`   | List, mark read, delete, mark all read    |
-| Audit           | `/api/audit`             | View audit logs (admin only)              |
-| Uploads         | `/api/uploads`          | Avatar upload                         |
-| Analytics       | `/api/analytics`        | Overview, department attendance, top performers, trends |
-| Meetings        | `/api/meetings`          | CRUD, attendees management                |
-| Sessions        | `/api/sessions`         | List own sessions, revoke, admin revoke   |
-| Reports         | `/api/reports`          | Attendance summary, ratings summary, task completion, CSV exports |
-| Uptoskills      | `/api/uptoskills`       | Sync status placeholder                   |
+| Module        | Endpoint Prefix      | Description                                                       |
+| ------------- | -------------------- | ----------------------------------------------------------------- |
+| Auth          | `/api/auth`          | Login, register, refresh, logout, password reset, CSRF token      |
+| Users         | `/api/users`         | CRUD operations, profile, password change                         |
+| Departments   | `/api/departments`   | Create and list departments                                       |
+| Hierarchy     | `/api/hierarchy`     | Direct reports, full team, upward chain                           |
+| Attendance    | `/api/attendance`    | Mark, bulk mark, view, monthly stats                              |
+| Ratings       | `/api/ratings`       | Submit rating, view rating history                                |
+| Tasks         | `/api/tasks`         | Create and list social tasks                                      |
+| Proofs        | `/api/proofs`        | Submit proof (intern), verify (captain+)                          |
+| Notifications | `/api/notifications` | List, mark read, delete, mark all read                            |
+| Audit         | `/api/audit`         | View audit logs (admin only)                                      |
+| Uploads       | `/api/uploads`       | Avatar upload                                                     |
+| Analytics     | `/api/analytics`     | Overview, department attendance, top performers, trends           |
+| Meetings      | `/api/meetings`      | CRUD, attendees management                                        |
+| Sessions      | `/api/sessions`      | List own sessions, revoke, admin revoke                           |
+| Reports       | `/api/reports`       | Attendance summary, ratings summary, task completion, CSV exports |
+| Uptoskills    | `/api/uptoskills`    | Sync status placeholder                                           |
 
 ## Major Modules
 
@@ -266,17 +268,17 @@ Recommended production setup:
 Copy `.env.example` to `.env` and fill in the required values. The following variables are used:
 
 | Variable                   | Description                           |
-|-----------------------------|---------------------------------------------|
-| `NODE_ENV`                 | `development` or `production`             |
-|`PORT`                     | Server port (default 5000)                |
-| `DATABASE_URL`             | PostgreSQL connection string              |
-| `JWT_SECRET`               | Secret key for JWT signing                |
-| `UPSTASH_REDIS_REST_URL`   | Redis connection URL (optional)           |
-| `UPSTASH_REDIS_REST_TOKEN` | Redis token (optional)                    |
-| `CORS_ORIGIN`              | Allowed origin for CORS in production     |
-| `EMAIL_API_KEY`            | Email service API key (optional)          |
-| `UPTOSKILLS_BASE_URL`      | Uptoskills API base URL (future)          |
-| `UPTOSKILLS_API_KEY`       | Uptoskills API key (future)               |
+| -------------------------- | ------------------------------------- |
+| `NODE_ENV`                 | `development` or `production`         |
+| `PORT`                     | Server port (default 5000)            |
+| `DATABASE_URL`             | PostgreSQL connection string          |
+| `JWT_SECRET`               | Secret key for JWT signing            |
+| `UPSTASH_REDIS_REST_URL`   | Redis connection URL (optional)       |
+| `UPSTASH_REDIS_REST_TOKEN` | Redis token (optional)                |
+| `CORS_ORIGIN`              | Allowed origin for CORS in production |
+| `EMAIL_API_KEY`            | Email service API key (optional)      |
+| `UPTOSKILLS_BASE_URL`      | Uptoskills API base URL (future)      |
+| `UPTOSKILLS_API_KEY`       | Uptoskills API key (future)           |
 
 ## Installation
 
@@ -394,17 +396,17 @@ The `modules/uptoskills` folder contains placeholder services for syncing users,
 - [] Enable Redis for refresh token storage
 - [] Set up PM2 or similar process manager
 - [] Configure Nginx reverse proxy with HTTPS
-[ ] Set up monitoring and alerting
+  [ ] Set up monitoring and alerting
 
 ## Troubleshooting
 
-| Issue                                 | Solution                                      |
-|----------------------------------------|----------------------------------------------------|
+| Issue                                         | Solution                                                                                                                                    |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Server fails with `Plugin must be a function` | Ensure all `app.register()` calls receive a function, not an object. CSRF middleware should use `app.addHook('onRequest', csrfProtection)`. |
-| Endpoints timeout or hang             | Verify `DATABASE_URL` includes `uselibpqcompat=true` if using Neon. Check statement_timeout setting in pool. |
-| Migrations fail with BOM error        | The migration runner strips BOM automatically. Regenerate the SQL file with `[System.IO.File]::WriteAllText(...)`. |
-| Redis connection errors in logs       | Set `UPSTASH_REDIS_REST_URL` to empty if Redis is not used. |
-| Swagger UI blank page                 | Ensure rate limit is not too restrictive on `/docs/static/*`. |
+| Endpoints timeout or hang                     | Verify `DATABASE_URL` includes `uselibpqcompat=true` if using Neon. Check statement_timeout setting in pool.                                |
+| Migrations fail with BOM error                | The migration runner strips BOM automatically. Regenerate the SQL file with `[System.IO.File]::WriteAllText(...)`.                          |
+| Redis connection errors in logs               | Set `UPSTASH_REDIS_REST_URL` to empty if Redis is not used.                                                                                 |
+| Swagger UI blank page                         | Ensure rate limit is not too restrictive on `/docs/static/*`.                                                                               |
 
 ## Contributing
 

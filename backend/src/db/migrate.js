@@ -15,8 +15,9 @@ async function migrate() {
     `);
 
     const dir = path.resolve(__dirname, '../../migrations');
-    const files = fs.readdirSync(dir)
-      .filter(f => f.endsWith('.sql'))
+    const files = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.sql'))
       .sort();
 
     for (const file of files) {
@@ -34,7 +35,7 @@ async function migrate() {
       try {
         // Read as UTF-8, handle potential BOM
         const buffer = fs.readFileSync(filePath);
-        if (buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
+        if (buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
           sql = buffer.toString('utf8', 3); // skip BOM
         } else {
           sql = buffer.toString('utf8');
@@ -46,10 +47,9 @@ async function migrate() {
       try {
         await client.query(sql);
         console.log(`Migration applied: ${file}`);
-        await client.query(
-          'INSERT INTO _migrations (name) VALUES ($1)',
-          [file]
-        );
+        await client.query('INSERT INTO _migrations (name) VALUES ($1)', [
+          file,
+        ]);
       } catch (execErr) {
         // Show detailed error with the file that failed
         throw new Error(

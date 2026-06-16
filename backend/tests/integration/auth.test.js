@@ -1,12 +1,25 @@
 const supertest = require('supertest');
 const app = require('../../src/app');
-
-let csrfToken, accessToken, refreshToken;
+const emailService = require('../../src/services/email');
+let csrfToken, accessToken, refreshToken, freshAccessToken;
 
 beforeAll(async () => {
   await app.ready();
+
+  // Restore admin password to Admin@123 in case a previous run left it modified
+  const argon2 = require('argon2');
+  const pool = require('../../src/config/db');
+  const restoreHash = await argon2.hash('Admin@123');
+  await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [
+    restoreHash,
+    'admin@internops.com',
+  ]);
+
   // Get CSRF token
-  const csrfRes = await app.inject({ method: 'GET', url: '/api/auth/csrf-token' });
+  const csrfRes = await app.inject({
+    method: 'GET',
+    url: '/api/auth/csrf-token',
+  });
   csrfToken = JSON.parse(csrfRes.body).csrfToken;
 });
 
@@ -15,14 +28,16 @@ afterAll(async () => {
 });
 
 describe('Auth Integration Tests', () => {
-
   // ---------- Login Tests ----------
   describe('POST /api/auth/login', () => {
     it('should login with valid credentials', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/login',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { email: 'admin@internops.com', password: 'Admin@123' },
       });
       expect(res.statusCode).toBe(200);
@@ -37,7 +52,10 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/login',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { email: 'admin@internops.com', password: 'wrong' },
       });
       expect(res.statusCode).toBe(401);
@@ -47,7 +65,10 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/login',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { password: 'Admin@123' },
       });
       expect(res.statusCode).toBe(400);
@@ -57,7 +78,10 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/login',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { email: 'ghost@test.com', password: 'Test@123' },
       });
       expect(res.statusCode).toBe(401);
@@ -70,7 +94,10 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/refresh',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { refreshToken },
       });
       expect(res.statusCode).toBe(200);
@@ -82,7 +109,10 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/refresh',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { refreshToken },
       });
       expect(res.statusCode).toBe(401);
@@ -92,7 +122,10 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/refresh',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { refreshToken: 'invalid.token.here' },
       });
       expect(res.statusCode).toBe(401);
@@ -105,7 +138,16 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/logout',
-        headers: { Authorization: `Bearer ${accessToken}`, 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { refreshToken },
       });
       expect(res.statusCode).toBe(200);
@@ -114,11 +156,32 @@ describe('Auth Integration Tests', () => {
 
   // ---------- Protected Route Tests ----------
   describe('Protected Routes', () => {
+    beforeAll(async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
+        payload: { email: 'admin@internops.com', password: 'Admin@123' },
+      });
+      const body = JSON.parse(res.body);
+      freshAccessToken = body.accessToken;
+    });
+
     it('should access GET /api/users/me with valid token', async () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/users/me',
-        headers: { Authorization: `Bearer ${accessToken}`, 'X-CSRF-Token': csrfToken },
+        headers: {
+          Authorization: `Bearer ${freshAccessToken}`,
+          'X-CSRF-Token': csrfToken,
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-CSRF-Token': csrfToken,
+        },
       });
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
@@ -131,11 +194,14 @@ describe('Auth Integration Tests', () => {
     });
 
     it('should reject request with tampered token', async () => {
-      const tampered = accessToken.slice(0, -5) + 'xxxxx';
+      const tampered = freshAccessToken.slice(0, -5) + 'xxxxx';
       const res = await app.inject({
         method: 'GET',
         url: '/api/users/me',
-        headers: { Authorization: `Bearer ${tampered}`, 'X-CSRF-Token': csrfToken },
+        headers: {
+          Authorization: `Bearer ${tampered}`,
+          'X-CSRF-Token': csrfToken,
+        },
       });
       expect(res.statusCode).toBe(401);
     });
@@ -147,7 +213,14 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/departments',
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${freshAccessToken}`,
+          'Content-Type': 'application/json',
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
         payload: { name: 'Test' },
       });
       expect(res.statusCode).toBe(403);
@@ -157,7 +230,16 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/departments',
-        headers: { Authorization: `Bearer ${accessToken}`, 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${freshAccessToken}`,
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { name: 'TestDept_' + Date.now() },
       });
       expect(res.statusCode).toBe(200);
@@ -170,7 +252,10 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/forgot-password',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { email: 'admin@internops.com' },
       });
       expect(res.statusCode).toBe(200);
@@ -180,10 +265,84 @@ describe('Auth Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/reset-password',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
         payload: { token: 'invalid', newPassword: 'ValidPass123!' },
       });
       expect(res.statusCode).toBe(400);
+    });
+
+    it('should revoke all refresh tokens and Redis cache on password reset', async () => {
+      // Step 1: Login and get refresh token
+      const loginRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
+        payload: { email: 'admin@internops.com', password: 'Admin@123' },
+      });
+      expect(loginRes.statusCode).toBe(200);
+      const oldRefreshToken = JSON.parse(loginRes.body).refreshToken;
+
+      // Step 2: Request password reset (gets email with token)
+      const sendSpy = jest.spyOn(emailService, 'sendPasswordReset');
+      try {
+        const forgotRes = await app.inject({
+          method: 'POST',
+          url: '/api/auth/forgot-password',
+          headers: {
+            'X-CSRF-Token': csrfToken,
+            'Content-Type': 'application/json',
+          },
+          payload: { email: 'admin@internops.com' },
+        });
+        expect(forgotRes.statusCode).toBe(200);
+
+        // Step 3: Get reset token from database or response
+        expect(sendSpy).toHaveBeenCalled();
+        const resetToken = sendSpy.mock.calls[0][1];
+
+        // Step 4: Reset password with REAL token
+        const resetRes = await app.inject({
+          method: 'POST',
+          url: '/api/auth/reset-password',
+          headers: {
+            'X-CSRF-Token': csrfToken,
+            'Content-Type': 'application/json',
+          },
+          payload: { token: resetToken, newPassword: 'NewPassword@123!' },
+        });
+        // IMPORTANT: Verify reset succeeded
+        expect(resetRes.statusCode).toBe(200);
+
+        // Step 5: Try to use OLD refresh token - should be rejected
+        const reuseTokenRes = await app.inject({
+          method: 'POST',
+          url: '/api/auth/refresh',
+          headers: {
+            'X-CSRF-Token': csrfToken,
+            'Content-Type': 'application/json',
+          },
+          payload: { refreshToken: oldRefreshToken },
+        });
+
+        // Token should be revoked (401) or invalid (400)
+        expect([401, 400]).toContain(reuseTokenRes.statusCode);
+      } finally {
+        sendSpy.mockRestore();
+        // Restore password back to Admin@123
+        const argon2 = require('argon2');
+        const pool = require('../../src/config/db');
+        const restoreHash = await argon2.hash('Admin@123');
+        await pool.query(
+          'UPDATE users SET password_hash = $1 WHERE email = $2',
+          [restoreHash, 'admin@internops.com']
+        );
+      }
     });
   });
 });
