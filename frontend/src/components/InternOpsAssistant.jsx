@@ -77,13 +77,13 @@ const ROLE_PERMISSIONS = {
 };
 
 const QUICK_FAQS = [
-{
-    q: "What is UptoSkills?",
+  {
+    q: 'What is UptoSkills?',
     a: "UptoSkills (est. 2018, Delhi) is India's AI-powered platform connecting Candidates, Colleges & Corporates. It offers gamified learning, smart assessments, hackathons, job/internship matching, AI Practice Hub, and Aura Rewards — all in one place.",
   },
   {
-    q: "What features does UptoSkills offer?",
-    a: "UptoSkills offers: AI-personalized learning, hackathons (UptoHacks), job & internship matching, leagues & competitions, AI Practice Hub, smart assessments, Aura Rewards, certificates, Refer & Earn, and a mobile app on Play Store.",
+    q: 'What features does UptoSkills offer?',
+    a: 'UptoSkills offers: AI-personalized learning, hackathons (UptoHacks), job & internship matching, leagues & competitions, AI Practice Hub, smart assessments, Aura Rewards, certificates, Refer & Earn, and a mobile app on Play Store.',
   },
   {
     q: 'How does the rating system work?',
@@ -112,20 +112,20 @@ const QUICK_FAQS = [
 ];
 
 const QUICK_ACTIONS = [
-  { label: "About UptoSkills", prompt: "What is UptoSkills?" },
-  { label: "Submit rating", prompt: "How do I submit a rating?" },
-  { label: "Create task", prompt: "How do I create a social task?" },
-  { label: "Upload proof", prompt: "How do I upload proof for a task?" },
-  { label: "Verify task", prompt: "How do I verify a proof submission?" },
-  { label: "Attendance", prompt: "How do I mark attendance?" },
+  { label: 'About UptoSkills', prompt: 'What is UptoSkills?' },
+  { label: 'Submit rating', prompt: 'How do I submit a rating?' },
+  { label: 'Create task', prompt: 'How do I create a social task?' },
+  { label: 'Upload proof', prompt: 'How do I upload proof for a task?' },
+  { label: 'Verify task', prompt: 'How do I verify a proof submission?' },
+  { label: 'Attendance', prompt: 'How do I mark attendance?' },
 ];
 
 const CONTEXT_BUTTONS = [
-  { label: "About UptoSkills", prompt: "What is UptoSkills?" },
-  { label: "Submit a rating", prompt: "How do I submit a rating?" },
-  { label: "Create a social task", prompt: "How do I create a social task?" },
-  { label: "Mark attendance", prompt: "How do I mark attendance?" },
-  { label: "View reports", prompt: "How do I view reports and analytics?" },
+  { label: 'About UptoSkills', prompt: 'What is UptoSkills?' },
+  { label: 'Submit a rating', prompt: 'How do I submit a rating?' },
+  { label: 'Create a social task', prompt: 'How do I create a social task?' },
+  { label: 'Mark attendance', prompt: 'How do I mark attendance?' },
+  { label: 'View reports', prompt: 'How do I view reports and analytics?' },
 ];
 
 const KB = {
@@ -147,35 +147,38 @@ function getKBResponse(text) {
   const t = text.toLowerCase();
   // UptoSkills info — check first
   if (
-    t.includes("uptoskills") ||
-    t.includes("upskill") ||
-    t.includes("about this platform") ||
-    t.includes("about the platform") ||
-    t.includes("what is this") ||
-    t.includes("who made") ||
-    t.includes("company info") ||
-    t.includes("about us") ||
-    t.includes("what is uptoskills")
-  ) return KB.uptoskills;
+    t.includes('uptoskills') ||
+    t.includes('upskill') ||
+    t.includes('about this platform') ||
+    t.includes('about the platform') ||
+    t.includes('what is this') ||
+    t.includes('who made') ||
+    t.includes('company info') ||
+    t.includes('about us') ||
+    t.includes('what is uptoskills')
+  )
+    return KB.uptoskills;
   if (
-    t.includes("dashboard") ||
-    t.includes("aura") ||
-    t.includes("leagues") ||
-    t.includes("hackathon") ||
-    t.includes("competitions") ||
-    t.includes("platform features") ||
-    t.includes("what can i find")
-  ) return KB.platform;
-  if (t.includes("rating") || t.includes("rate")) return KB.rating;
-  if (t.includes("social task") || t.includes("create task")) return KB.task;
-  if (t.includes("upload proof") || t.includes("proof")) return KB.proof;
-  if (t.includes("verify") || t.includes("verification")) return KB.verify;
-  if (t.includes("attendance") || t.includes("mark")) return KB.attendance;
-  if (t.includes("report") || t.includes("analytics")) return KB.reports;
-  if (t.includes("session")) return KB.sessions;
-  if (t.includes("meeting")) return KB.meetings;
-  if (t.includes("hierarchy") || t.includes("role") || t.includes("permission")) return KB.hierarchy;
-  if (t.includes("audit") || t.includes("log")) return KB.audit;
+    t.includes('dashboard') ||
+    t.includes('aura') ||
+    t.includes('leagues') ||
+    t.includes('hackathon') ||
+    t.includes('competitions') ||
+    t.includes('platform features') ||
+    t.includes('what can i find')
+  )
+    return KB.platform;
+  if (t.includes('rating') || t.includes('rate')) return KB.rating;
+  if (t.includes('social task') || t.includes('create task')) return KB.task;
+  if (t.includes('upload proof') || t.includes('proof')) return KB.proof;
+  if (t.includes('verify') || t.includes('verification')) return KB.verify;
+  if (t.includes('attendance') || t.includes('mark')) return KB.attendance;
+  if (t.includes('report') || t.includes('analytics')) return KB.reports;
+  if (t.includes('session')) return KB.sessions;
+  if (t.includes('meeting')) return KB.meetings;
+  if (t.includes('hierarchy') || t.includes('role') || t.includes('permission'))
+    return KB.hierarchy;
+  if (t.includes('audit') || t.includes('log')) return KB.audit;
   return null;
 }
 
@@ -295,8 +298,8 @@ export default function InternOpsAssistant() {
 
   useEffect(() => {
     const welcome = {
-      role: "bot",
-    content: `Hi! I'm the **UptoSkills InternOps Assistant** 👋\n\nSelect your **role** in the top-right to get role-specific answers. I can help with:\n\n- 🏢 About UptoSkills platform\n- ⭐ Ratings — submit, view history, permissions\n- 📋 Social tasks — create, upload proof, verify\n- 📅 Attendance, meetings, sessions, reports`,
+      role: 'bot',
+      content: `Hi! I'm the **UptoSkills InternOps Assistant** 👋\n\nSelect your **role** in the top-right to get role-specific answers. I can help with:\n\n- 🏢 About UptoSkills platform\n- ⭐ Ratings — submit, view history, permissions\n- 📋 Social tasks — create, upload proof, verify\n- 📅 Attendance, meetings, sessions, reports`,
       time: now(),
       buttons: CONTEXT_BUTTONS.map((b) => ({
         label: b.label,
