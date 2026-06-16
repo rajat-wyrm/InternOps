@@ -14,6 +14,7 @@ export default function Departments() {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [deletingDepartmentId, setDeletingDepartmentId] = useState(null);
 
   const { data: departments = [], isLoading } = useQuery({
     queryKey: ['departments'],
@@ -34,6 +35,9 @@ export default function Departments() {
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/departments/${id}`),
     onSuccess: inv,
+    onSettled: () => {
+      setDeletingDepartmentId(null);
+    },
   });
 
   const COLORS = [
@@ -102,14 +106,21 @@ export default function Departments() {
                 </p>
               </div>
               <button
+                disabled={deletingDepartmentId === d.id || deleteMut.isPending}
                 onClick={() => {
-                  if (confirm(`Delete department "${d.name}"?`))
+                  if (deleteMut.isPending || deletingDepartmentId === d.id) {
+                    return;
+                  }
+
+                  if (confirm(`Delete department "${d.name}"?`)) {
+                    setDeletingDepartmentId(d.id);
                     deleteMut.mutate(d.id);
+                  }
                 }}
-                className="text-rose-500 hover:text-rose-700"
+                className="text-rose-500 hover:text-rose-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Delete"
               >
-                🗑️
+                {deletingDepartmentId === d.id ? '⏳' : '🗑️'}
               </button>
             </Card>
           ))}
