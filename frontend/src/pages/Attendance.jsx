@@ -56,10 +56,11 @@ export default function Attendance() {
   return (
     <div>
       <h2 className="text-2xl font-bold mb-4">Attendance</h2>
+
       {canMark && (
         <>
-          {' '}
-          <AttendanceMarkForm /> <BulkAttendanceForm />{' '}
+          <AttendanceMarkForm />
+          <BulkAttendanceForm />
         </>
       )}
 
@@ -67,6 +68,7 @@ export default function Attendance() {
         <label className="block text-xs text-gray-500 mb-1">
           View attendance of
         </label>
+
         {isManager ? (
           <select
             value={viewUserId}
@@ -86,11 +88,13 @@ export default function Attendance() {
       </div>
 
       {isLoading && <p>Loading...</p>}
+
       {error && (
         <p className="text-red-500">
           {error.response?.data?.error || 'Failed to load attendance'}
         </p>
       )}
+
       {!isLoading &&
         !error &&
         (records.length === 0 ? (
@@ -108,19 +112,28 @@ export default function Attendance() {
                     <th className="p-3">Remarks</th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {records.map((a) => (
                     <tr key={a.id} className="border-t hover:bg-gray-50">
                       <td className="p-3">
-                        {new Date(a.date).toLocaleDateString()}
+                        {new Date(a.date).toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
                       </td>
+
                       <td className="p-3">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[a.status] || ''}`}
+                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            STATUS_BADGE[a.status] || ''
+                          }`}
                         >
                           {a.status}
                         </span>
                       </td>
+
                       <td className="p-3">{a.remarks || '—'}</td>
                     </tr>
                   ))}
@@ -133,6 +146,7 @@ export default function Attendance() {
                 {total} record{total === 1 ? '' : 's'} · page {page} of{' '}
                 {totalPages}
               </span>
+
               <div className="flex gap-2">
                 <button
                   onClick={() => setPage((p) => Math.max(p - 1, 1))}
@@ -141,6 +155,7 @@ export default function Attendance() {
                 >
                   Previous
                 </button>
+
                 <button
                   onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
                   disabled={page >= totalPages}

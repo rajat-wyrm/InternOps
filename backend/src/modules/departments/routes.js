@@ -1,5 +1,6 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
+const { csrfMiddleware } = require('../../middleware/csrf');
 const repo = require('./repository');
 const { createAuditLog } = require('../../utils/audit');
 
@@ -7,7 +8,7 @@ async function routes(fastify) {
   // Create a department (Admin only)
   fastify.post(
     '/',
-    { preHandler: [auth, rbac('ADMIN')] },
+    { preHandler: [auth, rbac('ADMIN'), csrfMiddleware] },
     async (req, reply) => {
       const name = (req.body?.name || '').trim();
       if (!name) return reply.status(400).send({ error: 'Name required' });

@@ -50,7 +50,10 @@ export default function Sessions() {
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-gray-800 text-sm">Session</p>
                 <p className="text-xs text-gray-500">
-                  Started {new Date(s.createdAt).toLocaleString()}
+                  Started{' '}
+                  {s.createdAt === 'N/A'
+                    ? 'N/A'
+                    : new Date(s.createdAt).toLocaleString()}
                 </p>
                 <p className="text-xs text-gray-400">
                   Expires {new Date(s.expiresAt).toLocaleDateString()}

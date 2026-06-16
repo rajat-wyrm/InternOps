@@ -91,7 +91,11 @@ async function storeRefreshTokenRedis(userId, tokenHash, expiresAt) {
   const redis = await getRedisClient();
   if (redis) {
     const ttl = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
-    await redis.set(`refresh_token:${tokenHash}`, userId, { EX: ttl });
+    await redis.set(
+      `refresh_token:${tokenHash}`,
+      JSON.stringify({ userId, createdAt: Date.now() }),
+      { EX: ttl }
+    );
     await redis.sAdd(`user_tokens:${userId}`, tokenHash);
     return;
   }
