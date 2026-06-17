@@ -15,9 +15,11 @@ async function routes(fastify) {
       [req.user.id]
     );
     const departmentId = deptRes.rows[0]?.department_id || null;
+    // Interns only see meetings they are creator or attendee of.
+    // Non-interns also see department-wide meetings.
     return repo.listMeetings({
       userId: req.user.id,
-      departmentId: req.user.role !== 'INTERN' ? departmentId : null,
+      departmentId: req.user.role !== 'INTERN' ? departmentId : null, // non-interns see dept meetings
       fromDate: from,
       toDate: to,
     });
