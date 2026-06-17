@@ -5,7 +5,20 @@ let csrfToken, accessToken, meetingId;
 
 beforeAll(async () => {
   await app.ready();
-  const csrfRes = await app.inject({ method: 'GET', url: '/api/auth/csrf-token' });
+
+  // Clean up any previously created hierarchy test users to avoid duplicate email key violations
+  const pool = require('../../src/config/db');
+  await pool.query(
+    "DELETE FROM meetings WHERE created_by IN (SELECT id FROM users WHERE email IN ('manager@internops.com', 'subordinate@internops.com', 'outsider@internops.com'))"
+  );
+  await pool.query(
+    "DELETE FROM users WHERE email IN ('manager@internops.com', 'subordinate@internops.com', 'outsider@internops.com')"
+  );
+
+  const csrfRes = await app.inject({
+    method: 'GET',
+    url: '/api/auth/csrf-token',
+  });
   csrfToken = JSON.parse(csrfRes.body).csrfToken;
   const loginRes = await app.inject({
     method: 'POST',
@@ -15,7 +28,6 @@ beforeAll(async () => {
   });
   accessToken = JSON.parse(loginRes.body).accessToken;
 });
-
 afterAll(async () => {
   await app.close();
 });
@@ -28,8 +40,17 @@ function authHeaders() {
   };
 }
 
-describe('Meetings Integration Tests', () => {
+async function createUserAsAdmin(user) {
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/auth/register',
+    headers: authHeaders(),
+    payload: user,
+  });
+  return JSON.parse(res.body);
+}
 
+describe('Meetings Integration Tests', () => {
   describe('POST /api/meetings', () => {
     it('should create a new meeting', async () => {
       const res = await app.inject({
@@ -58,6 +79,70 @@ describe('Meetings Integration Tests', () => {
         payload: { meetingDate: '2026-12-01' },
       });
       expect(res.statusCode).toBe(400);
+    });
+
+    it('should report skipped attendees when hierarchy access is denied', async () => {
+      const manager = await createUserAsAdmin({
+        email: 'manager@internops.com',
+        password: 'Manager@123',
+        role: 'TL',
+        fullName: 'Team Lead',
+      });
+      const subordinate = await createUserAsAdmin({
+        email: 'subordinate@internops.com',
+        password: 'Subordinate@123',
+        role: 'CAPTAIN',
+        managerId: manager.id,
+        fullName: 'Captain User',
+      });
+      const outsider = await createUserAsAdmin({
+        email: 'outsider@internops.com',
+        password: 'Outsider@123',
+        role: 'CAPTAIN',
+        fullName: 'Outside User',
+      });
+
+      // login as manager
+      const loginRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        headers: {
+          'X-CSRF-Token': csrfToken,
+          'Content-Type': 'application/json',
+        },
+        payload: { email: 'manager@internops.com', password: 'Manager@123' },
+      });
+      const managerToken = JSON.parse(loginRes.body).accessToken;
+      const managerHeaders = {
+        Authorization: `Bearer ${managerToken}`,
+        'X-CSRF-Token': csrfToken,
+        'Content-Type': 'application/json',
+      };
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/meetings',
+        headers: managerHeaders,
+        payload: {
+          title: 'Hierarchy Test Meeting',
+          meetingDate: '2026-12-02',
+          attendeeIds: [subordinate.id, outsider.id],
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const body = JSON.parse(res.body);
+      expect(body.attendees).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: subordinate.id }),
+        ])
+      );
+      expect(body.skippedAttendees).toEqual([
+        expect.objectContaining({
+          userId: outsider.id,
+          reason: 'Not in your hierarchy',
+        }),
+      ]);
     });
   });
 

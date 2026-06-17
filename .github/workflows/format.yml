@@ -1,0 +1,32 @@
+name: Auto Format Code
+
+on:
+  push:
+    # Run on all branches so formatting happens on your fork before/during PR
+    branches:
+      - '**'
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # On push, github.ref is the branch that was pushed
+          ref: ${{ github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Run Prettier
+        run: npx prettier --write .
+
+      - name: Commit formatted code
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'style: automatically format code with Prettier'
