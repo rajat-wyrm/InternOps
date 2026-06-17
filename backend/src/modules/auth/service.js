@@ -85,13 +85,11 @@ async function refreshTokens(token, ip) {
   }
 
   const hash = hashToken(token);
-  const storedToken = await repo.getRefreshTokenRedis(hash);
+  const isValid = await repo.validateRefreshToken(hash);
 
-  if (!storedToken) {
+  if (!isValid) {
     throw new UnauthorizedError('Token revoked/expired');
   }
-
-  await repo.revokeRefreshTokenRedis(hash);
 
   const user = await repo.findById(decoded.id);
 
@@ -104,6 +102,7 @@ async function refreshTokens(token, ip) {
   const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
   await repo.storeRefreshTokenRedis(user.id, hashToken(newRefresh), newExpiry);
+  await repo.revokeRefreshTokenRedis(hash);
 
   return {
     accessToken: newAccess,

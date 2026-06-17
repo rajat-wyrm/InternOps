@@ -33,7 +33,11 @@ app.register(async function sanitizationPlugin(instance) {
         const val = obj[key];
 
         if (typeof val === 'string') {
-          obj[key] = val.replace(/<[^>]*>/g, '').replace(/['"]/g, '');
+          // Strip HTML tags to mitigate XSS. Quotes are intentionally
+          // preserved: SQL injection is handled by parameterized queries,
+          // and stripping quotes corrupts valid input such as passwords
+          // and base64 CSRF tokens.
+          obj[key] = val.replace(/<[^>]*>/g, '');
         } else if (typeof val === 'object') {
           sanitize(val);
         }
