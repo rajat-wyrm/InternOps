@@ -68,7 +68,7 @@ async function routes(fastify) {
     { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')] },
     async (req, reply) => {
       const schema = z.object({
-        title: z.string().min(3).optional(),
+        title: z.string().min(3),
         description: z.string().optional(),
         meetingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         startTime: z.string().optional(),
