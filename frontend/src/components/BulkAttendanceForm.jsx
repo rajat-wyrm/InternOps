@@ -78,29 +78,25 @@ export default function BulkAttendanceForm() {
           </div>
           <div className="flex flex-wrap gap-2 mt-1 max-h-36 overflow-auto p-1">
             {loadingReports ? (
-  <p className="text-gray-500 text-sm">
-    Loading team members...
-  </p>
-) : reports?.length === 0 ? (
-  <p className="text-gray-500 text-sm">
-    No team members found.
-  </p>
-) : (
-  reports?.map(u => (
-    <button
-      type="button"
-      key={u.id}
-      onClick={() => toggleUser(u.id)}
-      className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
-        selectedUsers.includes(u.id)
-          ? 'bg-blue-600 text-white'
-          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-      }`}
-    >
-      {u.full_name || u.email}
-    </button>
-  ))
-)}
+              <p className="text-gray-500 text-sm">Loading team members...</p>
+            ) : reports?.length === 0 ? (
+              <p className="text-gray-500 text-sm">No team members found.</p>
+            ) : (
+              reports?.map((u) => (
+                <button
+                  type="button"
+                  key={u.id}
+                  onClick={() => toggleUser(u.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                    selectedUsers.includes(u.id)
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {u.full_name || u.email}
+                </button>
+              ))
+            )}
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
