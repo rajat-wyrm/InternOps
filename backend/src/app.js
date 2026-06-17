@@ -46,7 +46,10 @@ app.register(async function sanitizationPlugin(instance) {
   });
 });
 
-app.register(require('@fastify/rate-limit'), { max: 100, timeWindow: '1 minute' });
+app.register(require('@fastify/rate-limit'), {
+  max: 100,
+  timeWindow: '1 minute',
+});
 app.register(require('@fastify/rate-limit'), {
   max: 5,
   timeWindow: '1 minute',
