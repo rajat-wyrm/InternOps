@@ -249,15 +249,12 @@ export default function Dashboard() {
         </header>
 
         {/* Content */}
-        <main
-          key={loc.pathname}
-          className="flex-1 overflow-auto animate-fade-in-up"
-        >
+        <main className="flex-1 overflow-auto">
           <Routes>
             <Route
               index
               element={
-                <div className="p-6">
+                <div className="p-6 animate-fade-in-up">
                   <Home />
                 </div>
               }
