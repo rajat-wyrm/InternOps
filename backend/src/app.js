@@ -46,10 +46,13 @@ app.register(async function sanitizationPlugin(instance) {
   });
 });
 
-app.register(require('@fastify/rate-limit'), { max: 100, timeWindow: '1 minute' });
 app.register(require('@fastify/rate-limit'), {
-  max: 5,
-  timeWindow: '1 minute',
+  max: config.rateLimit.globalMax,
+  timeWindow: config.rateLimit.timeWindow,
+});
+app.register(require('@fastify/rate-limit'), {
+  max: config.rateLimit.authMax,
+  timeWindow: config.rateLimit.timeWindow,
   keyGenerator: (request) => request.ip + '_auth',
   prefix: '/api/auth',
 });

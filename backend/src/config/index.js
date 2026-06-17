@@ -48,6 +48,11 @@ module.exports = {
     baseUrl: process.env.UPTOSKILLS_BASE_URL || '',
     apiKey: process.env.UPTOSKILLS_API_KEY || '',
   },
+  rateLimit: {
+    globalMax: process.env.NODE_ENV === 'test' ? 1000 : 100,
+    authMax: process.env.NODE_ENV === 'test' ? 100 : 5,
+    timeWindow: '1 minute',
+  },
   email: {
     host: process.env.SMTP_HOST,
     port: parseInt(process.env.SMTP_PORT, 10) || 587,
