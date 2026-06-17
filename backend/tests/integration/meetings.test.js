@@ -1,5 +1,6 @@
 const supertest = require('supertest');
 const app = require('../../src/app');
+const pool = require('../../src/config/db');
 
 let csrfToken, accessToken, meetingId;
 
@@ -192,6 +193,51 @@ describe('Meetings Integration Tests', () => {
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
       expect(body.title).toBe('Updated Meeting');
+    });
+  });
+
+  describe('Attendee Management', () => {
+    it('should add an attendee to the meeting and create an audit log entry', async () => {
+      const userRes = await pool.query("SELECT id FROM users LIMIT 1");
+      const userId = userRes.rows[0].id;
+      
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/meetings/${meetingId}/attendees`,
+        headers: authHeaders(),
+        payload: { userId },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body).message).toBe('Attendee added');
+
+      // Verify audit log
+      const auditRes = await pool.query(
+        "SELECT * FROM audit_logs WHERE action = 'MEETING_ATTENDEE_ADDED' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1",
+        [meetingId]
+      );
+      expect(auditRes.rowCount).toBe(1);
+      expect(JSON.parse(auditRes.rows[0].details).addedUserId).toBe(userId);
+    });
+
+    it('should remove an attendee from the meeting and create an audit log entry', async () => {
+      const userRes = await pool.query("SELECT id FROM users LIMIT 1");
+      const userId = userRes.rows[0].id;
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/meetings/${meetingId}/attendees/${userId}`,
+        headers: authHeaders(),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body).message).toBe('Attendee removed');
+
+      // Verify audit log
+      const auditRes = await pool.query(
+        "SELECT * FROM audit_logs WHERE action = 'MEETING_ATTENDEE_REMOVED' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1",
+        [meetingId]
+      );
+      expect(auditRes.rowCount).toBe(1);
+      expect(JSON.parse(auditRes.rows[0].details).removedUserId).toBe(userId);
     });
   });
 
