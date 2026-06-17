@@ -659,6 +659,90 @@ function Row({ label, value }) {
   );
 }
 
+function PendingProofsPanel({ onMember }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(true);
+  const [error, setError] = useState('');
+
+  const { data: proofs = [], isLoading } = useQuery({
+    queryKey: ['teamPendingProofs'],
+    queryFn: () => api.get('/team/pending-proofs').then((r) => r.data),
+  });
+
+  const verifyMut = useMutation({
+    mutationFn: (id) => api.patch(`/proofs/${id}/verify`),
+    onSuccess: () => {
+      setError('');
+      queryClient.invalidateQueries({ queryKey: ['teamPendingProofs'] });
+      queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
+    },
+    onError: (err) =>
+      setError(err.response?.data?.error || 'Failed to verify proof'),
+  });
+
+  if (!isLoading && proofs.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-amber-100 mb-5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between p-4 text-left"
+      >
+        <span className="font-semibold text-gray-800">
+          🕓 Proofs awaiting verification
+          {proofs.length > 0 && (
+            <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">
+              {proofs.length}
+            </span>
+          )}
+        </span>
+        <span className="text-gray-400 text-sm">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          {error && (
+            <p className="text-red-700 bg-red-50 px-3 py-2 rounded mb-2">
+              {error}
+            </p>
+          )}
+          {isLoading ? (
+            <p className="text-sm text-gray-500">Loading...</p>
+          ) : (
+            <div className="divide-y divide-gray-50 max-h-80 overflow-auto">
+              {proofs.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between gap-3 py-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <button
+                      onClick={() => onMember(p.intern_id)}
+                      className="font-medium text-gray-800 hover:underline truncate text-left"
+                    >
+                      {p.intern_name || p.intern_email}
+                    </button>
+                    <div className="text-gray-500 text-xs truncate">
+                      {p.task_title || 'Task'} ·{' '}
+                      {new Date(p.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => verifyMut.mutate(p.id)}
+                    disabled={verifyMut.isPending}
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs disabled:opacity-60"
+                  >
+                    Verify
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Team() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -707,7 +791,11 @@ export default function Team() {
     const avgRating = ratings.length
       ? (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1)
       : null;
-    return { active, avgAtt, avgRating };
+    const pendingProofs = members.reduce(
+      (sum, m) => sum + (Number(m.pending_proofs) || 0),
+      0
+    );
+    return { active, avgAtt, avgRating, pendingProofs };
   }, [members]);
 
   const exportCsv = async () => {
@@ -750,7 +838,7 @@ export default function Team() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
         <StatCard label="Total members" value={members.length} />
         <StatCard label="Active" value={stats.active} />
         <StatCard
@@ -762,7 +850,14 @@ export default function Team() {
           value={stats.avgRating ?? '—'}
           sub="out of 5"
         />
+        <StatCard
+          label="Proofs to verify"
+          value={stats.pendingProofs}
+          sub="awaiting review"
+        />
       </div>
+
+      {stats.pendingProofs > 0 && <PendingProofsPanel onMember={setSelected} />}
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="relative flex-1 min-w-[200px]">
@@ -820,6 +915,7 @@ export default function Team() {
                 <th className="p-3 w-40">Attendance</th>
                 <th className="p-3">Rating</th>
                 <th className="p-3">Tasks</th>
+                <th className="p-3">Pending</th>
                 <th className="p-3">Status</th>
               </tr>
             </thead>
@@ -872,6 +968,15 @@ export default function Team() {
                     </td>
                     <td className="p-3">
                       {m.verified_tasks}/{m.total_tasks}
+                    </td>
+                    <td className="p-3">
+                      {Number(m.pending_proofs) > 0 ? (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                          {m.pending_proofs} to verify
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="p-3">
                       {m.suspended ? (

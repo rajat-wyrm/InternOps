@@ -81,6 +81,15 @@ async function routes(fastify) {
     }
   );
 
+  // Recent proofs across the requester's team that are awaiting verification.
+  fastify.get(
+    '/pending-proofs',
+    { preHandler: [auth, rbac(...MANAGER_ROLES)] },
+    async (req) => {
+      return repo.getPendingProofs(req.user.id);
+    }
+  );
+
   // Add a new member under the requester (or a sub-manager in their team).
   fastify.post(
     '/members',

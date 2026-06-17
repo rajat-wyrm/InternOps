@@ -24,7 +24,10 @@ const PERFORMANCE_JOINS = `
     FROM ratings WHERE deleted_at IS NULL GROUP BY rated_user_id
   ) rat ON rat.rated_user_id = u.id
   LEFT JOIN (
-    SELECT intern_id, COUNT(*) FILTER (WHERE status = 'VERIFIED') AS verified_tasks, COUNT(*) AS total_tasks
+    SELECT intern_id,
+           COUNT(*) FILTER (WHERE status = 'VERIFIED') AS verified_tasks,
+           COUNT(*) FILTER (WHERE status = 'PENDING')  AS pending_proofs,
+           COUNT(*) AS total_tasks
     FROM proof_submissions WHERE deleted_at IS NULL GROUP BY intern_id
   ) tsk ON tsk.intern_id = u.id
 `;
@@ -38,6 +41,7 @@ const PERFORMANCE_COLUMNS = `
   rat.avg_rating,
   COALESCE(rat.rating_count, 0)    AS rating_count,
   COALESCE(tsk.verified_tasks, 0)  AS verified_tasks,
+  COALESCE(tsk.pending_proofs, 0)  AS pending_proofs,
   COALESCE(tsk.total_tasks, 0)     AS total_tasks
 `;
 
@@ -173,6 +177,30 @@ async function getMemberHistory(id) {
   return { attendance: attendance.rows, ratings: ratings.rows };
 }
 
+// Recent proofs awaiting verification across the requester's whole team.
+async function getPendingProofs(managerId, limit = 50) {
+  const query = `
+    WITH RECURSIVE team AS (
+      SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+      UNION ALL
+      SELECT u.id FROM users u INNER JOIN team t ON u.manager_id = t.id
+      WHERE u.deleted_at IS NULL
+    )
+    SELECT p.id, p.intern_id, p.image_path, p.status, p.created_at,
+           u.full_name AS intern_name, u.email AS intern_email,
+           s.id AS task_id, s.title AS task_title
+    FROM proof_submissions p
+    JOIN team t ON t.id = p.intern_id
+    JOIN users u ON u.id = p.intern_id
+    LEFT JOIN social_tasks s ON s.id = p.task_id
+    WHERE p.status = 'PENDING' AND p.deleted_at IS NULL
+    ORDER BY p.created_at DESC
+    LIMIT $2
+  `;
+  const { rows } = await pool.query(query, [managerId, limit]);
+  return rows;
+}
+
 async function setMemberStatus(id, suspended) {
   await pool.query(
     'UPDATE users SET suspended = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
@@ -190,5 +218,6 @@ module.exports = {
   emailExists,
   getUserRole,
   getMemberHistory,
+  getPendingProofs,
   setMemberStatus,
 };
