@@ -181,6 +181,32 @@ async function setMemberStatus(id, suspended) {
   return getMemberById(id);
 }
 
+// Roles of a member's direct reports (used to keep the hierarchy valid when
+// demoting: a member must still outrank everyone reporting to them).
+async function getDirectReportRoles(id) {
+  const { rows } = await pool.query(
+    'SELECT DISTINCT role FROM users WHERE manager_id = $1 AND deleted_at IS NULL',
+    [id]
+  );
+  return rows.map((r) => r.role);
+}
+
+async function updateMemberRole(id, role) {
+  await pool.query(
+    'UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
+    [role, id]
+  );
+  return getMemberById(id);
+}
+
+async function updateMemberManager(id, managerId) {
+  await pool.query(
+    'UPDATE users SET manager_id = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
+    [managerId, id]
+  );
+  return getMemberById(id);
+}
+
 module.exports = {
   getTeamMembers,
   getMemberById,
@@ -190,5 +216,8 @@ module.exports = {
   emailExists,
   getUserRole,
   getMemberHistory,
+  getDirectReportRoles,
+  updateMemberRole,
+  updateMemberManager,
   setMemberStatus,
 };

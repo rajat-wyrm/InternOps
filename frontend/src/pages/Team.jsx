@@ -372,11 +372,19 @@ function HistorySection({ memberId }) {
 
 function MemberDetail({ memberId, onClose }) {
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
   const [form, setForm] = useState(null);
   const [edit, setEdit] = useState(false);
   const [tab, setTab] = useState('details');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [newRole, setNewRole] = useState('');
+  const [newManager, setNewManager] = useState('');
+
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['teamMembers'],
+    queryFn: () => api.get('/team/members').then((res) => res.data),
+  });
 
   const { data: member, isLoading } = useQuery({
     queryKey: ['teamMember', memberId],
@@ -424,6 +432,31 @@ function MemberDetail({ memberId, onClose }) {
       invalidate();
     },
     onError: (err) => setError(err.response?.data?.error || 'Failed'),
+  });
+
+  const roleMut = useMutation({
+    mutationFn: (role) => api.patch(`/team/members/${memberId}/role`, { role }),
+    onSuccess: () => {
+      setMessage('Role updated');
+      setError('');
+      invalidate();
+      setTimeout(() => setMessage(''), 2500);
+    },
+    onError: (err) =>
+      setError(err.response?.data?.error || 'Failed to change role'),
+  });
+
+  const managerMut = useMutation({
+    mutationFn: (manager_id) =>
+      api.patch(`/team/members/${memberId}/manager`, { manager_id }),
+    onSuccess: () => {
+      setMessage('Manager reassigned');
+      setError('');
+      invalidate();
+      setTimeout(() => setMessage(''), 2500);
+    },
+    onError: (err) =>
+      setError(err.response?.data?.error || 'Failed to reassign manager'),
   });
 
   const pct = member ? attendancePct(member) : null;
@@ -629,6 +662,82 @@ function MemberDetail({ memberId, onClose }) {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Hierarchical management: role + manager (managers only) */}
+              {rolesBelow(user?.role).length > 0 && member.id !== user?.id && (
+                <div className="bg-white rounded-xl shadow-sm p-5 space-y-4">
+                  <h4 className="font-semibold">Manage</h4>
+
+                  <Field label="Role">
+                    <div className="flex gap-2">
+                      <select
+                        className="border p-2 rounded-lg flex-1"
+                        value={newRole || member.role}
+                        onChange={(e) => setNewRole(e.target.value)}
+                      >
+                        {rolesBelow(user?.role).map((r) => (
+                          <option key={r} value={r}>
+                            {ROLE_LABEL[r]}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => roleMut.mutate(newRole || member.role)}
+                        disabled={
+                          roleMut.isPending ||
+                          (newRole || member.role) === member.role
+                        }
+                        className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-50"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </Field>
+
+                  <Field label="Reports to">
+                    <div className="flex gap-2">
+                      <select
+                        className="border p-2 rounded-lg flex-1"
+                        value={newManager || member.manager_id || ''}
+                        onChange={(e) => setNewManager(e.target.value)}
+                      >
+                        {[
+                          { id: user?.id, label: 'Me' },
+                          ...teamMembers
+                            .filter(
+                              (t) =>
+                                t.id !== member.id &&
+                                ROLE_RANK[t.role] > ROLE_RANK[member.role]
+                            )
+                            .map((t) => ({
+                              id: t.id,
+                              label: `${t.full_name || t.email} (${ROLE_LABEL[t.role] || t.role})`,
+                            })),
+                        ].map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() =>
+                          managerMut.mutate(
+                            newManager || member.manager_id || user?.id
+                          )
+                        }
+                        disabled={
+                          managerMut.isPending ||
+                          (newManager || member.manager_id) ===
+                            member.manager_id
+                        }
+                        className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-50"
+                      >
+                        Reassign
+                      </button>
+                    </div>
+                  </Field>
                 </div>
               )}
 
