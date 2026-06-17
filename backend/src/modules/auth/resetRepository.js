@@ -1,15 +1,20 @@
 ﻿const pool = require('../../config/db');
 const crypto = require('crypto');
 const argon2 = require('argon2');
-
+const { revokeAllUserTokensRedis } = require('./repository');
 async function createResetToken(userId) {
   // Remove old unused tokens for this user
-  await pool.query('UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE', [userId]);
+  await pool.query(
+    'UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE',
+    [userId]
+  );
   const token = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-  await pool.query('INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1,$2,$3)',
-    [userId, tokenHash, expires]);
+  await pool.query(
+    'INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1,$2,$3)',
+    [userId, tokenHash, expires]
+  );
   return token; // return raw token (not hashed) for email
 }
 
@@ -24,7 +29,10 @@ async function verifyResetToken(rawToken) {
 
 async function markTokenUsed(rawToken) {
   const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
-  await pool.query('UPDATE password_reset_tokens SET used = TRUE WHERE token_hash = $1', [hash]);
+  await pool.query(
+    'UPDATE password_reset_tokens SET used = TRUE WHERE token_hash = $1',
+    [hash]
+  );
 }
 
 async function updateUserPassword(userId, newPassword) {
@@ -53,6 +61,9 @@ async function updateUserPassword(userId, newPassword) {
   } finally {
     client.release();
   }
+
+  // Revoke all Redis-cached active tokens to prevent session hijacking
+  await revokeAllUserTokensRedis(userId);
 }
 async function resetPasswordAtomic(rawToken, newPassword) {
   const client = await pool.connect();
@@ -65,53 +76,49 @@ async function resetPasswordAtomic(rawToken, newPassword) {
       .update(rawToken)
       .digest('hex');
 
-    const tokenResult = await client.query(
-      `
-      UPDATE password_reset_tokens
-      SET used = TRUE
-      WHERE token_hash = $1
-      AND used = FALSE
-      AND expires_at > NOW()
-      RETURNING user_id
-      `,
+    // Verify token and mark it used atomically
+    const res = await client.query(
+      `UPDATE password_reset_tokens
+       SET used = TRUE
+       WHERE token_hash = $1
+         AND used = FALSE
+         AND expires_at > NOW()
+       RETURNING user_id`,
       [hash]
     );
 
-    if (tokenResult.rows.length === 0) {
+    if (res.rows.length === 0) {
       throw new Error('Invalid or expired reset token');
     }
 
-    const userId = tokenResult.rows[0].user_id;
+    const userId = res.rows[0].user_id;
 
-    const passwordHash = await argon2.hash(
-      newPassword
-    );
+    const passwordHash = await argon2.hash(newPassword);
 
     await client.query(
-      `
-      UPDATE users
-      SET password_hash = $1,
-          updated_at = NOW()
-      WHERE id = $2
-      `,
+      `UPDATE users
+       SET password_hash = $1,
+           updated_at = NOW()
+       WHERE id = $2`,
       [passwordHash, userId]
     );
 
     await client.query(
-      `
-      UPDATE refresh_tokens
-      SET revoked = TRUE
-      WHERE user_id = $1
-      `,
+      `UPDATE refresh_tokens
+       SET revoked = TRUE
+       WHERE user_id = $1`,
       [userId]
     );
 
     await client.query('COMMIT');
 
+    // Redis cleanup after successful commit
+    await revokeAllUserTokensRedis(userId);
+
     return userId;
-  } catch (error) {
+  } catch (err) {
     await client.query('ROLLBACK');
-    throw error;
+    throw err;
   } finally {
     client.release();
   }
@@ -121,5 +128,5 @@ module.exports = {
   verifyResetToken,
   markTokenUsed,
   updateUserPassword,
-  resetPasswordAtomic
+  resetPasswordAtomic,
 };
