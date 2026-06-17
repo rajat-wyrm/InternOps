@@ -25,7 +25,6 @@ it('should send with console fallback when SMTP not configured', async () => {
   const originalUser = process.env.SMTP_USER;
   const originalPass = process.env.SMTP_PASS;
 
-  jest.resetModules();
   jest.doMock('nodemailer', () => ({
     createTransport: jest.fn(),
   }));
@@ -161,6 +160,7 @@ it('should send with console fallback when SMTP not configured', async () => {
           text: 'fail',
         })
       ).rejects.toThrow('Bounced address suppressed');
+      originalConfig.email.bounceCheckEnabled = false;
     });
   });
 
