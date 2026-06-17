@@ -36,7 +36,10 @@ export default function Exports() {
   // a blob response, then trigger the download from the response — same pattern
   // as Team.jsx's exportCsv.
   const download = async (endpoint) => {
-    if (!from || !to) return alert('Please select a date range first');
+    if (!from || !to) {
+      alert('Please select both a From and To date before downloading.');
+      return;
+    }
     try {
       const res = await api.get(
         `/reports/export/${endpoint}?from=${from}&to=${to}`,
@@ -84,8 +87,12 @@ export default function Exports() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {EXPORTS.map((e) => (
-          <Card key={e.key} className="p-5 card-hover cursor-pointer" hover>
-            <div onClick={() => download(e.key)}>
+          <Card
+            key={e.key}
+            className={`p-5 ${!from || !to ? 'opacity-50 cursor-not-allowed' : ''}`}
+            hover={!!(from && to)}
+          >
+            <div onClick={() => (from && to ? download(e.key) : null)}>
               <div
                 className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${e.grad} text-white flex items-center justify-center text-2xl shadow-lg mb-3`}
               >

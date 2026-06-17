@@ -25,7 +25,7 @@ app.register(require('@fastify/cors'), {
 app.register(require('@fastify/helmet'));
 
 app.register(async function sanitizationPlugin(instance) {
-  instance.addHook('onRequest', async (request) => {
+  instance.addHook('preValidation', async (request) => {
     const sanitize = (obj) => {
       if (!obj || typeof obj !== 'object') return;
 
@@ -33,7 +33,11 @@ app.register(async function sanitizationPlugin(instance) {
         const val = obj[key];
 
         if (typeof val === 'string') {
-          obj[key] = val.replace(/<[^>]*>/g, '').replace(/['"]/g, '');
+          // Strip HTML tags to mitigate XSS. Quotes are intentionally
+          // preserved: SQL injection is handled by parameterized queries,
+          // and stripping quotes corrupts valid input such as passwords
+          // and base64 CSRF tokens.
+          obj[key] = val.replace(/<[^>]*>/g, '');
         } else if (typeof val === 'object') {
           sanitize(val);
         }

@@ -29,6 +29,10 @@ export default function BulkAttendanceForm() {
     onError: (err) => setError(err.response?.data?.error || 'Bulk mark failed'),
   });
 
+  const allSelected =
+    reports?.length > 0 && selectedUsers.length === reports.length;
+  const toggleAll = () =>
+    setSelectedUsers(allSelected ? [] : reports.map((u) => u.id));
   const toggleUser = (id) =>
     setSelectedUsers((p) =>
       p.includes(id) ? p.filter((x) => x !== id) : [...p, id]
@@ -60,9 +64,18 @@ export default function BulkAttendanceForm() {
       {msg && <p className="text-green-600 text-sm mb-2">{msg}</p>}
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="text-xs text-gray-500">
-            Select members ({selectedUsers.length} selected)
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs text-gray-500">
+              Select members ({selectedUsers.length} selected)
+            </label>
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="text-xs text-indigo-600 hover:underline"
+            >
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2 mt-1 max-h-36 overflow-auto p-1">
             {reports?.map((u) => (
               <button

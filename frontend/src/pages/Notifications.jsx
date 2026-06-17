@@ -20,6 +20,7 @@ export default function Notifications() {
     queryFn: () =>
       api.get(`/notifications?page=${page}&limit=20`).then((res) => res.data),
     refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   });
 
   const invalidate = () =>
