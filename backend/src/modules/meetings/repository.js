@@ -39,19 +39,33 @@ async function removeAttendee(meetingId, userId) {
   );
 }
 
-async function listMeetings({ userId, departmentId, fromDate, toDate }) {
+async function listMeetings({
+  userId,
+  departmentId,
+  fromDate,
+  toDate,
+  page = 1,
+  limit = 20,
+}) {
+  const safeLimit = Math.min(Number(limit) || 20, 100);
+  const safePage = Math.max(Number(page) || 1, 1);
+  const offset = (safePage - 1) * safeLimit;
+
   let query = `
-    SELECT DISTINCT m.*
+    SELECT DISTINCT m.*, COUNT(*) OVER() AS total_count
     FROM meetings m
     LEFT JOIN meeting_attendees a ON m.id = a.meeting_id
     WHERE m.deleted_at IS NULL
   `;
   const params = [];
   let condIdx = 1;
-
-  // Access control: show meetings where user is creator, attendee, or in their department (and they manage it)
+  // Access control:
+  // creator OR attendee OR department meeting
   if (userId) {
-    query += ` AND (m.created_by = $${condIdx} OR a.user_id = $${condIdx}`;
+    query += ` AND (
+      m.created_by = $${condIdx}
+      OR a.user_id = $${condIdx}
+    `;
     params.push(userId);
     condIdx++;
     if (departmentId) {
@@ -71,9 +85,26 @@ async function listMeetings({ userId, departmentId, fromDate, toDate }) {
     params.push(toDate);
     condIdx++;
   }
-  query += ' ORDER BY m.meeting_date DESC, m.start_time DESC';
+  query += `
+    ORDER BY m.meeting_date DESC, m.start_time DESC
+    LIMIT $${condIdx}
+    OFFSET $${condIdx + 1}
+  `;
+  params.push(safeLimit, offset);
   const res = await pool.query(query, params);
-  return res.rows;
+  const total =
+    res.rows.length > 0
+      ? Number(res.rows[0].total_count)
+      : 0;
+  return {
+    data: res.rows.map(({ total_count, ...meeting }) => meeting),
+    pagination: {
+      total,
+      page: safePage,
+      limit: safeLimit,
+      totalPages: Math.ceil(total / safeLimit),
+    },
+  };
 }
 
 async function getMeetingById(meetingId) {
