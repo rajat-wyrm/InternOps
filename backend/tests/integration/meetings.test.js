@@ -198,9 +198,9 @@ describe('Meetings Integration Tests', () => {
 
   describe('Attendee Management', () => {
     it('should add an attendee to the meeting and create an audit log entry', async () => {
-      const userRes = await pool.query("SELECT id FROM users LIMIT 1");
+      const userRes = await pool.query('SELECT id FROM users LIMIT 1');
       const userId = userRes.rows[0].id;
-      
+
       const res = await app.inject({
         method: 'POST',
         url: `/api/meetings/${meetingId}/attendees`,
@@ -220,7 +220,7 @@ describe('Meetings Integration Tests', () => {
     });
 
     it('should remove an attendee from the meeting and create an audit log entry', async () => {
-      const userRes = await pool.query("SELECT id FROM users LIMIT 1");
+      const userRes = await pool.query('SELECT id FROM users LIMIT 1');
       const userId = userRes.rows[0].id;
 
       const res = await app.inject({
