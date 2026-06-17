@@ -4,6 +4,10 @@ const rbac = require('../../middleware/rbac');
 const { bruteForceCheck } = require('../../middleware/bruteForce');
 const auth = require('../../middleware/auth');
 const { extractRequestInfo } = require('../../utils/audit');
+const { generateToken } = require('../../middleware/csrf');
+const { verifyEmail, sendVerificationEmail } = require('./verificationService');
+const repo = require('./repository');
+const { forgotPassword, resetPassword } = require('./resetService');
 const isProduction = process.env.NODE_ENV === 'production';
 async function routes(fastify) {
   // Register
@@ -120,15 +124,12 @@ async function routes(fastify) {
 
   // Get CSRF token
   fastify.get('/csrf-token', async (req, reply) => {
-    const { generateToken } = require('../../middleware/csrf');
     return { csrfToken: generateToken() };
   });
 
   // Verify email
   fastify.post('/verify-email', async (req, reply) => {
-    const schema = z.object({ token: z.string() });
-    const { token } = schema.parse(req.body);
-    const { verifyEmail } = require('./verificationService');
+    const { token } = z.object({ token: z.string() }).parse(req.body);
     await verifyEmail(token);
     return { message: 'Email verified successfully. You can now log in.' };
   });
@@ -138,10 +139,8 @@ async function routes(fastify) {
     '/resend-verification',
     { preHandler: [auth] },
     async (req, reply) => {
-      const repo = require('./repository');
       const user = await repo.findById(req.user.id);
       if (!user) return reply.status(404).send({ error: 'User not found' });
-      const { sendVerificationEmail } = require('./verificationService');
       await sendVerificationEmail(user.id, user.email);
       return { message: 'Verification email sent.' };
     }
@@ -149,27 +148,17 @@ async function routes(fastify) {
 
   // Forgot password
   fastify.post('/forgot-password', async (req, reply) => {
-    const schema = z.object({ email: z.string().email() });
-    const { email } = schema.parse(req.body);
-    await require('./resetService').forgotPassword(
-      email,
-      extractRequestInfo(req)
-    );
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    await forgotPassword(email, extractRequestInfo(req));
     return { message: 'If that email exists, a reset link has been sent.' };
   });
 
   // Reset password
   fastify.post('/reset-password', async (req, reply) => {
-    const schema = z.object({
-      token: z.string(),
-      newPassword: z.string().min(8),
-    });
-    const { token, newPassword } = schema.parse(req.body);
-    await require('./resetService').resetPassword(
-      token,
-      newPassword,
-      extractRequestInfo(req)
-    );
+    const { token, newPassword } = z
+      .object({ token: z.string(), newPassword: z.string().min(8) })
+      .parse(req.body);
+    await resetPassword(token, newPassword, extractRequestInfo(req));
     return {
       message:
         'Password reset successful. Please log in with your new password.',

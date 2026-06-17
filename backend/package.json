@@ -20,6 +20,7 @@
     "@fastify/static": "^7.0.4",
     "@fastify/swagger": "^8.14.0",
     "@fastify/swagger-ui": "^3.0.0",
+    "@google/generative-ai": "^0.24.1",
     "argon2": "^0.31.2",
     "cross-env": "^10.1.0",
     "dotenv": "^16.4.5",

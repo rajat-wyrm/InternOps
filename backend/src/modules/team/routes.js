@@ -10,6 +10,8 @@ const { z } = require('zod');
 const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
 // Hierarchy levels — a manager may add any member ranked below themselves.
 const ROLE_RANK = { ADMIN: 4, SENIOR_TL: 3, TL: 2, CAPTAIN: 1, INTERN: 0 };
+// Roles a manager can assign (ADMIN is never assignable through team mgmt).
+const ASSIGNABLE_ROLES = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
 const detailFields = {
   full_name: z.string().max(255).optional(),
@@ -78,6 +80,15 @@ async function routes(fastify) {
         'attachment; filename="team-members.csv"'
       );
       return toCsv(members);
+    }
+  );
+
+  // Recent proofs across the requester's team that are awaiting verification.
+  fastify.get(
+    '/pending-proofs',
+    { preHandler: [auth, rbac(...MANAGER_ROLES)] },
+    async (req) => {
+      return repo.getPendingProofs(req.user.id);
     }
   );
 
@@ -192,6 +203,129 @@ async function routes(fastify) {
         ...extractRequestInfo(req),
       });
       return member;
+    }
+  );
+
+  // Promote / demote a member's role (within hierarchy).
+  fastify.patch(
+    '/members/:id/role',
+    { preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id')] },
+    async (req, reply) => {
+      const { role } = z
+        .object({ role: z.enum(ASSIGNABLE_ROLES) })
+        .parse(req.body);
+
+      // A manager may never change their own role here.
+      if (req.params.id === req.user.id) {
+        return reply
+          .status(403)
+          .send({ error: 'You cannot change your own role' });
+      }
+
+      // New role must be strictly below the requester's own rank.
+      if (
+        req.user.role !== 'ADMIN' &&
+        ROLE_RANK[role] >= ROLE_RANK[req.user.role]
+      ) {
+        return reply.status(403).send({
+          error: `You can only assign roles below your own (${req.user.role})`,
+        });
+      }
+
+      const before = await repo.getMemberById(req.params.id);
+      if (!before) return reply.status(404).send({ error: 'Member not found' });
+
+      // Demotion must not leave the member ranked at/below their own reports.
+      const reportRoles = await repo.getDirectReportRoles(req.params.id);
+      const highestReport = reportRoles.reduce(
+        (max, r) => Math.max(max, ROLE_RANK[r] ?? 0),
+        -1
+      );
+      if (highestReport >= ROLE_RANK[role]) {
+        return reply.status(400).send({
+          error:
+            'New role would not outrank this member’s existing reports. Reassign their reports first.',
+        });
+      }
+
+      const after = await repo.updateMemberRole(req.params.id, role);
+      await createAuditLog({
+        userId: req.user.id,
+        action: 'MEMBER_ROLE_CHANGED',
+        resourceType: 'user',
+        resourceId: req.params.id,
+        oldValue: { role: before.role },
+        newValue: { role: after.role },
+        ...extractRequestInfo(req),
+      });
+      return after;
+    }
+  );
+
+  // Reassign a member to a different manager inside the requester's team.
+  fastify.patch(
+    '/members/:id/manager',
+    { preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id')] },
+    async (req, reply) => {
+      const { manager_id } = z
+        .object({ manager_id: z.string().uuid() })
+        .parse(req.body);
+
+      if (manager_id === req.params.id) {
+        return reply
+          .status(400)
+          .send({ error: 'A member cannot be their own manager' });
+      }
+
+      const member = await repo.getMemberById(req.params.id);
+      if (!member) return reply.status(404).send({ error: 'Member not found' });
+
+      // The new manager must be the requester or inside the requester's team.
+      if (manager_id !== req.user.id && req.user.role !== 'ADMIN') {
+        const managerInTeam = await checkHierarchyAccess(
+          req.user.id,
+          manager_id
+        );
+        if (!managerInTeam) {
+          return reply
+            .status(403)
+            .send({ error: 'Chosen manager is not in your team' });
+        }
+      }
+
+      // The new manager must outrank the member.
+      const managerRole =
+        manager_id === req.user.id
+          ? req.user.role
+          : await repo.getUserRole(manager_id);
+      if (!managerRole)
+        return reply.status(400).send({ error: 'Manager not found' });
+      if (ROLE_RANK[member.role] >= ROLE_RANK[managerRole]) {
+        return reply.status(400).send({
+          error: `Manager (${managerRole}) must outrank the member (${member.role})`,
+        });
+      }
+
+      // Prevent cycles: the new manager must not be the member or a descendant
+      // of the member (i.e. the member must not already manage the new manager).
+      const wouldCycle = await checkHierarchyAccess(req.params.id, manager_id);
+      if (wouldCycle) {
+        return reply
+          .status(400)
+          .send({ error: 'That assignment would create a cycle' });
+      }
+
+      const after = await repo.updateMemberManager(req.params.id, manager_id);
+      await createAuditLog({
+        userId: req.user.id,
+        action: 'MEMBER_MANAGER_CHANGED',
+        resourceType: 'user',
+        resourceId: req.params.id,
+        oldValue: { manager_id: member.manager_id },
+        newValue: { manager_id },
+        ...extractRequestInfo(req),
+      });
+      return after;
     }
   );
 }

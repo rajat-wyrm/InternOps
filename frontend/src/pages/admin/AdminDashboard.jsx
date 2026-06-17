@@ -23,6 +23,8 @@ function initials(u) {
 export default function AdminDashboard() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [deletingUserId, setDeletingUserId] = useState(null);
+
   const { data, isLoading } = useQuery({
     queryKey: ['adminUsers', page],
     queryFn: () =>
@@ -41,6 +43,9 @@ export default function AdminDashboard() {
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/users/${id}`),
     onSuccess: inv,
+    onSettled: () => {
+      setDeletingUserId(null);
+    },
   });
 
   return (
@@ -101,12 +106,19 @@ export default function AdminDashboard() {
                     )}
                     <Btn
                       variant="danger"
+                      disabled={deletingUserId === u.id || deleteMut.isPending}
                       onClick={() => {
-                        if (confirm('Delete this user?'))
+                        if (deleteMut.isPending || deletingUserId === u.id) {
+                          return;
+                        }
+
+                        if (confirm('Delete this user?')) {
+                          setDeletingUserId(u.id);
                           deleteMut.mutate(u.id);
+                        }
                       }}
                     >
-                      Delete
+                      {deletingUserId === u.id ? 'Deleting...' : 'Delete'}
                     </Btn>
                   </div>
                 </td>

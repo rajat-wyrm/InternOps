@@ -22,8 +22,18 @@ export default function Login() {
     onError: (err) => setError(err.response?.data?.error || 'Login failed'),
   });
 
+  const validate = () => {
+    if (!email.trim()) return 'Email is required';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Enter a valid email';
+    if (!password) return 'Password is required';
+    if (password.length < 8) return 'Password must be at least 8 characters';
+    return null;
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    const err = validate();
+    if (err) return setError(err);
     setError('');
     loginMut.mutate({ email, password });
   };
