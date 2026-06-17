@@ -174,7 +174,11 @@ function ManagerHome({ user }) {
 
 function InternHome({ user }) {
   const now = new Date();
-  const { data: stats, isLoading, isError } = useQuery({
+  const {
+    data: stats,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['internHome', user?.id],
     queryFn: async () => {
       const [att, ratings] = await Promise.all([
@@ -195,7 +199,8 @@ function InternHome({ user }) {
   if (isError) {
     return (
       <div className="bg-red-50 text-red-700 p-4 rounded-xl">
-        Failed to load your dashboard data. Please refresh or contact your manager.
+        Failed to load your dashboard data. Please refresh or contact your
+        manager.
       </div>
     );
   }
