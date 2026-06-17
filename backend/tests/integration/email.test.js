@@ -49,6 +49,9 @@ it('should send with console fallback when SMTP not configured', async () => {
   process.env.SMTP_HOST = originalHost;
   process.env.SMTP_USER = originalUser;
   process.env.SMTP_PASS = originalPass;
+
+  jest.resetModules();
+  jest.restoreAllMocks();
 });
 
 
