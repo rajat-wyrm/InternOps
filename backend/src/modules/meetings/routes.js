@@ -68,7 +68,7 @@ async function routes(fastify) {
     { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')] },
     async (req, reply) => {
       const schema = z.object({
-        title: z.string().min(3).regex(/[a-zA-Z]/, "Title must contain at least one letter"),
+        title: z.string().min(3).optional(),
         description: z.string().optional(),
         meetingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         startTime: z.string().optional(),
@@ -129,7 +129,7 @@ async function routes(fastify) {
     async (req, reply) => {
 
        const schema = z.object({
-        title: z.string().min(3) .regex(/[a-zA-Z]/, "Title must contain at least one letter"),
+        title: z.string().min(3).optional(),
         description: z.string().optional(),
         meeting_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         start_time: z.string().optional(),
