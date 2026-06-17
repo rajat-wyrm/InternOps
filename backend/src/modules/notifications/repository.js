@@ -10,22 +10,23 @@ async function send(userId, message) {
 async function get(userId, { page = 1, limit = 20 } = {}) {
   const safeLim = Math.min(limit, 100);
   const offset = (page - 1) * safeLim;
+
   const res = await pool.query(
-    `SELECT * FROM notifications
+    `SELECT *, COUNT(*) OVER() AS total_count
+     FROM notifications
      WHERE user_id = $1 AND deleted_at IS NULL
      ORDER BY created_at DESC
      LIMIT $2 OFFSET $3`,
     [userId, safeLim, offset]
   );
-  const countRes = await pool.query(
-    'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND deleted_at IS NULL',
-    [userId]
-  );
+
+  const total = res.rows.length > 0 ? parseInt(res.rows[0].total_count, 10) : 0;
+
   return {
-    data: res.rows,
-    total: parseInt(countRes.rows[0].count, 10),
+    data: res.rows.map(({ total_count, ...row }) => row),
+    total,
     page,
-    limit,
+    limit: safeLim,
   };
 }
 

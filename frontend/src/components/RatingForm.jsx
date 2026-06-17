@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { Card, Btn, Textarea, Select } from './ui';
+import RatingSuggestionCard from './RatingSuggestionCard';
 
 export default function RatingForm() {
   const queryClient = useQueryClient();
@@ -16,6 +17,21 @@ export default function RatingForm() {
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
 
+  const { data: suggestion, isLoading: suggestionLoading } = useQuery({
+    queryKey: ['ratingSuggestion', userId],
+
+    queryFn: () =>
+      api.get(`/ratings/suggestions/${userId}`).then((res) => res.data),
+
+    enabled: !!userId,
+  });
+
+  useEffect(() => {
+    if (suggestion?.recommendation?.suggestedScore) {
+      setScore(Math.round(suggestion.recommendation.suggestedScore));
+    }
+  }, [suggestion]);
+
   const rateMutation = useMutation({
     mutationFn: (data) => api.post('/ratings', data),
     onSuccess: () => {
@@ -23,6 +39,8 @@ export default function RatingForm() {
       setError('');
       setMsg('✓ Rating submitted');
       setRemarks('');
+      setUserId('');
+      setScore(5);
       setTimeout(() => setMsg(''), 2000);
     },
     onError: (err) => setError(err.response?.data?.error || 'Failed'),
@@ -35,6 +53,10 @@ export default function RatingForm() {
       </h3>
       {error && <p className="text-rose-600 text-sm mb-2">{error}</p>}
       {msg && <p className="text-green-600 text-sm mb-2">{msg}</p>}
+      <RatingSuggestionCard
+        suggestion={suggestion}
+        loading={suggestionLoading}
+      />
       <form
         onSubmit={(e) => {
           e.preventDefault();
