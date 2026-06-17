@@ -267,18 +267,28 @@ Recommended production setup:
 
 Copy `.env.example` to `.env` and fill in the required values. The following variables are used:
 
-| Variable                   | Description                           |
-| -------------------------- | ------------------------------------- |
-| `NODE_ENV`                 | `development` or `production`         |
-| `PORT`                     | Server port (default 5000)            |
-| `DATABASE_URL`             | PostgreSQL connection string          |
-| `JWT_SECRET`               | Secret key for JWT signing            |
-| `UPSTASH_REDIS_REST_URL`   | Redis connection URL (optional)       |
-| `UPSTASH_REDIS_REST_TOKEN` | Redis token (optional)                |
-| `CORS_ORIGIN`              | Allowed origin for CORS in production |
-| `EMAIL_API_KEY`            | Email service API key (optional)      |
-| `UPTOSKILLS_BASE_URL`      | Uptoskills API base URL (future)      |
-| `UPTOSKILLS_API_KEY`       | Uptoskills API key (future)           |
+| Variable                   | Description                                       |
+| -------------------------- | ------------------------------------------------- |
+| `NODE_ENV`                 | `development` or `production`                     |
+| `PORT`                     | Server port (default 5000)                        |
+| `DATABASE_URL`             | PostgreSQL connection string                      |
+| `JWT_SECRET`               | Secret key for JWT signing                        |
+| `UPSTASH_REDIS_REST_URL`   | Redis connection URL (optional)                   |
+| `UPSTASH_REDIS_REST_TOKEN` | Redis token (optional)                            |
+| `CORS_ORIGIN`              | Allowed origin for CORS in production             |
+| `EMAIL_PROVIDER`           | Email provider identifier (default `smtp`)        |
+| `EMAIL_FROM`               | Default "from" address for outgoing emails        |
+| `SMTP_HOST`                | SMTP server hostname (e.g. `smtp.gmail.com`)      |
+| `SMTP_PORT`                | SMTP server port (default `587`)                  |
+| `SMTP_SECURE`              | `true` to use TLS on connect (port 465)           |
+| `SMTP_USER`                | SMTP account username                             |
+| `SMTP_PASS`                | SMTP account password / app password              |
+| `EMAIL_RETRY_MAX`          | Max retry attempts on send failure (default `3`)  |
+| `EMAIL_RATE_LIMIT`         | Max emails per recipient per window (default `5`) |
+| `EMAIL_RATE_WINDOW`        | Rate limit window in ms (default `60000`)         |
+| `EMAIL_BOUNCE_CHECK`       | `true` to suppress sends to bounced addresses     |
+| `UPTOSKILLS_BASE_URL`      | Uptoskills API base URL (future)                  |
+| `UPTOSKILLS_API_KEY`       | Uptoskills API key (future)                       |
 
 ## Installation
 
