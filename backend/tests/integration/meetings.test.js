@@ -157,7 +157,7 @@ describe('Meetings Integration Tests', () => {
       const body = JSON.parse(res.body);
       expect(Array.isArray(body.data)).toBe(true);
       expect(body.pagination).toBeDefined();
-      expect(typeof body.pagination.total).toBe('number'); 
+      expect(typeof body.pagination.total).toBe('number');
     });
   });
 
