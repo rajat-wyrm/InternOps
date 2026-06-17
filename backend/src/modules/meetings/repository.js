@@ -92,10 +92,7 @@ async function listMeetings({
   `;
   params.push(safeLimit, offset);
   const res = await pool.query(query, params);
-  const total =
-    res.rows.length > 0
-      ? Number(res.rows[0].total_count)
-      : 0;
+  const total = res.rows.length > 0 ? Number(res.rows[0].total_count) : 0;
   return {
     data: res.rows.map(({ total_count, ...meeting }) => meeting),
     pagination: {
