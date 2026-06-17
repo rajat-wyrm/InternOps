@@ -267,18 +267,19 @@ Recommended production setup:
 
 Copy `.env.example` to `.env` and fill in the required values. The following variables are used:
 
-| Variable                   | Description                           |
-| -------------------------- | ------------------------------------- |
-| `NODE_ENV`                 | `development` or `production`         |
-| `PORT`                     | Server port (default 5000)            |
-| `DATABASE_URL`             | PostgreSQL connection string          |
-| `JWT_SECRET`               | Secret key for JWT signing            |
-| `UPSTASH_REDIS_REST_URL`   | Redis connection URL (optional)       |
-| `UPSTASH_REDIS_REST_TOKEN` | Redis token (optional)                |
-| `CORS_ORIGIN`              | Allowed origin for CORS in production |
-| `EMAIL_API_KEY`            | Email service API key (optional)      |
-| `UPTOSKILLS_BASE_URL`      | Uptoskills API base URL (future)      |
-| `UPTOSKILLS_API_KEY`       | Uptoskills API key (future)           |
+| Variable                   | Description                                               |
+| -------------------------- | --------------------------------------------------------- |
+| `NODE_ENV`                 | `development` or `production`                             |
+| `PORT`                     | Server port (default 5000)                                |
+| `DATABASE_URL`             | PostgreSQL connection string                              |
+| `JWT_SECRET`               | Secret key for access-token signing                       |
+| `JWT_REFRESH_SECRET`       | Independent refresh-token secret (required in production) |
+| `UPSTASH_REDIS_REST_URL`   | Redis connection URL (optional)                           |
+| `UPSTASH_REDIS_REST_TOKEN` | Redis token (optional)                                    |
+| `CORS_ORIGIN`              | Allowed origin for CORS in production                     |
+| `EMAIL_API_KEY`            | Email service API key (optional)                          |
+| `UPTOSKILLS_BASE_URL`      | Uptoskills API base URL (future)                          |
+| `UPTOSKILLS_API_KEY`       | Uptoskills API key (future)                               |
 
 ## Installation
 

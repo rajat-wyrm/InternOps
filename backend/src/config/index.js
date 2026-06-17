@@ -9,6 +9,22 @@ function buildRedisUrl() {
   return `rediss://default:${token}@${host}:6379`;
 }
 
+function resolveRefreshSecret() {
+  const independent = process.env.JWT_REFRESH_SECRET;
+  if (independent && independent.trim() !== '') return independent;
+  // No independent secret configured. In production this is rejected by
+  // validateEnv before we get here; outside production fall back to a derived
+  // value so dev/CI keep functioning, with a warning.
+  if (process.env.NODE_ENV !== 'test') {
+    console.warn(
+      '⚠️ JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
+    );
+  }
+  return process.env.JWT_SECRET
+    ? `${process.env.JWT_SECRET}_refresh`
+    : undefined;
+}
+
 module.exports = {
   port: parseInt(process.env.PORT, 10) || 5000,
   host: process.env.HOST || '0.0.0.0',
@@ -18,7 +34,10 @@ module.exports = {
     secret: process.env.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     accessSecret: process.env.JWT_SECRET,
-    refreshSecret: process.env.JWT_SECRET + '_refresh',
+    // Independent refresh secret. Falls back to a derived value only outside
+    // production so local/CI keep working; production must set JWT_REFRESH_SECRET
+    // (enforced by validateEnv).
+    refreshSecret: resolveRefreshSecret(),
     accessExpiry: '15m',
     refreshExpiry: process.env.JWT_EXPIRES_IN || '7d',
   },
