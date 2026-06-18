@@ -1,7 +1,7 @@
 const supertest = require('supertest');
 const app = require('../../src/app');
 const emailService = require('../../src/services/email');
-let csrfToken, accessToken, refreshToken, freshAccessToken;
+let csrfToken, csrfCookieValue, accessToken, refreshToken, freshAccessToken;
 
 beforeAll(async () => {
   await app.ready();
@@ -15,29 +15,44 @@ beforeAll(async () => {
     'admin@internops.com',
   ]);
 
-  // Get CSRF token
+  // Get CSRF token (body + cookie for Double Submit pattern)
   const csrfRes = await app.inject({
     method: 'GET',
     url: '/api/auth/csrf-token',
   });
-  csrfToken = JSON.parse(csrfRes.body).csrfToken;
+  const body = JSON.parse(csrfRes.body);
+  csrfToken = body.csrfToken;
+  const cookies = csrfRes.cookies;
+  const csrfCookie = cookies.find((c) => c.name === 'csrf-token');
+  csrfCookieValue = csrfCookie ? csrfCookie.value : csrfToken;
 });
 
 afterAll(async () => {
   await app.close();
 });
 
+function authHeaders(extra) {
+  return {
+    'X-CSRF-Token': csrfToken,
+    'Content-Type': 'application/json',
+    ...extra,
+  };
+}
+
+function inject(method, url, opts = {}) {
+  return app.inject({
+    method,
+    url,
+    cookies: { 'csrf-token': csrfCookieValue, ...opts.cookies },
+    headers: authHeaders(opts.headers),
+    payload: opts.payload,
+  });
+}
+
 describe('Auth Integration Tests', () => {
-  // ---------- Login Tests ----------
   describe('POST /api/auth/login', () => {
     it('should login with valid credentials', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/login',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/login', {
         payload: { email: 'admin@internops.com', password: 'Admin@123' },
       });
       expect(res.statusCode).toBe(200);
@@ -49,55 +64,30 @@ describe('Auth Integration Tests', () => {
     });
 
     it('should reject invalid password', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/login',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/login', {
         payload: { email: 'admin@internops.com', password: 'wrong' },
       });
       expect(res.statusCode).toBe(401);
     });
 
     it('should reject missing email', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/login',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/login', {
         payload: { password: 'Admin@123' },
       });
       expect(res.statusCode).toBe(400);
     });
 
     it('should reject non-existent user', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/login',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/login', {
         payload: { email: 'ghost@test.com', password: 'Test@123' },
       });
       expect(res.statusCode).toBe(401);
     });
   });
 
-  // ---------- Refresh Token Tests ----------
   describe('POST /api/auth/refresh', () => {
     it('should refresh token with valid refresh token', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/refresh',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/refresh', {
         payload: { refreshToken },
       });
       expect(res.statusCode).toBe(200);
@@ -106,64 +96,33 @@ describe('Auth Integration Tests', () => {
     });
 
     it('should reject reuse of old refresh token', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/refresh',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/refresh', {
         payload: { refreshToken },
       });
       expect(res.statusCode).toBe(401);
     });
 
     it('should reject invalid refresh token', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/refresh',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/refresh', {
         payload: { refreshToken: 'invalid.token.here' },
       });
       expect(res.statusCode).toBe(401);
     });
   });
 
-  // ---------- Logout Test ----------
   describe('POST /api/auth/logout', () => {
     it('should logout successfully', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/logout',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/logout', {
+        headers: { Authorization: `Bearer ${accessToken}` },
         payload: { refreshToken },
       });
       expect(res.statusCode).toBe(200);
     });
   });
 
-  // ---------- Protected Route Tests ----------
   describe('Protected Routes', () => {
     beforeAll(async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/login',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/login', {
         payload: { email: 'admin@internops.com', password: 'Admin@123' },
       });
       const body = JSON.parse(res.body);
@@ -171,17 +130,8 @@ describe('Auth Integration Tests', () => {
     });
 
     it('should access GET /api/users/me with valid token', async () => {
-      const res = await app.inject({
-        method: 'GET',
-        url: '/api/users/me',
-        headers: {
-          Authorization: `Bearer ${freshAccessToken}`,
-          'X-CSRF-Token': csrfToken,
-        },
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'X-CSRF-Token': csrfToken,
-        },
+      const res = await inject('GET', '/api/users/me', {
+        headers: { Authorization: `Bearer ${freshAccessToken}` },
       });
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
@@ -195,30 +145,21 @@ describe('Auth Integration Tests', () => {
 
     it('should reject request with tampered token', async () => {
       const tampered = freshAccessToken.slice(0, -5) + 'xxxxx';
-      const res = await app.inject({
-        method: 'GET',
-        url: '/api/users/me',
-        headers: {
-          Authorization: `Bearer ${tampered}`,
-          'X-CSRF-Token': csrfToken,
-        },
+      const res = await inject('GET', '/api/users/me', {
+        headers: { Authorization: `Bearer ${tampered}` },
       });
       expect(res.statusCode).toBe(401);
     });
   });
 
-  // ---------- CSRF Protection Tests ----------
   describe('CSRF Protection', () => {
-    it('should reject POST without CSRF token', async () => {
+    it('should reject POST without CSRF header', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/departments',
+        cookies: { 'csrf-token': csrfCookieValue },
         headers: {
           Authorization: `Bearer ${freshAccessToken}`,
-          'Content-Type': 'application/json',
-        },
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         payload: { name: 'Test' },
@@ -227,114 +168,57 @@ describe('Auth Integration Tests', () => {
     });
 
     it('should allow POST with CSRF token', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/departments',
-        headers: {
-          Authorization: `Bearer ${freshAccessToken}`,
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/departments', {
+        headers: { Authorization: `Bearer ${freshAccessToken}` },
         payload: { name: 'TestDept_' + Date.now() },
       });
       expect(res.statusCode).toBe(200);
     });
   });
 
-  // ---------- Password Reset Tests ----------
   describe('Password Reset Flow', () => {
     it('should accept forgot-password request', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/forgot-password',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/forgot-password', {
         payload: { email: 'admin@internops.com' },
       });
       expect(res.statusCode).toBe(200);
     });
 
     it('should reject reset with invalid token', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/auth/reset-password',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const res = await inject('POST', '/api/auth/reset-password', {
         payload: { token: 'invalid', newPassword: 'ValidPass123!' },
       });
       expect(res.statusCode).toBe(400);
     });
 
     it('should revoke all refresh tokens and Redis cache on password reset', async () => {
-      // Step 1: Login and get refresh token
-      const loginRes = await app.inject({
-        method: 'POST',
-        url: '/api/auth/login',
-        headers: {
-          'X-CSRF-Token': csrfToken,
-          'Content-Type': 'application/json',
-        },
+      const loginRes = await inject('POST', '/api/auth/login', {
         payload: { email: 'admin@internops.com', password: 'Admin@123' },
       });
       expect(loginRes.statusCode).toBe(200);
       const oldRefreshToken = JSON.parse(loginRes.body).refreshToken;
 
-      // Step 2: Request password reset (gets email with token)
       const sendSpy = jest.spyOn(emailService, 'sendPasswordReset');
       try {
-        const forgotRes = await app.inject({
-          method: 'POST',
-          url: '/api/auth/forgot-password',
-          headers: {
-            'X-CSRF-Token': csrfToken,
-            'Content-Type': 'application/json',
-          },
+        const forgotRes = await inject('POST', '/api/auth/forgot-password', {
           payload: { email: 'admin@internops.com' },
         });
         expect(forgotRes.statusCode).toBe(200);
 
-        // Step 3: Get reset token from database or response
         expect(sendSpy).toHaveBeenCalled();
         const resetToken = sendSpy.mock.calls[0][1];
 
-        // Step 4: Reset password with REAL token
-        const resetRes = await app.inject({
-          method: 'POST',
-          url: '/api/auth/reset-password',
-          headers: {
-            'X-CSRF-Token': csrfToken,
-            'Content-Type': 'application/json',
-          },
+        const resetRes = await inject('POST', '/api/auth/reset-password', {
           payload: { token: resetToken, newPassword: 'NewPassword@123!' },
         });
-        // IMPORTANT: Verify reset succeeded
         expect(resetRes.statusCode).toBe(200);
 
-        // Step 5: Try to use OLD refresh token - should be rejected
-        const reuseTokenRes = await app.inject({
-          method: 'POST',
-          url: '/api/auth/refresh',
-          headers: {
-            'X-CSRF-Token': csrfToken,
-            'Content-Type': 'application/json',
-          },
+        const reuseTokenRes = await inject('POST', '/api/auth/refresh', {
           payload: { refreshToken: oldRefreshToken },
         });
-
-        // Token should be revoked (401) or invalid (400)
         expect([401, 400]).toContain(reuseTokenRes.statusCode);
       } finally {
         sendSpy.mockRestore();
-        // Restore password back to Admin@123
         const argon2 = require('argon2');
         const pool = require('../../src/config/db');
         const restoreHash = await argon2.hash('Admin@123');
