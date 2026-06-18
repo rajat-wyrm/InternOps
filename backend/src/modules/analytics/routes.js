@@ -2,7 +2,6 @@ const { z } = require('zod');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
-const { z } = require('zod');
 async function routes(fastify) {
   fastify.get(
     '/overview',
