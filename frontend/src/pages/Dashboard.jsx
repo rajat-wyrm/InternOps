@@ -8,7 +8,7 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import api from '../lib/axios';
-import { UserAvatar } from '../components/ui';
+import { UserAvatar, EmptyState } from '../components/ui';
 import Home from './Home';
 import Team from './Team';
 import Attendance from './Attendance';
@@ -280,7 +280,22 @@ export default function Dashboard() {
             <Route path="notifications" element={<Notifications />} />
             <Route path="profile" element={<Profile />} />
             <Route path="sessions" element={<Sessions />} />
-            <Route path="reports" element={<Reports />} />
+            <Route
+              path="reports"
+              element={
+                isAdmin || role === 'SENIOR_TL' ? (
+                  <Reports />
+                ) : (
+                  <div className="p-6">
+                    <EmptyState
+                      icon="🔒"
+                      title="Access restricted"
+                      text="Reports are only visible to Admins and Senior Team Leads. Ask your TL or an admin if you need this data."
+                    />
+                  </div>
+                )
+              }
+            />
             <Route path="assistant" element={<InternOpsAssistant />} />
             {isAdmin && (
               <>
