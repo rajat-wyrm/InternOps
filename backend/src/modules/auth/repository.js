@@ -1,21 +1,18 @@
 const pool = require('../../config/db');
-const argon2 = require('argon2');
 
-async function createUser({
-  email,
-  password,
-  role,
-  managerId,
-  departmentId,
-  fullName,
-}) {
-  const hash = await argon2.hash(password);
+async function findByIdRaw(id) {
   const res = await pool.query(
-    `INSERT INTO users (email, password_hash, role, manager_id, department_id, full_name)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,email,role,manager_id,department_id,full_name,suspended,created_at`,
-    [email, hash, role, managerId, departmentId, fullName]
+    'SELECT id, role FROM users WHERE id = $1 AND deleted_at IS NULL',
+    [id]
   );
-  return res.rows[0];
+  return res.rows[0] || null;
+}
+
+async function listUsersByRole(role) {
+  return pool.query(
+    'SELECT id,email,role,full_name,suspended FROM users WHERE deleted_at IS NULL AND role=$1',
+    [role]
+  );
 }
 
 async function findByEmail(email) {
@@ -189,6 +186,8 @@ module.exports = {
   createUser,
   findByEmail,
   findById,
+  findByIdRaw,
+  listUsersByRole,
   verifyPassword,
   storeRefreshToken,
   revokeRefreshToken,

@@ -1,9 +1,42 @@
 ﻿const pool = require('../../config/db');
+
 async function listUsersByRole(role) {
   return pool.query(
     'SELECT id,email,role,full_name,suspended FROM users WHERE deleted_at IS NULL AND role=$1',
     [role]
   );
+}
+
+async function listUsersPaginated({ role, page, limit, offset }) {
+  const where = ['deleted_at IS NULL'];
+  const params = [];
+  if (role) {
+    params.push(role);
+    where.push(`role = $${params.length}`);
+  }
+
+  const whereSql = `WHERE ${where.join(' AND ')}`;
+
+  const dataSql = `
+    SELECT id, email, role, full_name, suspended, avatar_url, created_at
+    FROM users
+    ${whereSql}
+    ORDER BY created_at DESC
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+  `;
+  const countSql = `SELECT COUNT(*)::int AS total FROM users ${whereSql}`;
+
+  const [dataRes, countRes] = await Promise.all([
+    pool.query(dataSql, [...params, limit, offset]),
+    pool.query(countSql, params),
+  ]);
+
+  return {
+    data: dataRes.rows,
+    total: countRes.rows[0].total,
+    page,
+    limit,
+  };
 }
 async function getUserById(id) {
   return pool.query(
@@ -34,6 +67,7 @@ async function softDeleteUser(id) {
 }
 module.exports = {
   listUsersByRole,
+  listUsersPaginated,
   getUserById,
   suspendUser,
   activateUser,

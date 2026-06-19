@@ -63,7 +63,6 @@ async function routes(fastify) {
       });
       return {
         accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
         user: result.user,
       };
     }
@@ -88,7 +87,6 @@ async function routes(fastify) {
       });
       return {
         accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
       };
     }
   );
