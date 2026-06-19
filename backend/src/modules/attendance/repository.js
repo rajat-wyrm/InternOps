@@ -82,4 +82,34 @@ async function bulkMark(entries, markedBy) {
   }
 }
 
-module.exports = { markAttendance, getAttendance, getMonthlyStats, bulkMark };
+// Returns the set of target ids that fall inside managerId's transitive
+// subordinate chain. Replaces per-entry checkHierarchyAccess calls
+// (a 1+N query pattern) with a single recursive CTE.
+async function listHierarchySubordinates(managerId, targetIds) {
+  if (!Array.isArray(targetIds) || targetIds.length === 0) {
+    return new Set();
+  }
+
+  const res = await pool.query(
+    `WITH RECURSIVE chain AS (
+       SELECT id, manager_id FROM users WHERE id = $1 AND deleted_at IS NULL
+       UNION ALL
+       SELECT u.id, u.manager_id
+       FROM users u
+       INNER JOIN chain ON u.manager_id = chain.id
+       WHERE u.deleted_at IS NULL
+     )
+     SELECT id FROM chain WHERE id = ANY($2::uuid[])`,
+    [managerId, targetIds]
+  );
+
+  return new Set(res.rows.map((r) => r.id));
+}
+
+module.exports = {
+  markAttendance,
+  getAttendance,
+  getMonthlyStats,
+  bulkMark,
+  listHierarchySubordinates,
+};

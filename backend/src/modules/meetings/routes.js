@@ -9,15 +9,12 @@ async function routes(fastify) {
   // List meetings (hierarchy-aware)
   fastify.get('/', { preHandler: [auth] }, async (req) => {
     const { from, to } = req.query;
-    const pool = require('../../config/db');
-    const deptRes = await pool.query(
-      'SELECT department_id FROM users WHERE id=$1',
-      [req.user.id]
-    );
-    const departmentId = deptRes.rows[0]?.department_id || null;
+    const departmentId = await repo.getUserDepartmentId(req.user.id);
+    // Interns only see meetings they are creator or attendee of.
+    // Non-interns also see department-wide meetings.
     return repo.listMeetings({
       userId: req.user.id,
-      departmentId: req.user.role !== 'INTERN' ? departmentId : null,
+      departmentId: req.user.role !== 'INTERN' ? departmentId : null, // non-interns see dept meetings
       fromDate: from,
       toDate: to,
     });
@@ -127,6 +124,21 @@ async function routes(fastify) {
     '/:id',
     { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')] },
     async (req, reply) => {
+      const schema = z
+        .object({
+          title: z.string().min(3).optional(),
+          description: z.string().optional(),
+          meeting_date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
+          start_time: z.string().optional(),
+          end_time: z.string().optional(),
+        })
+        .strict(); //strict() ensure ki koie unknown fields na jaaye
+
+      const data = schema.parse(req.body);
+
       const meeting = await repo.getMeetingById(req.params.id);
       if (!meeting) return reply.status(404).send({ error: 'Not found' });
       if (meeting.created_by !== req.user.id && req.user.role !== 'ADMIN') {
@@ -134,7 +146,9 @@ async function routes(fastify) {
           .status(403)
           .send({ error: 'Only creator or admin can update' });
       }
-      const updated = await repo.updateMeeting(req.params.id, req.body);
+      const updated = await repo.updateMeeting(req.params.id, data);
+      if (!updated)
+        return reply.status(400).send({ error: 'No valid fields provided' });
       return updated;
     }
   );
@@ -169,12 +183,39 @@ async function routes(fastify) {
       const meeting = await repo.getMeetingById(req.params.id);
       if (!meeting) return reply.status(404).send({ error: 'Not found' });
       const { userId } = req.body;
+      if (!userId || typeof userId !== 'string') {
+        return reply.status(400).send({ error: 'userId is required' });
+      }
       if (meeting.created_by !== req.user.id && req.user.role !== 'ADMIN') {
         return reply
           .status(403)
           .send({ error: 'Only creator can add attendees' });
       }
+      // Validate that the target user exists and is not suspended/deleted.
+      const exists = await repo.userExists(userId);
+      if (!exists) {
+        return reply
+          .status(404)
+          .send({ error: 'Target user not found or inactive' });
+      }
+      // Non-admin requesters can only add users inside their hierarchy.
+      if (req.user.role !== 'ADMIN') {
+        const allowed = await checkHierarchyAccess(req.user.id, userId);
+        if (!allowed) {
+          return reply
+            .status(403)
+            .send({ error: 'User is not in your hierarchy' });
+        }
+      }
       await repo.addAttendee(req.params.id, userId);
+      await createAuditLog({
+        userId: req.user.id,
+        action: 'MEETING_ATTENDEE_ADDED',
+        resourceType: 'meeting',
+        resourceId: req.params.id,
+        details: { addedUserId: userId },
+        ...extractRequestInfo(req),
+      });
       return { message: 'Attendee added' };
     }
   );
@@ -190,6 +231,14 @@ async function routes(fastify) {
         return reply.status(403).send({ error: 'Only creator or admin' });
       }
       await repo.removeAttendee(req.params.id, req.params.userId);
+      await createAuditLog({
+        userId: req.user.id,
+        action: 'MEETING_ATTENDEE_REMOVED',
+        resourceType: 'meeting',
+        resourceId: req.params.id,
+        details: { removedUserId: req.params.userId },
+        ...extractRequestInfo(req),
+      });
       return { message: 'Attendee removed' };
     }
   );

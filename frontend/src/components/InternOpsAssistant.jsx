@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import api from '../lib/axios';
 
 const ROLES = ['Admin', 'Senior TL', 'TL', 'Captain', 'Intern'];
 
@@ -345,7 +346,7 @@ export default function InternOpsAssistant() {
       return;
     }
 
-    // Fallback to Claude API
+    // Fallback to backend AI provider service
     try {
       const systemPrompt = `You are the InternOps Assistant, an expert on the InternOps Enterprise Workforce Management Platform. The user's current role is: ${role}.
 
@@ -355,27 +356,27 @@ Tech stack: Node.js/Fastify backend, React/Vite frontend, PostgreSQL (raw SQL, n
 
 Give concise, role-aware answers. Use markdown formatting with bullet points. Keep answers under 150 words unless the topic requires more detail.`;
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [
-            ...history.slice(-6).map((h) => ({
-              role: h.role === 'bot' ? 'assistant' : h.role,
-              content: h.content,
-            })),
-            { role: 'user', content: msg },
-          ],
-        }),
+      const response = await api.post('/ai/chat', {
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+          ...history.slice(-6).map((h) => ({
+            role: h.role === 'bot' ? 'assistant' : h.role,
+            content: h.content,
+          })),
+          {
+            role: 'user',
+            content: msg,
+          },
+        ],
       });
 
-      const data = await response.json();
       const answer =
-        data.content?.[0]?.text ||
+        response.data?.content ||
         "Sorry, I couldn't process that. Please try rephrasing.";
+
       setIsTyping(false);
       addBotMessage(answer);
     } catch {

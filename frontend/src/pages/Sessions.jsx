@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import api from '../lib/axios';
 import { PageHeader, Card, Btn, EmptyState, Spinner } from '../components/ui';
 
@@ -8,6 +9,8 @@ export default function Sessions() {
     queryKey: ['sessions'],
     queryFn: () => api.get('/sessions/me').then((res) => res.data),
   });
+
+  const [confirming, setConfirming] = useState(false);
 
   const revokeMut = useMutation({
     mutationFn: (sessionId) => api.delete(`/sessions/me/${sessionId}`),
@@ -27,11 +30,38 @@ export default function Sessions() {
         icon="🔐"
         subtitle="Devices currently signed in to your account"
         actions={
-          <Btn variant="danger" onClick={() => revokeAllMut.mutate()}>
-            Revoke all others
+          <Btn
+            variant="danger"
+            disabled={confirming}
+            onClick={() => setConfirming((c) => !c)}
+          >
+            Revoke all sessions
           </Btn>
         }
       />
+
+      {confirming && (
+        <Card className="p-4 mb-4 border-red-200 bg-red-50">
+          <p className="text-sm text-red-800 mb-3">
+            This will sign you out of <strong>every</strong> device, including
+            this one. You will be redirected to the login page.
+          </p>
+          <div className="flex gap-2">
+            <Btn
+              variant="danger"
+              onClick={() => {
+                setConfirming(false);
+                revokeAllMut.mutate();
+              }}
+            >
+              Yes, revoke all
+            </Btn>
+            <Btn variant="outline" onClick={() => setConfirming(false)}>
+              Cancel
+            </Btn>
+          </div>
+        </Card>
+      )}
 
       {isLoading ? (
         <Spinner />

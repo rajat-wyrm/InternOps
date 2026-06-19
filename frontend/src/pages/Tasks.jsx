@@ -52,6 +52,7 @@ export default function Tasks() {
     onSuccess: () => {
       refetchProofs();
       queryClient.invalidateQueries({ queryKey: ['proofs'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
   const verifyMutation = useMutation({
@@ -200,13 +201,28 @@ export default function Tasks() {
                         key={p.id}
                         className="flex items-center gap-3 bg-gray-50 rounded-xl p-2"
                       >
-                        {p.image_path && (
-                          <img
-                            src={'/' + p.image_path.replace(/^\/?/, '')}
-                            alt="proof"
-                            className="w-14 h-14 rounded-lg object-cover border"
-                          />
-                        )}
+                        {p.image_path &&
+                          (() => {
+                            const normalized = p.image_path
+                              .replace(/\\/g, '/')
+                              .replace(/^\/+/, '');
+                            const base = (
+                              import.meta.env.VITE_API_BASE_URL || ''
+                            ).replace(/\/+$/, '');
+                            const src = base
+                              ? `${base}/${normalized}`
+                              : `/${normalized}`;
+                            return (
+                              <img
+                                src={src}
+                                alt="proof"
+                                className="w-14 h-14 rounded-lg object-cover border"
+                                onError={(e) => {
+                                  e.currentTarget.style.visibility = 'hidden';
+                                }}
+                              />
+                            );
+                          })()}
                         <div className="flex-1 min-w-0 text-xs">
                           <Badge
                             color={p.status === 'VERIFIED' ? 'green' : 'yellow'}

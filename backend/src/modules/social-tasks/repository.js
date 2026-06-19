@@ -13,23 +13,42 @@ async function createTask({
   );
   return res.rows[0];
 }
+async function getUserEmail(userId) {
+  const res = await pool.query('SELECT email FROM users WHERE id = $1', [
+    userId,
+  ]);
+  return res.rows[0]?.email || null;
+}
+async function isTaskAssignedToUser(taskId, userId) {
+  const res = await pool.query(
+    `SELECT 1 FROM task_assignments
+     WHERE task_id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+    [taskId, userId]
+  );
+  return res.rowCount > 0;
+}
 async function getTasks(filters, userId, userRole) {
-  let q = `
-    SELECT st.* FROM social_tasks st
-    WHERE st.deleted_at IS NULL
-  `;
   const params = [];
+  const where = ['st.deleted_at IS NULL'];
+
   if (!['ADMIN', 'SENIOR_TL'].includes(userRole)) {
     params.push(userId);
-    q += ` AND st.id IN (
-      SELECT task_id FROM task_assignments WHERE user_id = $${params.length}
-    )`;
+    where.push(
+      `st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL)`
+    );
   }
+
   if (filters.deadlineBefore) {
     params.push(filters.deadlineBefore);
-    q += ` AND st.deadline <= $${params.length}`;
+    where.push(`st.deadline <= $${params.length}`);
   }
-  q += ' ORDER BY st.created_at DESC';
+
+  const whereSql = `WHERE ${where.join(' AND ')}`;
+  const q = `
+    SELECT st.* FROM social_tasks st
+    ${whereSql}
+    ORDER BY st.created_at DESC
+  `;
   return (await pool.query(q, params)).rows;
 }
 async function submitProof(taskId, internId, imagePath) {
@@ -39,11 +58,38 @@ async function submitProof(taskId, internId, imagePath) {
   );
   return res.rows[0];
 }
-async function verifyProof(proofId, verifierId) {
+async function verifyProof(proofId, verifierId, verifierRole) {
+  const proofRes = await pool.query(
+    'SELECT intern_id FROM proof_submissions WHERE id = $1',
+    [proofId]
+  );
+
+  if (proofRes.rowCount === 0) {
+    throw new Error('Proof not found');
+  }
+
+  // Admin can verify anyone; everyone else must be in the intern's hierarchy
+  if (verifierRole !== 'ADMIN') {
+    const { checkHierarchyAccess } = require('../../utils/hierarchy');
+    const allowed = await checkHierarchyAccess(
+      verifierId,
+      proofRes.rows[0].intern_id
+    );
+    if (!allowed) {
+      throw new Error('Forbidden: not in intern hierarchy');
+    }
+  }
+
   const res = await pool.query(
-    "UPDATE proof_submissions SET verified_by=$1, verified_at=NOW(), status='VERIFIED' WHERE id=$2 RETURNING *",
+    `UPDATE proof_submissions
+     SET verified_by = $1,
+         verified_at = NOW(),
+         status = 'VERIFIED'
+     WHERE id = $2
+     RETURNING *`,
     [verifierId, proofId]
   );
+
   return res.rows[0];
 }
 async function getProofsByTask(taskId) {
@@ -67,6 +113,8 @@ async function getProofsByIntern(internId) {
 }
 module.exports = {
   createTask,
+  getUserEmail,
+  isTaskAssignedToUser,
   getTasks,
   submitProof,
   verifyProof,

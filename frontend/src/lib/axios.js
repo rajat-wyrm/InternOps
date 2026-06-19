@@ -6,19 +6,34 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// The backend's CSRF guard only requires the header to be PRESENT on mutating
-// requests (login/refresh/forgot/reset are exempt). We fetch a real token once
-// and reuse it; a generated fallback keeps requests working if that call fails.
+// The backend's CSRF guard requires the X-CSRF-Token header on mutating
+// requests. We fetch a real token once and reuse it. If the call to obtain
+// a real token fails we REFUSE to send the request — silently substituting
+// a random string would defeat the protection since the server would still
+// accept any non-empty header. The request will fail loudly with a 403,
+// which is the correct behaviour when CSRF protection is unavailable.
 let csrfToken = null;
+let csrfPromise = null;
+
 async function getCsrfToken() {
   if (csrfToken) return csrfToken;
-  try {
-    const res = await api.get('/auth/csrf-token');
-    csrfToken = res.data.csrfToken;
-  } catch {
-    csrfToken = Math.random().toString(36).slice(2);
-  }
-  return csrfToken;
+  if (csrfPromise) return csrfPromise;
+  csrfPromise = api
+    .get('/auth/csrf-token')
+    .then((res) => {
+      csrfToken = res.data.csrfToken;
+      return csrfToken;
+    })
+    .catch((err) => {
+      csrfPromise = null;
+      throw err;
+    });
+  return csrfPromise;
+}
+
+function clearCsrfToken() {
+  csrfToken = null;
+  csrfPromise = null;
 }
 
 api.interceptors.request.use(async (config) => {
@@ -27,18 +42,56 @@ api.interceptors.request.use(async (config) => {
 
   const method = (config.method || 'get').toLowerCase();
   if (!['get', 'head', 'options'].includes(method)) {
-    config.headers['X-CSRF-Token'] = await getCsrfToken();
+    try {
+      config.headers['X-CSRF-Token'] = await getCsrfToken();
+    } catch (err) {
+      // Surface a real error rather than allowing the request through
+      // with a fake/spoofed token. The route handler will reject the
+      // mutation with 403 if the server can't enforce CSRF.
+      return Promise.reject(
+        new Error('CSRF token unavailable; refusing unsafe request')
+      );
+    }
   }
   return config;
 });
 
-// On 401, drop the session and bounce to login.
+// Silent refresh: when an access token expires, the server returns 401.
+// Before destroying the session, try the refresh-token flow once. If that
+// fails, fall through to the original "drop session" behaviour.
+let refreshing = null;
+
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    if (err.response?.status === 401) {
+  async (err) => {
+    const original = err.config || {};
+    const status = err.response?.status;
+
+    if (status === 401 && !original._retry) {
+      original._retry = true;
+      try {
+        refreshing = refreshing || api.post('/auth/refresh', {});
+        const refreshRes = await refreshing;
+        refreshing = null;
+        const newToken = refreshRes.data?.accessToken;
+        if (newToken) {
+          localStorage.setItem('accessToken', newToken);
+          // The server rotated the refresh cookie. The CSRF token may also
+          // have changed (some implementations bind them together), so reset
+          // it so the next request picks up the new one.
+          clearCsrfToken();
+          original.headers = original.headers || {};
+          original.headers.Authorization = `Bearer ${newToken}`;
+          return api(original);
+        }
+      } catch (refreshErr) {
+        refreshing = null;
+        // Refresh failed — fall through to logout.
+      }
+
       localStorage.removeItem('accessToken');
       localStorage.removeItem('user');
+      clearCsrfToken();
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';
       }
@@ -48,3 +101,4 @@ api.interceptors.response.use(
 );
 
 export default api;
+export { clearCsrfToken };

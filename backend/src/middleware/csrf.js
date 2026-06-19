@@ -1,22 +1,7 @@
 const crypto = require('crypto');
-const SECRET = process.env.CSRF_SECRET || require('../config').jwt.secret;
 
 function generateToken() {
-  const token = crypto.randomBytes(32).toString('hex');
-  const hmac = crypto.createHmac('sha256', SECRET).update(token).digest('hex');
-  return `${token}.${hmac}`;
-}
-
-function verifyToken(token) {
-  if (!token) return false;
-  const parts = token.split('.');
-  if (parts.length !== 2) return false;
-  const [raw, sig] = parts;
-  const expected = crypto
-    .createHmac('sha256', SECRET)
-    .update(raw)
-    .digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+  return crypto.randomBytes(32).toString('hex');
 }
 
 const EXEMPT = [
@@ -26,16 +11,22 @@ const EXEMPT = [
   '/api/auth/reset-password',
 ];
 
-const csrfMiddleware = async (request, reply) => {
+async function csrfCheck(request, reply) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
-  if (!request.url) return;
   if (EXEMPT.some((p) => request.url.startsWith(p))) return;
 
-  const token = request.headers['x-csrf-token'];
-  if (!token || !verifyToken(token)) {
-    return reply.status(403).send({ error: 'CSRF token missing or invalid' });
-  }
-};
-const csrfProtection = csrfMiddleware;
+  const headerToken = request.headers['x-csrf-token'];
+  const cookieToken = request.cookies['csrf-token'];
 
-module.exports = { generateToken, csrfMiddleware, csrfProtection };
+  if (!headerToken || !cookieToken || headerToken !== cookieToken) {
+    return reply.status(403).send({ error: 'CSRF validation failed' });
+  }
+}
+
+const csrfProtection = async (fastify) => {
+  fastify.addHook('onRequest', csrfCheck);
+};
+
+const csrfMiddleware = csrfCheck;
+
+module.exports = { generateToken, csrfProtection, csrfMiddleware };

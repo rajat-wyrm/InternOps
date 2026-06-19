@@ -174,23 +174,36 @@ function ManagerHome({ user }) {
 
 function InternHome({ user }) {
   const now = new Date();
-  const { data: stats } = useQuery({
+  const {
+    data: stats,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['internHome', user?.id],
     queryFn: async () => {
-      const att = await api
-        .get(
-          `/attendance/${user.id}/stats?month=${now.getMonth() + 1}&year=${now.getFullYear()}`
-        )
-        .then((r) => r.data)
-        .catch(() => []);
-      const ratings = await api
-        .get(`/ratings/${user.id}`)
-        .then((r) => r.data)
-        .catch(() => []);
+      const [att, ratings] = await Promise.all([
+        api
+          .get(
+            `/attendance/${user.id}/stats?month=${now.getMonth() + 1}&year=${now.getFullYear()}`
+          )
+          .then((r) => r.data),
+        api.get(`/ratings/${user.id}`).then((r) => r.data),
+      ]);
       return { att, ratings };
     },
     enabled: !!user,
   });
+
+  if (isLoading) return <p className="text-gray-500">Loading dashboard...</p>;
+
+  if (isError) {
+    return (
+      <div className="bg-red-50 text-red-700 p-4 rounded-xl">
+        Failed to load your dashboard data. Please refresh or contact your
+        manager.
+      </div>
+    );
+  }
 
   const att = stats?.att || [];
   const ratings = stats?.ratings || [];

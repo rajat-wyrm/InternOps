@@ -7,23 +7,30 @@ const argon2 = require('argon2');
 const { z } = require('zod');
 const authRepo = require('../auth/repository');
 
+const listUsersQuerySchema = z.object({
+  role: z.enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 async function routes(fastify) {
-  // Admin: list users
-  fastify.get('/', { preHandler: [auth, rbac('ADMIN')] }, async (req) => {
-    const { role, page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
-    const params = [];
-    let where = 'WHERE deleted_at IS NULL';
-    if (role) {
-      where += ` AND role = $${params.length + 1}`;
-      params.push(role);
+  // Admin: list users (paginated, with total count)
+  fastify.get(
+    '/',
+    { preHandler: [auth, rbac('ADMIN')] },
+    async (req, reply) => {
+      const parsed = listUsersQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Invalid query parameters',
+          details: parsed.error.issues,
+        });
+      }
+      const { role, page, limit } = parsed.data;
+      const offset = (page - 1) * limit;
+      return repo.listUsersPaginated({ role, page, limit, offset });
     }
-    const { rows } = await require('../../config/db').query(
-      `SELECT id, email, role, full_name, suspended, avatar_url, created_at FROM users ${where} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, limit, offset]
-    );
-    return rows;
-  });
+  );
 
   // Get own profile
   fastify.get('/me', { preHandler: [auth] }, async (req) => {

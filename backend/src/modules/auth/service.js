@@ -7,19 +7,16 @@ const {
   verifyRefreshToken,
 } = require('../../utils/tokens');
 const { createAuditLog } = require('../../utils/audit');
-const { recordLoginAttempt } = require('../../middleware/bruteForce');
+const {
+  recordLoginAttempt,
+  clearFailedAttempts,
+} = require('../../middleware/bruteForce');
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
 
 async function register(data, creator) {
   if (data.managerId) {
-    const pool = require('../../config/db');
-    const {
-      rows: [manager],
-    } = await pool.query(
-      'SELECT id, role FROM users WHERE id = $1 AND deleted_at IS NULL',
-      [data.managerId]
-    );
+    const manager = await repo.findByIdRaw(data.managerId);
     if (!manager) throw new Error('Manager not found');
     if (!isValidStep(manager.role, data.role)) {
       throw new Error(
@@ -52,6 +49,9 @@ async function login(email, password, ip, userAgent) {
     await recordLoginAttempt(email, ip, false);
     throw new UnauthorizedError('Invalid credentials');
   }
+  // Clear all prior failed attempts so attacker-seeded failures don't
+  // trigger a lockout for the legitimate user after a successful login.
+  await clearFailedAttempts(email);
   await recordLoginAttempt(email, ip, true);
   const access = generateAccessToken(user);
   const refresh = generateRefreshToken(user);

@@ -119,6 +119,43 @@ describe('Environment Variable Validation Tests', () => {
     );
   });
 
+  it('should require JWT_REFRESH_SECRET in production', () => {
+    process.env.JWT_SECRET = 'secret';
+    process.env.DATABASE_URL = 'postgresql://localhost:5432';
+    process.env.NODE_ENV = 'production';
+    delete process.env.JWT_REFRESH_SECRET;
+
+    validateEnv();
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('• JWT_REFRESH_SECRET')
+    );
+  });
+
+  it('should pass in production when JWT_REFRESH_SECRET is set', () => {
+    process.env.JWT_SECRET = 'secret';
+    process.env.DATABASE_URL = 'postgresql://localhost:5432';
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_REFRESH_SECRET = 'independent-refresh-secret';
+
+    validateEnv();
+
+    expect(exitMock).not.toHaveBeenCalled();
+    expect(errorMock).not.toHaveBeenCalled();
+  });
+
+  it('should not require JWT_REFRESH_SECRET outside production', () => {
+    process.env.JWT_SECRET = 'secret';
+    process.env.DATABASE_URL = 'postgresql://localhost:5432';
+    process.env.NODE_ENV = 'development';
+    delete process.env.JWT_REFRESH_SECRET;
+
+    validateEnv();
+
+    expect(exitMock).not.toHaveBeenCalled();
+  });
+
   it('should print warnings but not terminate if optional variables are missing', () => {
     process.env.JWT_SECRET = 'secret';
     process.env.DATABASE_URL = 'postgresql://localhost:5432';

@@ -9,6 +9,7 @@ const EXPORTS = [
     icon: '📅',
     grad: 'from-blue-500 to-indigo-600',
     desc: 'Daily attendance records',
+    requiresDates: true,
   },
   {
     key: 'ratings-csv',
@@ -16,6 +17,7 @@ const EXPORTS = [
     icon: '⭐',
     grad: 'from-amber-400 to-orange-500',
     desc: 'Performance ratings',
+    requiresDates: true,
   },
   {
     key: 'tasks-csv',
@@ -23,6 +25,7 @@ const EXPORTS = [
     icon: '🎯',
     grad: 'from-purple-500 to-fuchsia-600',
     desc: 'Social task completion',
+    requiresDates: false,
   },
 ];
 
@@ -35,22 +38,22 @@ export default function Exports() {
   // routes unauthenticated (401). Fetch the CSV through the Axios instance with
   // a blob response, then trigger the download from the response — same pattern
   // as Team.jsx's exportCsv.
-  const download = async (endpoint) => {
-    if (!from || !to) {
+  const download = async (endpoint, requiresDates) => {
+    if (requiresDates && (!from || !to)) {
       alert('Please select both a From and To date before downloading.');
       return;
     }
     try {
-      const res = await api.get(
-        `/reports/export/${endpoint}?from=${from}&to=${to}`,
-        {
-          responseType: 'blob',
-        }
-      );
+      const params = requiresDates ? `?from=${from}&to=${to}` : '';
+      const res = await api.get(`/reports/export/${endpoint}${params}`, {
+        responseType: 'blob',
+      });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${endpoint}-${from}-${to}.csv`;
+      a.download = requiresDates
+        ? `${endpoint}-${from}-${to}.csv`
+        : `${endpoint}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
@@ -86,26 +89,37 @@ export default function Exports() {
       </Card>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {EXPORTS.map((e) => (
-          <Card
-            key={e.key}
-            className={`p-5 ${!from || !to ? 'opacity-50 cursor-not-allowed' : ''}`}
-            hover={!!(from && to)}
-          >
-            <div onClick={() => (from && to ? download(e.key) : null)}>
+        {EXPORTS.map((e) => {
+          const isDisabled = e.requiresDates && (!from || !to);
+          return (
+            <Card
+              key={e.key}
+              className={`p-5 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              hover={!isDisabled}
+            >
               <div
-                className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${e.grad} text-white flex items-center justify-center text-2xl shadow-lg mb-3`}
+                onClick={() => !isDisabled && download(e.key, e.requiresDates)}
               >
-                {e.icon}
+                <div
+                  className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${e.grad} text-white flex items-center justify-center text-2xl shadow-lg mb-3`}
+                >
+                  {e.icon}
+                </div>
+                <h3 className="font-bold text-gray-800">{e.label} CSV</h3>
+                <p className="text-sm text-gray-500 mb-3">{e.desc}</p>
+                {isDisabled ? (
+                  <p className="text-xs text-amber-600 font-medium">
+                    Select a date range to enable
+                  </p>
+                ) : (
+                  <span className="text-indigo-600 text-sm font-semibold">
+                    ⬇ Download →
+                  </span>
+                )}
               </div>
-              <h3 className="font-bold text-gray-800">{e.label} CSV</h3>
-              <p className="text-sm text-gray-500 mb-3">{e.desc}</p>
-              <span className="text-indigo-600 text-sm font-semibold">
-                ⬇ Download →
-              </span>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

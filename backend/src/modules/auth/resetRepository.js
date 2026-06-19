@@ -65,9 +65,65 @@ async function updateUserPassword(userId, newPassword) {
   // Revoke all Redis-cached active tokens to prevent session hijacking
   await revokeAllUserTokensRedis(userId);
 }
+
+// Atomic password reset: marks the token used and updates the password
+// inside a single transaction. If any step fails, the token remains
+// valid and the user can retry with the same email link.
+async function resetPasswordAtomic(rawToken, newPassword) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(rawToken)
+      .digest('hex');
+
+    const tokenRes = await client.query(
+      `UPDATE password_reset_tokens
+       SET used = TRUE
+       WHERE token_hash = $1
+         AND used = FALSE
+         AND expires_at > NOW()
+       RETURNING user_id`,
+      [tokenHash]
+    );
+
+    if (tokenRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    const userId = tokenRes.rows[0].user_id;
+    const hash = await argon2.hash(newPassword);
+
+    await client.query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [hash, userId]
+    );
+    await client.query(
+      'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1',
+      [userId]
+    );
+
+    await client.query('COMMIT');
+
+    // Best-effort Redis cleanup after the DB commit.
+    await revokeAllUserTokensRedis(userId).catch(() => {});
+
+    return userId;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   createResetToken,
   verifyResetToken,
   markTokenUsed,
   updateUserPassword,
+  resetPasswordAtomic,
 };

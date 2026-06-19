@@ -1,4 +1,4 @@
-﻿const pool = require('../config/db');
+const pool = require('../config/db');
 async function checkHierarchyAccess(requesterId, targetUserId) {
   if (requesterId === targetUserId) return true;
   const query = `WITH RECURSIVE chain AS (
@@ -15,13 +15,22 @@ async function isDirectManager(managerId, subordinateId) {
   ]);
   return res.rows[0]?.manager_id === managerId;
 }
-const roleStepMap = {
-  ADMIN: ['SENIOR_TL'],
-  SENIOR_TL: ['TL'],
-  TL: ['CAPTAIN'],
-  CAPTAIN: ['INTERN'],
+const ROLE_RANK = {
+  ADMIN: 4,
+  SENIOR_TL: 3,
+  TL: 2,
+  CAPTAIN: 1,
+  INTERN: 0,
 };
 function isValidStep(managerRole, subordinateRole) {
-  return roleStepMap[managerRole]?.includes(subordinateRole) ?? false;
+  const managerRank = ROLE_RANK[managerRole];
+  const subordinateRank = ROLE_RANK[subordinateRole];
+  if (managerRank === undefined || subordinateRank === undefined) return false;
+  return managerRank > subordinateRank;
 }
-module.exports = { checkHierarchyAccess, isDirectManager, isValidStep };
+module.exports = {
+  checkHierarchyAccess,
+  isDirectManager,
+  isValidStep,
+  ROLE_RANK,
+};

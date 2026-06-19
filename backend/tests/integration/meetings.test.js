@@ -1,7 +1,8 @@
 const supertest = require('supertest');
 const app = require('../../src/app');
+const pool = require('../../src/config/db');
 
-let csrfToken, accessToken, meetingId;
+let csrfToken, csrfCookieValue, accessToken, meetingId;
 
 beforeAll(async () => {
   await app.ready();
@@ -20,6 +21,8 @@ beforeAll(async () => {
     url: '/api/auth/csrf-token',
   });
   csrfToken = JSON.parse(csrfRes.body).csrfToken;
+  const csrfCookie = csrfRes.cookies.find((c) => c.name === 'csrf-token');
+  csrfCookieValue = csrfCookie ? csrfCookie.value : csrfToken;
   const loginRes = await app.inject({
     method: 'POST',
     url: '/api/auth/login',
@@ -44,6 +47,7 @@ async function createUserAsAdmin(user) {
   const res = await app.inject({
     method: 'POST',
     url: '/api/auth/register',
+    cookies: { 'csrf-token': csrfCookieValue },
     headers: authHeaders(),
     payload: user,
   });
@@ -56,6 +60,7 @@ describe('Meetings Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/meetings',
+        cookies: { 'csrf-token': csrfCookieValue },
         headers: authHeaders(),
         payload: {
           title: 'Test Meeting',
@@ -75,6 +80,7 @@ describe('Meetings Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/meetings',
+        cookies: { 'csrf-token': csrfCookieValue },
         headers: authHeaders(),
         payload: { meetingDate: '2026-12-01' },
       });
@@ -122,6 +128,7 @@ describe('Meetings Integration Tests', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/meetings',
+        cookies: { 'csrf-token': csrfCookieValue },
         headers: managerHeaders,
         payload: {
           title: 'Hierarchy Test Meeting',
@@ -151,6 +158,7 @@ describe('Meetings Integration Tests', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/meetings',
+        cookies: { 'csrf-token': csrfCookieValue },
         headers: authHeaders(),
       });
       expect(res.statusCode).toBe(200);
@@ -166,6 +174,7 @@ describe('Meetings Integration Tests', () => {
       const res = await app.inject({
         method: 'GET',
         url: `/api/meetings/${meetingId}`,
+        cookies: { 'csrf-token': csrfCookieValue },
         headers: authHeaders(),
       });
       expect(res.statusCode).toBe(200);
@@ -177,6 +186,7 @@ describe('Meetings Integration Tests', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/meetings/00000000-0000-0000-0000-000000000000',
+        cookies: { 'csrf-token': csrfCookieValue },
         headers: authHeaders(),
       });
       expect(res.statusCode).toBe(404);
@@ -188,6 +198,7 @@ describe('Meetings Integration Tests', () => {
       const res = await app.inject({
         method: 'PATCH',
         url: `/api/meetings/${meetingId}`,
+        cookies: { 'csrf-token': csrfCookieValue },
         headers: authHeaders(),
         payload: { title: 'Updated Meeting' },
       });
@@ -197,12 +208,59 @@ describe('Meetings Integration Tests', () => {
     });
   });
 
+  describe('Attendee Management', () => {
+    it('should add an attendee to the meeting and create an audit log entry', async () => {
+      const userRes = await pool.query('SELECT id FROM users LIMIT 1');
+      const userId = userRes.rows[0].id;
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/meetings/${meetingId}/attendees`,
+        headers: authHeaders(),
+        payload: { userId },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body).message).toBe('Attendee added');
+
+      // Verify audit log
+      const auditRes = await pool.query(
+        "SELECT * FROM audit_logs WHERE action = 'MEETING_ATTENDEE_ADDED' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1",
+        [meetingId]
+      );
+      expect(auditRes.rowCount).toBe(1);
+      expect(JSON.parse(auditRes.rows[0].details).addedUserId).toBe(userId);
+    });
+
+    it('should remove an attendee from the meeting and create an audit log entry', async () => {
+      const userRes = await pool.query('SELECT id FROM users LIMIT 1');
+      const userId = userRes.rows[0].id;
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/meetings/${meetingId}/attendees/${userId}`,
+        headers: authHeaders(),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body).message).toBe('Attendee removed');
+
+      // Verify audit log
+      const auditRes = await pool.query(
+        "SELECT * FROM audit_logs WHERE action = 'MEETING_ATTENDEE_REMOVED' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1",
+        [meetingId]
+      );
+      expect(auditRes.rowCount).toBe(1);
+      expect(JSON.parse(auditRes.rows[0].details).removedUserId).toBe(userId);
+    });
+  });
+
   describe('DELETE /api/meetings/:id', () => {
     it('should delete meeting', async () => {
       const res = await app.inject({
         method: 'DELETE',
         url: `/api/meetings/${meetingId}`,
+        cookies: { 'csrf-token': csrfCookieValue },
         headers: authHeaders(),
+        payload: {},
       });
       expect(res.statusCode).toBe(200);
     });
@@ -211,6 +269,7 @@ describe('Meetings Integration Tests', () => {
       const res = await app.inject({
         method: 'GET',
         url: `/api/meetings/${meetingId}`,
+        cookies: { 'csrf-token': csrfCookieValue },
         headers: authHeaders(),
       });
       expect(res.statusCode).toBe(404);
