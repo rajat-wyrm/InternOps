@@ -4,6 +4,9 @@ const emailService = require('../../src/services/email');
 let csrfToken, csrfCookieValue, accessToken, refreshToken, freshAccessToken;
 
 beforeAll(async () => {
+  emailService.sendPasswordReset = jest.fn().mockResolvedValue(undefined);
+  emailService.sendEmail = jest.fn().mockResolvedValue(undefined);
+
   await app.ready();
 
   // Restore admin password to Admin@123 in case a previous run left it modified
@@ -206,7 +209,7 @@ describe('Auth Integration Tests', () => {
         expect(forgotRes.statusCode).toBe(200);
 
         expect(sendSpy).toHaveBeenCalled();
-        const resetToken = sendSpy.mock.calls[0][1];
+        const resetToken = sendSpy.mock.calls[sendSpy.mock.calls.length - 1][1];
 
         const resetRes = await inject('POST', '/api/auth/reset-password', {
           payload: { token: resetToken, newPassword: 'NewPassword@123!' },
