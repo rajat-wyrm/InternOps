@@ -36,9 +36,7 @@ export default function AdminDashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ['adminUsers', page, limit],
     queryFn: () =>
-      api
-        .get(`/users?page=${page}&limit=${limit}`)
-        .then((res) => res.data),
+      api.get(`/users?page=${page}&limit=${limit}`).then((res) => res.data),
   });
 
   const inv = () => queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
@@ -80,7 +78,9 @@ export default function AdminDashboard() {
 
   const handleDelete = (user) => {
     if (deleteMut.isPending || deletingUserId === user.id) return;
-    if (confirm(`Delete ${user.full_name || user.email}? This cannot be undone.`)) {
+    if (
+      confirm(`Delete ${user.full_name || user.email}? This cannot be undone.`)
+    ) {
       setDeletingUserId(user.id);
       deleteMut.mutate(user.id);
     }
@@ -137,7 +137,11 @@ export default function AdminDashboard() {
           <Spinner />
         ) : filtered.length === 0 ? (
           <EmptyState
-            title={search || roleFilter || statusFilter ? 'No matches' : 'No users yet'}
+            title={
+              search || roleFilter || statusFilter
+                ? 'No matches'
+                : 'No users yet'
+            }
             text={
               search || roleFilter || statusFilter
                 ? 'Try a different search term or filter.'
@@ -152,15 +156,14 @@ export default function AdminDashboard() {
                   <th className="px-4 py-3 font-semibold">User</th>
                   <th className="px-4 py-3 font-semibold">Role</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                  <th className="px-4 py-3 font-semibold text-right">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((u) => (
-                  <tr
-                    key={u.id}
-                    className="hover:bg-gray-50 transition"
-                  >
+                  <tr key={u.id} className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-brand-orange/10 text-brand-orange flex items-center justify-center text-xs font-bold">
