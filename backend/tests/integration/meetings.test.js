@@ -2,18 +2,40 @@ const supertest = require('supertest');
 const app = require('../../src/app');
 const pool = require('../../src/config/db');
 
+// Each test run gets a fresh set of fixture users and meetings. The
+// previous implementation only cleaned up the hierarchy-test users in
+// beforeAll, which left a previous run's meeting rows visible to
+// subsequent runs and produced cascading test failures (#387).
+const runId = Date.now();
+const TEST_USERS = [
+  `manager+run${runId}@internops.com`,
+  `subordinate+run${runId}@internops.com`,
+  `outsider+run${runId}@internops.com`,
+];
+const MEETING_TITLE = `Test Meeting ${runId}`;
+const HIERARCHY_MEETING_TITLE = `Hierarchy Test Meeting ${runId}`;
+
 let csrfToken, csrfCookieValue, accessToken, meetingId;
 
 beforeAll(async () => {
   await app.ready();
 
-  // Clean up any previously created hierarchy test users to avoid duplicate email key violations
-  const pool = require('../../src/config/db');
+  // Defensive cleanup: delete any prior-run meetings and users tied to
+  // the same fixture emails so duplicate-key errors don't cascade.
   await pool.query(
-    "DELETE FROM meetings WHERE created_by IN (SELECT id FROM users WHERE email IN ('manager@internops.com', 'subordinate@internops.com', 'outsider@internops.com'))"
+    `DELETE FROM meeting_attendees
+     WHERE meeting_id IN (
+       SELECT id FROM meetings WHERE title = $1 OR title = $2
+     )`,
+    [MEETING_TITLE, HIERARCHY_MEETING_TITLE]
   );
   await pool.query(
-    "DELETE FROM users WHERE email IN ('manager@internops.com', 'subordinate@internops.com', 'outsider@internops.com')"
+    'DELETE FROM meetings WHERE title = $1 OR title = $2',
+    [MEETING_TITLE, HIERARCHY_MEETING_TITLE]
+  );
+  await pool.query(
+    "DELETE FROM users WHERE email = ANY($1::text[])",
+    [TEST_USERS]
   );
 
   const csrfRes = await app.inject({
@@ -31,7 +53,30 @@ beforeAll(async () => {
   });
   accessToken = JSON.parse(loginRes.body).accessToken;
 });
+
 afterAll(async () => {
+  // Clean up every artifact this run created so the next run starts
+  // from a known state. Failures here are non-fatal — the test
+  // assertions are what we care about.
+  try {
+    await pool.query(
+      `DELETE FROM meeting_attendees
+       WHERE meeting_id IN (
+         SELECT id FROM meetings WHERE title = $1 OR title = $2
+       )`,
+      [MEETING_TITLE, HIERARCHY_MEETING_TITLE]
+    );
+    await pool.query(
+      'DELETE FROM meetings WHERE title = $1 OR title = $2',
+      [MEETING_TITLE, HIERARCHY_MEETING_TITLE]
+    );
+    await pool.query(
+      "DELETE FROM users WHERE email = ANY($1::text[])",
+      [TEST_USERS]
+    );
+  } catch {
+    /* best-effort cleanup */
+  }
   await app.close();
 });
 
@@ -63,7 +108,7 @@ describe('Meetings Integration Tests', () => {
         cookies: { 'csrf-token': csrfCookieValue },
         headers: authHeaders(),
         payload: {
-          title: 'Test Meeting',
+          title: MEETING_TITLE,
           description: 'Discussion',
           meetingDate: '2026-12-01',
           startTime: '10:00',
@@ -89,20 +134,20 @@ describe('Meetings Integration Tests', () => {
 
     it('should report skipped attendees when hierarchy access is denied', async () => {
       const manager = await createUserAsAdmin({
-        email: 'manager@internops.com',
+        email: TEST_USERS[0],
         password: 'Manager@123',
         role: 'TL',
         fullName: 'Team Lead',
       });
       const subordinate = await createUserAsAdmin({
-        email: 'subordinate@internops.com',
+        email: TEST_USERS[1],
         password: 'Subordinate@123',
         role: 'CAPTAIN',
         managerId: manager.id,
         fullName: 'Captain User',
       });
       const outsider = await createUserAsAdmin({
-        email: 'outsider@internops.com',
+        email: TEST_USERS[2],
         password: 'Outsider@123',
         role: 'CAPTAIN',
         fullName: 'Outside User',
@@ -116,7 +161,7 @@ describe('Meetings Integration Tests', () => {
           'X-CSRF-Token': csrfToken,
           'Content-Type': 'application/json',
         },
-        payload: { email: 'manager@internops.com', password: 'Manager@123' },
+        payload: { email: TEST_USERS[0], password: 'Manager@123' },
       });
       const managerToken = JSON.parse(loginRes.body).accessToken;
       const managerHeaders = {
@@ -131,7 +176,7 @@ describe('Meetings Integration Tests', () => {
         cookies: { 'csrf-token': csrfCookieValue },
         headers: managerHeaders,
         payload: {
-          title: 'Hierarchy Test Meeting',
+          title: HIERARCHY_MEETING_TITLE,
           meetingDate: '2026-12-02',
           attendeeIds: [subordinate.id, outsider.id],
         },

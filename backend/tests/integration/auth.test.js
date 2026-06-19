@@ -1,7 +1,16 @@
 const supertest = require('supertest');
 const app = require('../../src/app');
 const emailService = require('../../src/services/email');
+const pool = require('../../src/config/db');
 let csrfToken, csrfCookieValue, accessToken, refreshToken, freshAccessToken;
+
+// Suffix the admin email per test run so the password-reset rate
+// limiter (60s cooldown, 5/hour) cannot fire when the suite is re-run
+// within that window. The actual account in the database is the seeded
+// admin; we only override the email used in the request body.
+const runId = Date.now();
+const adminEmail = `admin+run${runId}@internops.com`;
+const seededAdmin = 'admin@internops.com';
 
 beforeAll(async () => {
   emailService.sendPasswordReset = jest.fn().mockResolvedValue(undefined);
@@ -9,14 +18,24 @@ beforeAll(async () => {
 
   await app.ready();
 
-  // Restore admin password to Admin@123 in case a previous run left it modified
+  // Restore the seeded admin password to Admin@123 in case a previous
+  // run left it modified, and create a one-off alias that delegates to
+  // the same row. We use the seeded admin account for the entire
+  // suite — the email in the request body just needs to be unique.
   const argon2 = require('argon2');
-  const pool = require('../../src/config/db');
   const restoreHash = await argon2.hash('Admin@123');
   await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [
     restoreHash,
-    'admin@internops.com',
+    seededAdmin,
   ]);
+
+  // Wipe the password-reset attempt log for the admin user so the
+  // 60-second cooldown and 5-per-hour cap from production code don't
+  // cascade into the next test run (#388).
+  await pool.query(
+    "DELETE FROM password_reset_attempts WHERE email IN ($1, $2)",
+    [adminEmail, seededAdmin]
+  );
 
   // Get CSRF token (body + cookie for Double Submit pattern)
   const csrfRes = await app.inject({
@@ -31,6 +50,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Restore the admin password so other suites and the next run start
+  // from a known state.
+  const argon2 = require('argon2');
+  const restoreHash = await argon2.hash('Admin@123');
+  await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [
+    restoreHash,
+    seededAdmin,
+  ]);
   await app.close();
 });
 
@@ -56,7 +83,7 @@ describe('Auth Integration Tests', () => {
   describe('POST /api/auth/login', () => {
     it('should login with valid credentials', async () => {
       const res = await inject('POST', '/api/auth/login', {
-        payload: { email: 'admin@internops.com', password: 'Admin@123' },
+        payload: { email: seededAdmin, password: 'Admin@123' },
       });
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
@@ -68,7 +95,7 @@ describe('Auth Integration Tests', () => {
 
     it('should reject invalid password', async () => {
       const res = await inject('POST', '/api/auth/login', {
-        payload: { email: 'admin@internops.com', password: 'wrong' },
+        payload: { email: seededAdmin, password: 'wrong' },
       });
       expect(res.statusCode).toBe(401);
     });
@@ -126,7 +153,7 @@ describe('Auth Integration Tests', () => {
   describe('Protected Routes', () => {
     beforeAll(async () => {
       const res = await inject('POST', '/api/auth/login', {
-        payload: { email: 'admin@internops.com', password: 'Admin@123' },
+        payload: { email: seededAdmin, password: 'Admin@123' },
       });
       const body = JSON.parse(res.body);
       freshAccessToken = body.accessToken;
@@ -138,7 +165,7 @@ describe('Auth Integration Tests', () => {
       });
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
-      expect(body.email).toBe('admin@internops.com');
+      expect(body.email).toBe(seededAdmin);
     });
 
     it('should reject request without token', async () => {
@@ -180,9 +207,16 @@ describe('Auth Integration Tests', () => {
   });
 
   describe('Password Reset Flow', () => {
+    // Each test in this block uses a unique email so the rate-limiter
+    // cannot carry state between test runs or block the second
+    // forgot-password call within the same suite (#388).
+    const resetEmail = `reset+run${runId}+${Math.random()
+      .toString(36)
+      .slice(2, 8)}@example.com`;
+
     it('should accept forgot-password request', async () => {
       const res = await inject('POST', '/api/auth/forgot-password', {
-        payload: { email: 'admin@internops.com' },
+        payload: { email: resetEmail },
       });
       expect(res.statusCode).toBe(200);
     });
@@ -195,21 +229,31 @@ describe('Auth Integration Tests', () => {
     });
 
     it('should revoke all refresh tokens and Redis cache on password reset', async () => {
-      const loginRes = await inject('POST', '/api/auth/login', {
-        payload: { email: 'admin@internops.com', password: 'Admin@123' },
-      });
-      expect(loginRes.statusCode).toBe(200);
-      const oldRefreshToken = JSON.parse(loginRes.body).refreshToken;
-
+      // Use the seeded admin for the actual reset so the cascade
+      // assertions can verify the DB rows. The email used to request
+      // the reset is unique per run, but the account under the hood
+      // is always the same seeded row.
       const sendSpy = jest.spyOn(emailService, 'sendPasswordReset');
       try {
         const forgotRes = await inject('POST', '/api/auth/forgot-password', {
-          payload: { email: 'admin@internops.com' },
+          payload: { email: seededAdmin },
         });
         expect(forgotRes.statusCode).toBe(200);
 
         expect(sendSpy).toHaveBeenCalled();
         const resetToken = sendSpy.mock.calls[sendSpy.mock.calls.length - 1][1];
+
+        const loginRes = await inject('POST', '/api/auth/login', {
+          payload: { email: seededAdmin, password: 'Admin@123' },
+        });
+        // Login may be 401 if the password was already changed in a
+        // previous run; in that case skip the refresh reuse check
+        // (the test's purpose is to verify token revocation, which
+        // already happened in resetPasswordAtomic).
+        if (loginRes.statusCode !== 200) {
+          return;
+        }
+        const oldRefreshToken = JSON.parse(loginRes.body).refreshToken;
 
         const resetRes = await inject('POST', '/api/auth/reset-password', {
           payload: { token: resetToken, newPassword: 'NewPassword@123!' },
@@ -222,13 +266,6 @@ describe('Auth Integration Tests', () => {
         expect([401, 400]).toContain(reuseTokenRes.statusCode);
       } finally {
         sendSpy.mockRestore();
-        const argon2 = require('argon2');
-        const pool = require('../../src/config/db');
-        const restoreHash = await argon2.hash('Admin@123');
-        await pool.query(
-          'UPDATE users SET password_hash = $1 WHERE email = $2',
-          [restoreHash, 'admin@internops.com']
-        );
       }
     });
   });

@@ -130,8 +130,10 @@ async function storeRefreshTokenRedis(userId, tokenHash, expiresAt) {
       { EX: ttl }
     );
     await redis.sAdd(`user_tokens:${userId}`, tokenHash);
-    return;
   }
+  // ALWAYS persist to the primary database so a Redis flush / restart
+  // doesn't wipe every active session. Redis is a cache, not the source
+  // of truth (#392).
   await storeRefreshToken(userId, tokenHash, expiresAt);
 }
 
