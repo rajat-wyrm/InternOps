@@ -150,11 +150,27 @@ async function getAttendees(meetingId) {
   const res = await pool.query(
     `SELECT u.id, u.email, u.role, u.full_name
      FROM meeting_attendees a
-     JOIN users u ON a.user_id = u.id
+     JOIN users u ON a.user_id = u.id AND u.deleted_at IS NULL AND u.suspended = FALSE
      WHERE a.meeting_id = $1`,
     [meetingId]
   );
   return res.rows;
+}
+
+async function getUserDepartmentId(userId) {
+  const res = await pool.query(
+    'SELECT department_id FROM users WHERE id = $1 AND deleted_at IS NULL',
+    [userId]
+  );
+  return res.rows[0]?.department_id || null;
+}
+
+async function userExists(userId) {
+  const res = await pool.query(
+    'SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL AND suspended = FALSE',
+    [userId]
+  );
+  return res.rowCount > 0;
 }
 
 module.exports = {
@@ -166,4 +182,6 @@ module.exports = {
   updateMeeting,
   softDeleteMeeting,
   getAttendees,
+  getUserDepartmentId,
+  userExists,
 };

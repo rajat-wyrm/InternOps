@@ -9,12 +9,7 @@ async function routes(fastify) {
   // List meetings (hierarchy-aware)
   fastify.get('/', { preHandler: [auth] }, async (req) => {
     const { from, to } = req.query;
-    const pool = require('../../config/db');
-    const deptRes = await pool.query(
-      'SELECT department_id FROM users WHERE id=$1',
-      [req.user.id]
-    );
-    const departmentId = deptRes.rows[0]?.department_id || null;
+    const departmentId = await repo.getUserDepartmentId(req.user.id);
     // Interns only see meetings they are creator or attendee of.
     // Non-interns also see department-wide meetings.
     return repo.listMeetings({
@@ -188,10 +183,29 @@ async function routes(fastify) {
       const meeting = await repo.getMeetingById(req.params.id);
       if (!meeting) return reply.status(404).send({ error: 'Not found' });
       const { userId } = req.body;
+      if (!userId || typeof userId !== 'string') {
+        return reply.status(400).send({ error: 'userId is required' });
+      }
       if (meeting.created_by !== req.user.id && req.user.role !== 'ADMIN') {
         return reply
           .status(403)
           .send({ error: 'Only creator can add attendees' });
+      }
+      // Validate that the target user exists and is not suspended/deleted.
+      const exists = await repo.userExists(userId);
+      if (!exists) {
+        return reply
+          .status(404)
+          .send({ error: 'Target user not found or inactive' });
+      }
+      // Non-admin requesters can only add users inside their hierarchy.
+      if (req.user.role !== 'ADMIN') {
+        const allowed = await checkHierarchyAccess(req.user.id, userId);
+        if (!allowed) {
+          return reply
+            .status(403)
+            .send({ error: 'User is not in your hierarchy' });
+        }
       }
       await repo.addAttendee(req.params.id, userId);
       await createAuditLog({
