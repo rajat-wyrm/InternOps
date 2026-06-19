@@ -41,7 +41,9 @@ export default function BulkAttendanceForm() {
   const allSelected = team.length > 0 && selectedUsers.length === team.length;
   const toggleAll = () => {
     if (atLimit) return;
-    setSelectedUsers(allSelected ? [] : team.slice(0, BULK_MAX).map((u) => u.id));
+    setSelectedUsers(
+      allSelected ? [] : team.slice(0, BULK_MAX).map((u) => u.id)
+    );
   };
   const toggleUser = (id) =>
     setSelectedUsers((p) => {
