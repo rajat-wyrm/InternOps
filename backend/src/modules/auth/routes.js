@@ -2,11 +2,12 @@ const service = require('./service');
 const { z } = require('zod');
 const rbac = require('../../middleware/rbac');
 const { bruteForceCheck } = require('../../middleware/bruteForce');
+const auth = require('../../middleware/auth');
 const { extractRequestInfo } = require('../../utils/audit');
 
 async function routes(fastify) {
   // Register
-  fastify.post('/register', { preHandler: [rbac('ADMIN')], schema: { tags: ['Authentication'], description: 'Register a new user (Admin only)' } }, async (req, reply) => {
+  fastify.post('/register', { preHandler: [auth, rbac('ADMIN')], schema: { tags: ['Authentication'], description: 'Register a new user (Admin only)' } }, async (req, reply) => {
     const schema = z.object({
       email: z.string().email(),
       password: z.string().min(8),

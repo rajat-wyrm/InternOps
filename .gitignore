@@ -34,3 +34,9 @@ db-test.js
 fix_async_done.js
 *.log
 *-report.txt
+
+# Docker volumes
+postgres_data/
+
+# Backup files
+*.bak

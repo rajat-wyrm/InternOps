@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: internops
+      POSTGRES_PASSWORD: internops123
+      POSTGRES_DB: internops
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U internops"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: .
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://internops:internops123@postgres:5432/internops
+      JWT_SECRET: ${JWT_SECRET:-change_this_secret_in_production}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    volumes:
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

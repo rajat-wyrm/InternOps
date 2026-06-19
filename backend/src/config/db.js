@@ -7,10 +7,9 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
 });
 
-pool.on('connect', async (client) => {
-  try { await client.query('SET statement_timeout = 10000'); } catch (e) { console.error('Failed to set statement_timeout:', e.message); }
+pool.on('error', (err) => {
+  console.error('DB pool error:', err);
+  process.exit(-1);
 });
-
-pool.on('error', (err) => { console.error('DB pool error:', err); process.exit(-1); });
 
 module.exports = pool;
