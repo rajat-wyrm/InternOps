@@ -92,6 +92,7 @@ async function getSuggestionData(userId) {
       isNewUser: true,
 
       recommendation: {
+        source: 'new_user',
         suggestedScore: null,
         reasoning: 'New user joined recently',
       },
@@ -117,19 +118,13 @@ async function getSuggestionData(userId) {
   let recommendation;
 
   try {
-    const aiResponse = await aiService.generateRatingSuggestion({
+    recommendation = await aiService.generateRatingSuggestion({
       user,
       metrics,
       attendance,
       tasks,
       ratings,
     });
-
-    recommendation = {
-      source: 'ai',
-      suggestedScore: aiResponse.score,
-      reasoning: aiResponse.reason,
-    };
   } catch (error) {
     console.error('AI rating generation failed:', error.message);
 
@@ -143,7 +138,7 @@ async function getSuggestionData(userId) {
       role: user.role,
     },
 
-    isNewUser: isNewUser(user.created_at),
+    isNewUser: false,
 
     recommendation,
   };

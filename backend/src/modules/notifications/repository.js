@@ -8,8 +8,11 @@ async function send(userId, message) {
 }
 
 async function get(userId, { page = 1, limit = 20 } = {}) {
-  const safeLim = Math.min(limit, 100);
-  const offset = (page - 1) * safeLim;
+  // Defensive coercion — the route schema normally guarantees integers
+  // but repository callers can pass raw values from anywhere.
+  const safeLim = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+  const safePage = Math.max(parseInt(page, 10) || 1, 1);
+  const offset = (safePage - 1) * safeLim;
 
   const res = await pool.query(
     `SELECT *, COUNT(*) OVER() AS total_count
@@ -20,12 +23,15 @@ async function get(userId, { page = 1, limit = 20 } = {}) {
     [userId, safeLim, offset]
   );
 
-  const total = res.rows.length > 0 ? parseInt(res.rows[0].total_count, 10) : 0;
+  // When the result set is empty, total_count is unavailable — default to 0
+  // so callers can still render pagination without a TypeError.
+  const total =
+    res.rows.length > 0 ? parseInt(res.rows[0].total_count, 10) || 0 : 0;
 
   return {
     data: res.rows.map(({ total_count, ...row }) => row),
     total,
-    page,
+    page: safePage,
     limit: safeLim,
   };
 }
@@ -48,10 +54,16 @@ async function markAllRead(userId) {
 }
 
 async function deleteNotification(notificationId, userId) {
-  await pool.query(
-    'UPDATE notifications SET deleted_at = NOW() WHERE id = $1 AND user_id = $2',
+  const res = await pool.query(
+    'UPDATE notifications SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL',
     [notificationId, userId]
   );
+  if (res.rowCount === 0) {
+    // Caller (route layer) is expected to translate this into 404. The
+    // repository is the single source of truth for "did anything happen?".
+    throw new Error('Notification not found or does not belong to this user');
+  }
+  return res.rowCount;
 }
 
 async function getUnreadCount(userId) {
