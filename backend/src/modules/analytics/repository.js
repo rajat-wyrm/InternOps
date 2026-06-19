@@ -20,7 +20,7 @@ async function departmentAttendanceRate(
 
   const res = await pool.query(
     `
-    SELECT u.id, u.full_name, u.email,
+    SELECT u.id, u.full_name,
       COUNT(a.id) FILTER (WHERE a.status='PRESENT') as present,
       COUNT(a.id) FILTER (WHERE a.status='ABSENT') as absent,
       COUNT(a.id) FILTER (WHERE a.status='HALF_DAY') as half_day,
@@ -33,7 +33,7 @@ async function departmentAttendanceRate(
     WHERE u.department_id = $1
       AND u.deleted_at IS NULL
       ${roleClause}
-    GROUP BY u.id, u.full_name, u.email
+    GROUP BY u.id, u.full_name
   `,
     params
   );
@@ -51,12 +51,13 @@ async function userCountsByRole() {
 }
 
 async function topPerformers(role, limit = 10) {
+  // Do NOT return email — it is unnecessary PII for a leaderboard. Callers
+  // that need to contact a user can do so via the existing user API.
   const res = await pool.query(
     `
     SELECT
       u.id,
       u.full_name,
-      u.email,
       AVG(r.score) AS avg_rating,
       COUNT(r.id) AS total_ratings
     FROM users u
@@ -65,7 +66,7 @@ async function topPerformers(role, limit = 10) {
       AND r.deleted_at IS NULL
     WHERE u.role = $1
       AND u.deleted_at IS NULL
-    GROUP BY u.id, u.full_name, u.email
+    GROUP BY u.id, u.full_name
     ORDER BY avg_rating DESC NULLS LAST
     LIMIT $2
     `,
