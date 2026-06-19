@@ -26,10 +26,9 @@ async function getResetAttemptState(email) {
 }
 
 async function recordResetAttempt(email) {
-  await pool.query(
-    'INSERT INTO password_reset_attempts (email) VALUES ($1)',
-    [email]
-  );
+  await pool.query('INSERT INTO password_reset_attempts (email) VALUES ($1)', [
+    email,
+  ]);
 }
 
 async function forgotPassword(email, requestInfo) {
