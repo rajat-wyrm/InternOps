@@ -6,7 +6,9 @@ import { create } from 'zustand';
 // (SSR, tests, locked-down sandboxes, etc.).
 function safeGet(key) {
   try {
-    return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+    return typeof window !== 'undefined'
+      ? window.localStorage.getItem(key)
+      : null;
   } catch {
     return null;
   }
@@ -45,7 +47,8 @@ const useAuthStore = create((set, get) => ({
   // can't leave localStorage and the in-memory store disagree.
   setAuth: ({ accessToken, user }) => {
     const current = get();
-    const nextToken = accessToken !== undefined ? accessToken : current.accessToken;
+    const nextToken =
+      accessToken !== undefined ? accessToken : current.accessToken;
     const nextUser = user !== undefined ? user : current.user;
 
     if (accessToken !== undefined) safeSet('accessToken', accessToken);

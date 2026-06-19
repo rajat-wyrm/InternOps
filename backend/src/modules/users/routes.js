@@ -15,18 +15,22 @@ const listUsersQuerySchema = z.object({
 
 async function routes(fastify) {
   // Admin: list users (paginated, with total count)
-  fastify.get('/', { preHandler: [auth, rbac('ADMIN')] }, async (req, reply) => {
-    const parsed = listUsersQuerySchema.safeParse(req.query);
-    if (!parsed.success) {
-      return reply.status(400).send({
-        error: 'Invalid query parameters',
-        details: parsed.error.issues,
-      });
+  fastify.get(
+    '/',
+    { preHandler: [auth, rbac('ADMIN')] },
+    async (req, reply) => {
+      const parsed = listUsersQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Invalid query parameters',
+          details: parsed.error.issues,
+        });
+      }
+      const { role, page, limit } = parsed.data;
+      const offset = (page - 1) * limit;
+      return repo.listUsersPaginated({ role, page, limit, offset });
     }
-    const { role, page, limit } = parsed.data;
-    const offset = (page - 1) * limit;
-    return repo.listUsersPaginated({ role, page, limit, offset });
-  });
+  );
 
   // Get own profile
   fastify.get('/me', { preHandler: [auth] }, async (req) => {

@@ -34,10 +34,7 @@ async function routes(fastify) {
       const { departmentId, month, year, role } = parsed.data;
 
       // Scope check: SENIOR_TL can only query their own department
-      if (
-        req.user.role !== 'ADMIN' &&
-        req.user.departmentId !== departmentId
-      )
+      if (req.user.role !== 'ADMIN' && req.user.departmentId !== departmentId)
         return reply
           .status(403)
           .send({ error: 'Access restricted to your own department' });
