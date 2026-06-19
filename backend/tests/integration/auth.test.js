@@ -33,7 +33,7 @@ beforeAll(async () => {
   // 60-second cooldown and 5-per-hour cap from production code don't
   // cascade into the next test run (#388).
   await pool.query(
-    "DELETE FROM password_reset_attempts WHERE email IN ($1, $2)",
+    'DELETE FROM password_reset_attempts WHERE email IN ($1, $2)',
     [adminEmail, seededAdmin]
   );
 

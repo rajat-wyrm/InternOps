@@ -23,20 +23,14 @@ function getSecret() {
 }
 
 function sign(value) {
-  return crypto
-    .createHmac('sha256', getSecret())
-    .update(value)
-    .digest('hex');
+  return crypto.createHmac('sha256', getSecret()).update(value).digest('hex');
 }
 
 function verifySigned(value, signature) {
   if (!value || !signature) return false;
   const expected = sign(value);
   if (expected.length !== signature.length) return false;
-  return crypto.timingSafeEqual(
-    Buffer.from(expected),
-    Buffer.from(signature)
-  );
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
 
 function parseCookies(header) {
