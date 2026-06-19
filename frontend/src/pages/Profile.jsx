@@ -121,11 +121,26 @@ export default function Profile() {
               📷
               <input
                 type="file"
-                accept="image/*"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
                 className="hidden"
-                onChange={(e) =>
-                  e.target.files[0] && avatarMut.mutate(e.target.files[0])
-                }
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  // Validate before the request leaves the browser.
+                  if (!file.type.startsWith('image/')) {
+                    setError('Please select an image file.');
+                    e.target.value = '';
+                    return;
+                  }
+                  if (file.size > 5 * 1024 * 1024) {
+                    setError('Avatar must be 5MB or smaller.');
+                    e.target.value = '';
+                    return;
+                  }
+                  setError('');
+                  avatarMut.mutate(file);
+                  e.target.value = '';
+                }}
               />
             </label>
           </div>
