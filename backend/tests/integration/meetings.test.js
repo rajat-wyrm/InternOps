@@ -29,14 +29,13 @@ beforeAll(async () => {
      )`,
     [MEETING_TITLE, HIERARCHY_MEETING_TITLE]
   );
-  await pool.query(
-    'DELETE FROM meetings WHERE title = $1 OR title = $2',
-    [MEETING_TITLE, HIERARCHY_MEETING_TITLE]
-  );
-  await pool.query(
-    "DELETE FROM users WHERE email = ANY($1::text[])",
-    [TEST_USERS]
-  );
+  await pool.query('DELETE FROM meetings WHERE title = $1 OR title = $2', [
+    MEETING_TITLE,
+    HIERARCHY_MEETING_TITLE,
+  ]);
+  await pool.query('DELETE FROM users WHERE email = ANY($1::text[])', [
+    TEST_USERS,
+  ]);
 
   const csrfRes = await app.inject({
     method: 'GET',
@@ -66,14 +65,13 @@ afterAll(async () => {
        )`,
       [MEETING_TITLE, HIERARCHY_MEETING_TITLE]
     );
-    await pool.query(
-      'DELETE FROM meetings WHERE title = $1 OR title = $2',
-      [MEETING_TITLE, HIERARCHY_MEETING_TITLE]
-    );
-    await pool.query(
-      "DELETE FROM users WHERE email = ANY($1::text[])",
-      [TEST_USERS]
-    );
+    await pool.query('DELETE FROM meetings WHERE title = $1 OR title = $2', [
+      MEETING_TITLE,
+      HIERARCHY_MEETING_TITLE,
+    ]);
+    await pool.query('DELETE FROM users WHERE email = ANY($1::text[])', [
+      TEST_USERS,
+    ]);
   } catch {
     /* best-effort cleanup */
   }
