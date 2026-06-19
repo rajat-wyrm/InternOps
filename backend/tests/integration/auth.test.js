@@ -72,7 +72,10 @@ function inject(method, url, opts = {}) {
   });
 }
 
-async function login(email = SEEDED_ADMIN_EMAIL, password = SEEDED_ADMIN_PASSWORD) {
+async function login(
+  email = SEEDED_ADMIN_EMAIL,
+  password = SEEDED_ADMIN_PASSWORD
+) {
   const res = await inject('POST', '/api/auth/login', {
     payload: { email, password },
   });
@@ -289,8 +292,7 @@ describe('Auth Integration Tests', () => {
         expect(forgotRes.statusCode).toBe(200);
 
         expect(sendSpy).toHaveBeenCalled();
-        const resetToken =
-          sendSpy.mock.calls[sendSpy.mock.calls.length - 1][1];
+        const resetToken = sendSpy.mock.calls[sendSpy.mock.calls.length - 1][1];
 
         const resetRes = await inject('POST', '/api/auth/reset-password', {
           payload: { token: resetToken, newPassword: 'NewPassword@123!' },
