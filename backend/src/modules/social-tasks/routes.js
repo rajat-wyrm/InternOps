@@ -6,6 +6,22 @@ const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 const { z } = require('zod');
 const emailService = require('../../services/email');
 
+const createTaskSchema = z.object({
+  title: z.string().min(1).max(255),
+  description: z.string().max(2000).optional(),
+  targetPlatform: z.string().max(100).optional(),
+  taskLink: z.string().max(500).optional(),
+  deadline: z
+    .string()
+    .datetime({ offset: true })
+    .or(z.string().regex(/^\d{4}-\d{2}-\d{2}/))
+    .optional()
+    .refine(
+      (v) => !v || !Number.isNaN(Date.parse(v)),
+      'deadline must be a valid ISO date'
+    ),
+});
+
 module.exports = async function socialTasksRoutes(fastify) {
   // Create a social task (Admin / Senior TL).
   fastify.post(
@@ -14,16 +30,15 @@ module.exports = async function socialTasksRoutes(fastify) {
       schema: { tags: ['Tasks'], description: 'Create a social task' },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
-    async (req) => {
-      const data = z
-        .object({
-          title: z.string().min(1).max(255),
-          description: z.string().max(2000).optional(),
-          targetPlatform: z.string().max(100).optional(),
-          taskLink: z.string().max(500).optional(),
-          deadline: z.string().optional(),
-        })
-        .parse(req.body);
+    async (req, reply) => {
+      const parsed = createTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
+      }
+      const data = parsed.data;
 
       const task = await repo.createTask({ ...data, createdBy: req.user.id });
       await createAuditLog({
@@ -35,12 +50,7 @@ module.exports = async function socialTasksRoutes(fastify) {
         details: { title: task.title },
       });
       try {
-        const pool = require('../../config/db');
-        const result = await pool.query(
-          'SELECT email FROM users WHERE id = $1',
-          [req.user.id]
-        );
-        const creatorEmail = result.rows[0]?.email;
+        const creatorEmail = await repo.getUserEmail(req.user.id);
         if (creatorEmail) {
           await emailService.sendNotification(creatorEmail, {
             title: 'Task Created',

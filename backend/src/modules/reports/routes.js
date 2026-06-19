@@ -2,6 +2,24 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
+const { z } = require('zod');
+
+const dateRangeSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD'),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
+});
+
+function parseDateRange(query, reply) {
+  const parsed = dateRangeSchema.safeParse(query);
+  if (!parsed.success) {
+    reply.status(400).send({
+      error: 'from and to are required (YYYY-MM-DD)',
+      details: parsed.error.issues,
+    });
+    return null;
+  }
+  return parsed.data;
+}
 
 async function routes(fastify) {
   fastify.get(
@@ -9,10 +27,10 @@ async function routes(fastify) {
     {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
-    async (req) => {
-      const { from, to } = req.query;
-      if (!from || !to) throw new Error('from and to dates required');
-      return repo.attendanceSummaryByRole(from, to);
+    async (req, reply) => {
+      const range = parseDateRange(req.query, reply);
+      if (!range) return;
+      return repo.attendanceSummaryByRole(range.from, range.to);
     }
   );
 
@@ -21,10 +39,10 @@ async function routes(fastify) {
     {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
-    async (req) => {
-      const { from, to } = req.query;
-      if (!from || !to) throw new Error('from and to dates required');
-      return repo.ratingsSummary(from, to);
+    async (req, reply) => {
+      const range = parseDateRange(req.query, reply);
+      if (!range) return;
+      return repo.ratingsSummary(range.from, range.to);
     }
   );
 
@@ -43,41 +61,55 @@ async function routes(fastify) {
     {
       preHandler: [auth, rbac('ADMIN')],
     },
-    async (req) => {
-      const { from, to, departmentId } = req.query;
+    async (req, reply) => {
+      const schema = z.object({
+        from: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD')
+          .optional(),
+        to: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD')
+          .optional(),
+        departmentId: z.string().uuid().optional(),
+      });
+      const parsed = schema.safeParse(req.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Invalid query parameters',
+          details: parsed.error.issues,
+        });
+      }
+      const { from, to, departmentId } = parsed.data;
 
-      let query = `
-      SELECT d.name AS department,
-             COUNT(a.id) AS total,
-             SUM(CASE WHEN a.status='PRESENT' THEN 1 ELSE 0 END) AS present,
-             SUM(CASE WHEN a.status='ABSENT' THEN 1 ELSE 0 END) AS absent,
-             SUM(CASE WHEN a.status='HALF_DAY' THEN 1 ELSE 0 END) AS half_day
-      FROM attendance a
-      JOIN users u ON a.user_id = u.id
-      JOIN departments d ON u.department_id = d.id
-      WHERE a.deleted_at IS NULL
-    `;
-
+      const where = ['a.deleted_at IS NULL'];
       const params = [];
-
       if (from) {
-        query += ` AND a.date >= $${params.length + 1}`;
         params.push(from);
+        where.push(`a.date >= $${params.length}`);
       }
-
       if (to) {
-        query += ` AND a.date <= $${params.length + 1}`;
         params.push(to);
+        where.push(`a.date <= $${params.length}`);
       }
-
       if (departmentId) {
-        query += ` AND d.id = $${params.length + 1}`;
         params.push(departmentId);
+        where.push(`d.id = $${params.length}`);
       }
 
-      query += ` GROUP BY d.id, d.name ORDER BY d.name`;
-
-      const { rows } = await pool.query(query, params);
+      const { rows } = await pool.query(
+        `SELECT d.name AS department,
+                COUNT(a.id) AS total,
+                SUM(CASE WHEN a.status='PRESENT' THEN 1 ELSE 0 END) AS present,
+                SUM(CASE WHEN a.status='ABSENT' THEN 1 ELSE 0 END) AS absent,
+                SUM(CASE WHEN a.status='HALF_DAY' THEN 1 ELSE 0 END) AS half_day
+         FROM attendance a
+         JOIN users u ON a.user_id = u.id
+         JOIN departments d ON u.department_id = d.id
+         WHERE ${where.join(' AND ')}
+         GROUP BY d.id, d.name ORDER BY d.name`,
+        params
+      );
       return rows;
     }
   );
@@ -87,27 +119,22 @@ async function routes(fastify) {
     {
       preHandler: [auth, rbac('ADMIN')],
     },
-    async (req) => {
-      const { from, to } = req.query;
-
-      if (!from || !to) {
-        throw new Error('from and to dates required');
-      }
+    async (req, reply) => {
+      const range = parseDateRange(req.query, reply);
+      if (!range) return;
 
       const { rows } = await pool.query(
-        `
-      SELECT DATE(a.date) AS date,
-             COUNT(*) AS total,
-             SUM(CASE WHEN a.status='PRESENT' THEN 1 ELSE 0 END) AS present,
-             SUM(CASE WHEN a.status='ABSENT' THEN 1 ELSE 0 END) AS absent,
-             SUM(CASE WHEN a.status='HALF_DAY' THEN 1 ELSE 0 END) AS half_day
-      FROM attendance a
-      WHERE a.date BETWEEN $1 AND $2
-      AND a.deleted_at IS NULL
-      GROUP BY DATE(a.date)
-      ORDER BY DATE(a.date)
-    `,
-        [from, to]
+        `SELECT DATE(a.date) AS date,
+                COUNT(*) AS total,
+                SUM(CASE WHEN a.status='PRESENT' THEN 1 ELSE 0 END) AS present,
+                SUM(CASE WHEN a.status='ABSENT' THEN 1 ELSE 0 END) AS absent,
+                SUM(CASE WHEN a.status='HALF_DAY' THEN 1 ELSE 0 END) AS half_day
+         FROM attendance a
+         WHERE a.date BETWEEN $1 AND $2
+           AND a.deleted_at IS NULL
+         GROUP BY DATE(a.date)
+         ORDER BY DATE(a.date)`,
+        [range.from, range.to]
       );
 
       return rows;

@@ -16,13 +16,7 @@ const { sendVerificationEmail } = require('./verificationService');
 
 async function register(data, creator) {
   if (data.managerId) {
-    const pool = require('../../config/db');
-    const {
-      rows: [manager],
-    } = await pool.query(
-      'SELECT id, role FROM users WHERE id = $1 AND deleted_at IS NULL',
-      [data.managerId]
-    );
+    const manager = await repo.findByIdRaw(data.managerId);
     if (!manager) throw new Error('Manager not found');
     if (!isValidStep(manager.role, data.role)) {
       throw new Error(

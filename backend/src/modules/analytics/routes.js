@@ -7,11 +7,7 @@ async function routes(fastify) {
     '/overview',
     { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
     async () => {
-      const pool = require('../../config/db');
-      const counts = await pool.query(
-        'SELECT role, COUNT(*) FROM users WHERE deleted_at IS NULL GROUP BY role'
-      );
-      return { users: counts.rows };
+      return { users: await repo.userCountsByRole() };
     }
   );
 
@@ -20,19 +16,33 @@ async function routes(fastify) {
     '/department-attendance',
     { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
     async (req, reply) => {
-      const { departmentId, month, year } = req.query;
-      if (!departmentId || !month || !year)
-        return reply
-          .status(400)
-          .send({ error: 'departmentId, month, and year are required' });
+      const schema = z.object({
+        departmentId: z.string().uuid(),
+        month: z.coerce.number().int().min(1).max(12),
+        year: z.coerce.number().int().min(1970).max(3000),
+        role: z
+          .enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'])
+          .optional(),
+      });
+      const parsed = schema.safeParse(req.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
+      }
+      const { departmentId, month, year, role } = parsed.data;
 
-      // ✅ Scope check: SENIOR_TL can only query their own department
-      if (req.user.role !== 'ADMIN' && req.user.departmentId !== departmentId)
+      // Scope check: SENIOR_TL can only query their own department
+      if (
+        req.user.role !== 'ADMIN' &&
+        req.user.departmentId !== departmentId
+      )
         return reply
           .status(403)
           .send({ error: 'Access restricted to your own department' });
 
-      return repo.departmentAttendanceRate(departmentId, month, year);
+      return repo.departmentAttendanceRate(departmentId, month, year, role);
     }
   );
   // Top performers (Fully Secured & Optimized)
