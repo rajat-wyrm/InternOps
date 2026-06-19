@@ -731,7 +731,7 @@ export default function Team() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold">My Team</h2>
+        <h2 className="text-2xl font-bold"></h2>
         <div className="flex gap-2">
           <button
             onClick={exportCsv}

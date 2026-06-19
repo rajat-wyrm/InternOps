@@ -44,7 +44,7 @@ export default function Ratings() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-4">Ratings</h2>
+      <h2 className="text-2xl font-bold mb-4"></h2>
       {canRate && <RatingForm />}
 
       <div className="bg-white p-4 rounded-xl shadow-sm mb-4 flex items-end justify-between flex-wrap gap-3">

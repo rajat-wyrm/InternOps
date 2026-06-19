@@ -23,9 +23,6 @@ export default function Sessions() {
   return (
     <div>
       <PageHeader
-        title="Active Sessions"
-        icon="🔐"
-        subtitle="Devices currently signed in to your account"
         actions={
           <Btn variant="danger" onClick={() => revokeAllMut.mutate()}>
             Revoke all others

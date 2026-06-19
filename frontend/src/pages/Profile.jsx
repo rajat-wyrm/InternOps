@@ -82,9 +82,6 @@ export default function Profile() {
   return (
     <div className="max-w-3xl">
       <PageHeader
-        title="My Profile"
-        icon="👤"
-        subtitle="Manage your account details"
       />
 
       {message && (

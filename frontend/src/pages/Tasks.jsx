@@ -82,9 +82,6 @@ export default function Tasks() {
   return (
     <div>
       <PageHeader
-        title="Social Media Tasks"
-        icon="🎯"
-        subtitle="Campaigns & proof verification"
         actions={
           canCreateTask && (
             <Btn onClick={() => setShowForm((s) => !s)}>

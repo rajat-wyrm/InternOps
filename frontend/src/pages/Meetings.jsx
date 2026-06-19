@@ -70,9 +70,6 @@ export default function Meetings() {
   return (
     <div>
       <PageHeader
-        title="Meetings"
-        icon="📹"
-        subtitle="Schedule and track team meetings"
         actions={
           canCreate && (
             <Btn onClick={() => setShowForm((s) => !s)}>

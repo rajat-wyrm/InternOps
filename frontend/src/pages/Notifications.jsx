@@ -44,9 +44,6 @@ export default function Notifications() {
   return (
     <div>
       <PageHeader
-        title="Notifications"
-        icon="🔔"
-        subtitle={unread ? `${unread} unread` : 'You are all caught up'}
         actions={
           <Btn variant="outline" onClick={() => markAllReadMut.mutate()}>
             ✓ Mark all read

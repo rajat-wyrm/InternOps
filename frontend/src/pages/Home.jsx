@@ -62,10 +62,10 @@ function ManagerHome({ user }) {
     <div>
       <div className="mb-6">
         <h1 className="text-3xl font-extrabold text-gray-800">
-          Welcome, {user?.fullName || user?.email} 👋
+           {user?.fullName || user?.email} 👋
         </h1>
         <p className="text-gray-500">
-          {ROLE_LABEL[user?.role]} dashboard · here's your team at a glance
+          {ROLE_LABEL[user?.role]} 
         </p>
       </div>
 

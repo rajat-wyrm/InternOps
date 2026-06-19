@@ -41,9 +41,6 @@ export default function Reports() {
   return (
     <div>
       <PageHeader
-        title="Reports"
-        icon="📈"
-        subtitle="Aggregated attendance, ratings & task stats"
       />
 
       <Card className="p-4 mb-5 flex gap-4 items-end flex-wrap">
