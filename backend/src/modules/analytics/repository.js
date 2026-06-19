@@ -1,6 +1,11 @@
 ﻿const pool = require('../../config/db');
 
-async function departmentAttendanceRate(departmentId, month, year, role = null) {
+async function departmentAttendanceRate(
+  departmentId,
+  month,
+  year,
+  role = null
+) {
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const nextMonth = month === 12 ? 1 : month + 1;
   const nextYear = month === 12 ? year + 1 : year;
