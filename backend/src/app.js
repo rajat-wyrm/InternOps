@@ -189,6 +189,13 @@ app.get('/health', async (req, reply) => {
 });
 
 app.get('/health/db', async (req, reply) => {
+  if (!pool.dbHealthy) {
+    return reply.status(503).send({
+      status: 'error',
+      db: 'disconnected',
+    });
+  }
+
   try {
     await pool.query('SELECT 1');
     reply.send({
@@ -196,6 +203,7 @@ app.get('/health/db', async (req, reply) => {
       db: 'connected',
     });
   } catch {
+    pool.dbHealthy = false;
     reply.status(503).send({
       status: 'error',
       db: 'disconnected',
