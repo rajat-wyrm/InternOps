@@ -192,15 +192,22 @@ async function revokeRefreshTokenRedis(tokenHash) {
 }
 
 async function revokeAllUserTokensRedis(userId) {
-  const redis = await getRedisClient();
-  if (redis) {
-    const tokens = await redis.sMembers(`user_tokens:${userId}`);
-    for (const token of tokens) {
-      await redis.del(`refresh_token:${token}`);
-    }
-    await redis.del(`user_tokens:${userId}`);
-  }
+  // 1. Postgres UPDATE first
   await revokeAllUserTokens(userId);
+
+  // 2. Redis cleanup (best-effort)
+  try {
+    const redis = await getRedisClient();
+    if (redis) {
+      const tokens = await redis.sMembers(`user_tokens:${userId}`);
+      if (tokens && tokens.length > 0) {
+        await redis.del(tokens.map((token) => `refresh_token:${token}`));
+      }
+      await redis.del(`user_tokens:${userId}`);
+    }
+  } catch (err) {
+    console.error(`Failed to clean up Redis sessions for user ${userId} in revokeAllUserTokensRedis:`, err);
+  }
 }
 
 module.exports = {
