@@ -40,7 +40,8 @@ async function register(data, creator) {
 
 // Dummy hash used to flatten timing when user doesn't exist.
 // Prevents user-enumeration via response latency differences.
-const DUMMY_HASH = '$argon2id$v=19$m=65536,t=3,p=4$c29tZXJhbmRvbXNhbHQ$RdescudvJCsgt3ub+b27Ze4AXpxcKAspe5gOjBosC2o';
+const DUMMY_HASH =
+  '$argon2id$v=19$m=65536,t=3,p=4$c29tZXJhbmRvbXNhbHQ$RdescudvJCsgt3ub+b27Ze4AXpxcKAspe5gOjBosC2o';
 
 async function login(email, password, ip, userAgent) {
   const user = await repo.findByEmail(email);
