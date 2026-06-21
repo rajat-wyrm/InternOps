@@ -75,7 +75,7 @@ async function routes(fastify) {
       schema: { tags: ['Authentication'], description: 'Refresh access token' },
     },
     async (req, reply) => {
-      const token = req.cookies.refreshToken || req.body.refreshToken;
+      const token = req.cookies.refreshToken;
       if (!token)
         return reply.status(400).send({ error: 'Refresh token required' });
       const tokens = await service.refreshTokens(token, req.ip);
