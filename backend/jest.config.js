@@ -4,6 +4,8 @@ module.exports = {
   verbose: true,
   forceExit: true,
   detectOpenHandles: true,
+  globalSetup: '<rootDir>/tests/globalSetup.js',
+  globalTeardown: '<rootDir>/tests/globalTeardown.js',
   collectCoverage: true,
   coverageDirectory: 'coverage',
   collectCoverageFrom: [
