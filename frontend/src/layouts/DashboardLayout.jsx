@@ -84,7 +84,9 @@ const DashboardLayout = () => {
               title="Logout"
             >
               <LogOut className="w-5 h-5" />
-              <span className="font-medium text-sm hidden sm:inline-block">Logout</span>
+              <span className="font-medium text-sm hidden sm:inline-block">
+                Logout
+              </span>
             </button>
           </div>
         </header>
