@@ -32,11 +32,11 @@ async function routes(fastify) {
         });
       }
 
-    try {
-      const result = await generateAIResponse({
-        userId: req.user.id,
-        messages: finalMessages,
-      });
+      try {
+        const result = await generateAIResponse({
+          userId: req.user.id,
+          messages: finalMessages,
+        });
         return {
           provider: result.provider,
           cached: result.cached,
