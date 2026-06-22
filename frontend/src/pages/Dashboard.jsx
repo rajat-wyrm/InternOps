@@ -26,6 +26,7 @@ import Exports from './admin/Exports';
 import Departments from './admin/Departments';
 import useAuthStore from '../store/auth';
 import InternOpsAssistant from '../components/InternOpsAssistant';
+import RoleGuard from '../components/RoleGuard';
 
 const ROLE_LABEL = {
   ADMIN: 'Admin',
@@ -287,16 +288,58 @@ export default function Dashboard() {
             <Route path="assistant" element={<InternOpsAssistant />} />
             {canViewReports && (
               <>
-                <Route path="reports" element={<Reports />} />
-                <Route path="analytics" element={<Analytics />} />
-                <Route path="exports" element={<Exports />} />
+                <Route
+                  path="reports"
+                  element={
+                    <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                      <Reports />
+                    </RoleGuard>
+                  }
+                />
+                <Route
+                  path="analytics"
+                  element={
+                    <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                      <Analytics />
+                    </RoleGuard>
+                  }
+                />
+                <Route
+                  path="exports"
+                  element={
+                    <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                      <Exports />
+                    </RoleGuard>
+                  }
+                />
               </>
             )}
             {isAdmin && (
               <>
-                <Route path="admin" element={<AdminDashboard />} />
-                <Route path="departments" element={<Departments />} />
-                <Route path="audit" element={<AuditLog />} />
+                <Route
+                  path="admin"
+                  element={
+                    <RoleGuard allowedRoles={['ADMIN']}>
+                      <AdminDashboard />
+                    </RoleGuard>
+                  }
+                />
+                <Route
+                  path="departments"
+                  element={
+                    <RoleGuard allowedRoles={['ADMIN']}>
+                      <Departments />
+                    </RoleGuard>
+                  }
+                />
+                <Route
+                  path="audit"
+                  element={
+                    <RoleGuard allowedRoles={['ADMIN']}>
+                      <AuditLog />
+                    </RoleGuard>
+                  }
+                />
               </>
             )}
           </Routes>

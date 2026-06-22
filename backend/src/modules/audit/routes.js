@@ -1,4 +1,4 @@
-﻿const auth = require('../../middleware/auth');
+const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const pool = require('../../config/db');
 async function routes(fastify) {
@@ -8,9 +8,10 @@ async function routes(fastify) {
     const offset = (page - 1) * limit;
     const logs = await pool.query(
       `
-      SELECT *
-      FROM audit_logs
-      ORDER BY created_at DESC
+      SELECT al.*, u.full_name AS actor_name, u.email AS actor_email
+      FROM audit_logs al
+      LEFT JOIN users u ON al.user_id = u.id
+      ORDER BY al.created_at DESC
       LIMIT $1 OFFSET $2
       `,
       [limit, offset]

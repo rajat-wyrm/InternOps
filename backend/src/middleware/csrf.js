@@ -98,7 +98,13 @@ const EXEMPT = [
 
 async function csrfCheck(request, reply) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
-  if (EXEMPT.some((p) => request.url.startsWith(p))) return;
+  if (!request.url) return;
+
+  const path =
+    request.routerPath ??
+    request.routeOptions?.url ??
+    request.url.split('?')[0].split('#')[0];
+  if (EXEMPT.includes(path)) return;
 
   const sid = readSession(request);
   const headerToken = request.headers['x-csrf-token'];

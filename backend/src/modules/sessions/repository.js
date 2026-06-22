@@ -1,4 +1,4 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 const { getRedisClient } = require('../../config/redis');
 
 // ─── getUserSessions ──────────────────────────────────────────────────────────
@@ -13,8 +13,22 @@ async function getUserSessions(userId) {
   if (redis) {
     const tokenHashes = await redis.sMembers(`user_tokens:${userId}`);
     const sessions = [];
-
-    // ... (Your existing loop code to populate the sessions array) ...
+    for (const hash of tokenHashes) {
+      const raw = await redis.get(`refresh_token:${hash}`);
+      if (raw) {
+        let createdAt = 'N/A';
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed.createdAt) {
+            createdAt = new Date(parsed.createdAt).toISOString();
+          }
+        } catch {}
+        sessions.push({
+          sessionId: hash,
+          createdAt,
+        });
+      }
+    }
 
     // Only return if we actually found something in Redis
     if (sessions.length > 0) {

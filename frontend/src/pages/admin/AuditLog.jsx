@@ -45,7 +45,11 @@ export default function AuditLog() {
               {new Date(log.created_at).toLocaleString()}
             </td>
             <td className="p-3 text-xs font-mono text-gray-600">
-              {log.user_id ? log.user_id.substring(0, 8) + '…' : 'system'}
+              {log.actor_email
+                ? `${log.actor_name || ''} (${log.actor_email})`
+                : log.user_id
+                  ? log.user_id.substring(0, 8) + '…'
+                  : 'system'}
             </td>
             <td className="p-3">
               <Badge color={actionColor(log.action)}>{log.action}</Badge>

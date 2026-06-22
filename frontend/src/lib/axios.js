@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // All backend routes are mounted under /api; Vite proxies this to :5000 in dev.
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
 });
 

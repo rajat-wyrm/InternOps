@@ -7,7 +7,7 @@ import RatingSuggestionCard from './RatingSuggestionCard';
 export default function RatingForm() {
   const queryClient = useQueryClient();
   const [userId, setUserId] = useState('');
-  const [score, setScore] = useState(5);
+  const [score, setScore] = useState(10);
   const [remarks, setRemarks] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -40,7 +40,7 @@ export default function RatingForm() {
       setMsg('✓ Rating submitted');
       setRemarks('');
       setUserId('');
-      setScore(5);
+      setScore(10);
       setTimeout(() => setMsg(''), 2000);
     },
     onError: (err) => setError(err.response?.data?.error || 'Failed'),
@@ -79,7 +79,7 @@ export default function RatingForm() {
         <div>
           <label className="text-xs text-gray-500">Score</label>
           <div className="flex gap-1 mt-1">
-            {[1, 2, 3, 4, 5].map((n) => (
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
               <button
                 type="button"
                 key={n}
@@ -98,7 +98,7 @@ export default function RatingForm() {
           onChange={(e) => setRemarks(e.target.value)}
         />
         <Btn variant="success" type="submit" disabled={rateMutation.isPending}>
-          {rateMutation.isPending ? 'Submitting…' : `Submit ${score}★ rating`}
+          {rateMutation.isPending ? 'Submitting…' : `Submit ${score}/10 rating`}
         </Btn>
       </form>
     </Card>

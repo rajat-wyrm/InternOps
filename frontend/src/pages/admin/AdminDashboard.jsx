@@ -4,6 +4,7 @@ import { Search, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react';
 import api from '../../lib/axios';
 import { PageHeader, Spinner, EmptyState } from '../../components/ui';
 import UserActionMenu from '../../components/UserActionMenu';
+import CreateUserModal from '../../components/admin/CreateUserModal';
 
 const ROLE_COLOR = {
   ADMIN: 'bg-brand-orange/10 text-brand-orange',
@@ -31,6 +32,7 @@ export default function AdminDashboard() {
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [deletingUserId, setDeletingUserId] = useState(null);
+  const [createUserOpen, setCreateUserOpen] = useState(false);
   const limit = 10;
 
   const { data, isLoading } = useQuery({
@@ -91,6 +93,14 @@ export default function AdminDashboard() {
       <PageHeader
         title="User Directory"
         subtitle="Manage all platform accounts, roles, and status"
+        actions={
+          <button
+            onClick={() => setCreateUserOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
+          >
+            <span>+ Add User</span>
+          </button>
+        }
         icon={
           <div className="w-11 h-11 rounded-xl bg-brand-orange text-white flex items-center justify-center shadow-md">
             <ShieldCheck className="w-5 h-5" />
@@ -246,6 +256,11 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      <CreateUserModal
+        open={createUserOpen}
+        onClose={() => setCreateUserOpen(false)}
+      />
     </div>
   );
 }

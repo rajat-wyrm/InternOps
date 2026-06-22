@@ -68,6 +68,10 @@ async function verifyProof(proofId, verifierId, verifierRole) {
     throw new Error('Proof not found');
   }
 
+  if (verifierId === proofRes.rows[0].intern_id) {
+    throw new Error('Forbidden: you cannot verify your own proof submission');
+  }
+
   // Admin can verify anyone; everyone else must be in the intern's hierarchy
   if (verifierRole !== 'ADMIN') {
     const { checkHierarchyAccess } = require('../../utils/hierarchy');

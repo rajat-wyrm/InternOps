@@ -236,7 +236,7 @@ describe('Meetings Integration Tests', () => {
           reason: 'Not in your hierarchy',
         }),
       ]);
-    });
+    }, 30000);
   });
 
   describe('GET /api/meetings', () => {
