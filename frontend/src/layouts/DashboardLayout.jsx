@@ -19,7 +19,7 @@ import {
   Zap,
   Sun,
   Moon,
-  Menu
+  Menu,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -46,9 +46,24 @@ const nav = [
   { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/profile', label: 'Profile', icon: User },
   { path: '/sessions', label: 'Sessions', icon: Shield },
-  { path: '/reports', label: 'Reports', icon: FileText, roles: ['ADMIN', 'SENIOR_TL'] },
-  { path: '/analytics', label: 'Analytics', icon: BarChart2, roles: ['ADMIN', 'SENIOR_TL'] },
-  { path: '/exports', label: 'Exports', icon: Download, roles: ['ADMIN', 'SENIOR_TL'] },
+  {
+    path: '/reports',
+    label: 'Reports',
+    icon: FileText,
+    roles: ['ADMIN', 'SENIOR_TL'],
+  },
+  {
+    path: '/analytics',
+    label: 'Analytics',
+    icon: BarChart2,
+    roles: ['ADMIN', 'SENIOR_TL'],
+  },
+  {
+    path: '/exports',
+    label: 'Exports',
+    icon: Download,
+    roles: ['ADMIN', 'SENIOR_TL'],
+  },
 ];
 
 const adminNav = [
@@ -66,8 +81,12 @@ export default function DashboardLayout() {
   const isAdmin = role === 'ADMIN';
   const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(role);
 
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar') === 'collapsed');
-  const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark');
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem('sidebar') === 'collapsed'
+  );
+  const [dark, setDark] = useState(
+    () => localStorage.getItem('theme') === 'dark'
+  );
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const { data: me } = useQuery({
@@ -94,11 +113,13 @@ export default function DashboardLayout() {
   });
 
   const allItems = [...visibleNav, ...(isAdmin ? adminNav : [])];
-  const current = allItems.find((n) => n.path === loc.pathname) || { label: 'Dashboard' };
+  const current = allItems.find((n) => n.path === loc.pathname) || {
+    label: 'Dashboard',
+  };
 
   const handleLogout = () => setShowLogoutConfirm(true);
 
-const NavLink = ({ n }) => {
+  const NavLink = ({ n }) => {
     const active = loc.pathname === n.path;
     const Icon = n.icon; // Get the lucide component
 
@@ -112,46 +133,80 @@ const NavLink = ({ n }) => {
       >
         <Icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2.5 : 2} />
         {!collapsed && <span className="whitespace-nowrap">{n.label}</span>}
-        {!collapsed && active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600" />}
+        {!collapsed && active && (
+          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600" />
+        )}
       </Link>
     );
   };
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-indigo-50/50">
-      <aside className={`${collapsed ? 'w-20' : 'w-64'} shrink-0 bg-gradient-to-b from-indigo-700 via-indigo-800 to-purple-900 text-white flex flex-col transition-all duration-300 ease-in-out`}>
-        <div className={`p-5 flex items-center gap-2 ${collapsed ? 'justify-center' : ''}`}>
+      <aside
+        className={`${collapsed ? 'w-20' : 'w-64'} shrink-0 bg-gradient-to-b from-indigo-700 via-indigo-800 to-purple-900 text-white flex flex-col transition-all duration-300 ease-in-out`}
+      >
+        <div
+          className={`p-5 flex items-center gap-2 ${collapsed ? 'justify-center' : ''}`}
+        >
           <div className="w-10 h-10 rounded-xl bg-white/20 glass flex items-center justify-center shrink-0">
-              <Zap className="w-5 h-5" fill="currentColor" />
-              </div>
+            <Zap className="w-5 h-5" fill="currentColor" />
+          </div>
           {!collapsed && (
             <div className="overflow-hidden">
-              <h2 className="text-lg font-extrabold leading-none whitespace-nowrap">InternOps</h2>
-              <p className="text-[10px] text-indigo-200 mt-0.5 whitespace-nowrap">Workforce Platform</p>
+              <h2 className="text-lg font-extrabold leading-none whitespace-nowrap">
+                InternOps
+              </h2>
+              <p className="text-[10px] text-indigo-200 mt-0.5 whitespace-nowrap">
+                Workforce Platform
+              </p>
             </div>
           )}
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 space-y-1">
-          {visibleNav.map((n) => <NavLink key={n.path} n={n} />)}
+          {visibleNav.map((n) => (
+            <NavLink key={n.path} n={n} />
+          ))}
           {isAdmin && (
             <>
-              {!collapsed && <p className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-indigo-300">Admin</p>}
-              {collapsed && <div className="my-2 mx-3 border-t border-white/10" />}
-              {adminNav.map((n) => <NavLink key={n.path} n={n} />)}
+              {!collapsed && (
+                <p className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-indigo-300">
+                  Admin
+                </p>
+              )}
+              {collapsed && (
+                <div className="my-2 mx-3 border-t border-white/10" />
+              )}
+              {adminNav.map((n) => (
+                <NavLink key={n.path} n={n} />
+              ))}
             </>
           )}
         </nav>
 
         <div className="p-3">
-          <div className={`glass rounded-2xl border border-white/10 flex items-center ${collapsed ? 'justify-center p-2' : 'gap-3 p-3'}`}>
-            <UserAvatar name={displayName} email={user?.email} src={avatarUrl} />
+          <div
+            className={`glass rounded-2xl border border-white/10 flex items-center ${collapsed ? 'justify-center p-2' : 'gap-3 p-3'}`}
+          >
+            <UserAvatar
+              name={displayName}
+              email={user?.email}
+              src={avatarUrl}
+            />
             {!collapsed && (
               <>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{displayName}</p>
-                  <p className="text-[10px] text-indigo-200">{ROLE_LABEL[role] || role}</p>
+                  <p className="text-[10px] text-indigo-200">
+                    {ROLE_LABEL[role] || role}
+                  </p>
                 </div>
-                <button onClick={handleLogout} title="Logout" className="text-indigo-200 hover:text-white hover:scale-110 transition">⏻</button>
+                <button
+                  onClick={handleLogout}
+                  title="Logout"
+                  className="text-indigo-200 hover:text-white hover:scale-110 transition"
+                >
+                  ⏻
+                </button>
               </>
             )}
           </div>
@@ -161,18 +216,37 @@ const NavLink = ({ n }) => {
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 bg-white/80 backdrop-blur border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 shrink-0">
           <div className="flex items-center gap-3">
-            <button onClick={() => setCollapsed((c) => !c)} className="w-9 h-9 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-600 transition">
+            <button
+              onClick={() => setCollapsed((c) => !c)}
+              className="w-9 h-9 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-600 transition"
+            >
               {collapsed ? '»' : '«'}
             </button>
             <h1 className="text-lg font-bold text-gray-800">{current.label}</h1>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setDark((d) => !d)} className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition text-lg">
+            <button
+              onClick={() => setDark((d) => !d)}
+              className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition text-lg"
+            >
               {dark ? '☀️' : '🌙'}
             </button>
-            <Link to="/notifications" className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition">🔔</Link>
-            <Link to="/profile" className="rounded-full hover:scale-105 transition">
-              <UserAvatar name={displayName} email={user?.email} src={avatarUrl} text="text-xs" />
+            <Link
+              to="/notifications"
+              className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition"
+            >
+              🔔
+            </Link>
+            <Link
+              to="/profile"
+              className="rounded-full hover:scale-105 transition"
+            >
+              <UserAvatar
+                name={displayName}
+                email={user?.email}
+                src={avatarUrl}
+                text="text-xs"
+              />
             </Link>
           </div>
         </header>
@@ -187,12 +261,34 @@ const NavLink = ({ n }) => {
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[9999] animate-fade-in">
           <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full mx-4 border border-gray-100 animate-scale-up">
             <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl mb-4">🚪</div>
-              <h3 className="text-lg font-bold text-gray-950 mb-2">Confirm Logout</h3>
-              <p className="text-sm text-gray-500 mb-6">Are you sure you want to log out?</p>
+              <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl mb-4">
+                🚪
+              </div>
+              <h3 className="text-lg font-bold text-gray-950 mb-2">
+                Confirm Logout
+              </h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Are you sure you want to log out?
+              </p>
               <div className="flex gap-3 w-full">
-                <button type="button" onClick={() => setShowLogoutConfirm(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button type="button" onClick={() => { setShowLogoutConfirm(false); logout(); navigate('/login'); }} className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-red-600 text-white text-sm font-semibold">OK</button>
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowLogoutConfirm(false);
+                    logout();
+                    navigate('/login');
+                  }}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-red-600 text-white text-sm font-semibold"
+                >
+                  OK
+                </button>
               </div>
             </div>
           </div>

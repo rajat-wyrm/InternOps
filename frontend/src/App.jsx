@@ -38,8 +38,11 @@ export default function App() {
   const setHydrated = useAuthStore((s) => s.setHydrated);
 
   useEffect(() => {
-    api.post('/auth/refresh')
-      .then((res) => setAuth({ accessToken: res.data.accessToken, user: res.data.user }))
+    api
+      .post('/auth/refresh')
+      .then((res) =>
+        setAuth({ accessToken: res.data.accessToken, user: res.data.user })
+      )
       .catch(() => {})
       .finally(() => setHydrated());
   }, []);
@@ -51,9 +54,16 @@ export default function App() {
       <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* SINGLE LAYOUT WRAPPER FOR ALL AUTHENTICATED PAGES */}
-      <Route path="/" element={<Private><DashboardLayout /></Private>}>
+      <Route
+        path="/"
+        element={
+          <Private>
+            <DashboardLayout />
+          </Private>
+        }
+      >
         <Route index element={<Navigate to="dashboard" replace />} />
-        
+
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="tasks" element={<Tasks />} />
         <Route path="attendance" element={<Attendance />} />
@@ -66,13 +76,55 @@ export default function App() {
         <Route path="assistant" element={<InternOpsAssistant />} />
 
         {/* Admin/Manager Routes */}
-        <Route path="reports" element={<RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}><Reports /></RoleGuard>} />
-        <Route path="analytics" element={<RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}><Analytics /></RoleGuard>} />
-        <Route path="exports" element={<RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}><Exports /></RoleGuard>} />
-        
-        <Route path="admin" element={<RoleGuard allowedRoles={['ADMIN']}><AdminDashboard /></RoleGuard>} />
-        <Route path="departments" element={<RoleGuard allowedRoles={['ADMIN']}><Departments /></RoleGuard>} />
-        <Route path="audit" element={<RoleGuard allowedRoles={['ADMIN']}><AuditLog /></RoleGuard>} />
+        <Route
+          path="reports"
+          element={
+            <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+              <Reports />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="analytics"
+          element={
+            <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+              <Analytics />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="exports"
+          element={
+            <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+              <Exports />
+            </RoleGuard>
+          }
+        />
+
+        <Route
+          path="admin"
+          element={
+            <RoleGuard allowedRoles={['ADMIN']}>
+              <AdminDashboard />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="departments"
+          element={
+            <RoleGuard allowedRoles={['ADMIN']}>
+              <Departments />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="audit"
+          element={
+            <RoleGuard allowedRoles={['ADMIN']}>
+              <AuditLog />
+            </RoleGuard>
+          }
+        />
       </Route>
     </Routes>
   );
