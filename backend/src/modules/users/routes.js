@@ -33,54 +33,48 @@ async function routes(fastify) {
   );
 
   fastify.post(
-  '/',
-  { preHandler: [auth, rbac('ADMIN')] },
-  async (req, reply) => {
-    const schema = z.object({
-      full_name: z.string().min(2),
-      email: z.string().email(),
-      password: z.string().min(8),
-      role: z.enum([
-        'ADMIN',
-        'SENIOR_TL',
-        'TL',
-        'CAPTAIN',
-        'INTERN',
-      ]),
-    });
-
-    const data = schema.parse(req.body);
-
-    const existing = await authRepo.findByEmail(data.email);
-
-    if (existing) {
-      return reply.status(400).send({
-        error: 'Email already exists',
+    '/',
+    { preHandler: [auth, rbac('ADMIN')] },
+    async (req, reply) => {
+      const schema = z.object({
+        full_name: z.string().min(2),
+        email: z.string().email(),
+        password: z.string().min(8),
+        role: z.enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
       });
+
+      const data = schema.parse(req.body);
+
+      const existing = await authRepo.findByEmail(data.email);
+
+      if (existing) {
+        return reply.status(400).send({
+          error: 'Email already exists',
+        });
+      }
+
+      const password_hash = await argon2.hash(data.password);
+
+      const user = await repo.createUser({
+        full_name: data.full_name,
+        email: data.email,
+        password_hash,
+        role: data.role,
+      });
+
+      await createAuditLog({
+        userId: req.user.id,
+        action: 'USER_CREATED',
+        resourceType: 'user',
+        resourceId: user.id,
+      });
+
+      return {
+        message: 'User created successfully',
+        user,
+      };
     }
-
-    const password_hash = await argon2.hash(data.password);
-
-    const user = await repo.createUser({
-      full_name: data.full_name,
-      email: data.email,
-      password_hash,
-      role: data.role,
-    });
-
-    await createAuditLog({
-      userId: req.user.id,
-      action: 'USER_CREATED',
-      resourceType: 'user',
-      resourceId: user.id,
-    });
-
-    return {
-      message: 'User created successfully',
-      user,
-    };
-  }
-);
+  );
   // Get own profile
   fastify.get('/me', { preHandler: [auth] }, async (req) => {
     const {
