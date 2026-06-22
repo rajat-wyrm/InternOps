@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Mail, Lock, Eye, EyeOff, User, Layers, HelpCircle, X } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  User,
+  Layers,
+  HelpCircle,
+  X,
+} from 'lucide-react';
 import api from '../../lib/axios';
 
 export default function CreateUserModal({ open, onClose }) {
@@ -25,19 +34,26 @@ export default function CreateUserModal({ open, onClose }) {
   // Fetch potential managers based on selected role to respect hierarchy
   const { data: captains = [] } = useQuery({
     queryKey: ['usersByRole', 'CAPTAIN'],
-    queryFn: () => api.get('/users?role=CAPTAIN&limit=100').then((res) => res.data?.data || []),
+    queryFn: () =>
+      api
+        .get('/users?role=CAPTAIN&limit=100')
+        .then((res) => res.data?.data || []),
     enabled: open && role === 'INTERN',
   });
 
   const { data: tls = [] } = useQuery({
     queryKey: ['usersByRole', 'TL'],
-    queryFn: () => api.get('/users?role=TL&limit=100').then((res) => res.data?.data || []),
+    queryFn: () =>
+      api.get('/users?role=TL&limit=100').then((res) => res.data?.data || []),
     enabled: open && (role === 'INTERN' || role === 'CAPTAIN'),
   });
 
   const { data: seniorTls = [] } = useQuery({
     queryKey: ['usersByRole', 'SENIOR_TL'],
-    queryFn: () => api.get('/users?role=SENIOR_TL&limit=100').then((res) => res.data?.data || []),
+    queryFn: () =>
+      api
+        .get('/users?role=SENIOR_TL&limit=100')
+        .then((res) => res.data?.data || []),
     enabled: open && (role === 'CAPTAIN' || role === 'TL'),
   });
 
@@ -53,7 +69,8 @@ export default function CreateUserModal({ open, onClose }) {
 
   // Register mutation
   const registerMutation = useMutation({
-    mutationFn: (payload) => api.post('/auth/register', payload).then((res) => res.data),
+    mutationFn: (payload) =>
+      api.post('/auth/register', payload).then((res) => res.data),
     onSuccess: () => {
       setSuccessMsg('User account provisioned successfully.');
       setError('');
@@ -89,7 +106,8 @@ export default function CreateUserModal({ open, onClose }) {
     if (!fullName.trim()) return setError('Full Name is required');
     if (!email.trim()) return setError('Email is required');
     if (!password) return setError('Temporary Password is required');
-    if (password.length < 8) return setError('Password must be at least 8 characters');
+    if (password.length < 8)
+      return setError('Password must be at least 8 characters');
     if (!role) return setError('Role is required');
 
     const payload = {
@@ -117,7 +135,9 @@ export default function CreateUserModal({ open, onClose }) {
             </div>
             <div>
               <h2 className="text-lg font-bold">Add New User</h2>
-              <p className="text-xs text-gray-400">Provision a secure workforce account</p>
+              <p className="text-xs text-gray-400">
+                Provision a secure workforce account
+              </p>
             </div>
           </div>
           <button
@@ -198,7 +218,11 @@ export default function CreateUserModal({ open, onClose }) {
                 onClick={() => setShowPassword((s) => !s)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition"
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
@@ -271,7 +295,8 @@ export default function CreateUserModal({ open, onClose }) {
                 ))}
               </select>
               <p className="text-[10px] text-gray-400 mt-1">
-                Ensures access permissions are mapped recursively according to the hierarchy.
+                Ensures access permissions are mapped recursively according to
+                the hierarchy.
               </p>
             </div>
           )}

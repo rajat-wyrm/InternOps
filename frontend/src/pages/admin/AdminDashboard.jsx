@@ -257,7 +257,10 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <CreateUserModal open={createUserOpen} onClose={() => setCreateUserOpen(false)} />
+      <CreateUserModal
+        open={createUserOpen}
+        onClose={() => setCreateUserOpen(false)}
+      />
     </div>
   );
 }
