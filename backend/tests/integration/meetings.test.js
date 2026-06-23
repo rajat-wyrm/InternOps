@@ -128,7 +128,11 @@ async function createUserAsAdmin(user) {
   return JSON.parse(res.body);
 }
 
-async function waitForAuditLog(query, params, { retries = 10, delayMs = 50 } = {}) {
+async function waitForAuditLog(
+  query,
+  params,
+  { retries = 10, delayMs = 50 } = {}
+) {
   let result;
   for (let i = 0; i < retries; i++) {
     result = await pool.query(query, params);
