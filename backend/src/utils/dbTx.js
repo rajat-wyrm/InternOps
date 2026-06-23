@@ -7,10 +7,9 @@ async function withHierarchyTx(userIdsToLock, fn) {
     if (userIdsToLock && userIdsToLock.length > 0) {
       // Sort IDs to consistently lock in the same order and prevent deadlocks
       const sortedIds = [...new Set(userIdsToLock)].sort();
-      await client.query(
-        'SELECT id FROM users WHERE id = ANY($1) FOR UPDATE',
-        [sortedIds]
-      );
+      await client.query('SELECT id FROM users WHERE id = ANY($1) FOR UPDATE', [
+        sortedIds,
+      ]);
     }
     const result = await fn(client);
     await client.query('COMMIT');
