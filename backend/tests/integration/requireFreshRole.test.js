@@ -15,7 +15,7 @@ describe('requireFreshRole Middleware (#484)', () => {
        ON CONFLICT (id) DO UPDATE SET role = $4, suspended = $6`,
       [
         testUserId,
-        'test-user@internops.com',
+        `test-user-${testUserId}@internops.com`,
         TEST_PASSWORD_HASH,
         'SENIOR_TL',
         'Test User',

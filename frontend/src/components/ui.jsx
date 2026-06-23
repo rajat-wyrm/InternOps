@@ -61,7 +61,7 @@ export function UserAvatar({
 export function Card({ children, className = '', hover = false }) {
   return (
     <div
-      className={`bg-white rounded-2xl shadow-sm border border-gray-100 ${hover ? 'card-hover cursor-pointer' : ''} ${className}`}
+      className={`bg-gray-800 border border-gray-700 rounded-2xl shadow-sm ${hover ? 'card-hover cursor-pointer' : ''} ${className}`}
     >
       {children}
     </div>
@@ -69,14 +69,14 @@ export function Card({ children, className = '', hover = false }) {
 }
 
 const BADGE = {
-  gray: 'bg-gray-100 text-gray-700',
-  green: 'bg-green-100 text-green-700',
-  red: 'bg-red-100 text-red-700',
-  yellow: 'bg-amber-100 text-amber-700',
-  blue: 'bg-blue-100 text-blue-700',
-  indigo: 'bg-indigo-100 text-indigo-700',
-  purple: 'bg-purple-100 text-purple-700',
-  teal: 'bg-teal-100 text-teal-700',
+  gray: 'bg-gray-900/20 text-gray-300',
+  green: 'bg-green-900/20 text-green-300',
+  red: 'bg-red-900/20 text-red-300',
+  yellow: 'bg-amber-900/20 text-amber-300',
+  blue: 'bg-blue-900/20 text-blue-300',
+  indigo: 'bg-indigo-900/20 text-indigo-300',
+  purple: 'bg-purple-900/20 text-purple-300',
+  teal: 'bg-teal-900/20 text-teal-300',
 };
 export function Badge({ color = 'gray', children, className = '' }) {
   return (

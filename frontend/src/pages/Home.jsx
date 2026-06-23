@@ -32,10 +32,20 @@ function QuickAction({ to, icon, label, tint }) {
 }
 
 function ManagerHome({ user }) {
-  const { data: team = [], isLoading } = useQuery({
+  const {
+    data: team = [],
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
+
+  if (isLoading) return <p className="text-gray-300">Loading dashboard...</p>;
+
+  if (isError) {
+    return <p className="text-red-400">Failed to load dashboard data.</p>;
+  }
 
   if (isLoading) return <p className="text-gray-500">Loading dashboard...</p>;
 
@@ -59,12 +69,12 @@ function ManagerHome({ user }) {
   });
 
   return (
-    <div>
+    <div className="min-h-screen bg-gray-900 text-white p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-extrabold text-gray-800">
+        <h1 className="text-3xl font-extrabold text-white">
           Welcome, {user?.fullName || user?.email} 👋
         </h1>
-        <p className="text-gray-500">
+        <p className="text-gray-300">
           {ROLE_LABEL[user?.role]} dashboard · here's your team at a glance
         </p>
       </div>
@@ -100,7 +110,7 @@ function ManagerHome({ user }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+            <h3 className="font-semibold text-white flex items-center gap-2">
               ⚠️ Needs attention
             </h3>
             <Link
@@ -113,7 +123,7 @@ function ManagerHome({ user }) {
           {lowAttendance.length === 0 ? (
             <div className="text-center py-6">
               <div className="text-4xl mb-2 animate-float inline-block">🎉</div>
-              <p className="text-gray-400 text-sm">
+              <p className="text-gray-300 text-sm">
                 Everyone is above 60% attendance.
               </p>
             </div>
@@ -122,9 +132,9 @@ function ManagerHome({ user }) {
               {lowAttendance.slice(0, 5).map((m) => (
                 <div
                   key={m.id}
-                  className="flex justify-between items-center text-sm bg-rose-50 rounded-lg px-3 py-2"
+                  className="flex justify-between items-center text-sm bg-rose-900/20 rounded-lg px-3 py-2"
                 >
-                  <span className="text-gray-700">
+                  <span className="text-gray-200">
                     {m.full_name || m.email}
                   </span>
                   <span className="text-rose-600 font-semibold">
@@ -137,7 +147,7 @@ function ManagerHome({ user }) {
         </Card>
 
         <Card className="p-5">
-          <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+          <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
             ⚡ Quick actions
           </h3>
           <div className="grid grid-cols-2 gap-2">
@@ -145,25 +155,25 @@ function ManagerHome({ user }) {
               to="/team"
               icon="👥"
               label="Manage team"
-              tint="bg-indigo-50 text-indigo-700"
+              tint="bg-indigo-900/20 text-indigo-300 border border-indigo-900/30"
             />
             <QuickAction
               to="/attendance"
               icon="📅"
               label="Mark attendance"
-              tint="bg-emerald-50 text-emerald-700"
+              tint="bg-emerald-900/20 text-emerald-300 border border-emerald-900/30"
             />
             <QuickAction
               to="/ratings"
               icon="⭐"
               label="Rate members"
-              tint="bg-amber-50 text-amber-700"
+              tint="bg-amber-900/20 text-amber-300 border border-amber-900/30"
             />
             <QuickAction
               to="/tasks"
               icon="🎯"
               label="Social tasks"
-              tint="bg-purple-50 text-purple-700"
+              tint="bg-purple-900/20 text-purple-300 border border-purple-900/30"
             />
           </div>
         </Card>
@@ -215,10 +225,10 @@ function InternHome({ user }) {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-3xl font-extrabold text-gray-800">
+        <h1 className="text-3xl font-extrabold text-white">
           Welcome, {user?.fullName || user?.email} 👋
         </h1>
-        <p className="text-gray-500">Intern dashboard</p>
+        <p className="text-gray-300">Intern dashboard</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
@@ -246,27 +256,25 @@ function InternHome({ user }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-5">
-          <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+          <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
             📅 This month's attendance
           </h3>
           {att.length === 0 ? (
-            <p className="text-gray-400 text-sm">No records yet.</p>
+            <p className="text-gray-300 text-sm">No records yet.</p>
           ) : (
             att.map((s) => (
               <div
                 key={s.status}
                 className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0"
               >
-                <span className="text-gray-600">{s.status}</span>
-                <span className="font-semibold text-gray-800">
-                  {s.count} days
-                </span>
+                <span className="text-gray-300">{s.status}</span>
+                <span className="font-semibold text-white">{s.count} days</span>
               </div>
             ))
           )}
         </Card>
         <Card className="p-5">
-          <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+          <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
             ⚡ Quick actions
           </h3>
           <div className="grid grid-cols-2 gap-2">
@@ -274,25 +282,25 @@ function InternHome({ user }) {
               to="/tasks"
               icon="🎯"
               label="My tasks"
-              tint="bg-purple-50 text-purple-700"
+              tint="bg-purple-900/20 text-purple-300 border border-purple-900/30"
             />
             <QuickAction
               to="/attendance"
               icon="📅"
               label="My attendance"
-              tint="bg-emerald-50 text-emerald-700"
+              tint="bg-emerald-900/20 text-emerald-300 border border-emerald-900/30"
             />
             <QuickAction
               to="/ratings"
               icon="⭐"
               label="My ratings"
-              tint="bg-amber-50 text-amber-700"
+              tint="bg-amber-900/20 text-amber-300 border border-amber-900/30"
             />
             <QuickAction
               to="/profile"
               icon="👤"
               label="My profile"
-              tint="bg-indigo-50 text-indigo-700"
+              tint="bg-indigo-900/20 text-indigo-300 border border-indigo-900/30"
             />
           </div>
         </Card>

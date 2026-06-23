@@ -4,7 +4,7 @@ const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const ownership = require('../../middleware/ownership');
 const repo = require('./repository');
-const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
+const { extractRequestInfo } = require('../../utils/audit');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const { send: sendNotification } = require('../notifications/repository');
 const { z } = require('zod');
@@ -47,14 +47,14 @@ module.exports = async function ratingsRoutes(fastify) {
         score,
         remarks || null
       );
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         ...extractRequestInfo(req),
         action: 'RATING_GIVEN',
         resourceType: 'rating',
         resourceId: rating.id,
         details: { target: rated_user_id, score },
-      });
+      };
       await sendNotification(
         rated_user_id,
         `You received a new rating: ${score}/10.`
