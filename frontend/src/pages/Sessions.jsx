@@ -27,9 +27,20 @@ export default function Sessions() {
         icon="🔐"
         subtitle="Devices currently signed in to your account"
         actions={
-          <Btn variant="danger" onClick={() => revokeAllMut.mutate()}>
-            Revoke all others
-          </Btn>
+          <Btn
+  variant="danger"
+  onClick={() => {
+    const confirmed = window.confirm(
+      'This will sign you out from all devices including this one. Continue?'
+    );
+
+    if (confirmed) {
+      revokeAllMut.mutate();
+    }
+  }}
+>
+  Sign out everywhere
+</Btn>
         }
       />
 
