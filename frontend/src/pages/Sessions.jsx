@@ -36,7 +36,6 @@ export default function Sessions() {
         subtitle="Devices currently signed in to your account"
         actions={
           <Btn
-<<<<<<< HEAD
   variant="danger"
   onClick={() => {
     const confirmed = window.confirm(
@@ -50,14 +49,6 @@ export default function Sessions() {
 >
   Sign out everywhere
 </Btn>
-=======
-            variant="danger"
-            disabled={confirming}
-            onClick={() => setConfirming((c) => !c)}
-          >
-            Revoke all sessions
-          </Btn>
->>>>>>> master
         }
       />
 
