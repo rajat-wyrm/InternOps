@@ -13,10 +13,21 @@ function sanitizeInput(obj) {
 }
 
 function sanitizationMiddleware(request, reply, done) {
-  if (request.body) sanitizeInput(request.body);
-  if (request.query) sanitizeInput(request.query);
-  if (request.params) sanitizeInput(request.params);
-  done(); // ✅ Call done to pass control to the next handler/route
+  const SAFE_FIELDS = ['name', 'description', 'message', 'title', 'content'];
+  if (request.body) {
+    sanitizeInput(request.body, SAFE_FIELDS);
+  }
+  done();
 }
+function sanitizeInput(obj, allowedFields = []) {
+  if (typeof obj !== 'object' || obj === null) return;
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
 
-module.exports = sanitizationMiddleware;
+    if (allowedFields.includes(key) && typeof val === 'string') {
+      obj[key] = val.replace(/<[^>]*>/g, '');
+    } else if (typeof val === 'object') {
+      sanitizeInput(val, allowedFields);
+    }
+  }
+}

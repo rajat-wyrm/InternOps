@@ -1,4 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { Shield } from 'lucide-react';
 import api from '../lib/axios';
 import { PageHeader, Card, Btn, EmptyState, Spinner } from '../components/ui';
 
@@ -8,6 +10,8 @@ export default function Sessions() {
     queryKey: ['sessions'],
     queryFn: () => api.get('/sessions/me').then((res) => res.data),
   });
+
+  const [confirming, setConfirming] = useState(false);
 
   const revokeMut = useMutation({
     mutationFn: (sessionId) => api.delete(`/sessions/me/${sessionId}`),
@@ -24,10 +28,15 @@ export default function Sessions() {
     <div>
       <PageHeader
         title="Active Sessions"
-        icon="🔐"
+        icon={
+          <div className="p-2 bg-slate-100 text-slate-700 rounded-lg">
+            <Shield className="w-6 h-6" />
+          </div>
+        }
         subtitle="Devices currently signed in to your account"
         actions={
           <Btn
+<<<<<<< HEAD
   variant="danger"
   onClick={() => {
     const confirmed = window.confirm(
@@ -41,8 +50,39 @@ export default function Sessions() {
 >
   Sign out everywhere
 </Btn>
+=======
+            variant="danger"
+            disabled={confirming}
+            onClick={() => setConfirming((c) => !c)}
+          >
+            Revoke all sessions
+          </Btn>
+>>>>>>> master
         }
       />
+
+      {confirming && (
+        <Card className="p-4 mb-4 border-red-200 bg-red-50">
+          <p className="text-sm text-red-800 mb-3">
+            This will sign you out of <strong>every</strong> device, including
+            this one. You will be redirected to the login page.
+          </p>
+          <div className="flex gap-2">
+            <Btn
+              variant="danger"
+              onClick={() => {
+                setConfirming(false);
+                revokeAllMut.mutate();
+              }}
+            >
+              Yes, revoke all
+            </Btn>
+            <Btn variant="outline" onClick={() => setConfirming(false)}>
+              Cancel
+            </Btn>
+          </div>
+        </Card>
+      )}
 
       {isLoading ? (
         <Spinner />

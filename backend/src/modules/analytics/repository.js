@@ -1,36 +1,78 @@
 ﻿const pool = require('../../config/db');
 
-async function departmentAttendanceRate(departmentId, month, year) {
+async function departmentAttendanceRate(
+  departmentId,
+  month,
+  year,
+  role = null
+) {
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+  const params = [departmentId, startDate, endDate];
+  let roleClause = '';
+  if (role) {
+    params.push(role);
+    roleClause = `AND u.role = $${params.length}`;
+  }
+
   const res = await pool.query(
     `
-    SELECT u.id, u.full_name, u.email,
+    SELECT u.id, u.full_name,
       COUNT(a.id) FILTER (WHERE a.status='PRESENT') as present,
       COUNT(a.id) FILTER (WHERE a.status='ABSENT') as absent,
       COUNT(a.id) FILTER (WHERE a.status='HALF_DAY') as half_day,
       COUNT(a.id) as total_marked
     FROM users u
-    LEFT JOIN attendance a ON u.id = a.user_id AND EXTRACT(MONTH FROM a.date)=$2 AND EXTRACT(YEAR FROM a.date)=$3 AND a.deleted_at IS NULL
-    WHERE u.department_id=$1 AND u.deleted_at IS NULL AND u.role='INTERN'
-    GROUP BY u.id, u.full_name, u.email
+    LEFT JOIN attendance a ON u.id = a.user_id
+      AND a.date >= $2
+      AND a.date <  $3
+      AND a.deleted_at IS NULL
+    WHERE u.department_id = $1
+      AND u.deleted_at IS NULL
+      ${roleClause}
+    GROUP BY u.id, u.full_name
   `,
-    [departmentId, month, year]
+    params
+  );
+  return res.rows;
+}
+
+async function userCountsByRole() {
+  const res = await pool.query(
+    `SELECT role, COUNT(*)::int AS count
+     FROM users
+     WHERE deleted_at IS NULL AND suspended = FALSE
+     GROUP BY role`
   );
   return res.rows;
 }
 
 async function topPerformers(role, limit = 10) {
+  // Do NOT return email — it is unnecessary PII for a leaderboard. Callers
+  // that need to contact a user can do so via the existing user API.
   const res = await pool.query(
     `
-    SELECT u.id, u.full_name, u.email, AVG(r.score) as avg_rating, COUNT(r.id) as total_ratings
+    SELECT
+      u.id,
+      u.full_name,
+      AVG(r.score) AS avg_rating,
+      COUNT(r.id) AS total_ratings
     FROM users u
-    JOIN ratings r ON u.id = r.rated_user_id AND r.deleted_at IS NULL
-    WHERE u.role=$1 AND u.deleted_at IS NULL
-    GROUP BY u.id
-    ORDER BY avg_rating DESC
+    LEFT JOIN ratings r
+      ON u.id = r.rated_user_id
+      AND r.deleted_at IS NULL
+    WHERE u.role = $1
+      AND u.deleted_at IS NULL
+    GROUP BY u.id, u.full_name
+    ORDER BY avg_rating DESC NULLS LAST
     LIMIT $2
-  `,
+    `,
     [role, limit]
   );
+
   return res.rows;
 }
 
@@ -52,4 +94,9 @@ async function attendanceTrends(months = 6, departmentId = null) {
   return res.rows;
 }
 
-module.exports = { departmentAttendanceRate, topPerformers, attendanceTrends };
+module.exports = {
+  departmentAttendanceRate,
+  userCountsByRole,
+  topPerformers,
+  attendanceTrends,
+};

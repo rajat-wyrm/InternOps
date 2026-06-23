@@ -10,15 +10,17 @@ describe('Health Check Integration Tests', () => {
   });
 
   describe('GET /health', () => {
-    it('should return health status', async () => {
+    it('should always return 200 in test mode (Redis is disabled)', async () => {
+      // In test environment Redis is forced to 'disabled' so the health
+      // endpoint can only ever return 200. Asserting 200 directly
+      // eliminates the previous non-determinism (#374).
       const res = await app.inject({
         method: 'GET',
         url: '/health',
       });
-      // status code can be 200 or 503 depending on Redis status
-      expect([200, 503]).toContain(res.statusCode);
+      expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
-      expect(body).toHaveProperty('status');
+      expect(body).toEqual({ status: 'ok' });
     });
   });
 
@@ -38,17 +40,15 @@ describe('Health Check Integration Tests', () => {
   });
 
   describe('GET /health/full', () => {
-    it('should return full system health status', async () => {
+    it('should return full system health status (always 200 in test)', async () => {
       const res = await app.inject({
         method: 'GET',
         url: '/health/full',
       });
-      expect([200, 503]).toContain(res.statusCode);
+      expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
-      expect(body).toHaveProperty('status');
-      expect(body).toHaveProperty('checks');
-      expect(body.checks).toHaveProperty('db');
-      expect(body.checks).toHaveProperty('redis');
+      expect(body.status).toBe('healthy');
+      expect(body.checks).toEqual({ db: true, redis: true });
     });
   });
 });

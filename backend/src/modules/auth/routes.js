@@ -4,7 +4,12 @@ const rbac = require('../../middleware/rbac');
 const { bruteForceCheck } = require('../../middleware/bruteForce');
 const auth = require('../../middleware/auth');
 const { extractRequestInfo } = require('../../utils/audit');
+const { generateToken } = require('../../middleware/csrf');
+const { verifyEmail, sendVerificationEmail } = require('./verificationService');
+const repo = require('./repository');
+const { forgotPassword, resetPassword } = require('./resetService');
 const isProduction = process.env.NODE_ENV === 'production';
+const { createAuditLog } = require('../../utils/audit');
 async function routes(fastify) {
   // Register
   fastify.post(
@@ -45,23 +50,53 @@ async function routes(fastify) {
       const { email, password } = z
         .object({ email: z.string().email(), password: z.string() })
         .parse(req.body);
+
       const result = await service.login(
         email,
         password,
         req.ip,
         req.headers['user-agent']
       );
+
       reply.setCookie('refreshToken', result.refreshToken, {
         httpOnly: true,
         secure: isProduction,
         sameSite: 'strict',
         path: '/api/auth/refresh',
       });
-      return {
+
+      // From fix/deferred-audit-log-486
+      req.auditOnResponse = {
+        userId: result.user.id,
+        action: 'LOGIN',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      };
+
+      // From master
+      const response = {
         accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
         user: result.user,
       };
+
+      reply.send(response);
+
+      req.log.info(
+        {
+          action: 'LOGIN',
+          userId: result.user.id,
+          ip: req.ip,
+          userAgent: req.headers['user-agent'],
+        },
+        'login success'
+      );
+
+      createAuditLog({
+        userId: result.user.id,
+        action: 'LOGIN',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      }).catch((err) => req.log.error(err, 'audit log failed'));
     }
   );
 
@@ -72,7 +107,7 @@ async function routes(fastify) {
       schema: { tags: ['Authentication'], description: 'Refresh access token' },
     },
     async (req, reply) => {
-      const token = req.cookies.refreshToken || req.body.refreshToken;
+      const token = req.cookies.refreshToken;
       if (!token)
         return reply.status(400).send({ error: 'Refresh token required' });
       const tokens = await service.refreshTokens(token, req.ip);
@@ -84,7 +119,6 @@ async function routes(fastify) {
       });
       return {
         accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
       };
     }
   );
@@ -114,6 +148,19 @@ async function routes(fastify) {
       );
 
       reply.clearCookie('refreshToken', { path: '/api/auth/refresh' });
+
+      // From fix/deferred-audit-log-486
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'LOGOUT',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      };
+
+      // From master
+      reply.clearCookie('csrf-sid', { path: '/' });
+      reply.clearCookie('csrf-token', { path: '/' });
+
       return { message: 'Logged out' };
     }
   );
@@ -121,14 +168,23 @@ async function routes(fastify) {
   // Get CSRF token
   fastify.get('/csrf-token', async (req, reply) => {
     const { generateToken } = require('../../middleware/csrf');
-    return { csrfToken: generateToken() };
+    const csrfToken = generateToken(req, reply);
+    // Also expose the token in a non-HttpOnly cookie so the SPA can
+    // echo it in the X-CSRF-Token header on mutation requests. The
+    // actual validation is bound to the signed session cookie, not this
+    // readable one.
+    reply.setCookie('csrf-token', csrfToken, {
+      httpOnly: false,
+      secure: isProduction,
+      sameSite: 'strict',
+      path: '/',
+    });
+    return { csrfToken };
   });
 
   // Verify email
   fastify.post('/verify-email', async (req, reply) => {
-    const schema = z.object({ token: z.string() });
-    const { token } = schema.parse(req.body);
-    const { verifyEmail } = require('./verificationService');
+    const { token } = z.object({ token: z.string() }).parse(req.body);
     await verifyEmail(token);
     return { message: 'Email verified successfully. You can now log in.' };
   });
@@ -138,10 +194,8 @@ async function routes(fastify) {
     '/resend-verification',
     { preHandler: [auth] },
     async (req, reply) => {
-      const repo = require('./repository');
       const user = await repo.findById(req.user.id);
       if (!user) return reply.status(404).send({ error: 'User not found' });
-      const { sendVerificationEmail } = require('./verificationService');
       await sendVerificationEmail(user.id, user.email);
       return { message: 'Verification email sent.' };
     }
@@ -149,23 +203,17 @@ async function routes(fastify) {
 
   // Forgot password
   fastify.post('/forgot-password', async (req, reply) => {
-    const schema = z.object({ email: z.string().email() });
-    const { email } = schema.parse(req.body);
-    await require('./resetService').forgotPassword(
-      email,
-      extractRequestInfo(req)
-    );
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    req.auditOnResponse = await forgotPassword(email, extractRequestInfo(req));
     return { message: 'If that email exists, a reset link has been sent.' };
   });
 
   // Reset password
   fastify.post('/reset-password', async (req, reply) => {
-    const schema = z.object({
-      token: z.string(),
-      newPassword: z.string().min(8),
-    });
-    const { token, newPassword } = schema.parse(req.body);
-    await require('./resetService').resetPassword(
+    const { token, newPassword } = z
+      .object({ token: z.string(), newPassword: z.string().min(8) })
+      .parse(req.body);
+    req.auditOnResponse = await resetPassword(
       token,
       newPassword,
       extractRequestInfo(req)

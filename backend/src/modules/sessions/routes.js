@@ -20,13 +20,13 @@ async function routes(fastify) {
       );
       if (!success)
         return reply.status(404).send({ error: 'Session not found' });
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'SESSION_REVOKED',
         resourceType: 'session',
         resourceId: req.params.sessionId,
         ...extractRequestInfo(req),
-      });
+      };
       return { message: 'Session revoked' };
     }
   );
@@ -34,12 +34,13 @@ async function routes(fastify) {
   // Revoke all other sessions
   fastify.post('/me/revoke-all', { preHandler: [auth] }, async (req) => {
     await repo.revokeAllUserSessions(req.user.id);
-    await createAuditLog({
+    await require('../auth/repository').revokeAllUserTokensRedis(req.user.id);
+    req.auditOnResponse = {
       userId: req.user.id,
       action: 'ALL_SESSIONS_REVOKED',
       resourceType: 'session',
       ...extractRequestInfo(req),
-    });
+    };
     return { message: 'All sessions revoked. Please re-login.' };
   });
 
@@ -49,14 +50,15 @@ async function routes(fastify) {
     { preHandler: [auth, rbac('ADMIN')] },
     async (req, reply) => {
       const { userId } = req.params;
+      await repo.revokeAllUserSessions(userId);
       await require('../auth/repository').revokeAllUserTokensRedis(userId);
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'ADMIN_REVOKED_USER_SESSIONS',
         resourceType: 'session',
         resourceId: userId,
         ...extractRequestInfo(req),
-      });
+      };
       return { message: `All sessions for user ${userId} revoked` };
     }
   );

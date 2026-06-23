@@ -1,15 +1,17 @@
-﻿const { notifyUser } = require('../../websocket');
+const { notifyUser } = require('../../websocket');
 ('use strict');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const ownership = require('../../middleware/ownership');
 const repo = require('./repository');
-const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
+const { extractRequestInfo } = require('../../utils/audit');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const { send: sendNotification } = require('../notifications/repository');
 const { z } = require('zod');
+const suggestionRoutes = require('./suggestion.routes');
 
 module.exports = async function ratingsRoutes(fastify) {
+  await fastify.register(suggestionRoutes);
   // Submit a rating for someone in your team (immutable history row).
   fastify.post(
     '/',
@@ -21,10 +23,14 @@ module.exports = async function ratingsRoutes(fastify) {
       const { rated_user_id, score, remarks } = z
         .object({
           rated_user_id: z.string().uuid(),
-          score: z.coerce.number().int().min(1).max(5),
+          score: z.coerce.number().int().min(1).max(10),
           remarks: z.string().max(2000).optional(),
         })
         .parse(req.body);
+
+      if (req.user.id === rated_user_id) {
+        return reply.status(400).send({ error: 'You cannot rate yourself' });
+      }
 
       // Must be in the rater's downward hierarchy (admin can rate anyone).
       if (req.user.role !== 'ADMIN') {
@@ -41,17 +47,17 @@ module.exports = async function ratingsRoutes(fastify) {
         score,
         remarks || null
       );
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         ...extractRequestInfo(req),
         action: 'RATING_GIVEN',
         resourceType: 'rating',
         resourceId: rating.id,
         details: { target: rated_user_id, score },
-      });
+      };
       await sendNotification(
         rated_user_id,
-        `You received a new rating: ${score}/5.`
+        `You received a new rating: ${score}/10.`
       );
       await notifyUser(rating.rated_user_id, 'rating-received', { rating });
 

@@ -33,8 +33,15 @@ async function routes(fastify) {
   });
 
   // Delete a notification
-  fastify.delete('/:id', { preHandler: [auth] }, async (req) => {
-    await repo.deleteNotification(req.params.id, req.user.id);
+  fastify.delete('/:id', { preHandler: [auth] }, async (req, reply) => {
+    try {
+      await repo.deleteNotification(req.params.id, req.user.id);
+    } catch (err) {
+      if (err.message && err.message.startsWith('Notification not found')) {
+        return reply.status(404).send({ error: err.message });
+      }
+      throw err;
+    }
     return { success: true };
   });
 

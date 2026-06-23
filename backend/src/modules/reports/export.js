@@ -1,17 +1,50 @@
 ﻿const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
+const { z } = require('zod');
+
+const dateRangeSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD'),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
+});
+
+function parseDateRange(query, reply) {
+  const parsed = dateRangeSchema.safeParse(query);
+  if (!parsed.success) {
+    reply.status(400).send({
+      error: 'from and to are required (YYYY-MM-DD)',
+      details: parsed.error.issues,
+    });
+    return null;
+  }
+  return parsed.data;
+}
+
+// Escape any cell that starts with a spreadsheet formula trigger so a
+// crafted task title cannot inject formulas (=, +, -, @, tab, CR).
+function csvCell(value) {
+  const s = String(value ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) {
+    return `"${'"'}${s.replace(/"/g, '""')}"`;
+  }
+  if (/[",\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
 
 async function routes(fastify) {
   fastify.get(
     '/attendance-csv',
     { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
     async (req, reply) => {
-      const { from, to } = req.query;
-      if (!from || !to) throw new Error('from and to dates required');
-      const data = await repo.attendanceSummaryByRole(from, to);
+      const range = parseDateRange(req.query, reply);
+      if (!range) return;
+      const data = await repo.attendanceSummaryByRole(range.from, range.to);
       const csv = ['Role,Status,Count']
-        .concat(data.map((r) => `${r.role},${r.status},${r.count}`))
+        .concat(
+          data.map((r) => `${csvCell(r.role)},${csvCell(r.status)},${r.count}`)
+        )
         .join('\n');
       reply
         .header('Content-Type', 'text/csv')
@@ -24,13 +57,16 @@ async function routes(fastify) {
     '/ratings-csv',
     { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
     async (req, reply) => {
-      const { from, to } = req.query;
-      if (!from || !to) throw new Error('from and to dates required');
-      const data = await repo.ratingsSummary(from, to);
+      const range = parseDateRange(req.query, reply);
+      if (!range) return;
+      const data = await repo.ratingsSummary(range.from, range.to);
       const csv = ['Role,Average Score,Total Ratings']
         .concat(
           data.map(
-            (r) => `${r.role},${parseFloat(r.avg_score).toFixed(2)},${r.total}`
+            (r) =>
+              `${csvCell(r.role)},${parseFloat(r.avg_score).toFixed(
+                2
+              )},${r.total}`
           )
         )
         .join('\n');
@@ -47,7 +83,9 @@ async function routes(fastify) {
     async (req, reply) => {
       const data = await repo.taskCompletionStats();
       const csv = ['Task Title,Verified,Pending']
-        .concat(data.map((t) => `"${t.title}",${t.verified},${t.pending}`))
+        .concat(
+          data.map((t) => `${csvCell(t.title)},${t.verified},${t.pending}`)
+        )
         .join('\n');
       reply
         .header('Content-Type', 'text/csv')

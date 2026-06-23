@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { Card, Btn, Textarea, Select } from './ui';
+import RatingSuggestionCard from './RatingSuggestionCard';
 
 export default function RatingForm() {
   const queryClient = useQueryClient();
   const [userId, setUserId] = useState('');
-  const [score, setScore] = useState(5);
+  const [score, setScore] = useState(10);
   const [remarks, setRemarks] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -16,6 +17,21 @@ export default function RatingForm() {
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
 
+  const { data: suggestion, isLoading: suggestionLoading } = useQuery({
+    queryKey: ['ratingSuggestion', userId],
+
+    queryFn: () =>
+      api.get(`/ratings/suggestions/${userId}`).then((res) => res.data),
+
+    enabled: !!userId,
+  });
+
+  useEffect(() => {
+    if (suggestion?.recommendation?.suggestedScore) {
+      setScore(Math.round(suggestion.recommendation.suggestedScore));
+    }
+  }, [suggestion]);
+
   const rateMutation = useMutation({
     mutationFn: (data) => api.post('/ratings', data),
     onSuccess: () => {
@@ -23,6 +39,8 @@ export default function RatingForm() {
       setError('');
       setMsg('✓ Rating submitted');
       setRemarks('');
+      setUserId('');
+      setScore(10);
       setTimeout(() => setMsg(''), 2000);
     },
     onError: (err) => setError(err.response?.data?.error || 'Failed'),
@@ -35,6 +53,10 @@ export default function RatingForm() {
       </h3>
       {error && <p className="text-rose-600 text-sm mb-2">{error}</p>}
       {msg && <p className="text-green-600 text-sm mb-2">{msg}</p>}
+      <RatingSuggestionCard
+        suggestion={suggestion}
+        loading={suggestionLoading}
+      />
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -57,7 +79,7 @@ export default function RatingForm() {
         <div>
           <label className="text-xs text-gray-500">Score</label>
           <div className="flex gap-1 mt-1">
-            {[1, 2, 3, 4, 5].map((n) => (
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
               <button
                 type="button"
                 key={n}
@@ -76,7 +98,7 @@ export default function RatingForm() {
           onChange={(e) => setRemarks(e.target.value)}
         />
         <Btn variant="success" type="submit" disabled={rateMutation.isPending}>
-          {rateMutation.isPending ? 'Submitting…' : `Submit ${score}★ rating`}
+          {rateMutation.isPending ? 'Submitting…' : `Submit ${score}/10 rating`}
         </Btn>
       </form>
     </Card>

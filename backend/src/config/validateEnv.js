@@ -11,7 +11,14 @@ function validateEnv() {
   const missingRequired = [];
   const missingOptional = [];
 
-  for (const key of REQUIRED_VARS) {
+  // In production the refresh secret must be an independent high-entropy value,
+  // not derived from JWT_SECRET. Outside production a derived fallback is allowed.
+  const requiredVars =
+    process.env.NODE_ENV === 'production'
+      ? [...REQUIRED_VARS, 'JWT_REFRESH_SECRET']
+      : REQUIRED_VARS;
+
+  for (const key of requiredVars) {
     const val = process.env[key];
     if (val === undefined || val === null || String(val).trim() === '') {
       missingRequired.push(key);

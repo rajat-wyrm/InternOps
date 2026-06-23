@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { CalendarCheck } from 'lucide-react'; // Added import here
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import AttendanceMarkForm from '../components/AttendanceMarkForm';
@@ -54,8 +55,21 @@ export default function Attendance() {
         '';
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-4">Attendance</h2>
+    <div className="animate-fade-in-up">
+      {}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg shadow-sm">
+          <CalendarCheck className="w-6 h-6" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
+            Attendance
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Track and manage daily attendance records
+          </p>
+        </div>
+      </div>
 
       {canMark && (
         <>
@@ -64,8 +78,8 @@ export default function Attendance() {
         </>
       )}
 
-      <div className="bg-white p-4 rounded-xl shadow-sm mb-4">
-        <label className="block text-xs text-gray-500 mb-1">
+      <div className="bg-white p-4 rounded-xl shadow-sm mb-4 border border-gray-100">
+        <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
           View attendance of
         </label>
 
@@ -73,7 +87,7 @@ export default function Attendance() {
           <select
             value={viewUserId}
             onChange={(e) => selectUser(e.target.value)}
-            className="border rounded-lg p-2 w-full max-w-sm"
+            className="border border-gray-200 rounded-lg p-2.5 w-full max-w-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-sm"
           >
             <option value={user?.id}>Me ({user?.email})</option>
             {team.map((m) => (
@@ -83,40 +97,48 @@ export default function Attendance() {
             ))}
           </select>
         ) : (
-          <p className="text-gray-700">My attendance</p>
+          <p className="text-gray-700 font-medium">My attendance</p>
         )}
       </div>
 
-      {isLoading && <p>Loading...</p>}
+      {isLoading && (
+        <div className="flex justify-center p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+        </div>
+      )}
 
       {error && (
-        <p className="text-red-500">
+        <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100">
           {error.response?.data?.error || 'Failed to load attendance'}
-        </p>
+        </div>
       )}
 
       {!isLoading &&
         !error &&
         (records.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-8 text-center text-gray-500">
-            No attendance records for {selectedName || 'this user'}.
+          <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-12 text-center text-gray-500">
+            <CalendarCheck className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+            <p>No attendance records for {selectedName || 'this user'}.</p>
           </div>
         ) : (
           <>
-            <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
+            <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left text-gray-600">
+                <thead className="bg-gray-50/50 text-left text-gray-600 border-b border-gray-100">
                   <tr>
-                    <th className="p-3">Date</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3">Remarks</th>
+                    <th className="px-6 py-4 font-semibold">Date</th>
+                    <th className="px-6 py-4 font-semibold">Status</th>
+                    <th className="px-6 py-4 font-semibold">Remarks</th>
                   </tr>
                 </thead>
 
-                <tbody>
+                <tbody className="divide-y divide-gray-50">
                   {records.map((a) => (
-                    <tr key={a.id} className="border-t hover:bg-gray-50">
-                      <td className="p-3">
+                    <tr
+                      key={a.id}
+                      className="hover:bg-gray-50/50 transition-colors"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-gray-700">
                         {new Date(a.date).toLocaleDateString('en-GB', {
                           day: '2-digit',
                           month: 'short',
@@ -124,9 +146,9 @@ export default function Attendance() {
                         })}
                       </td>
 
-                      <td className="p-3">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide ${
                             STATUS_BADGE[a.status] || ''
                           }`}
                         >
@@ -134,14 +156,16 @@ export default function Attendance() {
                         </span>
                       </td>
 
-                      <td className="p-3">{a.remarks || '—'}</td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {a.remarks || '—'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div className="flex items-center justify-between mt-3 text-sm text-gray-600">
+            <div className="flex items-center justify-between mt-4 text-sm text-gray-500">
               <span>
                 {total} record{total === 1 ? '' : 's'} · page {page} of{' '}
                 {totalPages}
@@ -151,7 +175,7 @@ export default function Attendance() {
                 <button
                   onClick={() => setPage((p) => Math.max(p - 1, 1))}
                   disabled={page <= 1}
-                  className="px-3 py-1 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors font-medium"
                 >
                   Previous
                 </button>
@@ -159,7 +183,7 @@ export default function Attendance() {
                 <button
                   onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
                   disabled={page >= totalPages}
-                  className="px-3 py-1 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors font-medium"
                 >
                   Next
                 </button>

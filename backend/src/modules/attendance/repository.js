@@ -37,8 +37,11 @@ async function getAttendance(userId, { from, to, page = 1, limit = 30 } = {}) {
 
   params.push(safeLimit, offset);
   const res = await pool.query(
-    `SELECT * FROM attendance WHERE ${whereClause}
-     ORDER BY date DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    `SELECT a.*, m.full_name AS marked_by_name
+     FROM attendance a
+     LEFT JOIN users m ON m.id = a.marked_by
+     WHERE ${whereClause}
+     ORDER BY a.date DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
 
@@ -46,12 +49,22 @@ async function getAttendance(userId, { from, to, page = 1, limit = 30 } = {}) {
 }
 
 async function getMonthlyStats(userId, month, year) {
+  // SARGable date-range form: avoid EXTRACT() on a date column, which would
+  // force a sequential scan. With the date range we can use a btree index.
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
   const res = await pool.query(
     `SELECT status, COUNT(*) as count
      FROM attendance
-     WHERE user_id=$1 AND EXTRACT(MONTH FROM date)=$2 AND EXTRACT(YEAR FROM date)=$3 AND deleted_at IS NULL
+     WHERE user_id = $1
+       AND date >= $2
+       AND date <  $3
+       AND deleted_at IS NULL
      GROUP BY status`,
-    [userId, month, year]
+    [userId, startDate, endDate]
   );
   return res.rows;
 }
@@ -82,4 +95,34 @@ async function bulkMark(entries, markedBy) {
   }
 }
 
-module.exports = { markAttendance, getAttendance, getMonthlyStats, bulkMark };
+// Returns the set of target ids that fall inside managerId's transitive
+// subordinate chain. Replaces per-entry checkHierarchyAccess calls
+// (a 1+N query pattern) with a single recursive CTE.
+async function listHierarchySubordinates(managerId, targetIds) {
+  if (!Array.isArray(targetIds) || targetIds.length === 0) {
+    return new Set();
+  }
+
+  const res = await pool.query(
+    `WITH RECURSIVE chain AS (
+       SELECT id, manager_id FROM users WHERE id = $1 AND deleted_at IS NULL
+       UNION ALL
+       SELECT u.id, u.manager_id
+       FROM users u
+       INNER JOIN chain ON u.manager_id = chain.id
+       WHERE u.deleted_at IS NULL
+     )
+     SELECT id FROM chain WHERE id = ANY($2::uuid[])`,
+    [managerId, targetIds]
+  );
+
+  return new Set(res.rows.map((r) => r.id));
+}
+
+module.exports = {
+  markAttendance,
+  getAttendance,
+  getMonthlyStats,
+  bulkMark,
+  listHierarchySubordinates,
+};

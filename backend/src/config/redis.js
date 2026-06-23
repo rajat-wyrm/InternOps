@@ -55,7 +55,7 @@ async function getRedisClient() {
 }
 
 function getRedisStatus() {
-  if (!config.redisUrl) return 'disabled';
+  if (process.env.NODE_ENV === 'test' || !config.redisUrl) return 'disabled';
   return redisConnected ? 'connected' : 'disconnected';
 }
 

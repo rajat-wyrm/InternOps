@@ -2,17 +2,12 @@ const { z } = require('zod');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
-
 async function routes(fastify) {
   fastify.get(
     '/overview',
     { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
     async () => {
-      const pool = require('../../config/db');
-      const counts = await pool.query(
-        'SELECT role, COUNT(*) FROM users WHERE deleted_at IS NULL GROUP BY role'
-      );
-      return { users: counts.rows };
+      return { users: await repo.userCountsByRole() };
     }
   );
 
@@ -20,14 +15,33 @@ async function routes(fastify) {
   fastify.get(
     '/department-attendance',
     { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
-    async (req) => {
-      const { departmentId, month, year } = req.query;
-      if (!departmentId || !month || !year)
-        throw new Error('departmentId, month, year required');
-      return repo.departmentAttendanceRate(departmentId, month, year);
+    async (req, reply) => {
+      const schema = z.object({
+        departmentId: z.string().uuid(),
+        month: z.coerce.number().int().min(1).max(12),
+        year: z.coerce.number().int().min(1970).max(3000),
+        role: z
+          .enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'])
+          .optional(),
+      });
+      const parsed = schema.safeParse(req.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
+      }
+      const { departmentId, month, year, role } = parsed.data;
+
+      // Scope check: SENIOR_TL can only query their own department
+      if (req.user.role !== 'ADMIN' && req.user.departmentId !== departmentId)
+        return reply
+          .status(403)
+          .send({ error: 'Access restricted to your own department' });
+
+      return repo.departmentAttendanceRate(departmentId, month, year, role);
     }
   );
-
   // Top performers (Fully Secured & Optimized)
   fastify.get(
     '/top-performers',
@@ -83,12 +97,18 @@ async function routes(fastify) {
         months: z.coerce.number().int().min(1).max(24).default(6),
         departmentId: z.string().uuid().optional(),
       });
-      const { months, departmentId } = schema.parse(req.query);
-      const scopedDeptId =
+      const validation = schema.safeParse(req.query);
+      if (!validation.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: validation.error.errors,
+        });
+      }
+      const { months, departmentId } = validation.data;
+      const scopeDeptId =
         req.user.role === 'ADMIN' ? departmentId : req.user.departmentId;
-      return repo.attendanceTrends(months, scopedDeptId);
+      return repo.attendanceTrends(months, scopeDeptId);
     }
   );
 }
-
 module.exports = routes;
