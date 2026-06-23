@@ -1,6 +1,9 @@
 ﻿const pool = require('../../config/db');
 async function getDirectReports(managerId) {
-  const res = await pool.query('SELECT id, email, role, full_name, suspended FROM users WHERE manager_id = $1 AND deleted_at IS NULL', [managerId]);
+  const res = await pool.query(
+    'SELECT id, email, role, full_name, suspended FROM users WHERE manager_id = $1 AND deleted_at IS NULL',
+    [managerId]
+  );
   return res.rows;
 }
 async function getFullTeam(userId) {

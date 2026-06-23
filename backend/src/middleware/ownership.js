@@ -1,12 +1,25 @@
 const { checkHierarchyAccess } = require('../utils/hierarchy');
-function ownership(paramName = 'id') {
-  // Returns an async preHandler with only 2 args (no done)
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function ownership(paramName = 'id', { requireUuid = true } = {}) {
   return async (request, reply) => {
-    const target = request.params[paramName] || request.body?.user_id;
-    if (!target) return reply.status(400).send({ error: 'Missing target' });
+    const target = request.params[paramName];
+    if (!target) {
+      return reply
+        .status(400)
+        .send({ error: `Missing required param: ${paramName}` });
+    }
+    if (requireUuid && !UUID_REGEX.test(target)) {
+      return reply
+        .status(400)
+        .send({ error: `Invalid ${paramName}: must be a UUID` });
+    }
     if (request.user.role === 'ADMIN') return; // admin bypass
     const ok = await checkHierarchyAccess(request.user.id, target);
     if (!ok) return reply.status(403).send({ error: 'Not in your hierarchy' });
   };
 }
+
 module.exports = ownership;

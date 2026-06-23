@@ -24,7 +24,10 @@ const PERFORMANCE_JOINS = `
     FROM ratings WHERE deleted_at IS NULL GROUP BY rated_user_id
   ) rat ON rat.rated_user_id = u.id
   LEFT JOIN (
-    SELECT intern_id, COUNT(*) FILTER (WHERE status = 'VERIFIED') AS verified_tasks, COUNT(*) AS total_tasks
+    SELECT intern_id,
+           COUNT(*) FILTER (WHERE status = 'VERIFIED') AS verified_tasks,
+           COUNT(*) FILTER (WHERE status = 'PENDING')  AS pending_proofs,
+           COUNT(*) AS total_tasks
     FROM proof_submissions WHERE deleted_at IS NULL GROUP BY intern_id
   ) tsk ON tsk.intern_id = u.id
 `;
@@ -38,6 +41,7 @@ const PERFORMANCE_COLUMNS = `
   rat.avg_rating,
   COALESCE(rat.rating_count, 0)    AS rating_count,
   COALESCE(tsk.verified_tasks, 0)  AS verified_tasks,
+  COALESCE(tsk.pending_proofs, 0)  AS pending_proofs,
   COALESCE(tsk.total_tasks, 0)     AS total_tasks
 `;
 
@@ -74,8 +78,16 @@ async function getMemberById(id) {
 }
 
 const EDITABLE_FIELDS = [
-  'full_name', 'phone', 'college', 'course', 'year_of_study',
-  'position', 'joining_date', 'internship_status', 'location', 'notes',
+  'full_name',
+  'phone',
+  'college',
+  'course',
+  'year_of_study',
+  'position',
+  'joining_date',
+  'internship_status',
+  'location',
+  'notes',
 ];
 
 async function updateMember(id, data) {
@@ -99,29 +111,48 @@ async function updateMember(id, data) {
 // Create a new member under the given manager, with optional detail fields.
 async function createMember(data) {
   const hash = await argon2.hash(data.password);
-  const { rows: [created] } = await pool.query(
+  const {
+    rows: [created],
+  } = await pool.query(
     `INSERT INTO users
        (email, password_hash, role, manager_id, department_id, full_name,
         phone, college, course, year_of_study, position, joining_date, internship_status, location, notes)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING id`,
     [
-      data.email, hash, data.role, data.manager_id, data.department_id || null, data.full_name || null,
-      data.phone || null, data.college || null, data.course || null, data.year_of_study || null,
-      data.position || null, data.joining_date || null, data.internship_status || 'ACTIVE',
-      data.location || null, data.notes || null,
+      data.email,
+      hash,
+      data.role,
+      data.manager_id,
+      data.department_id || null,
+      data.full_name || null,
+      data.phone || null,
+      data.college || null,
+      data.course || null,
+      data.year_of_study || null,
+      data.position || null,
+      data.joining_date || null,
+      data.internship_status || 'ACTIVE',
+      data.location || null,
+      data.notes || null,
     ]
   );
   return getMemberById(created.id);
 }
 
 async function emailExists(email) {
-  const { rowCount } = await pool.query('SELECT 1 FROM users WHERE email = $1 AND deleted_at IS NULL', [email]);
+  const { rowCount } = await pool.query(
+    'SELECT 1 FROM users WHERE email = $1 AND deleted_at IS NULL',
+    [email]
+  );
   return rowCount > 0;
 }
 
 async function getUserRole(id) {
-  const { rows } = await pool.query('SELECT role FROM users WHERE id = $1 AND deleted_at IS NULL', [id]);
+  const { rows } = await pool.query(
+    'SELECT role FROM users WHERE id = $1 AND deleted_at IS NULL',
+    [id]
+  );
   return rows[0]?.role || null;
 }
 
@@ -146,12 +177,76 @@ async function getMemberHistory(id) {
   return { attendance: attendance.rows, ratings: ratings.rows };
 }
 
+// Recent proofs awaiting verification across the requester's whole team.
+async function getPendingProofs(managerId, limit = 50) {
+  const query = `
+    WITH RECURSIVE team AS (
+      SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+      UNION ALL
+      SELECT u.id FROM users u INNER JOIN team t ON u.manager_id = t.id
+      WHERE u.deleted_at IS NULL
+    )
+    SELECT p.id, p.intern_id, p.image_path, p.status, p.created_at,
+           u.full_name AS intern_name, u.email AS intern_email,
+           s.id AS task_id, s.title AS task_title
+    FROM proof_submissions p
+    JOIN team t ON t.id = p.intern_id
+    JOIN users u ON u.id = p.intern_id
+    LEFT JOIN social_tasks s ON s.id = p.task_id
+    WHERE p.status = 'PENDING' AND p.deleted_at IS NULL
+    ORDER BY p.created_at DESC
+    LIMIT $2
+  `;
+  const { rows } = await pool.query(query, [managerId, limit]);
+  return rows;
+}
+
 async function setMemberStatus(id, suspended) {
-  await pool.query('UPDATE users SET suspended = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL', [suspended, id]);
+  await pool.query(
+    'UPDATE users SET suspended = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
+    [suspended, id]
+  );
+  return getMemberById(id);
+}
+
+// Roles of a member's direct reports (used to keep the hierarchy valid when
+// demoting: a member must still outrank everyone reporting to them).
+async function getDirectReportRoles(id) {
+  const { rows } = await pool.query(
+    'SELECT DISTINCT role FROM users WHERE manager_id = $1 AND deleted_at IS NULL',
+    [id]
+  );
+  return rows.map((r) => r.role);
+}
+
+async function updateMemberRole(id, role) {
+  await pool.query(
+    'UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
+    [role, id]
+  );
+  return getMemberById(id);
+}
+
+async function updateMemberManager(id, managerId) {
+  await pool.query(
+    'UPDATE users SET manager_id = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
+    [managerId, id]
+  );
   return getMemberById(id);
 }
 
 module.exports = {
-  getTeamMembers, getMemberById, updateMember, EDITABLE_FIELDS,
-  createMember, emailExists, getUserRole, getMemberHistory, setMemberStatus,
+  getTeamMembers,
+  getMemberById,
+  updateMember,
+  EDITABLE_FIELDS,
+  createMember,
+  emailExists,
+  getUserRole,
+  getMemberHistory,
+  getDirectReportRoles,
+  updateMemberRole,
+  updateMemberManager,
+  getPendingProofs,
+  setMemberStatus,
 };

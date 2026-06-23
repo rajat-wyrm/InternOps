@@ -5,7 +5,7 @@ function sanitizeInput(obj) {
     const val = obj[key];
     if (typeof val === 'string') {
       // Strip HTML tags and common SQL injection patterns
-      obj[key] = val.replace(/<[^>]*>/g, '').replace(/['"]/g, ''); // heavy-handed but safe for demo
+      obj[key] = val.replace(/<[^>]*>/g, '');
     } else if (typeof val === 'object') {
       sanitizeInput(val);
     }
