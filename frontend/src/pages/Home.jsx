@@ -32,7 +32,11 @@ function QuickAction({ to, icon, label, tint }) {
 }
 
 function ManagerHome({ user }) {
-  const { data: team = [], isLoading, isError } = useQuery({
+  const {
+    data: team = [],
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
@@ -40,12 +44,8 @@ function ManagerHome({ user }) {
   if (isLoading) return <p className="text-gray-300">Loading dashboard...</p>;
 
   if (isError) {
-  return (
-    <p className="text-red-400">
-      Failed to load dashboard data.
-    </p>
-  );
-}
+    return <p className="text-red-400">Failed to load dashboard data.</p>;
+  }
 
   if (isLoading) return <p className="text-gray-500">Loading dashboard...</p>;
 
@@ -268,9 +268,7 @@ function InternHome({ user }) {
                 className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0"
               >
                 <span className="text-gray-300">{s.status}</span>
-                <span className="font-semibold text-white">
-                  {s.count} days
-                </span>
+                <span className="font-semibold text-white">{s.count} days</span>
               </div>
             ))
           )}

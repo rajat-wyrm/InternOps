@@ -69,14 +69,14 @@ export function Card({ children, className = '', hover = false }) {
 }
 
 const BADGE = {
-  gray: "bg-gray-900/20 text-gray-300",
-  green: "bg-green-900/20 text-green-300",
-  red: "bg-red-900/20 text-red-300",
-  yellow: "bg-amber-900/20 text-amber-300",
-  blue: "bg-blue-900/20 text-blue-300",
-  indigo: "bg-indigo-900/20 text-indigo-300",
-  purple: "bg-purple-900/20 text-purple-300",
-  teal: "bg-teal-900/20 text-teal-300",
+  gray: 'bg-gray-900/20 text-gray-300',
+  green: 'bg-green-900/20 text-green-300',
+  red: 'bg-red-900/20 text-red-300',
+  yellow: 'bg-amber-900/20 text-amber-300',
+  blue: 'bg-blue-900/20 text-blue-300',
+  indigo: 'bg-indigo-900/20 text-indigo-300',
+  purple: 'bg-purple-900/20 text-purple-300',
+  teal: 'bg-teal-900/20 text-teal-300',
 };
 export function Badge({ color = 'gray', children, className = '' }) {
   return (
