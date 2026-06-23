@@ -5,6 +5,7 @@ const requireFreshRole = require('../../middleware/requireFreshRole');
 const repo = require('./repository');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 const { checkHierarchyAccess, ROLE_RANK } = require('../../utils/hierarchy');
+const { withHierarchyTx } = require('../../utils/dbTx');
 const { z } = require('zod');
 
 // Roles that manage a team (Interns have no reports).
@@ -100,37 +101,42 @@ async function routes(fastify) {
 
       // Default the manager to the requester; otherwise it must be inside their team.
       const managerId = data.manager_id || req.user.id;
-      if (managerId !== req.user.id && req.user.role !== 'ADMIN') {
-        const inTeam = await checkHierarchyAccess(req.user.id, managerId);
-        if (!inTeam)
-          return reply
-            .status(403)
-            .send({ error: 'Chosen manager is not in your team' });
-      }
-      const managerRole =
-        managerId === req.user.id
-          ? req.user.role
-          : await repo.getUserRole(managerId);
-      if (!managerRole)
-        return reply.status(400).send({ error: 'Manager not found' });
-      if (
-        ROLE_RANK[data.role] === undefined ||
-        ROLE_RANK[data.role] >= ROLE_RANK[managerRole]
-      ) {
-        return reply.status(400).send({
-          error: `You can only add members below your own role (${managerRole})`,
-        });
-      }
-      if (await repo.emailExists(data.email)) {
-        return reply
-          .status(409)
-          .send({ error: 'A user with this email already exists' });
+      
+      const result = await withHierarchyTx([managerId], async (client) => {
+        if (managerId !== req.user.id && req.user.role !== 'ADMIN') {
+          const inTeam = await checkHierarchyAccess(req.user.id, managerId, client);
+          if (!inTeam) return { errStatus: 403, errMessage: 'Chosen manager is not in your team' };
+        }
+        const managerRole =
+          managerId === req.user.id
+            ? req.user.role
+            : await repo.getUserRole(managerId, client);
+        if (!managerRole) return { errStatus: 400, errMessage: 'Manager not found' };
+        
+        if (
+          ROLE_RANK[data.role] === undefined ||
+          ROLE_RANK[data.role] >= ROLE_RANK[managerRole]
+        ) {
+          return { errStatus: 400, errMessage: `You can only add members below your own role (${managerRole})` };
+        }
+        if (await repo.emailExists(data.email, client)) {
+          return { errStatus: 409, errMessage: 'A user with this email already exists' };
+        }
+  
+        const member = await repo.createMember({
+          ...data,
+          manager_id: managerId,
+        }, client);
+        
+        return { success: true, member };
+      });
+
+      if (result.errStatus) {
+        return reply.status(result.errStatus).send({ error: result.errMessage });
       }
 
-      const member = await repo.createMember({
-        ...data,
-        manager_id: managerId,
-      });
+      const { member } = result;
+
       await createAuditLog({
         userId: req.user.id,
         action: 'MEMBER_CREATED',
@@ -199,8 +205,16 @@ async function routes(fastify) {
       const { suspended } = z
         .object({ suspended: z.boolean() })
         .parse(req.body);
-      const member = await repo.setMemberStatus(req.params.id, suspended);
-      if (!member) return reply.status(404).send({ error: 'Member not found' });
+      
+      const result = await withHierarchyTx([req.params.id], async (client) => {
+        const m = await repo.setMemberStatus(req.params.id, suspended, client);
+        if (!m) return { errStatus: 404, errMessage: 'Member not found' };
+        return { success: true, member: m };
+      });
+
+      if (result.errStatus) return reply.status(result.errStatus).send({ error: result.errMessage });
+      const { member } = result;
+
       await createAuditLog({
         userId: req.user.id,
         action: suspended ? 'MEMBER_SUSPENDED' : 'MEMBER_ACTIVATED',
@@ -245,23 +259,30 @@ async function routes(fastify) {
         });
       }
 
-      const before = await repo.getMemberById(req.params.id);
-      if (!before) return reply.status(404).send({ error: 'Member not found' });
+      const result = await withHierarchyTx([req.params.id], async (client) => {
+        const before = await repo.getMemberById(req.params.id, client);
+        if (!before) return { errStatus: 404, errMessage: 'Member not found' };
 
-      // Demotion must not leave the member ranked at/below their own reports.
-      const reportRoles = await repo.getDirectReportRoles(req.params.id);
-      const highestReport = reportRoles.reduce(
-        (max, r) => Math.max(max, ROLE_RANK[r] ?? 0),
-        -1
-      );
-      if (highestReport >= ROLE_RANK[role]) {
-        return reply.status(400).send({
-          error:
-            'New role would not outrank this member’s existing reports. Reassign their reports first.',
-        });
-      }
+        // Demotion must not leave the member ranked at/below their own reports.
+        const reportRoles = await repo.getDirectReportRoles(req.params.id, client);
+        const highestReport = reportRoles.reduce(
+          (max, r) => Math.max(max, ROLE_RANK[r] ?? 0),
+          -1
+        );
+        if (highestReport >= ROLE_RANK[role]) {
+          return {
+            errStatus: 400,
+            errMessage: 'New role would not outrank this member’s existing reports. Reassign their reports first.',
+          };
+        }
 
-      const after = await repo.updateMemberRole(req.params.id, role);
+        const after = await repo.updateMemberRole(req.params.id, role, client);
+        return { success: true, before, after };
+      });
+
+      if (result.errStatus) return reply.status(result.errStatus).send({ error: result.errMessage });
+      const { before, after } = result;
+
       await createAuditLog({
         userId: req.user.id,
         action: 'MEMBER_ROLE_CHANGED',
@@ -290,45 +311,49 @@ async function routes(fastify) {
           .send({ error: 'A member cannot be their own manager' });
       }
 
-      const member = await repo.getMemberById(req.params.id);
-      if (!member) return reply.status(404).send({ error: 'Member not found' });
+      const result = await withHierarchyTx([req.params.id, manager_id], async (client) => {
+        const member = await repo.getMemberById(req.params.id, client);
+        if (!member) return { errStatus: 404, errMessage: 'Member not found' };
 
-      // The new manager must be the requester or inside the requester's team.
-      if (manager_id !== req.user.id && req.user.role !== 'ADMIN') {
-        const managerInTeam = await checkHierarchyAccess(
-          req.user.id,
-          manager_id
-        );
-        if (!managerInTeam) {
-          return reply
-            .status(403)
-            .send({ error: 'Chosen manager is not in your team' });
+        // The new manager must be the requester or inside the requester's team.
+        if (manager_id !== req.user.id && req.user.role !== 'ADMIN') {
+          const managerInTeam = await checkHierarchyAccess(
+            req.user.id,
+            manager_id,
+            client
+          );
+          if (!managerInTeam) {
+            return { errStatus: 403, errMessage: 'Chosen manager is not in your team' };
+          }
         }
-      }
 
-      // The new manager must outrank the member.
-      const managerRole =
-        manager_id === req.user.id
-          ? req.user.role
-          : await repo.getUserRole(manager_id);
-      if (!managerRole)
-        return reply.status(400).send({ error: 'Manager not found' });
-      if (ROLE_RANK[member.role] >= ROLE_RANK[managerRole]) {
-        return reply.status(400).send({
-          error: `Manager (${managerRole}) must outrank the member (${member.role})`,
-        });
-      }
+        // The new manager must outrank the member.
+        const managerRole =
+          manager_id === req.user.id
+            ? req.user.role
+            : await repo.getUserRole(manager_id, client);
+        if (!managerRole) return { errStatus: 400, errMessage: 'Manager not found' };
+        if (ROLE_RANK[member.role] >= ROLE_RANK[managerRole]) {
+          return {
+            errStatus: 400,
+            errMessage: `Manager (${managerRole}) must outrank the member (${member.role})`,
+          };
+        }
 
-      // Prevent cycles: the new manager must not be the member or a descendant
-      // of the member (i.e. the member must not already manage the new manager).
-      const wouldCycle = await checkHierarchyAccess(req.params.id, manager_id);
-      if (wouldCycle) {
-        return reply
-          .status(400)
-          .send({ error: 'That assignment would create a cycle' });
-      }
+        // Prevent cycles: the new manager must not be the member or a descendant
+        // of the member (i.e. the member must not already manage the new manager).
+        const wouldCycle = await checkHierarchyAccess(req.params.id, manager_id, client);
+        if (wouldCycle) {
+          return { errStatus: 400, errMessage: 'That assignment would create a cycle' };
+        }
 
-      const after = await repo.updateMemberManager(req.params.id, manager_id);
+        const after = await repo.updateMemberManager(req.params.id, manager_id, client);
+        return { success: true, member, after };
+      });
+
+      if (result.errStatus) return reply.status(result.errStatus).send({ error: result.errMessage });
+      const { member, after } = result;
+
       await createAuditLog({
         userId: req.user.id,
         action: 'MEMBER_MANAGER_CHANGED',
