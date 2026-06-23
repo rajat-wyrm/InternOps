@@ -250,6 +250,20 @@ app.addHook('onRequest', async (request) => {
   );
 });
 
+app.addHook('onResponse', async (request) => {
+  if (!request.auditOnResponse) return;
+
+  const { createAuditLog } = require('./utils/audit');
+  try {
+    await createAuditLog(request.auditOnResponse);
+  } catch (err) {
+    request.log.error(
+      { err, audit: request.auditOnResponse },
+      'Failed to write deferred audit log'
+    );
+  }
+});
+
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
 

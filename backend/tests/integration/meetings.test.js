@@ -128,6 +128,16 @@ async function createUserAsAdmin(user) {
   return JSON.parse(res.body);
 }
 
+async function waitForAuditLog(query, params, { retries = 10, delayMs = 50 } = {}) {
+  let result;
+  for (let i = 0; i < retries; i++) {
+    result = await pool.query(query, params);
+    if (result.rowCount > 0) return result;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return result;
+}
+
 describe('Meetings Integration Tests', () => {
   describe('POST /api/meetings', () => {
     it('should create a new meeting', async () => {
@@ -289,7 +299,7 @@ describe('Meetings Integration Tests', () => {
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body).message).toBe('Attendee added');
 
-      const auditRes = await pool.query(
+      const auditRes = await waitForAuditLog(
         "SELECT * FROM audit_logs WHERE action = 'MEETING_ATTENDEE_ADDED' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1",
         [meetingId]
       );
@@ -313,7 +323,7 @@ describe('Meetings Integration Tests', () => {
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body).message).toBe('Attendee removed');
 
-      const auditRes = await pool.query(
+      const auditRes = await waitForAuditLog(
         "SELECT * FROM audit_logs WHERE action = 'MEETING_ATTENDEE_REMOVED' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1",
         [meetingId]
       );

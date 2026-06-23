@@ -2,7 +2,7 @@ const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
-const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
+const { extractRequestInfo } = require('../../utils/audit');
 const { z } = require('zod');
 
 function formatMeeting(m) {
@@ -138,13 +138,13 @@ async function routes(fastify) {
       }
 
       const attendees = await repo.getAttendees(meeting.id);
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'MEETING_CREATED',
         resourceType: 'meeting',
         resourceId: meeting.id,
         ...extractRequestInfo(req),
-      });
+      };
 
       return reply.status(201).send({
         ...formatMeeting(meeting),
@@ -224,13 +224,13 @@ async function routes(fastify) {
         return reply.status(403).send({ error: 'Only creator or admin' });
       }
       await repo.softDeleteMeeting(req.params.id);
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'MEETING_DELETED',
         resourceType: 'meeting',
         resourceId: meeting.id,
         ...extractRequestInfo(req),
-      });
+      };
       return { message: 'Meeting deleted' };
     }
   );
@@ -268,14 +268,14 @@ async function routes(fastify) {
       }
 
       await repo.addAttendee(req.params.id, userId);
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'MEETING_ATTENDEE_ADDED',
         resourceType: 'meeting',
         resourceId: req.params.id,
         details: { addedUserId: userId },
         ...extractRequestInfo(req),
-      });
+      };
       return { message: 'Attendee added' };
     }
   );
@@ -301,14 +301,14 @@ async function routes(fastify) {
       }
 
       await repo.removeAttendee(req.params.id, req.params.userId);
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'MEETING_ATTENDEE_REMOVED',
         resourceType: 'meeting',
         resourceId: req.params.id,
         details: { removedUserId: req.params.userId },
         ...extractRequestInfo(req),
-      });
+      };
       return { message: 'Attendee removed' };
     }
   );
