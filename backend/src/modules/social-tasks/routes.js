@@ -2,7 +2,7 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
-const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
+const { extractRequestInfo } = require('../../utils/audit');
 const { z } = require('zod');
 const emailService = require('../../services/email');
 
@@ -41,14 +41,14 @@ module.exports = async function socialTasksRoutes(fastify) {
       const data = parsed.data;
 
       const task = await repo.createTask({ ...data, createdBy: req.user.id });
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         ...extractRequestInfo(req),
         action: 'TASK_CREATED',
         resourceType: 'social_task',
         resourceId: task.id,
         details: { title: task.title },
-      });
+      };
       try {
         const creatorEmail = await repo.getUserEmail(req.user.id);
         if (creatorEmail) {
