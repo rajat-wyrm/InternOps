@@ -5,19 +5,39 @@ const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 const { z } = require('zod');
 
+function formatMeeting(m) {
+  if (!m) return null;
+  const dateStr = m.meeting_date
+    ? m.meeting_date instanceof Date
+      ? m.meeting_date.toISOString().split('T')[0]
+      : String(m.meeting_date).split('T')[0]
+    : undefined;
+  return {
+    ...m,
+    meeting_date: dateStr,
+    meetingDate: dateStr,
+    startTime: m.start_time,
+    endTime: m.end_time,
+    departmentId: m.department_id,
+    createdBy: m.created_by,
+  };
+}
+
 async function routes(fastify) {
   // List meetings (hierarchy-aware)
   fastify.get('/', { preHandler: [auth] }, async (req) => {
     const { from, to } = req.query;
     const departmentId = await repo.getUserDepartmentId(req.user.id);
-    // Interns only see meetings they are creator or attendee of.
-    // Non-interns also see department-wide meetings.
-    return repo.listMeetings({
+    const result = await repo.listMeetings({
       userId: req.user.id,
-      departmentId: req.user.role !== 'INTERN' ? departmentId : null, // non-interns see dept meetings
+      departmentId: req.user.role !== 'INTERN' ? departmentId : null,
       fromDate: from,
       toDate: to,
     });
+    return {
+      ...result,
+      data: result.data.map(formatMeeting),
+    };
   });
 
   // Get single meeting
@@ -25,21 +45,9 @@ async function routes(fastify) {
     const meeting = await repo.getMeetingById(req.params.id);
     if (!meeting) return reply.status(404).send({ error: 'Meeting not found' });
 
-    // Fetch attendees first — used for both isAttendee and isManager below.
-    // This replaces the inline raw pool.query() that was checking attendance
-    // separately and eliminates the second repo.getAttendees() call that was
-    // previously below the access gate.
     const attendees = await repo.getAttendees(meeting.id);
-
     const isCreator = meeting.created_by === req.user.id;
-
-    //  Derived from the already-fetched attendees list — no extra DB call.
     const isAttendee = attendees.some((a) => a.id === req.user.id);
-
-    //  isManager now checks hierarchy against attendees — not the creator.
-    // Access is granted only if the requester directly manages at least one
-    // participant of this specific meeting. This prevents a manager of the
-    // creator from gaining access to meetings they have no connection to.
     const isManager =
       req.user.role !== 'INTERN' &&
       attendees.filter((a) => a.id !== req.user.id).length > 0 &&
@@ -55,8 +63,7 @@ async function routes(fastify) {
       return reply.status(403).send({ error: 'Access denied' });
     }
 
-    //  Reuse already-fetched attendees in response — no second DB round-trip.
-    return { ...meeting, attendees };
+    return { ...formatMeeting(meeting), attendees };
   });
 
   // Create meeting
@@ -64,17 +71,33 @@ async function routes(fastify) {
     '/',
     { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')] },
     async (req, reply) => {
-      const schema = z.object({
-        title: z.string().min(3),
-        description: z.string().optional(),
-        meetingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        startTime: z.string().optional(),
-        endTime: z.string().optional(),
-        departmentId: z.string().uuid().optional(),
-        attendeeIds: z.array(z.string().uuid()).optional(),
-      });
-      const validation = schema.safeParse(req.body);
+      const schema = z
+        .object({
+          title: z.string().min(3),
+          description: z.string().optional(),
+          meetingDate: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
+          meeting_date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
+          startTime: z.string().optional(),
+          start_time: z.string().optional(),
+          endTime: z.string().optional(),
+          end_time: z.string().optional(),
+          departmentId: z.string().uuid().optional(),
+          department_id: z.string().uuid().optional(),
+          attendeeIds: z.array(z.string().uuid()).optional(),
+          attendee_ids: z.array(z.string().uuid()).optional(),
+        })
+        .refine((d) => d.meetingDate || d.meeting_date, {
+          message: 'meetingDate or meeting_date is required',
+          path: ['meetingDate'],
+        });
 
+      const validation = schema.safeParse(req.body);
       if (!validation.success) {
         return reply.status(400).send({
           error: 'Validation failed',
@@ -83,26 +106,37 @@ async function routes(fastify) {
       }
 
       const data = validation.data;
+      const meetingDate = data.meetingDate || data.meeting_date;
+      const startTime = data.startTime || data.start_time;
+      const endTime = data.endTime || data.end_time;
+      const departmentId = data.departmentId || data.department_id;
+      const attendeeIds = data.attendeeIds || data.attendee_ids || [];
+
       const meeting = await repo.createMeeting({
-        ...data,
+        title: data.title,
+        description: data.description,
+        meetingDate,
+        startTime,
+        endTime,
+        departmentId,
         createdBy: req.user.id,
       });
+
       const skippedAttendees = [];
-      if (data.attendeeIds) {
-        for (const uid of data.attendeeIds) {
-          if (req.user.role !== 'ADMIN') {
-            const allowed = await checkHierarchyAccess(req.user.id, uid);
-            if (!allowed) {
-              skippedAttendees.push({
-                userId: uid,
-                reason: 'Not in your hierarchy',
-              });
-              continue;
-            }
+      for (const uid of attendeeIds) {
+        if (req.user.role !== 'ADMIN') {
+          const allowed = await checkHierarchyAccess(req.user.id, uid);
+          if (!allowed) {
+            skippedAttendees.push({
+              userId: uid,
+              reason: 'Not in your hierarchy',
+            });
+            continue;
           }
-          await repo.addAttendee(meeting.id, uid);
         }
+        await repo.addAttendee(meeting.id, uid);
       }
+
       const attendees = await repo.getAttendees(meeting.id);
       await createAuditLog({
         userId: req.user.id,
@@ -111,8 +145,9 @@ async function routes(fastify) {
         resourceId: meeting.id,
         ...extractRequestInfo(req),
       });
+
       return reply.status(201).send({
-        ...meeting,
+        ...formatMeeting(meeting),
         attendees,
         skippedAttendees,
       });
@@ -128,17 +163,30 @@ async function routes(fastify) {
         .object({
           title: z.string().min(3).optional(),
           description: z.string().optional(),
+          meetingDate: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
           meeting_date: z
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/)
             .optional(),
+          startTime: z.string().optional(),
           start_time: z.string().optional(),
+          endTime: z.string().optional(),
           end_time: z.string().optional(),
         })
-        .strict(); //strict() ensure ki koie unknown fields na jaaye
+        .strict();
 
-      const data = schema.parse(req.body);
+      const validation = schema.safeParse(req.body);
+      if (!validation.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: validation.error.errors,
+        });
+      }
 
+      const data = validation.data;
       const meeting = await repo.getMeetingById(req.params.id);
       if (!meeting) return reply.status(404).send({ error: 'Not found' });
       if (meeting.created_by !== req.user.id && req.user.role !== 'ADMIN') {
@@ -146,10 +194,22 @@ async function routes(fastify) {
           .status(403)
           .send({ error: 'Only creator or admin can update' });
       }
-      const updated = await repo.updateMeeting(req.params.id, data);
+
+      const normalized = {};
+      if (data.title !== undefined) normalized.title = data.title;
+      if (data.description !== undefined)
+        normalized.description = data.description;
+      const mDate = data.meeting_date || data.meetingDate;
+      if (mDate !== undefined) normalized.meeting_date = mDate;
+      const sTime = data.start_time || data.startTime;
+      if (sTime !== undefined) normalized.start_time = sTime;
+      const eTime = data.end_time || data.endTime;
+      if (eTime !== undefined) normalized.end_time = eTime;
+
+      const updated = await repo.updateMeeting(req.params.id, normalized);
       if (!updated)
         return reply.status(400).send({ error: 'No valid fields provided' });
-      return updated;
+      return formatMeeting(updated);
     }
   );
 
@@ -186,11 +246,19 @@ async function routes(fastify) {
       if (!userId || typeof userId !== 'string') {
         return reply.status(400).send({ error: 'userId is required' });
       }
-      if (meeting.created_by !== req.user.id && req.user.role !== 'ADMIN') {
-        return reply
-          .status(403)
-          .send({ error: 'Only creator can add attendees' });
+
+      let allowed =
+        meeting.created_by === req.user.id || req.user.role === 'ADMIN';
+      if (!allowed) {
+        allowed = await checkHierarchyAccess(req.user.id, userId);
       }
+      if (!allowed) {
+        return reply.status(403).send({
+          error:
+            'Only creator, admin, or manager of the attendee can add attendees',
+        });
+      }
+
       // Validate that the target user exists and is not suspended/deleted.
       const exists = await repo.userExists(userId);
       if (!exists) {
@@ -198,15 +266,7 @@ async function routes(fastify) {
           .status(404)
           .send({ error: 'Target user not found or inactive' });
       }
-      // Non-admin requesters can only add users inside their hierarchy.
-      if (req.user.role !== 'ADMIN') {
-        const allowed = await checkHierarchyAccess(req.user.id, userId);
-        if (!allowed) {
-          return reply
-            .status(403)
-            .send({ error: 'User is not in your hierarchy' });
-        }
-      }
+
       await repo.addAttendee(req.params.id, userId);
       await createAuditLog({
         userId: req.user.id,
@@ -227,9 +287,19 @@ async function routes(fastify) {
     async (req, reply) => {
       const meeting = await repo.getMeetingById(req.params.id);
       if (!meeting) return reply.status(404).send({ error: 'Not found' });
-      if (meeting.created_by !== req.user.id && req.user.role !== 'ADMIN') {
-        return reply.status(403).send({ error: 'Only creator or admin' });
+
+      let allowed =
+        meeting.created_by === req.user.id || req.user.role === 'ADMIN';
+      if (!allowed) {
+        allowed = await checkHierarchyAccess(req.user.id, req.params.userId);
       }
+      if (!allowed) {
+        return reply.status(403).send({
+          error:
+            'Only creator, admin, or manager of the attendee can remove attendees',
+        });
+      }
+
       await repo.removeAttendee(req.params.id, req.params.userId);
       await createAuditLog({
         userId: req.user.id,

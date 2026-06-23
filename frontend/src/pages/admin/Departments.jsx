@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Building2, Plus, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import api from '../../lib/axios';
 import {
   PageHeader,
@@ -14,7 +15,7 @@ export default function Departments() {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [error, setError] = useState('');
-  const [deletingDepartmentId, setDeletingDepartmentId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const { data: departments = [], isLoading } = useQuery({
     queryKey: ['departments'],
@@ -23,6 +24,7 @@ export default function Departments() {
 
   const inv = () =>
     queryClient.invalidateQueries({ queryKey: ['departments'] });
+
   const createMut = useMutation({
     mutationFn: (n) => api.post('/departments', { name: n }),
     onSuccess: () => {
@@ -30,14 +32,14 @@ export default function Departments() {
       setError('');
       inv();
     },
-    onError: (err) => setError(err.response?.data?.error || 'Failed to create'),
+    onError: (err) =>
+      setError(err.response?.data?.error || 'Failed to create department'),
   });
+
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/departments/${id}`),
     onSuccess: inv,
-    onSettled: () => {
-      setDeletingDepartmentId(null);
-    },
+    onSettled: () => setDeletingId(null),
   });
 
   const COLORS = [
@@ -50,55 +52,79 @@ export default function Departments() {
   ];
 
   return (
-    <div>
-      <PageHeader
-        title="Departments"
-        icon="🏢"
-        subtitle="Organise your workforce into departments"
-      />
+    <div className="animate-fade-in-up">
+      {/* 🚀 Professional Header Block 🚀 */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg shadow-sm">
+          <Building2 className="w-6 h-6" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
+            Departments
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Organize your workforce into structural units
+          </p>
+        </div>
+      </div>
 
-      <Card className="p-5 mb-5">
-        <h3 className="font-semibold text-gray-800 mb-3">Add department</h3>
-        {error && <p className="text-rose-600 text-sm mb-2">{error}</p>}
+      <Card className="p-6 mb-6 border-indigo-100 shadow-sm">
+        <h3 className="font-bold text-gray-800 mb-4">Add New Department</h3>
+        {error && (
+          <div className="flex items-center gap-2 text-rose-600 text-sm mb-4 bg-rose-50 p-3 rounded-lg border border-rose-100">
+            <AlertCircle className="w-4 h-4" /> {error}
+          </div>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             if (name.trim()) createMut.mutate(name.trim());
           }}
-          className="flex gap-2 flex-wrap"
+          className="flex gap-3 flex-wrap"
         >
           <Input
-            placeholder="Department name (e.g. Social Media)"
+            placeholder="E.g., Social Media Marketing"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="max-w-sm"
+            className="max-w-xs"
           />
           <Btn type="submit" disabled={createMut.isPending}>
-            {createMut.isPending ? 'Adding…' : '+ Add'}
+            {createMut.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <span className="flex items-center gap-2">
+                <Plus className="w-4 h-4" /> Add Department
+              </span>
+            )}
           </Btn>
         </form>
       </Card>
 
       {isLoading ? (
-        <Spinner />
+        <div className="flex justify-center p-8">
+          <Spinner />
+        </div>
       ) : departments.length === 0 ? (
         <EmptyState
-          icon="🏢"
+          icon={<Building2 className="w-12 h-12 text-gray-300" />}
           title="No departments yet"
-          text="Create your first department above."
+          text="Create your first department above to get started."
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {departments.map((d, i) => (
-            <Card key={d.id} className="p-5 card-hover flex items-center gap-3">
+            <Card
+              key={d.id}
+              className="p-5 hover:shadow-md transition-shadow group flex items-center gap-4"
+            >
               <div
-                className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${COLORS[i % COLORS.length]} text-white flex items-center justify-center text-xl shadow-md`}
+                className={`w-12 h-12 rounded-xl bg-gradient-to-br ${COLORS[i % COLORS.length]} text-white flex items-center justify-center shadow-md shrink-0`}
               >
-                🏢
+                <Building2 className="w-6 h-6" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-800 truncate">{d.name}</p>
-                <p className="text-xs text-gray-400">
+                <p className="font-bold text-gray-900 truncate">{d.name}</p>
+                <p className="text-xs text-gray-400 font-medium">
                   Created{' '}
                   {d.created_at
                     ? new Date(d.created_at).toLocaleDateString()
@@ -106,21 +132,21 @@ export default function Departments() {
                 </p>
               </div>
               <button
-                disabled={deletingDepartmentId === d.id || deleteMut.isPending}
+                disabled={deletingId === d.id || deleteMut.isPending}
                 onClick={() => {
-                  if (deleteMut.isPending || deletingDepartmentId === d.id) {
-                    return;
-                  }
-
                   if (confirm(`Delete department "${d.name}"?`)) {
-                    setDeletingDepartmentId(d.id);
+                    setDeletingId(d.id);
                     deleteMut.mutate(d.id);
                   }
                 }}
-                className="text-rose-500 hover:text-rose-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Delete"
+                className="text-gray-300 hover:text-rose-500 hover:bg-rose-50 p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                title="Delete department"
               >
-                {deletingDepartmentId === d.id ? '⏳' : '🗑️'}
+                {deletingId === d.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
               </button>
             </Card>
           ))}

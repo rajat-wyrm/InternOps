@@ -34,6 +34,7 @@ async function routes(fastify) {
   // Revoke all other sessions
   fastify.post('/me/revoke-all', { preHandler: [auth] }, async (req) => {
     await repo.revokeAllUserSessions(req.user.id);
+    await require('../auth/repository').revokeAllUserTokensRedis(req.user.id);
     await createAuditLog({
       userId: req.user.id,
       action: 'ALL_SESSIONS_REVOKED',
@@ -49,6 +50,7 @@ async function routes(fastify) {
     { preHandler: [auth, rbac('ADMIN')] },
     async (req, reply) => {
       const { userId } = req.params;
+      await repo.revokeAllUserSessions(userId);
       await require('../auth/repository').revokeAllUserTokensRedis(userId);
       await createAuditLog({
         userId: req.user.id,

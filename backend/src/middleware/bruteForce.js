@@ -30,10 +30,10 @@ async function recordLoginAttempt(email, ip, success) {
  * Must be called on every successful login so that prior attacker-driven
  * failed attempts cannot cause a lockout for the legitimate user.
  */
-async function clearFailedAttempts(email) {
+async function clearFailedAttempts(email, ip) {
   await pool.query(
-    `DELETE FROM login_attempts WHERE email = $1 AND success = false`,
-    [email]
+    `DELETE FROM login_attempts WHERE email = $1 AND ip_address = $2 AND success = false`,
+    [email, ip]
   );
 }
 

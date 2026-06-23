@@ -1,5 +1,19 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Target,
+  Briefcase,
+  Camera,
+  MessageCircle,
+  ThumbsUp,
+  PlaySquare,
+  Upload,
+  CheckCircle,
+  Link as LinkIcon,
+  Clock,
+  Plus,
+  X,
+} from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import CreateTaskForm from '../components/CreateTaskForm';
@@ -13,11 +27,11 @@ import {
 } from '../components/ui';
 
 const PLATFORM_ICON = {
-  LinkedIn: '💼',
-  Instagram: '📸',
-  Twitter: '🐦',
-  Facebook: '👍',
-  YouTube: '▶️',
+  LinkedIn: <Briefcase className="w-5 h-5" />,
+  Instagram: <Camera className="w-5 h-5" />,
+  Twitter: <MessageCircle className="w-5 h-5" />,
+  Facebook: <ThumbsUp className="w-5 h-5" />,
+  YouTube: <PlaySquare className="w-5 h-5" />,
 };
 
 export default function Tasks() {
@@ -82,18 +96,36 @@ export default function Tasks() {
 
   return (
     <div>
-      <PageHeader
-        title="Social Media Tasks"
-        icon="🎯"
-        subtitle="Campaigns & proof verification"
-        actions={
-          canCreateTask && (
-            <Btn onClick={() => setShowForm((s) => !s)}>
-              {showForm ? '✕ Cancel' : '+ Create task'}
-            </Btn>
-          )
-        }
-      />
+      {/* 🚀 Professional Header Block (Matching Team/Attendance) 🚀 */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-purple-100 text-purple-600 rounded-lg shadow-sm">
+            <Target className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
+              Social Media Tasks
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Campaigns & proof verification
+            </p>
+          </div>
+        </div>
+
+        {canCreateTask && (
+          <Btn onClick={() => setShowForm((s) => !s)}>
+            {showForm ? (
+              <span className="flex items-center gap-1">
+                <X className="w-4 h-4" /> Cancel
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <Plus className="w-4 h-4" /> Create task
+              </span>
+            )}
+          </Btn>
+        )}
+      </div>
 
       {showForm && canCreateTask && (
         <div className="mb-5 animate-fade-in-up">
@@ -105,7 +137,7 @@ export default function Tasks() {
         <Spinner />
       ) : !tasks?.length ? (
         <EmptyState
-          icon="🎯"
+          icon={<Target className="w-12 h-12 text-gray-400" />}
           title="No tasks yet"
           text={
             canCreateTask
@@ -119,7 +151,9 @@ export default function Tasks() {
             <Card key={t.id} className="p-5 card-hover">
               <div className="flex items-start gap-3">
                 <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500 to-fuchsia-600 text-white flex items-center justify-center text-xl shrink-0">
-                  {PLATFORM_ICON[t.target_platform] || '🎯'}
+                  {PLATFORM_ICON[t.target_platform] || (
+                    <Target className="w-5 h-5" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -144,14 +178,14 @@ export default function Tasks() {
                         href={t.task_link}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-indigo-600 hover:underline"
+                        className="text-indigo-600 hover:underline flex items-center gap-1"
                       >
-                        🔗 Task link
+                        <LinkIcon className="w-3.5 h-3.5" /> Task link
                       </a>
                     )}
                     {t.deadline && (
-                      <span>
-                        ⏰{' '}
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
                         {new Date(t.deadline).toLocaleString('en-IN', {
                           dateStyle: 'medium',
                           timeStyle: 'short',
@@ -176,8 +210,8 @@ export default function Tasks() {
                   </Btn>
                 )}
                 {user?.role === 'INTERN' && (
-                  <label className="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-emerald-500 to-green-600 text-white cursor-pointer hover:shadow-lg transition">
-                    📤 Upload proof
+                  <label className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-emerald-500 to-green-600 text-white cursor-pointer hover:shadow-lg transition">
+                    <Upload className="w-4 h-4" /> Upload proof
                     <input
                       type="file"
                       accept="image/*"
@@ -241,7 +275,9 @@ export default function Tasks() {
                             variant="success"
                             onClick={() => verifyMutation.mutate(p.id)}
                           >
-                            ✓ Verify
+                            <span className="flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4" /> Verify
+                            </span>
                           </Btn>
                         )}
                       </div>

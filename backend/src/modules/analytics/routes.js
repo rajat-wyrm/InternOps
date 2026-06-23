@@ -107,7 +107,7 @@ async function routes(fastify) {
       const { months, departmentId } = validation.data;
       const scopeDeptId =
         req.user.role === 'ADMIN' ? departmentId : req.user.departmentId;
-      return repo.attendanceTrends(months, scopedDeptId);
+      return repo.attendanceTrends(months, scopeDeptId);
     }
   );
 }

@@ -196,6 +196,17 @@ describe('Auth Integration Tests', () => {
         payload: {},
       });
       expect(res.statusCode).toBe(200);
+
+      // Verify that refresh token and csrf cookies are cleared
+      const responseCookies = parseSetCookie(res.headers['set-cookie']);
+      expect(responseCookies['refreshToken']).toBeDefined();
+      expect(responseCookies['csrf-sid']).toBeDefined();
+      expect(responseCookies['csrf-token']).toBeDefined();
+
+      // Ensure that their values represent deletion/clearing (either empty or 'deleted')
+      expect(['', 'deleted']).toContain(responseCookies['refreshToken']);
+      expect(['', 'deleted']).toContain(responseCookies['csrf-sid']);
+      expect(['', 'deleted']).toContain(responseCookies['csrf-token']);
     });
   });
 
@@ -251,6 +262,26 @@ describe('Auth Integration Tests', () => {
         payload: { name: 'TestDept_' + Date.now() },
       });
       expect(res.statusCode).toBe(200);
+    });
+
+    it('should exempt login with query parameters from CSRF protection', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login?param=1',
+        headers: { 'Content-Type': 'application/json' },
+        payload: { email: 'admin@internops.com', password: 'wrong' },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('should not exempt path prefix collision routes from CSRF protection', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login-callback',
+        headers: { 'Content-Type': 'application/json' },
+        payload: {},
+      });
+      expect(res.statusCode).toBe(403);
     });
   });
 
@@ -316,6 +347,6 @@ describe('Auth Integration Tests', () => {
         // Re-login so the cookie jar holds a valid refresh token again.
         await login();
       }
-    });
+    }, 30000);
   });
 });

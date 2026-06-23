@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Shield } from 'lucide-react';
 import api from '../lib/axios';
 import { PageHeader, Card, Btn, EmptyState, Spinner } from '../components/ui';
 
@@ -27,7 +28,11 @@ export default function Sessions() {
     <div>
       <PageHeader
         title="Active Sessions"
-        icon="🔐"
+        icon={
+          <div className="p-2 bg-slate-100 text-slate-700 rounded-lg">
+            <Shield className="w-6 h-6" />
+          </div>
+        }
         subtitle="Devices currently signed in to your account"
         actions={
           <Btn
