@@ -2,9 +2,8 @@ const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
 const pool = require('../config/db');
-const pLimit = require('p-limit');
 
-const limit = pLimit(20);
+const BATCH_SIZE = 20; // process 20 files at a time — no extra dependency needed
 
 function setupCronJobs() {
   try {
@@ -33,11 +32,13 @@ function setupCronJobs() {
 
         let filesDeleted = 0;
 
-        // Delete physical files asynchronously with bounded concurrency (fix #504)
-        // Drops fs.existsSync (TOCTOU) — just attempt unlink and handle ENOENT
-        await Promise.allSettled(
-          rows.map((row) =>
-            limit(async () => {
+        // Delete physical files in batches of BATCH_SIZE (fix #504)
+        // Async fs.promises.unlink replaces blocking fs.existsSync + fs.unlinkSync.
+        // Batching avoids EMFILE (too many open files) without any extra dependency.
+        for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+          const batch = rows.slice(i, i + BATCH_SIZE);
+          await Promise.allSettled(
+            batch.map(async (row) => {
               const fp = path.join(__dirname, '..', '..', row.image_path);
               try {
                 await fs.promises.unlink(fp);
@@ -46,8 +47,8 @@ function setupCronJobs() {
                 if (err.code !== 'ENOENT') throw err;
               }
             })
-          )
-        );
+          );
+        }
 
         // Update database records
         await pool.query(
