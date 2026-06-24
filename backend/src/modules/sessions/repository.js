@@ -79,30 +79,38 @@ async function revokeSession(sessionId, userId) {
   return res.rowCount > 0;
 }
 
-// ─── revokeAllUserSessions ───────────────────────────────────────────────────
-// WHY: The original ran UPDATE refresh_tokens SET revoked = TRUE for all rows.
-// In Redis mode there are no rows to update — all sessions survive revocation.
-// FIX: In Redis mode, delete every hash in user_tokens:<userId> and the set
-// itself. This is the exact same logic already used in auth/repository.js
-// (revokeAllUserTokensRedis) — we replicate it here to keep sessions/
-// repository.js self-contained without a circular dependency.
 async function revokeAllUserSessions(userId) {
-  const redis = await getRedisClient();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (redis) {
-    const tokens = await redis.sMembers(`user_tokens:${userId}`);
-    for (const token of tokens) {
-      await redis.del(`refresh_token:${token}`);
+    // Revoke all refresh tokens for the user in Postgres
+    await client.query(
+      'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
+      [userId]
+    );
+
+    // Revoke from Redis atomically
+    const redis = await getRedisClient();
+    if (redis) {
+      const tokens = await redis.sMembers(`user_tokens:${userId}`);
+      if (tokens.length > 0) {
+        const multi = redis.multi();
+        for (const token of tokens) {
+          multi.del(`refresh_token:${token}`);
+        }
+        multi.del(`user_tokens:${userId}`);
+        await multi.exec();
+      }
     }
-    await redis.del(`user_tokens:${userId}`);
-    return;
-  }
 
-  // ── Postgres fallback ──────────────────────────────────────────────────────
-  await pool.query(
-    'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
-    [userId]
-  );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 module.exports = { getUserSessions, revokeSession, revokeAllUserSessions };

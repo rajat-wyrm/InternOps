@@ -108,7 +108,7 @@ afterAll(async () => {
 function authHeaders() {
   return {
     Authorization: `Bearer ${accessToken}`,
-    'X-CSRF-Token': csrfToken,
+    'X-CSRF-Token': cookies['csrf-token'] || csrfToken,
     'Content-Type': 'application/json',
   };
 }

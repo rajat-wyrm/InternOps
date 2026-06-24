@@ -58,14 +58,22 @@ function readSession(request) {
   const cookies = parseCookies(request.headers.cookie);
   const raw = cookies[SESSION_COOKIE];
   if (!raw) return null;
-  const [sid, sig] = raw.split('.');
-  if (!sid || !sig) return null;
-  if (!verifySigned(sid, sig)) return null;
-  return sid;
+  const [payload, sig] = raw.split('.');
+  if (!payload || !sig) return null;
+  if (!verifySigned(payload, sig)) return null;
+
+  const colonIdx = payload.indexOf(':');
+  if (colonIdx === -1) {
+    return { sid: payload, userId: null };
+  }
+  const sid = payload.slice(0, colonIdx);
+  const userId = payload.slice(colonIdx + 1);
+  return { sid, userId: userId || null };
 }
 
-function writeSession(reply, sessionId) {
-  const signed = `${sessionId}.${sign(sessionId)}`;
+function writeSession(reply, sessionId, userId = null) {
+  const payload = userId ? `${sessionId}:${userId}` : `${sessionId}:`;
+  const signed = `${payload}.${sign(payload)}`;
   reply.setCookie(SESSION_COOKIE, signed, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -74,13 +82,45 @@ function writeSession(reply, sessionId) {
   });
 }
 
+function rotateAndSetCsrf(request, reply, userId = null) {
+  const newSid = newSessionId();
+  writeSession(reply, newSid, userId);
+  const csrfToken = tokenFor(newSid);
+
+  reply.setCookie(TOKEN_COOKIE, csrfToken, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+  });
+
+  return csrfToken;
+}
+
 function getOrCreateToken(request, reply) {
-  let sid = readSession(request);
-  if (!sid) {
-    sid = newSessionId();
-    writeSession(reply, sid);
+  let session = readSession(request);
+
+  // Extract authenticated user ID from Authorization header
+  let tokenUserId = null;
+  const authHeader = request.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const { verifyAccessToken } = require('../utils/tokens');
+      const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+      tokenUserId = decoded.id;
+    } catch (err) {}
   }
-  return tokenFor(sid);
+
+  if (!session) {
+    const sid = newSessionId();
+    writeSession(reply, sid, tokenUserId);
+    session = { sid, userId: tokenUserId };
+  } else if (tokenUserId && session.userId !== String(tokenUserId)) {
+    const sid = newSessionId();
+    writeSession(reply, sid, tokenUserId);
+    session = { sid, userId: tokenUserId };
+  }
+  return tokenFor(session.sid);
 }
 
 function generateToken(request, reply) {
@@ -104,18 +144,34 @@ async function csrfCheck(request, reply) {
     request.url.split('?')[0].split('#')[0];
   if (EXEMPT.includes(path)) return;
 
-  const sid = readSession(request);
+  const session = readSession(request);
   const headerToken = request.headers['x-csrf-token'];
 
-  if (!sid || !headerToken) {
+  if (!session || !session.sid || !headerToken) {
     return reply.status(403).send({ error: 'CSRF validation failed' });
   }
 
-  // The expected token is derived from the signed session id, so we
-  // don't need to keep anything in memory. A request with a valid
-  // session cookie and the matching header passes; anything else fails.
-  if (headerToken !== tokenFor(sid)) {
+  if (headerToken !== tokenFor(session.sid)) {
     return reply.status(403).send({ error: 'CSRF validation failed' });
+  }
+
+  // Extract authenticated user ID from Authorization header
+  let tokenUserId = null;
+  const authHeader = request.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const { verifyAccessToken } = require('../utils/tokens');
+      const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+      tokenUserId = decoded.id;
+    } catch (err) {
+      // Ignore token verification errors, request authentication will be checked in auth middleware.
+    }
+  }
+
+  if (tokenUserId) {
+    if (session.userId !== String(tokenUserId)) {
+      return reply.status(403).send({ error: 'CSRF validation failed' });
+    }
   }
 }
 
@@ -129,6 +185,7 @@ module.exports = {
   generateToken,
   csrfProtection,
   csrfMiddleware,
+  rotateAndSetCsrf,
   // exported for tests
   _internal: { tokenFor, verifySigned, readSession, writeSession },
 };

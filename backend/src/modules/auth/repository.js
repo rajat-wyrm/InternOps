@@ -229,15 +229,37 @@ async function revokeRefreshTokenRedis(tokenHash) {
 }
 
 async function revokeAllUserTokensRedis(userId) {
-  const redis = await getRedisClient();
-  if (redis) {
-    const tokens = await redis.sMembers(`user_tokens:${userId}`);
-    for (const token of tokens) {
-      await redis.del(`refresh_token:${token}`);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Revoke all refresh tokens for the user in Postgres
+    await client.query(
+      'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
+      [userId]
+    );
+
+    // Revoke from Redis atomically
+    const redis = await getRedisClient();
+    if (redis) {
+      const tokens = await redis.sMembers(`user_tokens:${userId}`);
+      if (tokens.length > 0) {
+        const multi = redis.multi();
+        for (const token of tokens) {
+          multi.del(`refresh_token:${token}`);
+        }
+        multi.del(`user_tokens:${userId}`);
+        await multi.exec();
+      }
     }
-    await redis.del(`user_tokens:${userId}`);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
-  await revokeAllUserTokens(userId);
 }
 
 module.exports = {

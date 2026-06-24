@@ -65,6 +65,9 @@ async function routes(fastify) {
         path: '/api/auth/refresh',
       });
 
+      const { rotateAndSetCsrf } = require('../../middleware/csrf');
+      rotateAndSetCsrf(req, reply, result.user.id);
+
       // From fix/deferred-audit-log-486
       req.auditOnResponse = {
         userId: result.user.id,
@@ -157,7 +160,6 @@ async function routes(fastify) {
         userAgent: req.headers['user-agent'],
       };
 
-      // From master
       reply.clearCookie('csrf-sid', { path: '/' });
       reply.clearCookie('csrf-token', { path: '/' });
 

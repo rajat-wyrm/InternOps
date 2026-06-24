@@ -21,7 +21,7 @@ describe('AI Chat Integration Tests (#498)', () => {
 
   function authHeaders(extra) {
     return {
-      'X-CSRF-Token': csrfToken,
+      'X-CSRF-Token': cookies['csrf-token'] || csrfToken,
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
       ...extra,
@@ -102,6 +102,8 @@ describe('AI Chat Integration Tests (#498)', () => {
 
     afterAll(async () => {
       await app.close();
+      const pool = require('../../src/config/db');
+      await pool.end();
       delete global.fetch;
     });
 
@@ -156,6 +158,8 @@ describe('AI Chat Integration Tests (#498)', () => {
 
     afterAll(async () => {
       await app.close();
+      const pool = require('../../src/config/db');
+      await pool.end();
       delete global.fetch;
     });
 
@@ -237,6 +241,8 @@ describe('AI Chat Integration Tests (#498)', () => {
 
     afterAll(async () => {
       await app.close();
+      const pool = require('../../src/config/db');
+      await pool.end();
       delete global.fetch;
     });
 
@@ -301,6 +307,8 @@ describe('AI Chat Integration Tests (#498)', () => {
 
     afterAll(async () => {
       await app.close();
+      const pool = require('../../src/config/db');
+      await pool.end();
       delete global.fetch;
     });
 

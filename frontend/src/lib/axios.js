@@ -62,7 +62,19 @@ api.interceptors.request.use(async (config) => {
 let refreshing = null;
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    const url = res.config?.url;
+    if (
+      url &&
+      (url.includes('/auth/login') ||
+        url.includes('/auth/logout') ||
+        url.includes('/me/revoke-all') ||
+        url.includes('/auth/reset-password'))
+    ) {
+      clearCsrfToken();
+    }
+    return res;
+  },
   async (err) => {
     const original = err.config || {};
     const status = err.response?.status;

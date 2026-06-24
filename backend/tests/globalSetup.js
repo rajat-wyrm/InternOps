@@ -24,7 +24,6 @@ module.exports = async function globalSetup() {
     // Wipe password-reset attempt counters so they don't bleed between
     // test files.
     await pool.query('DELETE FROM password_reset_attempts');
-    await pool.end();
   } catch (err) {
     console.warn(
       '[jest setup] database unavailable — skipping DB reset:',
