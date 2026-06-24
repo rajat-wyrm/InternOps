@@ -3,45 +3,6 @@ const { LRUCache } = require('lru-cache');
 const config = require('../config');
 const { getRedisClient } = require('../config/redis');
 
-class BoundedCache {
-  constructor(maxSize = 1000) {
-    this.maxSize = maxSize;
-    this.cache = new Map();
-  }
-
-  get(key) {
-    const cached = this.cache.get(key);
-    if (!cached) return null;
-
-    if (Date.now() > cached.expiresAt) {
-      this.cache.delete(key);
-      return null;
-    }
-
-    // Refresh position to implement LRU (delete and re-insert)
-    this.cache.delete(key);
-    this.cache.set(key, cached);
-
-    return cached.value;
-  }
-
-  set(key, value, ttlMs) {
-    if (this.cache.has(key)) {
-      this.cache.delete(key);
-    } else if (this.cache.size >= this.maxSize) {
-      const oldestKey = this.cache.keys().next().value;
-      if (oldestKey !== undefined) {
-        this.cache.delete(oldestKey);
-      }
-    }
-
-    this.cache.set(key, {
-      value,
-      expiresAt: Date.now() + ttlMs,
-    });
-  }
-}
-
 const failureState = new Map();
 
 const FAILURE_LIMIT = Number(process.env.AI_PROVIDER_FAILURE_LIMIT || 3);
@@ -49,17 +10,26 @@ const COOLDOWN_MS = Number(
   process.env.AI_PROVIDER_COOLDOWN_MS || 5 * 60 * 1000
 );
 const CACHE_TTL_MS = Number(process.env.AI_CACHE_TTL_MS || 5 * 60 * 1000);
-const CACHE_MAX_ENTRIES = Number(process.env.AI_CACHE_MAX_ENTRIES || 5000);
+const CACHE_MAX_ENTRIES = Number(process.env.AI_CACHE_MAX_ENTRIES || 500);
 const MAX_RESPONSE_BYTES = Number(
   process.env.AI_MAX_RESPONSE_BYTES || 2 * 1024 * 1024 // 2MB default cap
 );
 
-// Bounded LRU cache — fixes unbounded Map growth (OOM DoS, attack #2).
-// max entries + ttl give a hard ceiling on memory regardless of attack volume.
-const responseCache = new LRUCache({
-  max: CACHE_MAX_ENTRIES,
-  ttl: CACHE_TTL_MS,
-});
+const caches = new Map(); // userId -> LRUCache
+function getCache(userId) {
+  const key = userId || 'global';
+  if (!caches.has(key)) {
+    caches.set(
+      key,
+      new LRUCache({
+        max: CACHE_MAX_ENTRIES,
+        ttl: CACHE_TTL_MS,
+        ttlAutopurge: true,
+      })
+    );
+  }
+  return caches.get(key);
+}
 
 const MAX_AI_RESPONSE_BYTES = Number(
   process.env.AI_MAX_RESPONSE_BYTES || 5 * 1024 * 1024
@@ -113,7 +83,8 @@ async function getCachedResponse(payload) {
     console.warn('[AI Cache] Redis read error:', error.message);
   }
 
-  return responseCache.get(key) || null;
+  const cache = getCache(payload.userId);
+  return cache.get(key) || null;
 }
 
 async function setCachedResponse(payload, value) {
@@ -135,7 +106,8 @@ async function setCachedResponse(payload, value) {
     console.warn('[AI Cache] Redis write error:', error.message);
   }
 
-  responseCache.set(key, value);
+  const cache = getCache(payload.userId);
+  cache.set(key, value);
 }
 
 function isProviderOpen(name) {
@@ -535,4 +507,6 @@ module.exports = {
   generateAIResponse,
   getProviderHealth,
   ResponseSizeLimitError,
+  // Exported for testing regression
+  _caches: caches,
 };

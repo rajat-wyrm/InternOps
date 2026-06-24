@@ -9,6 +9,7 @@ const { verifyEmail, sendVerificationEmail } = require('./verificationService');
 const repo = require('./repository');
 const { forgotPassword, resetPassword } = require('./resetService');
 const isProduction = process.env.NODE_ENV === 'production';
+const { createAuditLog } = require('../../utils/audit');
 async function routes(fastify) {
   // Register
   fastify.post(
@@ -49,22 +50,53 @@ async function routes(fastify) {
       const { email, password } = z
         .object({ email: z.string().email(), password: z.string() })
         .parse(req.body);
+
       const result = await service.login(
         email,
         password,
         req.ip,
         req.headers['user-agent']
       );
+
       reply.setCookie('refreshToken', result.refreshToken, {
         httpOnly: true,
         secure: isProduction,
         sameSite: 'strict',
         path: '/api/auth/refresh',
       });
-      return {
+
+      // From fix/deferred-audit-log-486
+      req.auditOnResponse = {
+        userId: result.user.id,
+        action: 'LOGIN',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      };
+
+      // From master
+      const response = {
         accessToken: result.accessToken,
         user: result.user,
       };
+
+      reply.send(response);
+
+      req.log.info(
+        {
+          action: 'LOGIN',
+          userId: result.user.id,
+          ip: req.ip,
+          userAgent: req.headers['user-agent'],
+        },
+        'login success'
+      );
+
+      createAuditLog({
+        userId: result.user.id,
+        action: 'LOGIN',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      }).catch((err) => req.log.error(err, 'audit log failed'));
     }
   );
 
@@ -116,8 +148,19 @@ async function routes(fastify) {
       );
 
       reply.clearCookie('refreshToken', { path: '/api/auth/refresh' });
+
+      // From fix/deferred-audit-log-486
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'LOGOUT',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      };
+
+      // From master
       reply.clearCookie('csrf-sid', { path: '/' });
       reply.clearCookie('csrf-token', { path: '/' });
+
       return { message: 'Logged out' };
     }
   );
@@ -161,7 +204,7 @@ async function routes(fastify) {
   // Forgot password
   fastify.post('/forgot-password', async (req, reply) => {
     const { email } = z.object({ email: z.string().email() }).parse(req.body);
-    await forgotPassword(email, extractRequestInfo(req));
+    req.auditOnResponse = await forgotPassword(email, extractRequestInfo(req));
     return { message: 'If that email exists, a reset link has been sent.' };
   });
 
@@ -170,7 +213,11 @@ async function routes(fastify) {
     const { token, newPassword } = z
       .object({ token: z.string(), newPassword: z.string().min(8) })
       .parse(req.body);
-    await resetPassword(token, newPassword, extractRequestInfo(req));
+    req.auditOnResponse = await resetPassword(
+      token,
+      newPassword,
+      extractRequestInfo(req)
+    );
     return {
       message:
         'Password reset successful. Please log in with your new password.',

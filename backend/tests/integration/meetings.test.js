@@ -99,8 +99,10 @@ afterAll(async () => {
     await resetSeededAdminPassword();
   } catch {
     /* best-effort cleanup */
+  } finally {
+    // Close the app AFTER all cleanup is complete
+    await app.close();
   }
-  await app.close();
 });
 
 function authHeaders() {
@@ -126,6 +128,20 @@ async function createUserAsAdmin(user) {
     payload: user,
   });
   return JSON.parse(res.body);
+}
+
+async function waitForAuditLog(
+  query,
+  params,
+  { retries = 10, delayMs = 50 } = {}
+) {
+  let result;
+  for (let i = 0; i < retries; i++) {
+    result = await pool.query(query, params);
+    if (result.rowCount > 0) return result;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return result;
 }
 
 describe('Meetings Integration Tests', () => {
@@ -154,10 +170,22 @@ describe('Meetings Integration Tests', () => {
     });
 
     it('should report skipped attendees when hierarchy access is denied', async () => {
+      const dept1Res = await pool.query(
+        "INSERT INTO departments (name) VALUES ('Test Dept 1 ' || $1) RETURNING id",
+        [Date.now()]
+      );
+      const dept1Id = dept1Res.rows[0].id;
+      const dept2Res = await pool.query(
+        "INSERT INTO departments (name) VALUES ('Test Dept 2 ' || $1) RETURNING id",
+        [Date.now()]
+      );
+      const dept2Id = dept2Res.rows[0].id;
+
       const manager = await createUserAsAdmin({
         email: TEST_USERS[0],
         password: 'Manager@123',
         role: 'TL',
+        departmentId: dept1Id,
         fullName: 'Team Lead',
       });
       const subordinate = await createUserAsAdmin({
@@ -165,12 +193,14 @@ describe('Meetings Integration Tests', () => {
         password: 'Subordinate@123',
         role: 'CAPTAIN',
         managerId: manager.id,
+        departmentId: dept1Id,
         fullName: 'Captain User',
       });
       const outsider = await createUserAsAdmin({
         email: TEST_USERS[2],
         password: 'Outsider@123',
         role: 'CAPTAIN',
+        departmentId: dept2Id,
         fullName: 'Outside User',
       });
 
@@ -289,7 +319,7 @@ describe('Meetings Integration Tests', () => {
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body).message).toBe('Attendee added');
 
-      const auditRes = await pool.query(
+      const auditRes = await waitForAuditLog(
         "SELECT * FROM audit_logs WHERE action = 'MEETING_ATTENDEE_ADDED' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1",
         [meetingId]
       );
@@ -313,7 +343,7 @@ describe('Meetings Integration Tests', () => {
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body).message).toBe('Attendee removed');
 
-      const auditRes = await pool.query(
+      const auditRes = await waitForAuditLog(
         "SELECT * FROM audit_logs WHERE action = 'MEETING_ATTENDEE_REMOVED' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1",
         [meetingId]
       );

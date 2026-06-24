@@ -40,37 +40,37 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-gray-900 text-white">
+    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-gradient-to-br from-indigo-700 via-indigo-800 to-purple-900  text-white">
       {/* Left Side (Credentials Form) */}
-      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 sm:p-12 md:p-16 bg-gray-900">
+      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 bg-black/20 backdrop-blur-sm">
         <div className="w-full max-w-md animate-pop-in">
           {/* Brand */}
-          <div className="text-center mb-6 text-white">
+          <div className="text-center mb-10 text-white">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-orange text-white shadow-lg mb-3">
               <Zap className="w-8 h-8" aria-hidden="true" />
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight">
               InternOps
             </h1>
-            <p className="text-gray-400 text-sm">
+            <p className="text-gray-300 text-sm">
               Workforce &amp; Intern Management Platform
             </p>
           </div>
           {/* Card */}
-          <div className="rounded-2xl border border-gray-700 bg-gray-800 shadow-2xl p-8">
+          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-2xl p-8">
             <h2 className="text-xl font-bold text-white mb-1">Welcome back</h2>
-            <p className="text-gray-400 text-sm mb-6">
-              Sign in to your dashboard
+            <p className="text-gray-300 text-sm mb-6">
+              Log in to your dashboard
             </p>
             {error && (
-              <div className="bg-error/10 border border-error/40 text-error text-sm rounded-lg px-4 py-2.5 mb-4 animate-fade-in">
+              <div className="bg-red-500/10 border border-red-500/40 text-red-400 text-sm rounded-lg px-4 py-2.5 mb-4 animate-fade-in">
                 {error}
               </div>
             )}
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div className="relative">
                 <Mail
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
                   aria-hidden="true"
                 />
                 <input
@@ -79,12 +79,12 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full pl-11 pr-4 py-3 rounded-lg bg-gray-900 border border-gray-700 text-white placeholder-gray-500 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/30 outline-none transition"
+                  className="w-full pl-11 pr-4 py-4 rounded-lg bg-black/20 border border-white/10 text-white placeholder-gray-400 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/30 outline-none transition"
                 />
               </div>
               <div className="relative">
                 <Lock
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
                   aria-hidden="true"
                 />
                 <input
@@ -93,13 +93,13 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full pl-11 pr-12 py-3 rounded-lg bg-gray-900 border border-gray-700 text-white placeholder-gray-500 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/30 outline-none transition"
+                  className="w-full pl-11 pr-12 py-4 rounded-lg bg-black/20 border border-white/10 text-white placeholder-gray-400 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/30 outline-none transition"
                 />
                 <button
                   type="button"
                   onClick={() => setShow((s) => !s)}
                   aria-label={show ? 'Hide password' : 'Show password'}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
                 >
                   {show ? (
                     <EyeOff className="w-5 h-5" aria-hidden="true" />
@@ -111,36 +111,36 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loginMut.isPending}
-                className="w-full py-3 rounded-lg bg-brand-orange hover:opacity-90 text-white font-semibold transition-opacity disabled:opacity-70"
+                className="w-full py-4 rounded-lg bg-brand-orange hover:opacity-90 text-white font-semibold transition-opacity disabled:opacity-70"
               >
                 {loginMut.isPending ? (
                   <span className="inline-flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    Signing in...
+                    Logging in...
                   </span>
                 ) : (
-                  'Sign In'
+                  'Log In'
                 )}
               </button>
             </form>
             <div className="mt-5 text-center">
               <Link
                 to="/forgot-password"
-                className="text-gray-400 hover:text-white text-sm underline-offset-2 hover:underline"
+                className="text-gray-300 hover:text-white text-sm underline-offset-2 hover:underline"
               >
                 Forgot password?
               </Link>
             </div>
           </div>
-          <p className="text-center text-gray-500 text-xs mt-6">
+          <p className="text-center text-gray-400 text-xs mt-6">
             © {new Date().getFullYear()} InternOps · Secure role-based access
           </p>
         </div>
       </div>
 
       {/* Right Side (Notice Board & Branding) */}
-      <div className="hidden lg:flex w-1/2 flex-col justify-center p-12 bg-brand-dark border-l border-gray-800/50">
-        <div className="max-w-md mx-auto space-y-6">
+      <div className="flex w-full lg:w-1/2 flex-col justify-center p-8 lg:p-12 bg-black/10 border-t lg:border-t-0 lg:border-l border-white/5">
+        <div className="max-w-md mx-auto w-full space-y-6">
           <div className="inline-flex items-center gap-2 bg-brand-orange/10 text-brand-orange px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider">
             <span>📢 InternOps Notice Board</span>
           </div>
@@ -153,12 +153,12 @@ export default function Login() {
               here.
             </p>
           </div>
-          <div className="bg-gray-900/60 rounded-2xl border border-gray-700/50 p-6 space-y-4">
+          <div className="bg-black/20 backdrop-blur-md rounded-2xl border border-white/5 p-6 space-y-4">
             <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <span className="text-brand-orange">⚡</span> Latest News
             </h3>
 
-            <div className="space-y-4 divide-y divide-gray-800">
+            <div className="space-y-4 divide-y divide-white/10">
               <div className="pt-4 first:pt-0">
                 <p className="text-xs text-brand-orange font-semibold">
                   Weekly Reminder

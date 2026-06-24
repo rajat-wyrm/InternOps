@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react';
 import api from '../../lib/axios';
@@ -29,16 +29,51 @@ export default function AdminDashboard() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [deletingUserId, setDeletingUserId] = useState(null);
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const limit = 10;
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const suspendedFilter =
+    statusFilter === 'active'
+      ? false
+      : statusFilter === 'suspended'
+        ? true
+        : undefined;
+
   const { data, isLoading } = useQuery({
-    queryKey: ['adminUsers', page, limit],
+    queryKey: [
+      'adminUsers',
+      page,
+      limit,
+      debouncedSearch,
+      roleFilter,
+      statusFilter,
+    ],
     queryFn: () =>
-      api.get(`/users?page=${page}&limit=${limit}`).then((res) => res.data),
+      api
+        .get('/users', {
+          params: {
+            page,
+            limit,
+            search: debouncedSearch || undefined,
+            role: roleFilter || undefined,
+            suspended: suspendedFilter,
+          },
+        })
+        .then((res) => res.data),
+    keepPreviousData: true,
   });
 
   const inv = () => queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
@@ -47,36 +82,31 @@ export default function AdminDashboard() {
     mutationFn: (id) => api.patch(`/users/${id}/suspend`),
     onSuccess: inv,
   });
+
   const activateMut = useMutation({
     mutationFn: (id) => api.patch(`/users/${id}/activate`),
     onSuccess: inv,
   });
+
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/users/${id}`),
     onSuccess: inv,
     onSettled: () => setDeletingUserId(null),
   });
 
-  // Client-side filter and search over the loaded page. Combined with
-  // server-side pagination, this gives instant feedback while typing.
-  const filtered = useMemo(() => {
-    const rows = data?.data ?? data ?? [];
-    if (!Array.isArray(rows)) return [];
-    const q = search.trim().toLowerCase();
-    return rows.filter((u) => {
-      if (roleFilter && u.role !== roleFilter) return false;
-      if (statusFilter === 'active' && u.suspended) return false;
-      if (statusFilter === 'suspended' && !u.suspended) return false;
-      if (!q) return true;
-      return (
-        (u.full_name || '').toLowerCase().includes(q) ||
-        (u.email || '').toLowerCase().includes(q)
-      );
-    });
-  }, [data, search, roleFilter, statusFilter]);
-
-  const total = data?.total ?? (Array.isArray(data) ? data.length : 0);
+  const rows = data?.data ?? [];
+  const total = data?.total ?? 0;
   const totalPages = Math.max(Math.ceil(total / limit), 1);
+
+  const handleRoleFilterChange = (value) => {
+    setRoleFilter(value);
+    setPage(1);
+  };
+
+  const handleStatusFilterChange = (value) => {
+    setStatusFilter(value);
+    setPage(1);
+  };
 
   const handleDelete = (user) => {
     if (deleteMut.isPending || deletingUserId === user.id) return;
@@ -119,9 +149,10 @@ export default function AdminDashboard() {
             className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-200 bg-white focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/30 outline-none transition text-sm"
           />
         </div>
+
         <select
           value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
+          onChange={(e) => handleRoleFilterChange(e.target.value)}
           className="px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/30 outline-none"
         >
           <option value="">All roles</option>
@@ -131,9 +162,10 @@ export default function AdminDashboard() {
           <option value="CAPTAIN">Captain</option>
           <option value="INTERN">Intern</option>
         </select>
+
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => handleStatusFilterChange(e.target.value)}
           className="px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-sm focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/30 outline-none"
         >
           <option value="">All status</option>
@@ -145,16 +177,16 @@ export default function AdminDashboard() {
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
         {isLoading ? (
           <Spinner />
-        ) : filtered.length === 0 ? (
+        ) : rows.length === 0 ? (
           <EmptyState
             title={
               search || roleFilter || statusFilter
-                ? 'No matches'
+                ? 'No users found'
                 : 'No users yet'
             }
             text={
               search || roleFilter || statusFilter
-                ? 'Try a different search term or filter.'
+                ? 'No users were found matching those criteria.'
                 : 'New users will appear here.'
             }
           />
@@ -172,7 +204,7 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((u) => (
+                {rows.map((u) => (
                   <tr key={u.id} className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
@@ -187,6 +219,7 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                     </td>
+
                     <td className="px-4 py-3">
                       <span
                         className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${
@@ -196,6 +229,7 @@ export default function AdminDashboard() {
                         {u.role}
                       </span>
                     </td>
+
                     <td className="px-4 py-3">
                       <span
                         className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${
@@ -207,6 +241,7 @@ export default function AdminDashboard() {
                         {u.suspended ? 'Suspended' : 'Active'}
                       </span>
                     </td>
+
                     <td className="px-4 py-3 text-right">
                       <UserActionMenu
                         user={u}
@@ -234,6 +269,7 @@ export default function AdminDashboard() {
           <span>
             {total} user{total === 1 ? '' : 's'} · page {page} of {totalPages}
           </span>
+
           <div className="flex gap-2">
             <button
               type="button"
@@ -244,6 +280,7 @@ export default function AdminDashboard() {
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
+
             <button
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
