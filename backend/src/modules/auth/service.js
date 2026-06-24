@@ -24,12 +24,6 @@ async function register(data, creator) {
 
 async function login(email, password, ip, userAgent) {
   const user = await repo.findByEmail(email);
-<<<<<<< HEAD
-  if (!user || user.suspended) {
-    await recordLoginAttempt(email, ip, false);
-    throw new UnauthorizedError('Invalid credentials or suspended');
-  }
-=======
   if (!user) {
     await repo.verifyPassword(DUMMY_USER, password).catch(() => {});
     await recordLoginAttempt(email, ip, false);
@@ -41,7 +35,6 @@ if (user.suspended) {
     await recordLoginAttempt(email, ip, false);
     throw new UnauthorizedError('Invalid credentials');
 }
->>>>>>> 46a3ad1 (fix: mitigate login timing attack)
   const valid = await repo.verifyPassword(user, password);
   if (!valid) {
     await recordLoginAttempt(email, ip, false);
