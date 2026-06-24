@@ -6,10 +6,15 @@ async function routes(fastify) {
   // Get notifications with pagination
   fastify.get('/', { preHandler: [auth] }, async (req) => {
     const schema = z.object({
-      page: z.string().optional().transform(v => parseInt(v || '1')),
-      limit: z.string().optional()
-        .transform(v => parseInt(v || '20'))
-        .pipe(z.number().int().min(1).max(100, 'limit cannot exceed 100'))
+      page: z
+        .string()
+        .optional()
+        .transform((v) => parseInt(v || '1')),
+      limit: z
+        .string()
+        .optional()
+        .transform((v) => parseInt(v || '20'))
+        .pipe(z.number().int().min(1).max(100, 'limit cannot exceed 100')),
     });
     const query = schema.parse(req.query);
     return repo.get(req.user.id, query);
@@ -28,8 +33,15 @@ async function routes(fastify) {
   });
 
   // Delete a notification
-  fastify.delete('/:id', { preHandler: [auth] }, async (req) => {
-    await repo.deleteNotification(req.params.id, req.user.id);
+  fastify.delete('/:id', { preHandler: [auth] }, async (req, reply) => {
+    try {
+      await repo.deleteNotification(req.params.id, req.user.id);
+    } catch (err) {
+      if (err.message && err.message.startsWith('Notification not found')) {
+        return reply.status(404).send({ error: err.message });
+      }
+      throw err;
+    }
     return { success: true };
   });
 

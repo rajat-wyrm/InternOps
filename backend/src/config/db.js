@@ -9,7 +9,6 @@ const pool = new Pool({
 
 pool.on('error', (err) => {
   console.error('DB pool error:', err);
-  process.exit(-1);
 });
 
 module.exports = pool;
