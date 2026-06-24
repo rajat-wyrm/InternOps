@@ -22,7 +22,12 @@ async function routes(fastify) {
     }
     const { page, limit } = parsed.data;
     const result = await repo.getFullTeam(req.user.id, { page, limit });
-    return { data: result.rows, total: result.total, page: result.page, limit: result.limit };
+    return {
+      data: result.rows,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    };
   });
 
   fastify.get('/my/chain', { preHandler: [auth] }, async (req) =>
