@@ -365,7 +365,9 @@ describe('Auth Integration Tests', () => {
     });
 
     it('should NOT clear brute-force failures of IP A when logging in from IP B', async () => {
-      await pool.query('DELETE FROM login_attempts WHERE email = $1', [SEEDED_ADMIN_EMAIL]);
+      await pool.query('DELETE FROM login_attempts WHERE email = $1', [
+        SEEDED_ADMIN_EMAIL,
+      ]);
       const { getRedisClient } = require('../../src/config/redis');
       const redis = await getRedisClient();
       if (redis) {
@@ -379,7 +381,10 @@ describe('Auth Integration Tests', () => {
           method: 'POST',
           url: '/api/auth/login',
           remoteAddress: '1.1.1.1',
-          headers: { 'x-test-brute': 'true', 'Content-Type': 'application/json' },
+          headers: {
+            'x-test-brute': 'true',
+            'Content-Type': 'application/json',
+          },
           payload: { email: SEEDED_ADMIN_EMAIL, password: 'wrong' },
         });
         expect(res.statusCode).toBe(401);
@@ -435,7 +440,10 @@ describe('Auth Integration Tests', () => {
         method: 'POST',
         url: '/api/auth/login',
         cookies: { 'csrf-sid': anonSidCookie },
-        headers: { 'X-CSRF-Token': anonToken, 'Content-Type': 'application/json' },
+        headers: {
+          'X-CSRF-Token': anonToken,
+          'Content-Type': 'application/json',
+        },
         payload: { email: SEEDED_ADMIN_EMAIL, password: SEEDED_ADMIN_PASSWORD },
       });
       expect(loginRes.statusCode).toBe(200);

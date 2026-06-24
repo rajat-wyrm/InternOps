@@ -17,7 +17,7 @@ async function isAccountLocked(email, ip) {
   );
   const emailLocked = parseInt(emailRes.rows[0].failed, 10) >= MAX_ATTEMPTS;
   const ipLocked = parseInt(ipRes.rows[0].failed, 10) >= MAX_ATTEMPTS * 3;
-  
+
   if (emailLocked || ipLocked) return true;
 
   try {
