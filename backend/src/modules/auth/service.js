@@ -5,6 +5,9 @@ const { createAuditLog } = require('../../utils/audit');
 const { recordLoginAttempt } = require('../../middleware/bruteForce');
 const { isValidStep } = require('../../utils/hierarchy');
 
+const DUMMY_USER = {
+  password_hash: '$argon2id$v=19$m=65536,t=3,p=4$8/VvKJehP9DGKtV1NP5p8g$z0S2q7BsbH2YY16pI0/jXvgI4ElwnccjvW3NNcCSsQk'
+};
 async function register(data, creator) {
   if (data.managerId) {
     const pool = require('../../config/db');
@@ -21,10 +24,24 @@ async function register(data, creator) {
 
 async function login(email, password, ip, userAgent) {
   const user = await repo.findByEmail(email);
+<<<<<<< HEAD
   if (!user || user.suspended) {
     await recordLoginAttempt(email, ip, false);
     throw new UnauthorizedError('Invalid credentials or suspended');
   }
+=======
+  if (!user) {
+    await repo.verifyPassword(DUMMY_USER, password).catch(() => {});
+    await recordLoginAttempt(email, ip, false);
+    throw new UnauthorizedError('Invalid credentials');
+}
+
+if (user.suspended) {
+    await repo.verifyPassword(user, password).catch(() => {});
+    await recordLoginAttempt(email, ip, false);
+    throw new UnauthorizedError('Invalid credentials');
+}
+>>>>>>> 46a3ad1 (fix: mitigate login timing attack)
   const valid = await repo.verifyPassword(user, password);
   if (!valid) {
     await recordLoginAttempt(email, ip, false);
