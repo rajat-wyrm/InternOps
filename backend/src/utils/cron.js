@@ -1,7 +1,10 @@
-﻿const cron = require('node-cron');
+const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
 const pool = require('../config/db');
+const pLimit = require('p-limit');
+
+const limit = pLimit(20);
 
 function setupCronJobs() {
   try {
@@ -30,14 +33,21 @@ function setupCronJobs() {
 
         let filesDeleted = 0;
 
-        // Delete physical files
-        for (const row of rows) {
-          const fp = path.join(__dirname, '..', '..', row.image_path);
-          if (fs.existsSync(fp)) {
-            fs.unlinkSync(fp);
-            filesDeleted++;
-          }
-        }
+        // Delete physical files asynchronously with bounded concurrency (fix #504)
+        // Drops fs.existsSync (TOCTOU) — just attempt unlink and handle ENOENT
+        await Promise.allSettled(
+          rows.map((row) =>
+            limit(async () => {
+              const fp = path.join(__dirname, '..', '..', row.image_path);
+              try {
+                await fs.promises.unlink(fp);
+                filesDeleted++;
+              } catch (err) {
+                if (err.code !== 'ENOENT') throw err;
+              }
+            })
+          )
+        );
 
         // Update database records
         await pool.query(
