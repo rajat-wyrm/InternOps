@@ -40,9 +40,16 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-gradient-to-br from-indigo-700 via-indigo-800 to-purple-900  text-white">
+    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900  text-white">
+      <div
+        className="absolute inset-0 opacity-[0.07] pointer-events-none"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 66L0 50V16L28 0l28 16v34L28 66zm0 0v34M0 50l28 16M56 50L28 66M0 16l28 16M56 16L28 32' fill='none' stroke='%23ffffff' stroke-width='1'/%3E%3C/svg%3E")`,
+          backgroundSize: '56px 100px',
+        }}
+      />
       {/* Left Side (Credentials Form) */}
-      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 bg-black/20 backdrop-blur-sm">
+      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 bg-black/20 backdrop-blur-none">
         <div className="w-full max-w-md animate-pop-in">
           {/* Brand */}
           <div className="text-center mb-10 text-white">
@@ -57,7 +64,7 @@ export default function Login() {
             </p>
           </div>
           {/* Card */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md shadow-2xl p-8">
+          <div className="rounded-2xl border border-white/10 bg-black/25 backdrop-blur-lg shadow-2xl p-8">
             <h2 className="text-xl font-bold text-white mb-1">Welcome back</h2>
             <p className="text-gray-300 text-sm mb-6">
               Log in to your dashboard

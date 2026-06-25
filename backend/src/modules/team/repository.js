@@ -54,7 +54,7 @@ async function getTeamMembers(managerId) {
       UNION ALL
       SELECT u.id, u.manager_id, t.depth + 1
       FROM users u INNER JOIN team t ON u.manager_id = t.id
-      WHERE u.deleted_at IS NULL
+      WHERE u.deleted_at IS NULL AND t.depth < 100
     )
     SELECT ${MEMBER_COLUMNS}, t.depth, ${PERFORMANCE_COLUMNS}
     FROM team t
@@ -181,10 +181,10 @@ async function getMemberHistory(id) {
 async function getPendingProofs(managerId, limit = 50) {
   const query = `
     WITH RECURSIVE team AS (
-      SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+      SELECT id, 0 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL
       UNION ALL
-      SELECT u.id FROM users u INNER JOIN team t ON u.manager_id = t.id
-      WHERE u.deleted_at IS NULL
+      SELECT u.id, t.depth + 1 FROM users u INNER JOIN team t ON u.manager_id = t.id
+      WHERE u.deleted_at IS NULL AND t.depth < 100
     )
     SELECT p.id, p.intern_id, p.image_path, p.status, p.created_at,
            u.full_name AS intern_name, u.email AS intern_email,

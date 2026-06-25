@@ -178,6 +178,24 @@ async function routes(fastify) {
       return repo.getMonthlyStats(req.params.userId, month, year);
     }
   );
+
+  //Authorized members
+  fastify.get(
+    '/authorized-members',
+    {
+      schema: { tags: ['Attendance'], description: 'Get members I can view' },
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+    },
+    async (req) => {
+      if (req.user.role === 'ADMIN') {
+        const all = await pool.query(
+          'SELECT id, full_name, role FROM users WHERE deleted_at IS NULL'
+        );
+        return all.rows;
+      }
+      return await repo.getAuthorizedSubordinates(req.user.id);
+    }
+  );
 }
 
 module.exports = routes;

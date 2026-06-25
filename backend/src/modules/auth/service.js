@@ -14,6 +14,10 @@ const {
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
 
+const DUMMY_USER = {
+  password_hash:
+    '$argon2id$v=19$m=65536,t=3,p=4$8/VvKJehP9DGKtV1NP5p8g$z0S2q7BsbH2YY16pI0/jXvgI4ElwnccjvW3NNcCSsQk',
+};
 async function register(data, creator) {
   if (data.managerId) {
     const manager = await repo.findByIdRaw(data.managerId);

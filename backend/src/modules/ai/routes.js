@@ -126,9 +126,12 @@ async function routes(fastify) {
           });
         }
 
+        req.log.error(
+          { err: error.message, details: error.details },
+          'AI provider failed'
+        );
         return reply.status(503).send({
           error: 'AI service unavailable',
-          details: error.details || [],
         });
       }
     }

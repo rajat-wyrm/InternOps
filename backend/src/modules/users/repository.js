@@ -94,6 +94,19 @@ async function softDeleteUser(id) {
     [id]
   );
 }
+async function countOtherActiveAdmins(id) {
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS total
+     FROM users
+     WHERE role = 'ADMIN'
+       AND suspended = FALSE
+       AND deleted_at IS NULL
+       AND id != $1`,
+    [id]
+  );
+
+  return result.rows[0].total;
+}
 
 module.exports = {
   listUsersByRole,
@@ -102,4 +115,5 @@ module.exports = {
   suspendUser,
   activateUser,
   softDeleteUser,
+  countOtherActiveAdmins,
 };

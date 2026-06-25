@@ -28,8 +28,9 @@ export default function Attendance() {
 
   // Managers can pick any team member; everyone can always see their own.
   const { data: team = [] } = useQuery({
-    queryKey: ['teamMembers'],
-    queryFn: () => api.get('/team/members').then((res) => res.data),
+    queryKey: ['authorizedMembers'],
+    queryFn: () =>
+      api.get('/attendance/authorized-members').then((res) => res.data),
     enabled: isManager,
   });
 

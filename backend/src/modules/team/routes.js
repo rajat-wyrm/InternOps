@@ -134,6 +134,8 @@ async function routes(fastify) {
             };
         }
 
+        data.email = data.email.trim().toLowerCase();
+
         if (await repo.emailExists(data.email, client))
           return { errStatus: 409, errMessage: 'Email already exists' };
 

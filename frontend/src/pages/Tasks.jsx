@@ -211,7 +211,7 @@ export default function Tasks() {
                 )}
                 {user?.role === 'INTERN' && (
                   <label className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-emerald-500 to-green-600 text-white cursor-pointer hover:shadow-lg transition">
-                    <Upload className="w-4 h-4" /> Upload proof
+                    <Upload className="w-4 h-4" /> Submit Proof
                     <input
                       type="file"
                       accept="image/*"
