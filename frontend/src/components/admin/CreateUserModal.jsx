@@ -11,15 +11,20 @@ import {
   X,
 } from 'lucide-react';
 import api from '../../lib/axios';
+import useAuthStore from '../../store/auth';
 
 export default function CreateUserModal({ open, onClose }) {
   const queryClient = useQueryClient();
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'ADMIN';
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('');
-  const [departmentId, setDepartmentId] = useState('');
+  const [departmentId, setDepartmentId] = useState(
+    !isAdmin && currentUser?.department_id ? currentUser.department_id : ''
+  );
   const [managerId, setManagerId] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -81,7 +86,7 @@ export default function CreateUserModal({ open, onClose }) {
       setEmail('');
       setPassword('');
       setRole('');
-      setDepartmentId('');
+      setDepartmentId(!isAdmin && currentUser?.department_id ? currentUser.department_id : '');
       setManagerId('');
       setTimeout(() => {
         setSuccessMsg('');
@@ -263,7 +268,8 @@ export default function CreateUserModal({ open, onClose }) {
                 <select
                   value={departmentId}
                   onChange={(e) => setDepartmentId(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white focus:border-brand-green focus:ring-2 focus:ring-brand-green/30 outline-none transition text-sm appearance-none"
+                  disabled={!isAdmin}
+                  className="w-full pl-10 pr-3 py-2.5 rounded-lg bg-gray-800 border border-gray-700 text-white focus:border-brand-green focus:ring-2 focus:ring-brand-green/30 outline-none transition text-sm appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <option value="">Select Dept</option>
                   {departments.map((d) => (
