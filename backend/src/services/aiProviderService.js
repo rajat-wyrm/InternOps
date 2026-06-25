@@ -246,9 +246,22 @@ async function parseJsonResponseWithLimit(response, providerName) {
   }
 }
 
+const MAX_MESSAGES = 16;
+const MAX_CONTENT_LENGTH = 2000;
+
 function buildPrompt(messages = []) {
   return messages
-    .map((m) => `${m.role || 'user'}: ${m.content || ''}`)
+    .slice(-MAX_MESSAGES)
+    .filter(
+      (m) => m.role === 'user' || m.role === 'assistant'
+    )
+    .map(
+      (m) =>
+        `${m.role}: ${String(m.content || '').slice(
+          0,
+          MAX_CONTENT_LENGTH
+        )}`
+    )
     .join('\n');
 }
 
