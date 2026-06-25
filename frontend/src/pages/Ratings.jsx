@@ -1,4 +1,4 @@
-import { useState , useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Star } from 'lucide-react';
 import api from '../lib/axios';
@@ -24,7 +24,7 @@ export default function Ratings() {
   const [viewUserId, setViewUserId] = useState(user?.id || '');
 
   useEffect(() => {
-  if (user?.id && !viewUserId) setViewUserId(user.id);
+    if (user?.id && !viewUserId) setViewUserId(user.id);
   }, [user?.id]);
 
   const { data: team = [] } = useQuery({
