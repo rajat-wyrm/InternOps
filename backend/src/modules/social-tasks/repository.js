@@ -34,7 +34,7 @@ async function getTasks(filters, userId, userRole) {
   if (!['ADMIN', 'SENIOR_TL'].includes(userRole)) {
     params.push(userId);
     where.push(
-      `st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL)`
+      `(st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL) OR st.created_by = $${params.length})`
     );
   }
 

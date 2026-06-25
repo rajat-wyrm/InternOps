@@ -1,4 +1,4 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 
 async function markAttendance(userId, markedBy, date, status, remarks) {
   const res = await pool.query(
@@ -105,12 +105,12 @@ async function listHierarchySubordinates(managerId, targetIds) {
 
   const res = await pool.query(
     `WITH RECURSIVE chain AS (
-       SELECT id, manager_id FROM users WHERE id = $1 AND deleted_at IS NULL
+       SELECT id, manager_id, 0 AS depth FROM users WHERE id = $1 AND deleted_at IS NULL
        UNION ALL
-       SELECT u.id, u.manager_id
+       SELECT u.id, u.manager_id, chain.depth + 1
        FROM users u
        INNER JOIN chain ON u.manager_id = chain.id
-       WHERE u.deleted_at IS NULL
+       WHERE u.deleted_at IS NULL AND chain.depth < 100
      )
      SELECT id FROM chain WHERE id = ANY($2::uuid[])`,
     [managerId, targetIds]
@@ -119,10 +119,28 @@ async function listHierarchySubordinates(managerId, targetIds) {
   return new Set(res.rows.map((r) => r.id));
 }
 
+// Add this to your repository.js
+async function getAuthorizedSubordinates(managerId) {
+  const res = await pool.query(
+    `WITH RECURSIVE subordinates AS (
+       SELECT id, full_name, role, 0 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+       UNION ALL
+       SELECT u.id, u.full_name, u.role, s.depth + 1
+       FROM users u
+       INNER JOIN subordinates s ON u.manager_id = s.id
+       WHERE u.deleted_at IS NULL AND s.depth < 100
+     )
+     SELECT id, full_name, role FROM subordinates`,
+    [managerId]
+  );
+  return res.rows;
+}
+
 module.exports = {
   markAttendance,
   getAttendance,
   getMonthlyStats,
   bulkMark,
   listHierarchySubordinates,
+  getAuthorizedSubordinates,
 };

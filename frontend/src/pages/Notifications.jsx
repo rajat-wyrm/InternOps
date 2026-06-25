@@ -22,7 +22,7 @@ function timeAgo(d) {
 
 export default function Notifications() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
+  className = 'text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700';
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications', page],
@@ -49,7 +49,19 @@ export default function Notifications() {
     mutationFn: (id) => api.delete(`/notifications/${id}`),
     onSuccess: invalidate,
   });
+  const deleteAllMut = useMutation({
+    mutationFn: () => api.delete('/notifications/all'),
+    onSuccess: invalidate,
+  });
+  const handleDeleteAll = () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to delete all notifications?'
+    );
 
+    if (!confirmed) return;
+
+    deleteAllMut.mutate();
+  };
   const items = data?.data || [];
   const unread = items.filter((n) => !n.read).length;
 
@@ -79,18 +91,31 @@ export default function Notifications() {
             </p>
           </div>
         </div>
-
         {items.length > 0 && (
-          <Btn
-            variant="outline"
-            onClick={() => markAllReadMut.mutate()}
-            disabled={markAllReadMut.isPending || unread === 0}
-          >
-            <span className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4" />
-              {markAllReadMut.isPending ? 'Marking...' : 'Mark all read'}
-            </span>
-          </Btn>
+          <div className="flex items-center gap-2">
+            <Btn
+              variant="outline"
+              onClick={handleDeleteAll}
+              disabled={deleteAllMut.isPending}
+              className="text-red-600"
+            >
+              <span className="flex items-center gap-2">
+                <Trash2 className="w-4 h-4" />
+                {deleteAllMut.isPending ? 'Deleting...' : 'Delete all'}
+              </span>
+            </Btn>
+
+            <Btn
+              variant="outline"
+              onClick={() => markAllReadMut.mutate()}
+              disabled={markAllReadMut.isPending || unread === 0}
+            >
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                {markAllReadMut.isPending ? 'Marking...' : 'Mark all read'}
+              </span>
+            </Btn>
+          </div>
         )}
       </div>
 

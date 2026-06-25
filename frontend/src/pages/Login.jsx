@@ -83,7 +83,23 @@ export default function Login() {
       setAuth({ accessToken: data.accessToken, user: data.user });
       navigate('/');
     },
-    onError: (err) => setError(err.response?.data?.error || 'Login failed'),
+    onError: (err) => {
+      if (import.meta.env.DEV) {
+        console.error('Login error:', err);
+      }
+      const message = err.response?.data?.error;
+      if (message === 'Invalid credentials') {
+        setError('Invalid credentials. Please check your email and password.');
+      } else if (
+        message ===
+          'Account temporarily locked due to too many failed attempts. Please try again later.' ||
+        (message && message.toLowerCase().includes('locked'))
+      ) {
+        setError('Account temporarily locked. Please try again later.');
+      } else {
+        setError('Login failed. Please try again later.');
+      }
+    },
   });
 
   const validate = () => {
@@ -129,7 +145,7 @@ export default function Login() {
           </div>
 
           {/* Card */}
-          <div className="rounded-2xl border border-white/10 bg-black/20 backdrop-blur-lg shadow-2xl p-8">
+          <div className="rounded-2xl border border-white/10 bg-black/25 backdrop-blur-lg shadow-2xl p-8">
             <h2 className="text-xl font-bold text-white mb-1">Welcome back</h2>
             <p className="text-gray-300 text-sm mb-6">
               Log in to your dashboard

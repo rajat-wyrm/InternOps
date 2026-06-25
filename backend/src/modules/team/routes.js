@@ -121,6 +121,9 @@ async function routes(fastify) {
             errMessage: `You can only add members below your own role (${managerRole})`,
           };
         }
+
+        data.email = data.email.trim().toLowerCase();
+
         if (await repo.emailExists(data.email, client))
           return { errStatus: 409, errMessage: 'Email already exists' };
 

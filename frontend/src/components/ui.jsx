@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
@@ -7,8 +7,7 @@ export function PageHeader({ title, subtitle, icon, actions }) {
     <div className="flex items-start justify-between flex-wrap gap-3 mb-6">
       <div className="flex items-center gap-3">
         {icon && (
-          <div className="w-11 h-11 text-white flex items-center justify-center text-xl">
-            {' '}
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xl shadow-md">
             {icon}
           </div>
         )}
@@ -119,12 +118,66 @@ export function Btn({
   );
 }
 
-export function Input({ className = '', ...props }) {
+export function Input({ className = '', type, ...props }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === 'password';
+
   return (
-    <input
-      {...props}
-      className={`border border-gray-200 rounded-xl px-3 py-2.5 w-full focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none transition ${className}`}
-    />
+    <div className="relative w-full flex items-center">
+      <input
+        {...props}
+        type={isPassword && showPassword ? 'text' : type}
+        className={`border border-gray-200 rounded-xl px-3 py-2.5 w-full focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none ${
+          isPassword ? 'pr-10' : ''
+        } ${className}`}
+      />
+
+      {/* Renders eye button securely using built-in SVGs */}
+      {isPassword && props.value && props.value.length > 0 && (
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => setShowPassword(!showPassword)}
+          className="absolute right-3 text-gray-400 hover:text-gray-600 focus:outline-none select-none flex items-center justify-center"
+        >
+          {showPassword ? (
+            // EyeOff SVG Icon
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+              <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+              <path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+              <line x1="2" y1="2" x2="22" y2="22" />
+            </svg>
+          ) : (
+            // Eye SVG Icon
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          )}
+        </button>
+      )}
+    </div>
   );
 }
 export function Textarea({ className = '', ...props }) {

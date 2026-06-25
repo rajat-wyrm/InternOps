@@ -154,6 +154,11 @@ function AddMemberModal({ onClose }) {
 
   const submit = (e) => {
     e.preventDefault();
+
+    if (!form.full_name?.trim()) {
+      setError('Full name is required');
+      return;
+    }
     const payload = Object.fromEntries(
       Object.entries(form).filter(([, v]) => v !== '')
     );
@@ -183,10 +188,11 @@ function AddMemberModal({ onClose }) {
             <p className="text-red-700 bg-red-50 px-3 py-2 rounded">{error}</p>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Full name">
+            <Field label="Full name *">
               <input
                 className="border p-2 w-full rounded-lg"
                 value={form.full_name}
+                required
                 onChange={(e) =>
                   setForm({ ...form, full_name: e.target.value })
                 }

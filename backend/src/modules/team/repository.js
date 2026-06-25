@@ -54,7 +54,7 @@ async function getTeamMembers(managerId) {
       UNION ALL
       SELECT u.id, u.manager_id, t.depth + 1
       FROM users u INNER JOIN team t ON u.manager_id = t.id
-      WHERE u.deleted_at IS NULL
+      WHERE u.deleted_at IS NULL AND t.depth < 100
     )
     SELECT ${MEMBER_COLUMNS}, t.depth, ${PERFORMANCE_COLUMNS}
     FROM team t
@@ -110,6 +110,9 @@ async function updateMember(id, data) {
 
 // Create a new member under the given manager, with optional detail fields.
 async function createMember(data, client = pool) {
+  if (!data.full_name?.trim()) {
+    throw new Error('Full name is required');
+  }
   const hash = await argon2.hash(data.password);
   const {
     rows: [created],
@@ -181,10 +184,10 @@ async function getMemberHistory(id) {
 async function getPendingProofs(managerId, limit = 50) {
   const query = `
     WITH RECURSIVE team AS (
-      SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+      SELECT id, 0 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL
       UNION ALL
-      SELECT u.id FROM users u INNER JOIN team t ON u.manager_id = t.id
-      WHERE u.deleted_at IS NULL
+      SELECT u.id, t.depth + 1 FROM users u INNER JOIN team t ON u.manager_id = t.id
+      WHERE u.deleted_at IS NULL AND t.depth < 100
     )
     SELECT p.id, p.intern_id, p.image_path, p.status, p.created_at,
            u.full_name AS intern_name, u.email AS intern_email,
