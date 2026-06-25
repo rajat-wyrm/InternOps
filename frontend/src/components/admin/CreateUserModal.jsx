@@ -86,7 +86,9 @@ export default function CreateUserModal({ open, onClose }) {
       setEmail('');
       setPassword('');
       setRole('');
-      setDepartmentId(!isAdmin && currentUser?.department_id ? currentUser.department_id : '');
+      setDepartmentId(
+        !isAdmin && currentUser?.department_id ? currentUser.department_id : ''
+      );
       setManagerId('');
       setTimeout(() => {
         setSuccessMsg('');
