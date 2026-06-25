@@ -1,97 +1,194 @@
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
-import api from '../lib/axios'
-import useAuthStore from '../store/auth'
+import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { Link, useNavigate } from 'react-router-dom';
+import { Mail, Lock, Eye, EyeOff, Zap } from 'lucide-react';
+import api from '../lib/axios';
+import useAuthStore from '../store/auth';
 
 export default function Login() {
-  const navigate = useNavigate()
-  const setAuth = useAuthStore((s) => s.setAuth)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [show, setShow] = useState(false)
-  const [error, setError] = useState('')
+  const navigate = useNavigate();
+  const setAuth = useAuthStore((s) => s.setAuth);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [show, setShow] = useState(false);
+  const [error, setError] = useState('');
 
   const loginMut = useMutation({
-    mutationFn: (creds) => api.post('/auth/login', creds).then((res) => res.data),
+    mutationFn: (creds) =>
+      api.post('/auth/login', creds).then((res) => res.data),
     onSuccess: (data) => {
-      setAuth({ accessToken: data.accessToken, user: data.user })
-      navigate('/')
+      setAuth({ accessToken: data.accessToken, user: data.user });
+      navigate('/');
     },
     onError: (err) => setError(err.response?.data?.error || 'Login failed'),
-  })
+  });
+
+  const validate = () => {
+    if (!email.trim()) return 'Email is required';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Enter a valid email';
+    if (!password) return 'Password is required';
+    if (password.length < 8) return 'Password must be at least 8 characters';
+    return null;
+  };
 
   const handleSubmit = (e) => {
-    e.preventDefault()
-    setError('')
-    loginMut.mutate({ email, password })
-  }
+    e.preventDefault();
+    const err = validate();
+    if (err) return setError(err);
+    setError('');
+    loginMut.mutate({ email, password });
+  };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-animated-gradient bg-gradient-to-br from-indigo-600 via-purple-600 to-fuchsia-600 animate-gradient-shift p-4">
-      {/* Floating decorative blobs */}
-      <div className="absolute -top-24 -left-24 w-96 h-96 bg-white/20 rounded-full blur-3xl animate-float-slow" />
-      <div className="absolute -bottom-32 -right-20 w-[28rem] h-[28rem] bg-fuchsia-400/30 rounded-full blur-3xl animate-float" />
-      <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-indigo-300/20 rounded-full blur-3xl animate-float-slow" />
-
-      <div className="relative w-full max-w-md animate-pop-in">
-        {/* Brand */}
-        <div className="text-center mb-6 text-white">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/20 glass shadow-lg mb-3 text-3xl animate-float">⚡</div>
-          <h1 className="text-3xl font-extrabold tracking-tight">InternOps</h1>
-          <p className="text-white/80 text-sm">Workforce &amp; Intern Management Platform</p>
-        </div>
-
-        {/* Card */}
-        <div className="glass rounded-3xl border border-white/20 shadow-2xl p-8">
-          <h2 className="text-xl font-bold text-white mb-1">Welcome back 👋</h2>
-          <p className="text-white/70 text-sm mb-6">Sign in to your dashboard</p>
-
-          {error && (
-            <div className="bg-red-500/20 border border-red-300/40 text-red-50 text-sm rounded-xl px-4 py-2.5 mb-4 animate-fade-in">
-              {error}
+    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900  text-white">
+      <div
+        className="absolute inset-0 opacity-[0.07] pointer-events-none"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 66L0 50V16L28 0l28 16v34L28 66zm0 0v34M0 50l28 16M56 50L28 66M0 16l28 16M56 16L28 32' fill='none' stroke='%23ffffff' stroke-width='1'/%3E%3C/svg%3E")`,
+          backgroundSize: '56px 100px',
+        }}
+      />
+      {/* Left Side (Credentials Form) */}
+      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 bg-black/20 backdrop-blur-none">
+        <div className="w-full max-w-md animate-pop-in">
+          {/* Brand */}
+          <div className="text-center mb-10 text-white">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-orange text-white shadow-lg mb-3">
+              <Zap className="w-8 h-8" aria-hidden="true" />
             </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60">✉️</span>
-              <input
-                type="email" placeholder="Email address" value={email}
-                onChange={(e) => setEmail(e.target.value)} required
-                className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/15 border border-white/25 text-white placeholder-white/50 focus:bg-white/25 focus:ring-2 focus:ring-white/60 outline-none transition"
-              />
-            </div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60">🔒</span>
-              <input
-                type={show ? 'text' : 'password'} placeholder="Password" value={password}
-                onChange={(e) => setPassword(e.target.value)} required
-                className="w-full pl-10 pr-12 py-3 rounded-xl bg-white/15 border border-white/25 text-white placeholder-white/50 focus:bg-white/25 focus:ring-2 focus:ring-white/60 outline-none transition"
-              />
-              <button type="button" onClick={() => setShow(s => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-sm">
-                {show ? '🙈' : '👁️'}
+            <h1 className="text-3xl font-extrabold tracking-tight">
+              InternOps
+            </h1>
+            <p className="text-gray-300 text-sm">
+              Workforce &amp; Intern Management Platform
+            </p>
+          </div>
+          {/* Card */}
+          <div className="rounded-2xl border border-white/10 bg-black/25 backdrop-blur-lg shadow-2xl p-8">
+            <h2 className="text-xl font-bold text-white mb-1">Welcome back</h2>
+            <p className="text-gray-300 text-sm mb-6">
+              Log in to your dashboard
+            </p>
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/40 text-red-400 text-sm rounded-lg px-4 py-2.5 mb-4 animate-fade-in">
+                {error}
+              </div>
+            )}
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="relative">
+                <Mail
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
+                  aria-hidden="true"
+                />
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full pl-11 pr-4 py-4 rounded-lg bg-black/20 border border-white/10 text-white placeholder-gray-400 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/30 outline-none transition"
+                />
+              </div>
+              <div className="relative">
+                <Lock
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
+                  aria-hidden="true"
+                />
+                <input
+                  type={show ? 'text' : 'password'}
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full pl-11 pr-12 py-4 rounded-lg bg-black/20 border border-white/10 text-white placeholder-gray-400 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/30 outline-none transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShow((s) => !s)}
+                  aria-label={show ? 'Hide password' : 'Show password'}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
+                >
+                  {show ? (
+                    <EyeOff className="w-5 h-5" aria-hidden="true" />
+                  ) : (
+                    <Eye className="w-5 h-5" aria-hidden="true" />
+                  )}
+                </button>
+              </div>
+              <button
+                type="submit"
+                disabled={loginMut.isPending}
+                className="w-full py-4 rounded-lg bg-brand-orange hover:opacity-90 text-white font-semibold transition-opacity disabled:opacity-70"
+              >
+                {loginMut.isPending ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Logging in...
+                  </span>
+                ) : (
+                  'Log In'
+                )}
               </button>
+            </form>
+            <div className="mt-5 text-center">
+              <Link
+                to="/forgot-password"
+                className="text-gray-300 hover:text-white text-sm underline-offset-2 hover:underline"
+              >
+                Forgot password?
+              </Link>
             </div>
+          </div>
+          <p className="text-center text-gray-400 text-xs mt-6">
+            © {new Date().getFullYear()} InternOps · Secure role-based access
+          </p>
+        </div>
+      </div>
 
-            <button
-              type="submit" disabled={loginMut.isPending}
-              className="w-full py-3 rounded-xl bg-white text-indigo-700 font-semibold shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 transition disabled:opacity-70 disabled:scale-100"
-            >
-              {loginMut.isPending ? (
-                <span className="inline-flex items-center gap-2"><span className="w-4 h-4 border-2 border-indigo-300 border-t-indigo-700 rounded-full animate-spin" /> Signing in...</span>
-              ) : 'Sign In →'}
-            </button>
-          </form>
+      {/* Right Side (Notice Board & Branding) */}
+      <div className="flex w-full lg:w-1/2 flex-col justify-center p-8 lg:p-12 bg-black/10 border-t lg:border-t-0 lg:border-l border-white/5">
+        <div className="max-w-md mx-auto w-full space-y-6">
+          <div className="inline-flex items-center gap-2 bg-brand-orange/10 text-brand-orange px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider">
+            <span>📢 InternOps Notice Board</span>
+          </div>
+          <div className="space-y-4">
+            <h2 className="text-3xl font-extrabold tracking-tight text-white leading-tight">
+              Portal Announcements
+            </h2>
+            <p className="text-gray-300 text-sm leading-relaxed">
+              Stay up to date with tasks, program updates, and team schedules
+              here.
+            </p>
+          </div>
+          <div className="bg-black/20 backdrop-blur-md rounded-2xl border border-white/5 p-6 space-y-4">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <span className="text-brand-orange">⚡</span> Latest News
+            </h3>
 
-          <div className="mt-5 text-center">
-            <Link to="/forgot-password" className="text-white/80 hover:text-white text-sm underline-offset-2 hover:underline">Forgot password?</Link>
+            <div className="space-y-4 divide-y divide-white/10">
+              <div className="pt-4 first:pt-0">
+                <p className="text-xs text-brand-orange font-semibold">
+                  Weekly Reminder
+                </p>
+                <p className="text-sm text-gray-200 mt-1">
+                  Remember to submit your weekly task remarks and proof
+                  screenshots by Friday at 5:00 PM.
+                </p>
+              </div>
+
+              <div className="pt-4">
+                <p className="text-xs text-brand-green font-semibold">
+                  AI Assistant Online
+                </p>
+                <p className="text-sm text-gray-200 mt-1">
+                  The brand new AI Assistant is online. Select your role to get
+                  assistance with ratings, proof uploads, and platform queries.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-
-        <p className="text-center text-white/60 text-xs mt-6">© {new Date().getFullYear()} InternOps · Secure role-based access</p>
       </div>
     </div>
-  )
+  );
 }

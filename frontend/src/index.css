@@ -2,47 +2,148 @@
 @tailwind components;
 @tailwind utilities;
 
-body { font-family: 'Inter', system-ui, sans-serif; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+}
 
-.bg-animated-gradient { background-size: 300% 300%; }
+.bg-animated-gradient {
+  background-size: 300% 300%;
+}
 
 /* Pretty scrollbar */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
 
-.glass { background: rgba(255,255,255,.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
-.card-hover { transition: transform .2s ease, box-shadow .2s ease; }
-.card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 30px -10px rgba(79,70,229,.25); }
+.glass {
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.card-hover {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px -10px rgba(79, 70, 229, 0.25);
+}
 
 /* ---- Global dark mode (overrides Tailwind utility classes app-wide) ---- */
-html.dark body { background:#0b1220; color:#e2e8f0; }
-.dark .bg-white { background-color:#1e293b !important; }
-.dark .bg-white\/80 { background-color:rgba(30,41,59,.85) !important; }
-.dark .bg-gray-50 { background-color:#0f172a !important; }
-.dark .bg-gray-100 { background-color:#334155 !important; }
-.dark .bg-slate-50, .dark .from-slate-50 { background-color:#0f172a !important; }
-.dark .from-slate-50.to-indigo-50\/50, .dark .bg-gradient-to-br.from-slate-50 { background-image:none !important; background-color:#0b1220 !important; }
-.dark .text-gray-800, .dark .text-gray-900 { color:#f1f5f9 !important; }
-.dark .text-gray-700 { color:#e2e8f0 !important; }
-.dark .text-gray-600 { color:#cbd5e1 !important; }
-.dark .text-gray-500 { color:#94a3b8 !important; }
-.dark .text-gray-400 { color:#64748b !important; }
-.dark .border, .dark .border-gray-100, .dark .border-gray-200, .dark .border-t { border-color:#334155 !important; }
-.dark .shadow-sm, .dark .shadow { box-shadow:0 1px 3px rgba(0,0,0,.4) !important; }
-.dark table thead.bg-gradient-to-r { background-image:none !important; background-color:#172033 !important; }
-.dark .hover\:bg-gray-50:hover { background-color:#334155 !important; }
-.dark .hover\:bg-indigo-50\/40:hover, .dark .hover\:bg-blue-50\/40:hover { background-color:rgba(99,102,241,.12) !important; }
-.dark input, .dark select, .dark textarea { background-color:#0f172a !important; color:#e2e8f0 !important; border-color:#334155 !important; }
-.dark input::placeholder, .dark textarea::placeholder { color:#64748b !important; }
-.dark ::-webkit-scrollbar-thumb { background:#334155; }
-.dark .bg-indigo-50 { background-color:rgba(99,102,241,.15) !important; }
-.dark .bg-green-50, .dark .bg-emerald-50 { background-color:rgba(16,185,129,.15) !important; }
-.dark .bg-amber-50 { background-color:rgba(245,158,11,.15) !important; }
-.dark .bg-purple-50 { background-color:rgba(168,85,247,.15) !important; }
-.dark .bg-rose-50 { background-color:rgba(244,63,94,.15) !important; }
-.dark .text-indigo-700 { color:#a5b4fc !important; }
-.dark .text-green-700, .dark .text-emerald-700 { color:#6ee7b7 !important; }
-.dark .text-amber-700 { color:#fcd34d !important; }
-.dark .text-purple-700 { color:#d8b4fe !important; }
+html.dark body {
+  background: #0b1220;
+  color: #e2e8f0;
+}
+.dark .bg-white {
+  background-color: #1e293b !important;
+}
+.dark .bg-white\/80 {
+  background-color: rgba(30, 41, 59, 0.85) !important;
+}
+.dark .bg-gray-50 {
+  background-color: #0f172a !important;
+}
+.dark .bg-gray-100 {
+  background-color: #334155 !important;
+}
+.dark .bg-slate-50,
+.dark .from-slate-50 {
+  background-color: #0f172a !important;
+}
+.dark .from-slate-50.to-indigo-50\/50,
+.dark .bg-gradient-to-br.from-slate-50 {
+  background-image: none !important;
+  background-color: #0b1220 !important;
+}
+.dark .text-gray-800,
+.dark .text-gray-900 {
+  color: #f1f5f9 !important;
+}
+.dark .text-gray-700 {
+  color: #e2e8f0 !important;
+}
+.dark .text-gray-600 {
+  color: #cbd5e1 !important;
+}
+.dark .text-gray-500 {
+  color: #94a3b8 !important;
+}
+.dark .text-gray-400 {
+  color: #64748b !important;
+}
+.dark .border,
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-t {
+  border-color: #334155 !important;
+}
+.dark .shadow-sm,
+.dark .shadow {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+}
+.dark table thead.bg-gradient-to-r {
+  background-image: none !important;
+  background-color: #172033 !important;
+}
+.dark .hover\:bg-gray-50:hover {
+  background-color: #334155 !important;
+}
+.dark .hover\:bg-indigo-50\/40:hover,
+.dark .hover\:bg-blue-50\/40:hover {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #0f172a !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b !important;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+.dark .bg-indigo-50 {
+  background-color: rgba(99, 102, 241, 0.15) !important;
+}
+.dark .bg-green-50,
+.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+.dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+.dark .bg-purple-50 {
+  background-color: rgba(168, 85, 247, 0.15) !important;
+}
+.dark .bg-rose-50 {
+  background-color: rgba(244, 63, 94, 0.15) !important;
+}
+.dark .text-indigo-700 {
+  color: #a5b4fc !important;
+}
+.dark .text-green-700,
+.dark .text-emerald-700 {
+  color: #6ee7b7 !important;
+}
+.dark .text-amber-700 {
+  color: #fcd34d !important;
+}
+.dark .text-purple-700 {
+  color: #d8b4fe !important;
+}
