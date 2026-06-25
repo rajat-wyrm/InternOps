@@ -5,7 +5,7 @@ import { Mail, Lock, Eye, EyeOff, Zap } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 
-// Category label colours 
+// Category label colours
 const CATEGORY_STYLES = {
   REMINDER: 'text-brand-orange',
   NEWS: 'text-brand-green',
@@ -13,7 +13,7 @@ const CATEGORY_STYLES = {
   GENERAL: 'text-gray-400',
 };
 
-//  Notice list — owns its own loading / error / empty states 
+//  Notice list — owns its own loading / error / empty states
 function NoticeList() {
   const {
     data: notices,
