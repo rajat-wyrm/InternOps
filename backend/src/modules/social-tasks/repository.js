@@ -13,6 +13,15 @@ async function createTask({
   );
   return res.rows[0];
 }
+
+async function assignTask(taskId, userIds) {
+  if (!userIds || userIds.length === 0) return;
+  const values = userIds.map((_, i) => `($1, $${i + 2})`).join(',');
+  await pool.query(
+    `INSERT INTO task_assignments (task_id, user_id) VALUES ${values}`,
+    [taskId, ...userIds]
+  );
+}
 async function getUserEmail(userId) {
   const res = await pool.query('SELECT email FROM users WHERE id = $1', [
     userId,
@@ -117,6 +126,7 @@ async function getProofsByIntern(internId) {
 }
 module.exports = {
   createTask,
+  assignTask,
   getUserEmail,
   isTaskAssignedToUser,
   getTasks,

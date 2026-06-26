@@ -22,6 +22,10 @@ const createTaskSchema = z.object({
     ),
 });
 
+const assignTaskSchema = z.object({
+  userIds: z.array(z.string().uuid()),
+});
+
 module.exports = async function socialTasksRoutes(fastify) {
   // Create a social task (Admin / Senior TL).
   fastify.post(
@@ -65,6 +69,37 @@ module.exports = async function socialTasksRoutes(fastify) {
         );
       }
       return task;
+    }
+  );
+
+  fastify.post(
+    '/:id/assign',
+    {
+      schema: { tags: ['Tasks'], description: 'Assign task to interns' },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+    },
+    async (req, reply) => {
+      const parsed = assignTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
+      }
+      const { userIds } = parsed.data;
+      if (userIds.length > 0) {
+        await repo.assignTask(req.params.id, userIds);
+      }
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'TASK_ASSIGNED',
+        resourceType: 'social_task',
+        resourceId: req.params.id,
+        details: { userIds },
+      };
+
+      return { success: true };
     }
   );
 

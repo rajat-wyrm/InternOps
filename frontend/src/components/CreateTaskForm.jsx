@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { Card, Btn, Input, Textarea, Select } from './ui';
 
@@ -14,18 +14,33 @@ const PLATFORMS = [
 
 export default function CreateTaskForm() {
   const queryClient = useQueryClient();
+  const { data: teamMembers } = useQuery({
+    queryKey: ['teamMembers'],
+    queryFn: () => api.get('/team/members').then((res) => res.data),
+  });
+  const interns = teamMembers?.filter((m) => m.role === 'INTERN') || [];
+
   const [form, setForm] = useState({
     title: '',
     description: '',
     targetPlatform: 'LinkedIn',
     taskLink: '',
     deadline: '',
+    userIds: [],
   });
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
   const createMutation = useMutation({
-    mutationFn: (data) => api.post('/tasks', data),
+    mutationFn: async (data) => {
+      const { userIds, ...taskData } = data;
+      const res = await api.post('/tasks', taskData);
+      const task = res.data;
+      if (userIds && userIds.length > 0) {
+        await api.post(`/tasks/${task.id}/assign`, { userIds });
+      }
+      return task;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setError('');
@@ -36,6 +51,7 @@ export default function CreateTaskForm() {
         targetPlatform: 'LinkedIn',
         taskLink: '',
         deadline: '',
+        userIds: [],
       });
       setTimeout(() => setMsg(''), 2000);
     },
@@ -94,6 +110,48 @@ export default function CreateTaskForm() {
           value={form.taskLink}
           onChange={(e) => setForm({ ...form, taskLink: e.target.value })}
         />
+
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-semibold text-gray-700">
+            Assign to Interns (Optional)
+          </label>
+          <div className="max-h-40 overflow-y-auto border rounded p-2 bg-white space-y-1">
+            {interns.length === 0 ? (
+              <p className="text-xs text-gray-500">
+                No interns found in your team.
+              </p>
+            ) : (
+              interns.map((intern) => (
+                <label
+                  key={intern.id}
+                  className="flex items-center gap-2 text-sm cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.userIds.includes(intern.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setForm({
+                          ...form,
+                          userIds: [...form.userIds, intern.id],
+                        });
+                      } else {
+                        setForm({
+                          ...form,
+                          userIds: form.userIds.filter(
+                            (id) => id !== intern.id
+                          ),
+                        });
+                      }
+                    }}
+                    className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                  />
+                  {intern.full_name || intern.email}
+                </label>
+              ))
+            )}
+          </div>
+        </div>
         <Btn
           variant="primary"
           type="submit"
