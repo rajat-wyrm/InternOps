@@ -5,11 +5,15 @@ import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import AttendanceMarkForm from '../components/AttendanceMarkForm';
 import BulkAttendanceForm from '../components/BulkAttendanceForm';
+import CustomSelect from '../components/CustomSelect';
 
 const STATUS_BADGE = {
-  PRESENT: 'bg-green-100 text-green-700',
-  ABSENT: 'bg-red-100 text-red-700',
-  HALF_DAY: 'bg-yellow-100 text-yellow-700',
+  PRESENT:
+    'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60',
+  ABSENT:
+    'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60',
+  HALF_DAY:
+    'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60',
 };
 
 export default function Attendance() {
@@ -55,20 +59,41 @@ export default function Attendance() {
         team.find((m) => m.id === viewUserId)?.email ||
         '';
 
+  const attendanceUserOptions = [
+    {
+      value: user?.id || '',
+      label: `Me (${user?.email || 'Current user'})`,
+    },
+    ...team
+      .filter((m) => m.id !== user?.id)
+      .map((m) => ({
+        value: m.id,
+        label: `${m.full_name || m.email} (${m.role})`,
+      })),
+  ];
+
   return (
     <div className="animate-fade-in-up">
-      {}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg shadow-sm">
-          <CalendarCheck className="w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
-            Attendance
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Track and manage daily attendance records
-          </p>
+      {/* Professional Header Block */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/60 text-emerald-600 dark:text-emerald-300 flex items-center justify-center shadow-sm">
+            <CalendarCheck className="w-6 h-6" />
+          </div>
+
+          <div>
+            <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-300 font-extrabold mb-1">
+              Attendance
+            </p>
+
+            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              Attendance
+            </h1>
+
+            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
+              Track and manage daily attendance records
+            </p>
+          </div>
         </div>
       </div>
 
@@ -79,37 +104,34 @@ export default function Attendance() {
         </>
       )}
 
-      <div className="bg-white p-4 rounded-xl shadow-sm mb-4 border border-gray-100">
-        <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+      <div className="bg-white dark:bg-slate-900 p-5 md:p-6 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none mb-5 border border-slate-200 dark:border-slate-700">
+        <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
           View attendance of
         </label>
 
         {isManager ? (
-          <select
+          <CustomSelect
             value={viewUserId}
-            onChange={(e) => selectUser(e.target.value)}
-            className="border border-gray-200 rounded-lg p-2.5 w-full max-w-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-sm"
-          >
-            <option value={user?.id}>Me ({user?.email})</option>
-            {team.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.full_name || m.email} ({m.role})
-              </option>
-            ))}
-          </select>
+            onChange={selectUser}
+            options={attendanceUserOptions}
+            placeholder="Select member"
+            className="w-full max-w-sm"
+          />
         ) : (
-          <p className="text-gray-700 font-medium">My attendance</p>
+          <p className="text-slate-700 dark:text-slate-200 font-bold">
+            My attendance
+          </p>
         )}
       </div>
 
       {isLoading && (
         <div className="flex justify-center p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100">
+        <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 rounded-2xl border border-red-100 dark:border-red-900/60">
           {error.response?.data?.error || 'Failed to load attendance'}
         </div>
       )}
@@ -117,29 +139,36 @@ export default function Attendance() {
       {!isLoading &&
         !error &&
         (records.length === 0 ? (
-          <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-12 text-center text-gray-500">
-            <CalendarCheck className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-            <p>No attendance records for {selectedName || 'this user'}.</p>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400">
+            <CalendarCheck className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+
+            <p className="font-semibold">
+              No attendance records for {selectedName || 'this user'}.
+            </p>
           </div>
         ) : (
           <>
-            <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50/50 text-left text-gray-600 border-b border-gray-100">
+                <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
                   <tr>
-                    <th className="px-6 py-4 font-semibold">Date</th>
-                    <th className="px-6 py-4 font-semibold">Status</th>
-                    <th className="px-6 py-4 font-semibold">Remarks</th>
+                    <th className="px-6 py-4 font-extrabold">Date</th>
+                    <th className="px-6 py-4 font-extrabold">Status</th>
+                    <th className="px-6 py-4 font-extrabold">Remarks</th>
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-gray-50">
-                  {records.map((a) => (
+                <tbody>
+                  {records.map((a, index) => (
                     <tr
                       key={a.id}
-                      className="hover:bg-gray-50/50 transition-colors"
+                      className={`transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
+                        index % 2 === 0
+                          ? 'bg-white dark:bg-slate-900'
+                          : 'bg-slate-50/50 dark:bg-slate-800/35'
+                      } hover:bg-emerald-50/40 dark:hover:bg-slate-800`}
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-700">
+                      <td className="px-6 py-4 whitespace-nowrap text-slate-700 dark:text-slate-200 font-medium">
                         {new Date(a.date).toLocaleDateString('en-GB', {
                           day: '2-digit',
                           month: 'short',
@@ -149,7 +178,7 @@ export default function Attendance() {
 
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
-                          className={`px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide ${
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold tracking-wide ${
                             STATUS_BADGE[a.status] || ''
                           }`}
                         >
@@ -157,7 +186,7 @@ export default function Attendance() {
                         </span>
                       </td>
 
-                      <td className="px-6 py-4 text-gray-600">
+                      <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
                         {a.remarks || '—'}
                       </td>
                     </tr>
@@ -166,7 +195,7 @@ export default function Attendance() {
               </table>
             </div>
 
-            <div className="flex items-center justify-between mt-4 text-sm text-gray-500">
+            <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
               <span>
                 {total} record{total === 1 ? '' : 's'} · page {page} of{' '}
                 {totalPages}
@@ -176,7 +205,7 @@ export default function Attendance() {
                 <button
                   onClick={() => setPage((p) => Math.max(p - 1, 1))}
                   disabled={page <= 1}
-                  className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors font-medium"
+                  className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold"
                 >
                   Previous
                 </button>
@@ -184,7 +213,7 @@ export default function Attendance() {
                 <button
                   onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
                   disabled={page >= totalPages}
-                  className="px-3 py-1.5 rounded-lg border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors font-medium"
+                  className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold"
                 >
                   Next
                 </button>

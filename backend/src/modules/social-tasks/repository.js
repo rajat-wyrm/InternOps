@@ -14,12 +14,14 @@ async function createTask({
   return res.rows[0];
 }
 
-async function assignTask(taskId, userIds) {
+async function assignTask(taskId, userIds, assignedBy) {
   if (!userIds || userIds.length === 0) return;
-  const values = userIds.map((_, i) => `($1, $${i + 2})`).join(',');
+  const values = userIds
+    .map((_, i) => `($1, $${i + 2}, $${userIds.length + 2})`)
+    .join(',');
   await pool.query(
-    `INSERT INTO task_assignments (task_id, user_id) VALUES ${values}`,
-    [taskId, ...userIds]
+    `INSERT INTO task_assignments (task_id, user_id, assigned_by) VALUES ${values}`,
+    [taskId, ...userIds, assignedBy]
   );
 }
 async function getUserEmail(userId) {
@@ -40,7 +42,7 @@ async function getTasks(filters, userId, userRole) {
   const params = [];
   const where = ['st.deleted_at IS NULL'];
 
-  if (!['ADMIN', 'SENIOR_TL'].includes(userRole)) {
+  if (!['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(userRole)) {
     params.push(userId);
     where.push(
       `(st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL) OR st.created_by = $${params.length})`

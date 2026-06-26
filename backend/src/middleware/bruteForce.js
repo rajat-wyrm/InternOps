@@ -79,9 +79,6 @@ async function clearFailedAttempts(email, ip) {
 }
 
 async function bruteForceCheck(request, reply) {
-  if (process.env.NODE_ENV === 'test' && !request.headers['x-test-brute']) {
-    return;
-  }
   const { email } = request.body;
   if (!email) return;
   const ip = request.ip;

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
-import { Card, Btn, Input, Select } from './ui';
+import { Card, Btn, Input } from './ui';
+import CustomSelect from './CustomSelect';
 
 const INITIAL_FORM = {
   userId: '',
@@ -16,13 +17,16 @@ export default function AttendanceMarkForm() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
-  const { data: reports, isLoading: loadingReports } = useQuery({
+  const { data: reports = [], isLoading: loadingReports } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
 
   const update = (field) => (e) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  const updateValue = (field) => (value) =>
+    setForm((f) => ({ ...f, [field]: value }));
 
   const markMutation = useMutation({
     mutationFn: (data) => api.post('/attendance/mark', data),
@@ -43,16 +47,54 @@ export default function AttendanceMarkForm() {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  const memberOptions = [
+    { value: '', label: 'Select member...' },
+    ...reports.map((u) => ({
+      value: u.id,
+      label: `${u.full_name || u.email} (${u.role})`,
+    })),
+  ];
+
+  const statusOptions = [
+    { value: 'PRESENT', label: 'Present' },
+    { value: 'ABSENT', label: 'Absent' },
+    { value: 'HALF_DAY', label: 'Half Day' },
+  ];
+
   return (
-    <Card className="p-5 mb-4">
-      <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-        ✅ Mark Attendance
-      </h3>
-      {error && <p className="text-rose-600 text-sm mb-2">{error}</p>}
-      {msg && <p className="text-green-600 text-sm mb-2">{msg}</p>}
+    <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+      <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
+        <div className="w-11 h-11 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300 flex items-center justify-center border border-emerald-100 dark:border-emerald-900/60">
+          <span className="text-lg font-extrabold">✓</span>
+        </div>
+
+        <div>
+          <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
+            Mark Attendance
+          </h3>
+
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Mark attendance for a single team member.
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="text-rose-700 dark:text-rose-300 text-sm mb-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/60 px-4 py-3 rounded-2xl font-medium">
+          {error}
+        </div>
+      )}
+
+      {msg && (
+        <div className="text-emerald-700 dark:text-emerald-300 text-sm mb-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/60 px-4 py-3 rounded-2xl font-medium">
+          {msg}
+        </div>
+      )}
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
+
           markMutation.mutate({
             user_id: form.userId,
             date: form.date,
@@ -60,59 +102,89 @@ export default function AttendanceMarkForm() {
             remarks: form.remarks,
           });
         }}
-        className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+        className="space-y-5"
       >
-        <div>
-          {loadingReports ? (
-            <div className="flex items-center gap-2 text-sm text-gray-500 h-10 px-2">
-              <span className="w-4 h-4 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-              Loading team…
-            </div>
-          ) : (
-            <Select
-              value={form.userId}
-              onChange={update('userId')}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+              Team Member
+            </label>
+
+            {loadingReports ? (
+              <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 h-[52px] px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70">
+                <span className="w-4 h-4 border-2 border-slate-300 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 rounded-full animate-spin" />
+                Loading team...
+              </div>
+            ) : (
+              <CustomSelect
+                value={form.userId}
+                onChange={updateValue('userId')}
+                options={memberOptions}
+                placeholder="Select member..."
+                disabled={markMutation.isPending}
+                className="w-full"
+              />
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+              Date
+            </label>
+
+            <Input
+              type="date"
+              value={form.date}
+              onChange={update('date')}
+              max={today}
               required
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+              Status
+            </label>
+
+            <CustomSelect
+              value={form.status}
+              onChange={updateValue('status')}
+              options={statusOptions}
+              placeholder="Select status"
               disabled={markMutation.isPending}
-            >
-              <option value="">Select member…</option>
-              {reports?.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name || u.email} ({u.role})
-                </option>
-              ))}
-            </Select>
-          )}
+              className="w-full"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+              Remarks
+            </label>
+
+            <Input
+              placeholder="Optional remarks"
+              value={form.remarks}
+              onChange={update('remarks')}
+              maxLength={500}
+            />
+          </div>
         </div>
-        <Input
-          type="date"
-          value={form.date}
-          onChange={update('date')}
-          max={today}
-          required
-        />
-        <Select
-          value={form.status}
-          onChange={update('status')}
-          disabled={markMutation.isPending}
-        >
-          <option value="PRESENT">Present</option>
-          <option value="ABSENT">Absent</option>
-          <option value="HALF_DAY">Half Day</option>
-        </Select>
-        <Input
-          placeholder="Remarks (optional)"
-          value={form.remarks}
-          onChange={update('remarks')}
-          maxLength={500}
-        />
-        <Btn
-          type="submit"
-          disabled={markMutation.isPending || !form.userId}
-          className="sm:col-span-2"
-        >
-          {markMutation.isPending ? 'Marking…' : 'Mark attendance'}
-        </Btn>
+
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {form.userId
+              ? 'Ready to mark attendance for the selected member.'
+              : 'Select a member to enable attendance marking.'}
+          </p>
+
+          <Btn
+            type="submit"
+            disabled={markMutation.isPending || !form.userId}
+            className="rounded-2xl px-6 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
+          >
+            {markMutation.isPending ? 'Marking...' : 'Mark attendance'}
+          </Btn>
+        </div>
       </form>
     </Card>
   );

@@ -19,16 +19,19 @@ async function routes(fastify) {
     const query = schema.parse(req.query);
     return repo.get(req.user.id, query);
   });
-
-  // Mark single as read
-  fastify.patch('/:id/read', { preHandler: [auth] }, async (req) => {
-    await repo.markRead(req.params.id, req.user.id);
-    return { success: true };
-  });
-
   // Mark all as read
   fastify.post('/read-all', { preHandler: [auth] }, async (req) => {
     await repo.markAllRead(req.user.id);
+    return { success: true };
+  });
+  // Delete all notifications
+  fastify.delete('/all', { preHandler: [auth] }, async (req) => {
+    await repo.deleteAllNotifications(req.user.id);
+    return { success: true };
+  });
+  // Mark single as read
+  fastify.patch('/:id/read', { preHandler: [auth] }, async (req) => {
+    await repo.markRead(req.params.id, req.user.id);
     return { success: true };
   });
 

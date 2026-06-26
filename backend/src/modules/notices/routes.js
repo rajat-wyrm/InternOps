@@ -58,6 +58,17 @@ async function noticesRoutes(fastify) {
       const { id } = req.params;
       const { title, content, category, is_active } = req.body;
 
+      if (title !== undefined && !title.trim()) {
+        return reply.status(400).send({
+          error: 'title cannot be empty',
+        });
+      }
+
+      if (content !== undefined && !content.trim()) {
+        return reply.status(400).send({
+          error: 'content cannot be empty',
+        });
+      }
       const updated = await repo.updateNotice(id, {
         title,
         content,

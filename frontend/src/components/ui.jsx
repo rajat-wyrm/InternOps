@@ -1,23 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
   return (
-    <div className="flex items-start justify-between flex-wrap gap-3 mb-6">
-      <div className="flex items-center gap-3">
+    <div className="flex items-start justify-between flex-wrap gap-4 mb-7">
+      <div className="flex items-center gap-4">
         {icon && (
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-xl shadow-md">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-100 dark:from-slate-800 dark:to-slate-900 border border-indigo-100 dark:border-slate-700 text-indigo-600 dark:text-indigo-300 flex items-center justify-center text-xl shadow-sm">
             {icon}
           </div>
         )}
+
         <div>
-          <h2 className="text-2xl font-extrabold text-gray-800 leading-tight">
+          <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white leading-tight tracking-tight">
             {title}
           </h2>
-          {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
+
+          {subtitle && (
+            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
+              {subtitle}
+            </p>
+          )}
         </div>
       </div>
+
       {actions && <div className="flex gap-2">{actions}</div>}
     </div>
   );
@@ -25,6 +32,7 @@ export function PageHeader({ title, subtitle, icon, actions }) {
 
 export function initialsOf(name, email) {
   const n = (name || email || '?').trim();
+
   return (
     n
       .split(/\s+/)
@@ -42,17 +50,19 @@ export function UserAvatar({
   size = 'w-9 h-9',
   text = 'text-sm',
 }) {
-  if (src)
+  if (src) {
     return (
       <img
         src={src}
         alt=""
-        className={`${size} rounded-full object-cover border border-white/30`}
+        className={`${size} rounded-full object-cover border border-white/70 dark:border-slate-700 shadow-sm`}
       />
     );
+  }
+
   return (
     <div
-      className={`${size} rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center ${text} font-bold`}
+      className={`${size} rounded-full bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white flex items-center justify-center ${text} font-bold shadow-md`}
     >
       {initialsOf(name, email)}
     </div>
@@ -62,7 +72,9 @@ export function UserAvatar({
 export function Card({ children, className = '', hover = false }) {
   return (
     <div
-      className={`bg-gray-800 border border-gray-700 rounded-2xl shadow-sm ${hover ? 'card-hover cursor-pointer' : ''} ${className}`}
+      className={`relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:shadow-none text-slate-900 dark:text-white ${
+        hover ? 'card-hover cursor-pointer' : ''
+      } ${className}`}
     >
       {children}
     </div>
@@ -70,19 +82,26 @@ export function Card({ children, className = '', hover = false }) {
 }
 
 const BADGE = {
-  gray: 'bg-gray-900/20 text-gray-300',
-  green: 'bg-green-900/20 text-green-300',
-  red: 'bg-red-900/20 text-red-300',
-  yellow: 'bg-amber-900/20 text-amber-300',
-  blue: 'bg-blue-900/20 text-blue-300',
-  indigo: 'bg-indigo-900/20 text-indigo-300',
-  purple: 'bg-purple-900/20 text-purple-300',
-  teal: 'bg-teal-900/20 text-teal-300',
+  gray: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700',
+  green:
+    'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60',
+  red: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60',
+  yellow:
+    'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60',
+  blue: 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-100 dark:border-sky-900/60',
+  indigo:
+    'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/60',
+  purple:
+    'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60',
+  teal: 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-100 dark:border-teal-900/60',
 };
+
 export function Badge({ color = 'gray', children, className = '' }) {
   return (
     <span
-      className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${BADGE[color] || BADGE.gray} ${className}`}
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+        BADGE[color] || BADGE.gray
+      } ${className}`}
     >
       {children}
     </span>
@@ -91,17 +110,19 @@ export function Badge({ color = 'gray', children, className = '' }) {
 
 const BTN = {
   primary:
-    'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:shadow-lg hover:shadow-indigo-200 hover:-translate-y-0.5',
+    'bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:shadow-lg hover:shadow-indigo-200 dark:hover:shadow-indigo-950 hover:-translate-y-0.5',
   success:
-    'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:shadow-lg hover:shadow-green-200',
+    'bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:shadow-lg hover:shadow-emerald-200 dark:hover:shadow-emerald-950 hover:-translate-y-0.5',
   danger:
-    'bg-gradient-to-r from-rose-500 to-red-600 text-white hover:shadow-lg hover:shadow-red-200',
+    'bg-gradient-to-r from-rose-500 to-red-600 text-white hover:shadow-lg hover:shadow-red-200 dark:hover:shadow-red-950 hover:-translate-y-0.5',
   warning:
-    'bg-gradient-to-r from-amber-400 to-orange-500 text-white hover:shadow-lg hover:shadow-amber-200',
+    'bg-gradient-to-r from-amber-400 to-orange-500 text-white hover:shadow-lg hover:shadow-amber-200 dark:hover:shadow-amber-950 hover:-translate-y-0.5',
   outline:
-    'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-  ghost: 'text-indigo-600 hover:bg-indigo-50',
+    'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 shadow-sm',
+  ghost:
+    'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40',
 };
+
 export function Btn({
   variant = 'primary',
   className = '',
@@ -111,88 +132,38 @@ export function Btn({
   return (
     <button
       {...props}
-      className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95 disabled:opacity-60 disabled:translate-y-0 ${BTN[variant] || BTN.primary} ${className}`}
+      className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95 disabled:opacity-60 disabled:translate-y-0 disabled:cursor-not-allowed ${
+        BTN[variant] || BTN.primary
+      } ${className}`}
     >
       {children}
     </button>
   );
 }
 
-export function Input({ className = '', type, ...props }) {
-  const [showPassword, setShowPassword] = useState(false);
-  const isPassword = type === 'password';
-
+export function Input({ className = '', ...props }) {
   return (
-    <div className="relative w-full flex items-center">
-      <input
-        {...props}
-        type={isPassword && showPassword ? 'text' : type}
-        className={`border border-gray-200 rounded-xl px-3 py-2.5 w-full focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none ${
-          isPassword ? 'pr-10' : ''
-        } ${className}`}
-      />
-
-      {/* Renders eye button securely using built-in SVGs */}
-      {isPassword && props.value && props.value.length > 0 && (
-        <button
-          type="button"
-          tabIndex={-1}
-          onClick={() => setShowPassword(!showPassword)}
-          className="absolute right-3 text-gray-400 hover:text-gray-600 focus:outline-none select-none flex items-center justify-center"
-        >
-          {showPassword ? (
-            // EyeOff SVG Icon
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-              <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-              <path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-              <line x1="2" y1="2" x2="22" y2="22" />
-            </svg>
-          ) : (
-            // Eye SVG Icon
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          )}
-        </button>
-      )}
-    </div>
+    <input
+      {...props}
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-2xl px-4 py-3 w-full focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-400 outline-none transition shadow-sm ${className}`}
+    />
   );
 }
+
 export function Textarea({ className = '', ...props }) {
   return (
     <textarea
       {...props}
-      className={`border border-gray-200 rounded-xl px-3 py-2.5 w-full focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none transition ${className}`}
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-2xl px-4 py-3 w-full focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-400 outline-none transition shadow-sm ${className}`}
     />
   );
 }
+
 export function Select({ className = '', children, ...props }) {
   return (
     <select
       {...props}
-      className={`border border-gray-200 rounded-xl px-3 py-2.5 w-full bg-white focus:ring-2 focus:ring-indigo-400 outline-none transition ${className}`}
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 w-full focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-400 outline-none transition shadow-sm ${className}`}
     >
       {children}
     </select>
@@ -204,22 +175,32 @@ export function StatCard({
   value,
   sub,
   icon,
-  gradient = 'from-indigo-500 to-purple-600',
+  gradient = 'from-indigo-500 to-blue-600',
 }) {
   return (
-    <Card className="p-5 card-hover overflow-hidden relative">
+    <Card className="p-6 card-hover relative min-h-[150px] bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
       <div
-        className={`absolute -right-6 -top-6 w-20 h-20 rounded-full bg-gradient-to-br ${gradient} opacity-10`}
+        className={`absolute -right-8 -top-8 w-28 h-28 rounded-full bg-gradient-to-br ${gradient} opacity-15 dark:opacity-20`}
       />
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-3xl font-extrabold text-gray-800">{value}</p>
-          <p className="text-sm text-gray-500 mt-1">{label}</p>
-          {sub && <p className="text-xs text-gray-400">{sub}</p>}
+
+      <div className="relative z-10 flex items-start justify-between gap-4">
+        <div className="pt-6">
+          <p className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            {value}
+          </p>
+
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">
+            {label}
+          </p>
+
+          {sub && (
+            <p className="text-xs text-slate-500 dark:text-slate-500">{sub}</p>
+          )}
         </div>
+
         {icon && (
           <div
-            className={`w-11 h-11 rounded-xl bg-gradient-to-br ${gradient} text-white flex items-center justify-center text-xl shadow-md`}
+            className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${gradient} text-white flex items-center justify-center text-2xl shadow-lg shadow-slate-300/40 dark:shadow-none`}
           >
             {icon}
           </div>
@@ -231,30 +212,50 @@ export function StatCard({
 
 export function EmptyState({ icon = '📭', title = 'Nothing here yet', text }) {
   return (
-    <Card className="p-12 text-center">
+    <Card className="p-12 text-center bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
       <div className="text-5xl mb-3 animate-float inline-block">{icon}</div>
-      <p className="text-gray-700 font-semibold">{title}</p>
-      {text && <p className="text-gray-400 text-sm mt-1">{text}</p>}
+
+      <p className="text-slate-800 dark:text-white font-semibold">{title}</p>
+
+      {text && (
+        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+          {text}
+        </p>
+      )}
     </Card>
   );
 }
 
 export function Spinner({ label = 'Loading...' }) {
   return (
-    <div className="flex items-center gap-3 text-gray-500 py-8 justify-center">
-      <span className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-      <span>{label}</span>
+    <div className="flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400 py-8">
+      <span className="relative inline-flex">
+        <span className="w-8 h-8 rounded-full border-[3px] border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin" />
+        <span className="absolute inset-1 rounded-full border border-indigo-100 dark:border-indigo-900/60" />
+      </span>
+
+      {label && (
+        <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+          {label}
+        </span>
+      )}
     </div>
   );
 }
 
 export function Stars({ value }) {
-  if (value == null) return <span className="text-gray-300">—</span>;
+  if (value == null) {
+    return <span className="text-slate-300 dark:text-slate-600">—</span>;
+  }
+
   const full = Math.round(value);
+
   return (
     <span className="text-amber-500" title={value}>
       {'★'.repeat(full)}
-      <span className="text-gray-200">{'★'.repeat(5 - full)}</span>
+      <span className="text-slate-200 dark:text-slate-700">
+        {'★'.repeat(5 - full)}
+      </span>
     </span>
   );
 }
@@ -264,35 +265,43 @@ export function Table({ head, children }) {
   return (
     <Card className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-gradient-to-r from-slate-50 to-indigo-50 text-left text-gray-600">
+        <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
           <tr>
             {head.map((h, i) => (
-              <th key={i} className="p-3 font-semibold whitespace-nowrap">
+              <th key={i} className="p-3 font-bold whitespace-nowrap">
                 {h}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>{children}</tbody>
+
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+          {children}
+        </tbody>
       </table>
     </Card>
   );
 }
 
-// Confirmation dialog for destructive actions (delete, deactivate, etc).
-// Locks page scroll and blurs the app background while open, and cleans
-// both up automatically on close or unmount.
 export function ConfirmationModal({
-  isOpen,
-  title,
-  message,
+  open,
+  title = 'Confirm action',
+  message = 'Are you sure you want to continue?',
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
+  confirmLabel,
+  cancelLabel,
   onConfirm,
   onCancel,
+  onClose,
+  loading = false,
+  danger = true,
 }) {
+  // Handle body scroll locking and background blurring
   useEffect(() => {
     const root = document.getElementById('root');
 
-    if (isOpen) {
+    if (open) {
       document.body.style.overflow = 'hidden';
       if (root) root.classList.add('blur-sm', 'transition-all', 'duration-300');
     } else {
@@ -306,31 +315,58 @@ export function ConfirmationModal({
       if (root)
         root.classList.remove('blur-sm', 'transition-all', 'duration-300');
     };
-  }, [isOpen]);
+  }, [open]);
 
-  if (!isOpen) return null;
+  if (!open) return null;
 
-  // Rendered via portal directly under <body>, as a sibling of #root —
-  // not a descendant of it. This keeps the modal sharp and on top while
-  // the blur effect above is applied only to #root (the app behind it).
+  const handleClose = () => {
+    if (loading) return;
+    if (onCancel) onCancel();
+    else if (onClose) onClose();
+  };
+
+  const finalConfirmText = confirmLabel || confirmText;
+  const finalCancelText = cancelLabel || cancelText;
+
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onCancel}></div>
-      <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
-        <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-        <p className="mt-2 text-sm text-gray-600">{message}</p>
-        <div className="mt-6 flex justify-end gap-3">
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      onClick={handleClose}
+    >
+      <div
+        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+          <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
+            {title}
+          </h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+            {message}
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-3 p-5 bg-white dark:bg-slate-900">
           <button
-            onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
+            type="button"
+            onClick={handleClose}
+            disabled={loading}
+            className="px-5 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition text-sm font-bold disabled:opacity-60"
           >
-            Cancel
+            {finalCancelText}
           </button>
+
           <button
+            type="button"
             onClick={onConfirm}
-            className="px-4 py-2 text-sm font-medium text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition-colors"
+            disabled={loading}
+            className={`px-5 py-3 rounded-2xl text-white text-sm font-extrabold transition disabled:opacity-60 ${
+              danger
+                ? 'bg-red-600 hover:bg-red-700'
+                : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-lg hover:shadow-indigo-200'
+            }`}
           >
-            Delete
+            {loading ? 'Please wait...' : finalConfirmText}
           </button>
         </div>
       </div>
