@@ -23,7 +23,9 @@ export default function Meetings() {
     meetingDate: '',
     startTime: '',
     endTime: '',
+    onlineLink: '',
   });
+  const [urlError, setUrlError] = useState('');
   const [attendees, setAttendees] = useState([]);
 
   const canCreate = ['ADMIN', 'SENIOR_TL', 'TL'].includes(user?.role);
@@ -49,7 +51,9 @@ export default function Meetings() {
         meetingDate: '',
         startTime: '',
         endTime: '',
+        onlineLink: '',
       });
+      setUrlError('');
       setAttendees([]);
     },
   });
@@ -62,8 +66,29 @@ export default function Meetings() {
     setAttendees((a) =>
       a.includes(id) ? a.filter((x) => x !== id) : [...a, id]
     );
+  const handleUrlChange = (val) => {
+    setForm({ ...form, onlineLink: val });
+    if (!val) {
+      setUrlError('');
+    } else {
+      try {
+        new URL(val);
+        setUrlError('');
+      } catch (_) {
+        setUrlError('Please enter a valid URL (e.g., https://zoom.us/...)');
+      }
+    }
+  };
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (form.onlineLink) {
+      try {
+        new URL(form.onlineLink);
+      } catch (_) {
+        setUrlError('Please enter a valid URL (e.g., https://zoom.us/...)');
+        return;
+      }
+    }
     createMutation.mutate({ ...form, attendeeIds: attendees });
   };
 
@@ -126,6 +151,21 @@ export default function Meetings() {
                   setForm({ ...form, description: e.target.value })
                 }
               />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">
+                Meeting Link 
+              </label>
+              <Input
+                type="url"
+                placeholder="E.g., https://meet.google.com/abc-defg-hij"
+                value={form.onlineLink}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                className={urlError ? 'border-rose-400 focus:ring-rose-400 focus:border-rose-400' : ''}
+              />
+              {urlError && (
+                <p className="text-xs text-rose-500 mt-1 font-medium">{urlError}</p>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
@@ -262,6 +302,18 @@ export default function Meetings() {
                 <p className="text-sm text-gray-600 mt-4 leading-relaxed bg-gray-50/50 p-3 rounded-lg border border-gray-100">
                   {m.description}
                 </p>
+              )}
+
+              {m.onlineLink && (
+                <a
+                  href={m.onlineLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 flex items-center justify-center gap-2 px-4 py-2.5 w-full text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl hover:shadow-lg hover:shadow-indigo-200 dark:hover:shadow-none transition-all active:scale-95 text-center"
+                >
+                  <Video className="w-4 h-4" />
+                  Join Meeting
+                </a>
               )}
 
               <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500 mt-4 pt-4 border-t border-gray-50">

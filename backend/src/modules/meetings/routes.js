@@ -20,6 +20,7 @@ function formatMeeting(m) {
     endTime: m.end_time,
     departmentId: m.department_id,
     createdBy: m.created_by,
+    onlineLink: m.online_link,
   };
 }
 
@@ -91,6 +92,8 @@ async function routes(fastify) {
           department_id: z.string().uuid().optional(),
           attendeeIds: z.array(z.string().uuid()).optional(),
           attendee_ids: z.array(z.string().uuid()).optional(),
+          onlineLink: z.string().url().optional().or(z.literal('')),
+          online_link: z.string().url().optional().or(z.literal('')),
         })
         .refine((d) => d.meetingDate || d.meeting_date, {
           message: 'meetingDate or meeting_date is required',
@@ -111,6 +114,7 @@ async function routes(fastify) {
       const endTime = data.endTime || data.end_time;
       const departmentId = data.departmentId || data.department_id;
       const attendeeIds = data.attendeeIds || data.attendee_ids || [];
+      const onlineLink = data.onlineLink || data.online_link || null;
 
       const meeting = await repo.createMeeting({
         title: data.title,
@@ -120,6 +124,7 @@ async function routes(fastify) {
         endTime,
         departmentId,
         createdBy: req.user.id,
+        onlineLink,
       });
 
       const skippedAttendees = [];
@@ -175,6 +180,8 @@ async function routes(fastify) {
           start_time: z.string().optional(),
           endTime: z.string().optional(),
           end_time: z.string().optional(),
+          onlineLink: z.string().url().optional().or(z.literal('')),
+          online_link: z.string().url().optional().or(z.literal('')),
         })
         .strict();
 
@@ -205,6 +212,8 @@ async function routes(fastify) {
       if (sTime !== undefined) normalized.start_time = sTime;
       const eTime = data.end_time || data.endTime;
       if (eTime !== undefined) normalized.end_time = eTime;
+      const oLink = data.online_link !== undefined ? data.online_link : data.onlineLink;
+      if (oLink !== undefined) normalized.online_link = oLink || null;
 
       const updated = await repo.updateMeeting(req.params.id, normalized);
       if (!updated)

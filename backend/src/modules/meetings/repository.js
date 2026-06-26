@@ -1,4 +1,4 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 
 async function createMeeting({
   title,
@@ -8,10 +8,11 @@ async function createMeeting({
   endTime,
   createdBy,
   departmentId,
+  onlineLink,
 }) {
   const res = await pool.query(
-    `INSERT INTO meetings (title, description, meeting_date, start_time, end_time, created_by, department_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    `INSERT INTO meetings (title, description, meeting_date, start_time, end_time, created_by, department_id, online_link)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [
       title,
       description,
@@ -20,6 +21,7 @@ async function createMeeting({
       endTime,
       createdBy,
       departmentId,
+      onlineLink,
     ]
   );
   return res.rows[0];
@@ -124,6 +126,7 @@ async function updateMeeting(meetingId, fields) {
         'meeting_date',
         'start_time',
         'end_time',
+        'online_link',
       ].includes(key)
     ) {
       set.push(`${key} = $${idx}`);

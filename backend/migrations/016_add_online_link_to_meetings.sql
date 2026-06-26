@@ -1,0 +1,1 @@
+ALTER TABLE meetings ADD COLUMN online_link VARCHAR(1024);

@@ -154,12 +154,25 @@ describe('Meetings Integration Tests', () => {
           meetingDate: '2026-12-01',
           startTime: '10:00',
           endTime: '11:00',
+          onlineLink: 'https://meet.google.com/abc-defg-hij',
         },
       });
       expect(res.statusCode).toBe(201);
       const body = JSON.parse(res.body);
       meetingId = body.id || body.meeting?.id || body.data?.id;
       expect(meetingId).toBeDefined();
+      expect(body.onlineLink).toBe('https://meet.google.com/abc-defg-hij');
+    });
+
+    it('should reject meeting with invalid onlineLink url', async () => {
+      const res = await inject('POST', '/api/meetings', {
+        payload: {
+          title: MEETING_TITLE,
+          meetingDate: '2026-12-01',
+          onlineLink: 'invalid-url-string',
+        },
+      });
+      expect(res.statusCode).toBe(400);
     });
 
     it('should reject meeting without title', async () => {
@@ -305,6 +318,22 @@ describe('Meetings Integration Tests', () => {
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
       expect(body.title).toBe('Updated Meeting');
+    });
+
+    it('should update meeting online link', async () => {
+      const res = await inject('PATCH', `/api/meetings/${meetingId}`, {
+        payload: { onlineLink: 'https://zoom.us/j/1234567890' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body);
+      expect(body.onlineLink).toBe('https://zoom.us/j/1234567890');
+    });
+
+    it('should reject invalid online link update', async () => {
+      const res = await inject('PATCH', `/api/meetings/${meetingId}`, {
+        payload: { onlineLink: 'not-a-valid-url' },
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 
