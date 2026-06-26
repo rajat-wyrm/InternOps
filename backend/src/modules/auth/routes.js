@@ -40,6 +40,41 @@ async function routes(fastify) {
     }
   );
 
+  // Bulk Register
+  fastify.post(
+  '/register/bulk',
+  {
+    preHandler: [auth, rbac('ADMIN')],
+    schema: {
+      tags: ['Authentication'],
+      description: 'Bulk register users (Admin only)',
+    },
+  },
+  async (req, reply) => {
+    const userSchema = z.object({
+      email: z.string().email(),
+      password: z.string().min(8),
+      role: z.enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
+      managerId: z.string().uuid().optional(),
+      departmentId: z.string().uuid().optional(),
+      fullName: z.string().optional(),
+    });
+    const schema = z.object({ users: z.array(userSchema).min(1).max(100) });
+    const { users } = schema.parse(req.body);
+
+    const results = { success: [], failed: [] };
+    for (const userData of users) {
+      try {
+        const user = await service.register(userData, req.user);
+        results.success.push({ email: userData.email, id: user.id });
+      } catch (err) {
+        results.failed.push({ email: userData.email, error: err.message });
+      }
+    }
+    return reply.status(207).send(results);
+  }
+);
+
   // Login
   fastify.post(
     '/login',
