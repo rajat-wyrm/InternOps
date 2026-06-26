@@ -1,0 +1,48 @@
+.env
+.env.local
+.env.production
+node_modules/
+dist/
+build/
+coverage/
+logs/
+# Runtime upload storage only — must NOT match the source module
+# backend/src/modules/uploads/. Anchor to the actual storage directory and
+# keep the folder itself (via .gitkeep) so @fastify/static has a valid root.
+/backend/uploads/*
+!/backend/uploads/.gitkeep
+/uploads/
+!backend/src/modules/uploads/
+tmp/
+.cache/
+.vite/
+**/.vite/
+secrets/
+*.pem
+*.key
+
+.env.*
+backend/.env
+backend/.env.*
+
+InternOps/
+internops-diagnostic-report.txt
+internops-crash.log
+server-debug.log
+backend-test-report.txt
+_dbtest.cjs
+_fix_async.cjs
+_fix_routes.cjs
+_merge_routes.cjs
+_migrate_runner.cjs
+check_plugins.js
+db-test.js
+fix_async_done.js
+*.log
+*-report.txt
+
+# Docker volumes
+postgres_data/
+
+# Backup files
+*.bak
