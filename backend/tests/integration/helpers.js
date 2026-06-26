@@ -27,10 +27,9 @@ async function clearPasswordResetAttempts(emails = [SEEDED_ADMIN_EMAIL]) {
 // Clear brute-force login attempt records so tests that make failed login
 // calls don't accumulate into a lockout for subsequent tests.
 async function clearLoginAttempts(emails = [SEEDED_ADMIN_EMAIL]) {
-  await pool.query(
-    'DELETE FROM login_attempts WHERE email = ANY($1::text[])',
-    [emails]
-  );
+  await pool.query('DELETE FROM login_attempts WHERE email = ANY($1::text[])', [
+    emails,
+  ]);
 }
 
 // Parse a Set-Cookie header into a { name: value } map. Fastify inject
