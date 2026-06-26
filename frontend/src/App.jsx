@@ -44,7 +44,7 @@ export default function App() {
       .then((res) =>
         setAuth({ accessToken: res.data.accessToken, user: res.data.user })
       )
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setHydrated());
   }, []);
 
