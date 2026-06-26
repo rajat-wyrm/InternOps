@@ -10,7 +10,13 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import api from '../lib/axios';
-import { Card, Btn, EmptyState, Spinner, ConfirmationModal } from '../components/ui';
+import {
+  Card,
+  Btn,
+  EmptyState,
+  Spinner,
+  ConfirmationModal,
+} from '../components/ui';
 
 function timeAgo(d) {
   const s = Math.floor((Date.now() - new Date(d)) / 1000);
