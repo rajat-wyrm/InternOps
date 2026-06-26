@@ -15,7 +15,6 @@ import CreateUserModal from '../../components/admin/CreateUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
 
-
 const ROLE_COLOR = {
   ADMIN:
     'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60',
