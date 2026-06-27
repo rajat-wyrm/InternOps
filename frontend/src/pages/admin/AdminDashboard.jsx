@@ -188,18 +188,20 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <button
-          onClick={() => setBulkUserOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-lg transition text-sm shadow-md border border-gray-700"
-        >
-          <span>+ Bulk Add</span>
-        </button>
-        <button
-          onClick={() => setCreateUserOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
-        >
-          <span>+ Add User</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setBulkUserOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
+          >
+            <span>+ Bulk Add</span>
+          </button>
+          <button
+            onClick={() => setCreateUserOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
+          >
+            <span>+ Add User</span>
+          </button>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -406,6 +408,11 @@ export default function AdminDashboard() {
       <CreateUserModal
         open={createUserOpen}
         onClose={() => setCreateUserOpen(false)}
+      />
+
+      <BulkUserModal
+        open={bulkUserOpen}
+        onClose={() => setBulkUserOpen(false)}
       />
     </div>
   );
