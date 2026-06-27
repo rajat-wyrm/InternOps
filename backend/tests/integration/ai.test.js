@@ -105,7 +105,9 @@ describe('AI Chat Integration Tests (#498)', () => {
     });
 
     if (res.statusCode !== 200) {
-      throw new Error(`Login failed for ${email}: ${res.statusCode} ${res.body}`);
+      throw new Error(
+        `Login failed for ${email}: ${res.statusCode} ${res.body}`
+      );
     }
 
     return JSON.parse(res.body).accessToken;
@@ -122,7 +124,9 @@ describe('AI Chat Integration Tests (#498)', () => {
     });
 
     if (res.statusCode !== 201) {
-      throw new Error(`Failed to create test user: ${res.statusCode} ${res.body}`);
+      throw new Error(
+        `Failed to create test user: ${res.statusCode} ${res.body}`
+      );
     }
 
     return JSON.parse(res.body);
