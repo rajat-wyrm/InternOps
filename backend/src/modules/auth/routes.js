@@ -63,12 +63,24 @@ async function routes(fastify) {
       const { users } = schema.parse(req.body);
 
       const results = { success: [], failed: [] };
+      const ROLE_HIERARCHY = ['INTERN', 'CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'];
       for (const userData of users) {
+        const callerLevel = ROLE_HIERARCHY.indexOf(req.user.role);
+        const targetLevel = ROLE_HIERARCHY.indexOf(userData.role);
+        if (targetLevel >= callerLevel) {
+          results.failed.push({ email: userData.email, error: 'Cannot assign a role equal to or higher than your own.' });
+          continue;
+        }
         try {
           const user = await service.register(userData, req.user);
           results.success.push({ email: userData.email, id: user.id });
         } catch (err) {
-          results.failed.push({ email: userData.email, error: err.message });
+          req.log.error({ email: userData.email, err }, 'Bulk register failed for user');
+          const safeMessage =
+            err.message?.includes('duplicate') ? 'Email already exists.' :
+              err.message?.includes('manager') ? 'Invalid manager ID.' :
+                'Failed to create user.';
+          results.failed.push({ email: userData.email, error: safeMessage });
         }
       }
       return reply.status(207).send(results);
