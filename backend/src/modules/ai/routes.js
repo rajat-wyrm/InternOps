@@ -1,5 +1,7 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
+const aiRepo = require('./repository');
+const config = require('../../config');
 const {
   generateAIResponse,
   getProviderHealth,
@@ -109,11 +111,22 @@ async function routes(fastify) {
         });
       }
 
+      const usage = await aiRepo.getTodayUsage(req.user.id);
+
+      if (usage >= config.ai.dailyLimit) {
+        return reply.status(429).send({
+          error: 'Daily AI usage limit exceeded',
+        });
+      }
+
       try {
         const result = await generateAIResponse({
           userId: req.user.id,
           messages: finalMessages,
         });
+
+        await aiRepo.incrementUsage(req.user.id);
+
         return {
           provider: result.provider,
           cached: result.cached,
@@ -145,6 +158,21 @@ async function routes(fastify) {
     async () => {
       return {
         providers: getProviderHealth(),
+      };
+    }
+  );
+
+  fastify.get(
+    '/usage',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+    },
+    async () => {
+      const usage = await aiRepo.getDailyUsageReport();
+
+      return {
+        date: new Date().toISOString().split('T')[0],
+        users: usage,
       };
     }
   );

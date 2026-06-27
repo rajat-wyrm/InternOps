@@ -1,8 +1,8 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
+const sessionOwnership = require('../../middleware/sessionOwnership');
 const repo = require('./repository');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
-const sessionOwnership = require('../../middleware/sessionOwnership');
 
 async function routes(fastify) {
   // List own sessions
@@ -13,7 +13,9 @@ async function routes(fastify) {
   // Revoke a specific session
   fastify.delete(
     '/me/:sessionId',
-    { preHandler: [auth, sessionOwnership('sessionId')] },
+    {
+      preHandler: [auth, sessionOwnership('sessionId')],
+    },
     async (req, reply) => {
       const success = await repo.revokeSession(
         req.params.sessionId,
@@ -21,13 +23,13 @@ async function routes(fastify) {
       );
       if (!success)
         return reply.status(404).send({ error: 'Session not found' });
-      req.auditOnResponse = {
+      await createAuditLog({
         userId: req.user.id,
         action: 'SESSION_REVOKED',
         resourceType: 'session',
         resourceId: req.params.sessionId,
         ...extractRequestInfo(req),
-      };
+      });
       return { message: 'Session revoked' };
     }
   );
@@ -35,14 +37,13 @@ async function routes(fastify) {
   // Revoke all other sessions
   fastify.post('/me/revoke-all', { preHandler: [auth] }, async (req, reply) => {
     await repo.revokeAllUserSessions(req.user.id);
-    const { rotateAndSetCsrf } = require('../../middleware/csrf');
-    rotateAndSetCsrf(req, reply, null);
-    req.auditOnResponse = {
+    await require('../auth/repository').revokeAllUserTokensRedis(req.user.id);
+    await createAuditLog({
       userId: req.user.id,
       action: 'ALL_SESSIONS_REVOKED',
       resourceType: 'session',
       ...extractRequestInfo(req),
-    };
+    });
     return { message: 'All sessions revoked. Please re-login.' };
   });
 
@@ -53,13 +54,14 @@ async function routes(fastify) {
     async (req, reply) => {
       const { userId } = req.params;
       await repo.revokeAllUserSessions(userId);
-      req.auditOnResponse = {
+      await require('../auth/repository').revokeAllUserTokensRedis(userId);
+      await createAuditLog({
         userId: req.user.id,
         action: 'ADMIN_REVOKED_USER_SESSIONS',
         resourceType: 'session',
         resourceId: userId,
         ...extractRequestInfo(req),
-      };
+      });
       return { message: `All sessions for user ${userId} revoked` };
     }
   );

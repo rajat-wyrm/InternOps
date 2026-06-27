@@ -1,4 +1,4 @@
-﻿const auth = require('../../middleware/auth');
+const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('../social-tasks/repository');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
@@ -70,6 +70,7 @@ async function routes(fastify) {
       const filename = uuidv4() + ext;
       const absoluteUploadDir = path.resolve(
         __dirname,
+        '..',
         '..',
         '..',
         config.uploadDir

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-
+import { clearCsrfToken } from '../lib/axios';
 // Hydrate from localStorage so a refresh keeps the session.
 // We defer the read so it always runs inside a browser context and
 // can never crash module import in environments without localStorage
@@ -62,6 +62,7 @@ const useAuthStore = create((set, get) => ({
   logout: () => {
     safeSet('accessToken', null);
     safeSet('user', null);
+    clearCsrfToken();
     set({ accessToken: null, user: null });
   },
 }));

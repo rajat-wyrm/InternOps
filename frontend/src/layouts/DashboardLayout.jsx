@@ -16,16 +16,16 @@ import {
   ClipboardList,
   Bot,
   LogOut,
-  Zap,
   Sun,
   Moon,
   Menu,
+  Megaphone,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
-import { UserAvatar } from '../components/ui';
+import { UserAvatar, ConfirmationModal } from '../components/ui';
 import useAuthStore from '../store/auth';
 
 const ROLE_LABEL = {
@@ -64,22 +64,34 @@ const nav = [
     icon: Download,
     roles: ['ADMIN', 'SENIOR_TL'],
   },
+  {
+    path: '/notices',
+    label: 'Notice Board',
+    icon: Megaphone,
+    roles: ['ADMIN', 'SENIOR_TL'],
+  },
 ];
 
 const adminNav = [
-  { path: '/admin', label: 'Admin Panel', icon: Settings },
+  { path: '/admin', label: 'users', icon: Settings },
   { path: '/departments', label: 'Departments', icon: Building },
   { path: '/audit', label: 'Audit Log', icon: ClipboardList },
   { path: '/assistant', label: 'AI Assistant', icon: Bot },
 ];
 
+const FULL_LOGO_SRC = '/UptoSkills.webp';
+const MINI_LOGO_SRC = '/uslogo.ico';
+
 export default function DashboardLayout() {
   const loc = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+
   const role = user?.role;
   const isAdmin = role === 'ADMIN';
   const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(role);
+
+  const sidebarNavRef = useRef(null);
 
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('sidebar') === 'collapsed'
@@ -113,68 +125,111 @@ export default function DashboardLayout() {
   });
 
   const allItems = [...visibleNav, ...(isAdmin ? adminNav : [])];
+
   const current = allItems.find((n) => n.path === loc.pathname) || {
     label: 'Dashboard',
   };
 
-  const handleLogout = () => setShowLogoutConfirm(true);
+  useEffect(() => {
+    const savedScroll = Number(
+      sessionStorage.getItem('internopsSidebarScroll') || 0
+    );
+
+    requestAnimationFrame(() => {
+      if (sidebarNavRef.current) {
+        sidebarNavRef.current.scrollTop = savedScroll;
+      }
+    });
+  }, [loc.pathname]);
+
+  const saveSidebarScroll = () => {
+    if (sidebarNavRef.current) {
+      sessionStorage.setItem(
+        'internopsSidebarScroll',
+        String(sidebarNavRef.current.scrollTop)
+      );
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const NavLink = ({ n }) => {
     const active = loc.pathname === n.path;
-    const Icon = n.icon; // Get the lucide component
+    const Icon = n.icon;
 
     return (
       <Link
         to={n.path}
         title={collapsed ? n.label : undefined}
-        className={`group flex items-center gap-3 rounded-xl text-sm font-medium transition-all
+        onClick={saveSidebarScroll}
+        className={`group relative flex items-center gap-3 rounded-2xl text-sm font-bold transition-all duration-200
           ${collapsed ? 'justify-center px-0 py-3' : 'px-3 py-2.5'}
-          ${active ? 'bg-white text-indigo-700 shadow-lg shadow-indigo-900/20' : 'text-indigo-100 hover:bg-white/10 hover:translate-x-1'}`}
+          ${
+            active
+              ? 'bg-white text-indigo-700 shadow-lg shadow-indigo-950/20'
+              : 'text-indigo-100/90 hover:bg-white/10 hover:text-white hover:translate-x-1'
+          }`}
       >
         <Icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2.5 : 2} />
         {!collapsed && <span className="whitespace-nowrap">{n.label}</span>}
         {!collapsed && active && (
           <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600" />
         )}
+        {collapsed && active && (
+          <span className="absolute right-1.5 w-1.5 h-6 rounded-full bg-white/80" />
+        )}
       </Link>
     );
   };
+
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-indigo-50/50">
+    <div className="flex h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 text-slate-900 dark:text-white">
       <aside
-        className={`${collapsed ? 'w-20' : 'w-64'} shrink-0 bg-gradient-to-b from-indigo-700 via-indigo-800 to-purple-900 text-white flex flex-col transition-all duration-300 ease-in-out`}
+        className={`${
+          collapsed ? 'w-20' : 'w-64'
+        } shrink-0 bg-gradient-to-b from-indigo-700 via-indigo-800 to-violet-950 text-white flex flex-col transition-all duration-300 ease-in-out shadow-2xl shadow-indigo-950/20`}
       >
         <div
-          className={`p-5 flex items-center gap-2 ${collapsed ? 'justify-center' : ''}`}
+          className={`p-5 flex items-center ${collapsed ? 'justify-center' : 'justify-start'}`}
         >
-          <div className="w-10 h-10 rounded-xl bg-white/20 glass flex items-center justify-center shrink-0">
-            <Zap className="w-5 h-5" fill="currentColor" />
-          </div>
-          {!collapsed && (
-            <div className="overflow-hidden">
-              <h2 className="text-lg font-extrabold leading-none whitespace-nowrap">
-                InternOps
-              </h2>
-              <p className="text-[10px] text-indigo-200 mt-0.5 whitespace-nowrap">
-                Workforce Platform
-              </p>
+          {collapsed ? (
+            <div className="w-12 h-12 rounded-2xl bg-white p-2 border border-white/20 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-950/20 overflow-hidden">
+              <img
+                src={MINI_LOGO_SRC}
+                alt="UptoSkills"
+                className="w-full h-full object-contain"
+              />
+            </div>
+          ) : (
+            <div className="w-full rounded-3xl bg-white p-3 shadow-xl shadow-indigo-950/20 border border-white/20 overflow-hidden">
+              <img
+                src={FULL_LOGO_SRC}
+                alt="UptoSkills"
+                className="w-full h-auto object-contain"
+              />
             </div>
           )}
         </div>
 
-        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 space-y-1">
+        <nav
+          ref={sidebarNavRef}
+          className="flex-1 overflow-y-auto overflow-x-hidden px-3 space-y-1.5 pb-6"
+        >
           {visibleNav.map((n) => (
             <NavLink key={n.path} n={n} />
           ))}
           {isAdmin && (
             <>
               {!collapsed && (
-                <p className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-indigo-300">
+                <p className="px-3 pt-5 pb-1.5 text-[11px] uppercase tracking-[0.18em] text-indigo-300/90 font-extrabold">
                   Admin
                 </p>
               )}
               {collapsed && (
-                <div className="my-2 mx-3 border-t border-white/10" />
+                <div className="my-3 mx-3 border-t border-white/10" />
               )}
               {adminNav.map((n) => (
                 <NavLink key={n.path} n={n} />
@@ -183,29 +238,32 @@ export default function DashboardLayout() {
           )}
         </nav>
 
-        <div className="p-3">
+        <div className="p-3 shrink-0">
           <div
-            className={`glass rounded-2xl border border-white/10 flex items-center ${collapsed ? 'justify-center p-2' : 'gap-3 p-3'}`}
+            className={`rounded-3xl border border-white/10 bg-white/10 backdrop-blur-xl flex items-center shadow-lg shadow-indigo-950/20 ${collapsed ? 'justify-center p-2.5' : 'gap-3 p-3'}`}
           >
             <UserAvatar
               name={displayName}
               email={user?.email}
               src={avatarUrl}
+              text="text-xs"
             />
             {!collapsed && (
               <>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{displayName}</p>
-                  <p className="text-[10px] text-indigo-200">
+                  <p className="text-sm font-extrabold truncate">
+                    {displayName}
+                  </p>
+                  <p className="text-[11px] text-indigo-200 truncate">
                     {ROLE_LABEL[role] || role}
                   </p>
                 </div>
                 <button
-                  onClick={handleLogout}
+                  onClick={() => setShowLogoutConfirm(true)}
                   title="Logout"
-                  className="text-indigo-200 hover:text-white hover:scale-110 transition"
+                  className="w-9 h-9 rounded-2xl text-indigo-200 hover:text-white hover:bg-white/10 flex items-center justify-center transition"
                 >
-                  ⏻
+                  <LogOut className="w-4 h-4" />
                 </button>
               </>
             )}
@@ -214,19 +272,27 @@ export default function DashboardLayout() {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white/80 backdrop-blur border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 shrink-0">
+        <header className="h-16 bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm dark:shadow-none">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setCollapsed((c) => !c)}
-              className="w-9 h-9 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-600 transition"
+              className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition font-extrabold"
             >
               {collapsed ? '»' : '«'}
             </button>
+            <div className="hidden sm:block">
+              <p className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">
+                Current page
+              </p>
+              <p className="text-sm font-extrabold text-slate-700 dark:text-slate-200">
+                {current.label}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setDark((d) => !d)}
-              className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition text-lg"
+              className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition text-slate-600 dark:text-slate-300"
             >
               {dark ? (
                 <Sun className="w-5 h-5" />
@@ -236,12 +302,14 @@ export default function DashboardLayout() {
             </button>
             <Link
               to="/notifications"
-              className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition"
+              onClick={saveSidebarScroll}
+              className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition"
             >
-              <Bell className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+              <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
             </Link>
             <Link
               to="/profile"
+              onClick={saveSidebarScroll}
               className="rounded-full hover:scale-105 transition"
             >
               <UserAvatar
@@ -253,50 +321,20 @@ export default function DashboardLayout() {
             </Link>
           </div>
         </header>
-
-        <main className="flex-1 overflow-auto p-6">
-          {/* This Outlet renders the active page component (e.g. Dashboard, Tasks, Profile) */}
+        <main className="flex-1 overflow-auto p-5 sm:p-6">
           <Outlet />
         </main>
       </div>
 
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[9999] animate-fade-in">
-          <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full mx-4 border border-gray-100 animate-scale-up">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl mb-4">
-                🚪
-              </div>
-              <h3 className="text-lg font-bold text-gray-950 mb-2">
-                Confirm Logout
-              </h3>
-              <p className="text-sm text-gray-500 mb-6">
-                Are you sure you want to log out?
-              </p>
-              <div className="flex gap-3 w-full">
-                <button
-                  type="button"
-                  onClick={() => setShowLogoutConfirm(false)}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowLogoutConfirm(false);
-                    logout();
-                    navigate('/login');
-                  }}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-red-600 text-white text-sm font-semibold"
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmationModal
+        open={showLogoutConfirm}
+        title="Confirm Logout"
+        message="Are you sure you want to log out?"
+        confirmText="Logout"
+        onConfirm={handleLogout}
+        onCancel={() => setShowLogoutConfirm(false)}
+        danger={true}
+      />
     </div>
   );
 }

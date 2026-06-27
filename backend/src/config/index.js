@@ -62,6 +62,7 @@ module.exports = {
     deepseekKey: process.env.DEEPSEEK_API_KEY,
     deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL,
     huggingfaceToken: process.env.HUGGINGFACE_TOKEN,
+    dailyLimit: parseInt(process.env.AI_CHAT_DAILY_LIMIT, 10) || 100,
   },
   uptoskills: {
     baseUrl: process.env.UPTOSKILLS_BASE_URL || '',

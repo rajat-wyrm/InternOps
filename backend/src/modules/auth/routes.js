@@ -4,7 +4,11 @@ const rbac = require('../../middleware/rbac');
 const { bruteForceCheck } = require('../../middleware/bruteForce');
 const auth = require('../../middleware/auth');
 const audit = require('../../utils/audit');
-const { generateToken } = require('../../middleware/csrf');
+const {
+  generateToken,
+  rotateSession,
+  rotateAndSetCsrf,
+} = require('../../middleware/csrf');
 const { verifyEmail, sendVerificationEmail } = require('./verificationService');
 const repo = require('./repository');
 const { forgotPassword, resetPassword } = require('./resetService');
@@ -59,10 +63,8 @@ async function routes(fastify) {
         path: '/api/auth/refresh',
       });
 
-      const { rotateAndSetCsrf } = require('../../middleware/csrf');
       rotateAndSetCsrf(req, reply, result.user.id);
 
-      // From fix/deferred-audit-log-486
       req.auditOnResponse = {
         userId: result.user.id,
         action: 'LOGIN',
@@ -70,7 +72,6 @@ async function routes(fastify) {
         userAgent: req.headers['user-agent'],
       };
 
-      // From master
       const response = {
         accessToken: result.accessToken,
         user: result.user,
@@ -142,7 +143,6 @@ async function routes(fastify) {
 
       reply.clearCookie('refreshToken', { path: '/api/auth/refresh' });
 
-      // From fix/deferred-audit-log-486
       req.auditOnResponse = {
         userId: req.user.id,
         action: 'LOGOUT',

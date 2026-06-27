@@ -20,6 +20,7 @@ import Exports from './pages/admin/Exports';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import Departments from './pages/admin/Departments';
 import AuditLog from './pages/admin/AuditLog';
+import Notices from './pages/admin/Notices';
 import useAuthStore from './store/auth';
 import api from './lib/axios';
 import RoleGuard from './components/RoleGuard';
@@ -81,6 +82,14 @@ export default function App() {
           element={
             <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
               <Reports />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="notices"
+          element={
+            <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+              <Notices />
             </RoleGuard>
           }
         />

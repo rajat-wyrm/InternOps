@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ScrollText, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../../lib/axios';
-import { PageHeader, Table, Badge, Spinner } from '../../components/ui';
+import { Table, Badge, Spinner } from '../../components/ui';
 
 function actionColor(a = '') {
   if (a.includes('DELETE') || a.includes('SUSPEND')) return 'red';
@@ -15,6 +15,7 @@ function actionColor(a = '') {
 export default function AuditLog() {
   const [page, setPage] = useState(1);
   const limit = 50;
+
   const { data, isLoading } = useQuery({
     queryKey: ['auditLogs', page],
     queryFn: () =>
@@ -29,18 +30,26 @@ export default function AuditLog() {
 
   return (
     <div className="animate-fade-in-up">
-      {/* 🚀 Professional Header Block 🚀 */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg shadow-sm">
-          <ScrollText className="w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 tracking-tight">
-            Audit Log
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Immutable trail of sensitive system actions
-          </p>
+      {/* Professional Header Block */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
+            <ScrollText className="w-6 h-6" />
+          </div>
+
+          <div>
+            <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-indigo-600 dark:text-indigo-300 font-extrabold mb-1">
+              Security Trail
+            </p>
+
+            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              Audit Log
+            </h1>
+
+            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
+              Immutable trail of sensitive system actions
+            </p>
+          </div>
         </div>
       </div>
 
@@ -49,53 +58,65 @@ export default function AuditLog() {
           <Spinner />
         </div>
       ) : (
-        <Table head={['Time', 'Actor', 'Action', 'Resource', 'Details']}>
-          {logs?.map((log) => (
-            <tr
-              key={log.id}
-              className="border-t hover:bg-indigo-50/30 transition"
-            >
-              <td className="p-4 text-xs text-gray-500 whitespace-nowrap">
-                {new Date(log.created_at).toLocaleString()}
-              </td>
-              <td className="p-4 text-xs font-mono text-gray-600">
-                {log.actor_email
-                  ? `${log.actor_name || ''} (${log.actor_email})`
-                  : log.user_id
-                    ? log.user_id.substring(0, 8) + '…'
-                    : 'system'}
-              </td>
-              <td className="p-4">
-                <Badge color={actionColor(log.action)}>{log.action}</Badge>
-              </td>
-              <td className="p-4 text-xs text-gray-600">
-                {log.resource_type}
-                {log.resource_id ? `/${log.resource_id.substring(0, 8)}…` : ''}
-              </td>
-              <td className="p-4 text-xs text-gray-400 max-w-[200px] truncate">
-                {log.details ? JSON.stringify(log.details) : '—'}
-              </td>
-            </tr>
-          ))}
-        </Table>
+        <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
+          <Table head={['Time', 'Actor', 'Action', 'Resource', 'Details']}>
+            {logs?.map((log, index) => (
+              <tr
+                key={log.id}
+                className={`transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
+                  index % 2 === 0
+                    ? 'bg-white dark:bg-slate-900'
+                    : 'bg-slate-50/50 dark:bg-slate-800/35'
+                } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
+              >
+                <td className="p-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap font-medium">
+                  {new Date(log.created_at).toLocaleString()}
+                </td>
+
+                <td className="p-4 text-xs font-mono text-slate-600 dark:text-slate-300 max-w-[240px] truncate">
+                  {log.actor_email
+                    ? `${log.actor_name || ''} (${log.actor_email})`
+                    : log.user_id
+                      ? log.user_id.substring(0, 8) + '…'
+                      : 'system'}
+                </td>
+
+                <td className="p-4">
+                  <Badge color={actionColor(log.action)}>{log.action}</Badge>
+                </td>
+
+                <td className="p-4 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  {log.resource_type}
+                  {log.resource_id
+                    ? `/${log.resource_id.substring(0, 8)}…`
+                    : ''}
+                </td>
+
+                <td className="p-4 text-xs text-slate-500 dark:text-slate-400 max-w-[240px] truncate">
+                  {log.details ? JSON.stringify(log.details) : '—'}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </div>
       )}
 
       {/* Modernized Pagination */}
       <div className="flex items-center justify-center gap-2 mt-8">
         <button
-          className="flex items-center gap-1 px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition"
+          className="flex items-center gap-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
           disabled={page === 1}
           onClick={() => setPage((p) => Math.max(1, p - 1))}
         >
           <ChevronLeft className="w-4 h-4" /> Prev
         </button>
 
-        <div className="px-4 py-2 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-bold border border-indigo-100">
+        <div className="px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-sm font-extrabold border border-indigo-100 dark:border-indigo-900/60">
           Page {page} of {totalPages || 1}
         </div>
 
         <button
-          className="flex items-center gap-1 px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition"
+          className="flex items-center gap-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
           disabled={page >= totalPages}
           onClick={() => setPage((p) => p + 1)}
         >

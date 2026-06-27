@@ -189,6 +189,7 @@ async function routes(fastify) {
     },
     async (req) => {
       if (req.user.role === 'ADMIN') {
+        const pool = require('../../config/db');
         const all = await pool.query(
           'SELECT id, full_name, email, role FROM users WHERE deleted_at IS NULL'
         );

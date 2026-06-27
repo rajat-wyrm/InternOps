@@ -4,6 +4,7 @@ const {
   SEEDED_ADMIN_EMAIL,
   SEEDED_ADMIN_PASSWORD,
   resetSeededAdminPassword,
+  clearLoginAttempts,
   parseSetCookie,
   mergeCookies,
 } = require('./helpers');
@@ -32,6 +33,7 @@ beforeAll(async () => {
   // Defense in depth — globalSetup already does this, but a single-
   // file run with `jest path/to.test.js` skips the global.
   await resetSeededAdminPassword();
+  await clearLoginAttempts(); // prevent lockout from prior test runs
 
   // Defensive cleanup: delete any prior-run meetings and users tied to
   // the same fixture emails so duplicate-key errors don't cascade.

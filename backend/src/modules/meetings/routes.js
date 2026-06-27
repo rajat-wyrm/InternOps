@@ -9,7 +9,7 @@ function formatMeeting(m) {
   if (!m) return null;
   const dateStr = m.meeting_date
     ? m.meeting_date instanceof Date
-      ? m.meeting_date.toISOString().split('T')[0]
+      ? `${m.meeting_date.getFullYear()}-${String(m.meeting_date.getMonth() + 1).padStart(2, '0')}-${String(m.meeting_date.getDate()).padStart(2, '0')}`
       : String(m.meeting_date).split('T')[0]
     : undefined;
   return {
