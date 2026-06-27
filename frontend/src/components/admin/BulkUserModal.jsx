@@ -117,7 +117,9 @@ export default function BulkUserModal({ open, onClose }) {
               📋
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Bulk Add Users</h2>
+              <h2 className="text-base font-bold text-slate-900">
+                Bulk Add Users
+              </h2>
               <p className="text-xs text-slate-500">
                 Upload a CSV to add up to 100 users at once
               </p>
@@ -148,27 +150,36 @@ export default function BulkUserModal({ open, onClose }) {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition
-              ${dragging
-                ? 'border-emerald-500 bg-emerald-50'
-                : rows.length
-                  ? 'border-emerald-400 bg-emerald-50/60'
-                  : 'border-slate-300 bg-slate-50 hover:border-emerald-400 hover:bg-emerald-50/40'
+              ${
+                dragging
+                  ? 'border-emerald-500 bg-emerald-50'
+                  : rows.length
+                    ? 'border-emerald-400 bg-emerald-50/60'
+                    : 'border-slate-300 bg-slate-50 hover:border-emerald-400 hover:bg-emerald-50/40'
               }`}
           >
-            <Upload className={`w-8 h-8 mx-auto mb-3 ${dragging ? 'text-emerald-500' : 'text-slate-400'}`} />
+            <Upload
+              className={`w-8 h-8 mx-auto mb-3 ${dragging ? 'text-emerald-500' : 'text-slate-400'}`}
+            />
             {rows.length ? (
               <>
                 <p className="text-sm font-semibold text-emerald-600">
                   ✓ {rows.length} users loaded
                 </p>
-                <p className="text-xs text-slate-400 mt-1">Click or drop a new file to replace</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Click or drop a new file to replace
+                </p>
               </>
             ) : (
               <>
                 <p className="text-sm font-semibold text-slate-700">
-                  {dragging ? 'Drop your CSV here' : 'Drag & drop your CSV here'}
+                  {dragging
+                    ? 'Drop your CSV here'
+                    : 'Drag & drop your CSV here'}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">or click to browse files</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  or click to browse files
+                </p>
               </>
             )}
             <input
@@ -201,7 +212,9 @@ export default function BulkUserModal({ open, onClose }) {
                 <tbody className="divide-y divide-slate-100">
                   {rows.map((r, i) => (
                     <tr key={i} className="hover:bg-slate-50">
-                      <td className="px-3 py-2 text-slate-700">{r.fullName || '—'}</td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {r.fullName || '—'}
+                      </td>
                       <td className="px-3 py-2 text-slate-700">{r.email}</td>
                       <td className="px-3 py-2">
                         <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium text-[11px]">
