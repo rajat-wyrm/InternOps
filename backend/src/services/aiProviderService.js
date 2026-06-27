@@ -57,6 +57,10 @@ function getProviderOrder() {
 }
 
 function getCacheKey(payload) {
+  if (!payload || !payload.userId) {
+    throw new Error('AI cache key requires a userId');
+  }
+
   const cacheInput = {
     userId: payload.userId,
     messages: payload.messages,
