@@ -12,7 +12,10 @@ function safeGet(key) {
       ? window.localStorage.getItem(key)
       : null;
   } catch (err) {
-    console.warn(`[localStorage] Failed to read key "${key}", falling back to sessionStorage:`, err);
+    console.warn(
+      `[localStorage] Failed to read key "${key}", falling back to sessionStorage:`,
+      err
+    );
     hasStorageError = true;
     try {
       return typeof window !== 'undefined'
@@ -33,7 +36,10 @@ function safeSet(key, value) {
       window.localStorage.setItem(key, value);
     }
   } catch (err) {
-    console.warn(`[localStorage] Failed to write key "${key}", falling back to sessionStorage:`, err);
+    console.warn(
+      `[localStorage] Failed to write key "${key}", falling back to sessionStorage:`,
+      err
+    );
     hasStorageError = true;
     try {
       if (value === null || value === undefined) {
@@ -76,7 +82,11 @@ const useAuthStore = create((set, get) => ({
     if (accessToken !== undefined) safeSet('accessToken', accessToken);
     if (user !== undefined) safeSet('user', JSON.stringify(user));
 
-    set({ accessToken: nextToken, user: nextUser, storageError: hasStorageError });
+    set({
+      accessToken: nextToken,
+      user: nextUser,
+      storageError: hasStorageError,
+    });
   },
 
   setHydrated: () => set({ hydrated: true }),
