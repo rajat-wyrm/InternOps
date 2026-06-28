@@ -40,6 +40,60 @@ async function routes(fastify) {
     }
   );
 
+  // Bulk Register
+  fastify.post(
+    '/register/bulk',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Authentication'],
+        description: 'Bulk register users (Admin only)',
+      },
+    },
+    async (req, reply) => {
+      const userSchema = z.object({
+        email: z.string().email(),
+        password: z.string().min(8),
+        role: z.enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
+        managerId: z.string().uuid().optional(),
+        departmentId: z.string().uuid().optional(),
+        fullName: z.string().optional(),
+      });
+      const schema = z.object({ users: z.array(userSchema).min(1).max(100) });
+      const { users } = schema.parse(req.body);
+
+      const results = { success: [], failed: [] };
+      const ROLE_HIERARCHY = ['INTERN', 'CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'];
+      for (const userData of users) {
+        const callerLevel = ROLE_HIERARCHY.indexOf(req.user.role);
+        const targetLevel = ROLE_HIERARCHY.indexOf(userData.role);
+        if (targetLevel >= callerLevel) {
+          results.failed.push({
+            email: userData.email,
+            error: 'Cannot assign a role equal to or higher than your own.',
+          });
+          continue;
+        }
+        try {
+          const user = await service.register(userData, req.user);
+          results.success.push({ email: userData.email, id: user.id });
+        } catch (err) {
+          req.log.error(
+            { email: userData.email, err },
+            'Bulk register failed for user'
+          );
+          const safeMessage = err.message?.includes('duplicate')
+            ? 'Email already exists.'
+            : err.message?.includes('manager')
+              ? 'Invalid manager ID.'
+              : 'Failed to create user.';
+          results.failed.push({ email: userData.email, error: safeMessage });
+        }
+      }
+      return reply.status(207).send(results);
+    }
+  );
+
   // Login
   fastify.post(
     '/login',
