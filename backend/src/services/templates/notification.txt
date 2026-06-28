@@ -1,0 +1,7 @@
+InternOps - {{title}}
+
+{{message}}
+
+{{#if actionUrl}}Follow this link: {{actionUrl}}{{/if}}
+
+InternOps - Internal Operations Platform

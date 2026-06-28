@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS ratings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   rated_user_id UUID NOT NULL REFERENCES users(id),
   rated_by UUID NOT NULL REFERENCES users(id),
-  score INTEGER CHECK (score>=1 AND score<=5),
+  score INTEGER CHECK (score>=1 AND score<=10),
   remarks TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),

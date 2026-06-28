@@ -5,12 +5,12 @@
   }
 }
 class UnauthorizedError extends AppError {
-  constructor(message = "Unauthorized") {
+  constructor(message = 'Unauthorized') {
     super(message, 401);
   }
 }
 class BadRequestError extends AppError {
-  constructor(message = "Bad Request") {
+  constructor(message = 'Bad Request') {
     super(message, 400);
   }
 }

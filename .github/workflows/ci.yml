@@ -31,13 +31,15 @@ jobs:
       JWT_SECRET: ci-test-secret-do-not-use-in-prod
       PORT: 5000
       CORS_ORIGIN: http://localhost:5173
+      SEED_ADMIN_EMAIL: admin@internops.com
+      SEED_ADMIN_PASSWORD: Admin@123
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'npm'

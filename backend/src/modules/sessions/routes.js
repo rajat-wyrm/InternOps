@@ -1,5 +1,6 @@
-﻿const auth = require('../../middleware/auth');
+const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
+const sessionOwnership = require('../../middleware/sessionOwnership');
 const repo = require('./repository');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 
@@ -10,22 +11,33 @@ async function routes(fastify) {
   });
 
   // Revoke a specific session
-  fastify.delete('/me/:sessionId', { preHandler: [auth] }, async (req, reply) => {
-    const success = await repo.revokeSession(req.params.sessionId, req.user.id);
-    if (!success) return reply.status(404).send({ error: 'Session not found' });
-    await createAuditLog({
-      userId: req.user.id,
-      action: 'SESSION_REVOKED',
-      resourceType: 'session',
-      resourceId: req.params.sessionId,
-      ...extractRequestInfo(req),
-    });
-    return { message: 'Session revoked' };
-  });
+  fastify.delete(
+    '/me/:sessionId',
+    {
+      preHandler: [auth, sessionOwnership('sessionId')],
+    },
+    async (req, reply) => {
+      const success = await repo.revokeSession(
+        req.params.sessionId,
+        req.user.id
+      );
+      if (!success)
+        return reply.status(404).send({ error: 'Session not found' });
+      await createAuditLog({
+        userId: req.user.id,
+        action: 'SESSION_REVOKED',
+        resourceType: 'session',
+        resourceId: req.params.sessionId,
+        ...extractRequestInfo(req),
+      });
+      return { message: 'Session revoked' };
+    }
+  );
 
   // Revoke all other sessions
-  fastify.post('/me/revoke-all', { preHandler: [auth] }, async (req) => {
+  fastify.post('/me/revoke-all', { preHandler: [auth] }, async (req, reply) => {
     await repo.revokeAllUserSessions(req.user.id);
+    await require('../auth/repository').revokeAllUserTokensRedis(req.user.id);
     await createAuditLog({
       userId: req.user.id,
       action: 'ALL_SESSIONS_REVOKED',
@@ -36,18 +48,23 @@ async function routes(fastify) {
   });
 
   // Admin: revoke all sessions of a specific user
-  fastify.post('/admin/revoke-user/:userId', { preHandler: [auth, rbac('ADMIN')] }, async (req, reply) => {
-    const { userId } = req.params;
-    await require('../auth/repository').revokeAllUserTokensRedis(userId);
-    await createAuditLog({
-      userId: req.user.id,
-      action: 'ADMIN_REVOKED_USER_SESSIONS',
-      resourceType: 'session',
-      resourceId: userId,
-      ...extractRequestInfo(req),
-    });
-    return { message: `All sessions for user ${userId} revoked` };
-  });
+  fastify.post(
+    '/admin/revoke-user/:userId',
+    { preHandler: [auth, rbac('ADMIN')] },
+    async (req, reply) => {
+      const { userId } = req.params;
+      await repo.revokeAllUserSessions(userId);
+      await require('../auth/repository').revokeAllUserTokensRedis(userId);
+      await createAuditLog({
+        userId: req.user.id,
+        action: 'ADMIN_REVOKED_USER_SESSIONS',
+        resourceType: 'session',
+        resourceId: userId,
+        ...extractRequestInfo(req),
+      });
+      return { message: `All sessions for user ${userId} revoked` };
+    }
+  );
 }
 
 module.exports = routes;
