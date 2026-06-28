@@ -259,7 +259,10 @@ async function routes(fastify) {
         });
         return after;
       } catch (err) {
-        if (err.message.includes('outrank') || err.message.includes('not found')) {
+        if (
+          err.message.includes('outrank') ||
+          err.message.includes('not found')
+        ) {
           return reply.status(400).send({ error: err.message });
         }
         throw err;
