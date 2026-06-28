@@ -206,7 +206,10 @@ async function revokeAllUserTokensRedis(userId) {
       await redis.del(`user_tokens:${userId}`);
     }
   } catch (err) {
-    console.error(`Failed to clean up Redis sessions for user ${userId} in revokeAllUserTokensRedis:`, err);
+    console.error(
+      `Failed to clean up Redis sessions for user ${userId} in revokeAllUserTokensRedis:`,
+      err
+    );
   }
 }
 

@@ -365,10 +365,14 @@ describe('Auth Integration Tests', () => {
       expect(activeRefreshCookie).toBeDefined();
 
       // 2. Call admin revoke-user endpoint
-      const revokeRes = await inject('POST', `/api/sessions/admin/revoke-user/${adminUserId}`, {
-        headers: { Authorization: `Bearer ${freshAccessToken}` },
-        payload: {},
-      });
+      const revokeRes = await inject(
+        'POST',
+        `/api/sessions/admin/revoke-user/${adminUserId}`,
+        {
+          headers: { Authorization: `Bearer ${freshAccessToken}` },
+          payload: {},
+        }
+      );
       expect(revokeRes.statusCode).toBe(200);
 
       // 3. Attempt to refresh using the revoked cookie - must fail
@@ -383,4 +387,3 @@ describe('Auth Integration Tests', () => {
     });
   });
 });
-

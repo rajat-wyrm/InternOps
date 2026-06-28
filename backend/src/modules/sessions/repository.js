@@ -63,12 +63,18 @@ async function revokeSession(sessionId, userId) {
         }
       }
     } catch (err) {
-      console.error(`Failed to clean up Redis session ${sessionId} for user ${userId}:`, err);
+      console.error(
+        `Failed to clean up Redis session ${sessionId} for user ${userId}:`,
+        err
+      );
     }
   }
 
   // Update Postgres
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId);
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      sessionId
+    );
   let pgRes;
   if (isUuid) {
     pgRes = await pool.query(
@@ -82,7 +88,7 @@ async function revokeSession(sessionId, userId) {
     );
   }
 
-  return redisSuccess || (pgRes.rowCount > 0);
+  return redisSuccess || pgRes.rowCount > 0;
 }
 
 // ─── revokeAllUserSessions ───────────────────────────────────────────────────
@@ -108,7 +114,10 @@ async function revokeAllUserSessions(userId) {
       await redis.del(`user_tokens:${userId}`);
     }
   } catch (err) {
-    console.error(`Failed to clean up Redis sessions for user ${userId} in revokeAllUserSessions:`, err);
+    console.error(
+      `Failed to clean up Redis sessions for user ${userId} in revokeAllUserSessions:`,
+      err
+    );
   }
 }
 
