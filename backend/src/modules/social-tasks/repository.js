@@ -107,11 +107,25 @@ async function verifyProof(proofId, verifierId, verifierRole) {
 
   return res.rows[0];
 }
-async function getProofsByTask(taskId) { return (await pool.query('SELECT * FROM proof_submissions WHERE task_id=$1 AND deleted_at IS NULL', [taskId])).rows; }
-async function getProofsByIntern(internId) { return (await pool.query('SELECT * FROM proof_submissions WHERE intern_id=$1 AND deleted_at IS NULL', [internId])).rows; }
+async function getProofsByTask(taskId) {
+  return (
+    await pool.query(
+      'SELECT * FROM proof_submissions WHERE task_id=$1 AND deleted_at IS NULL',
+      [taskId]
+    )
+  ).rows;
+}
+async function getProofsByIntern(internId) {
+  return (
+    await pool.query(
+      'SELECT * FROM proof_submissions WHERE intern_id=$1 AND deleted_at IS NULL',
+      [internId]
+    )
+  ).rows;
+}
 async function updateTask(id, data) {
-    const res = await pool.query(
-        `UPDATE social_tasks 
+  const res = await pool.query(
+    `UPDATE social_tasks 
          SET title = $1, 
              description = $2, 
              target_platform = $3, 
@@ -120,30 +134,39 @@ async function updateTask(id, data) {
              updated_at = NOW()
          WHERE id = $6 
          RETURNING *`,
-        [
-            data.title,
-            data.description,
-            data.targetPlatform || data.target_platform, // handles camelCase or snake_case inputs safely
-            data.taskLink || data.task_link,
-            data.deadline,
-            id
-        ]
-    );
-    return res.rows[0];
+    [
+      data.title,
+      data.description,
+      data.targetPlatform || data.target_platform, // handles camelCase or snake_case inputs safely
+      data.taskLink || data.task_link,
+      data.deadline,
+      id,
+    ]
+  );
+  return res.rows[0];
 }
 
 async function deleteTask(id) {
-    // Looks like your database uses soft-deletes via 'deleted_at'. Let's follow that standard pattern!
-    const res = await pool.query(
-        `UPDATE social_tasks 
+  // Looks like your database uses soft-deletes via 'deleted_at'. Let's follow that standard pattern!
+  const res = await pool.query(
+    `UPDATE social_tasks 
          SET deleted_at = NOW() 
          WHERE id = $1 
          RETURNING *`,
-        [id]
-    );
-    return res.rows[0];
+    [id]
+  );
+  return res.rows[0];
 }
-module.exports = { createTask, getTasks, updateTask, deleteTask, submitProof, verifyProof, getProofsByTask, getProofsByIntern };
+module.exports = {
+  createTask,
+  getTasks,
+  updateTask,
+  deleteTask,
+  submitProof,
+  verifyProof,
+  getProofsByTask,
+  getProofsByIntern,
+};
 async function getProofsByTask(taskId) {
   return (
     await pool.query(
