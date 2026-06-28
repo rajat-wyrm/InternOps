@@ -12,7 +12,6 @@ const ROLE_COLOR = {
 };
 const STATUS_COLOR = { PRESENT: 'green', ABSENT: 'red', HALF_DAY: 'yellow' };
 
-
 export default function Reports() {
   const today = new Date().toISOString().slice(0, 10);
   const [from, setFrom] = useState(today);
