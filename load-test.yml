@@ -1,4 +1,4 @@
-﻿config:
+config:
   target: 'http://localhost:5000'
   phases:
     - duration: 60
@@ -12,40 +12,118 @@
       arrivalRate: 100
       name: 'Sustained load'
   processor: './load-processor.js'
-  variables:
-    email:
-      - 'user1@test.com'
-      - 'user2@test.com'
-      - 'user3@test.com'
-    password: 'LoadTest123!'
   ensure:
     p95: 500
     p99: 1000
 
 scenarios:
-  - name: 'Authenticate and access APIs'
+  - name: 'Intern Flow'
+    weight: 90
+    beforeScenario: 'generateRandomEmail'
     flow:
+      # 1. Fetch CSRF token first
+      - get:
+          url: '/api/auth/csrf-token'
+          capture:
+            - json: '$.csrfToken'
+              as: 'csrfToken'
+      # 2. Login as the dynamic load intern
       - post:
           url: '/api/auth/login'
+          headers:
+            'X-CSRF-Token': '{{ csrfToken }}'
           json:
             email: '{{ $randomEmail }}'
-            password: '{{ password }}'
+            password: 'LoadTest123!'
           capture:
             - json: '$.accessToken'
               as: 'accessToken'
             - json: '$.refreshToken'
               as: 'refreshToken'
+            - json: '$.user.id'
+              as: 'userId'
+      # 3. Retrieve own profile
       - get:
           url: '/api/users/me'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
+      # 4. Fetch notifications
       - get:
           url: '/api/notifications'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
+      # 5. Fetch own attendance records
+      - get:
+          url: '/api/attendance/{{ userId }}'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+      # 6. Update own profile
+      - patch:
+          url: '/api/users/me'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+            'X-CSRF-Token': '{{ csrfToken }}'
+          json:
+            full_name: 'Load Test User'
+            phone: '1234567890'
+      # 7. Refresh access token
       - post:
           url: '/api/auth/refresh'
+          headers:
+            'X-CSRF-Token': '{{ csrfToken }}'
           json:
             refreshToken: '{{ refreshToken }}'
+      # 8. Check health endpoint
       - get:
-          url: '/api/health'
+          url: '/health'
+
+  - name: 'Admin Flow'
+    weight: 10
+    flow:
+      # 1. Fetch CSRF token
+      - get:
+          url: '/api/auth/csrf-token'
+          capture:
+            - json: '$.csrfToken'
+              as: 'csrfToken'
+      # 2. Login as system admin
+      - post:
+          url: '/api/auth/login'
+          headers:
+            'X-CSRF-Token': '{{ csrfToken }}'
+          json:
+            email: 'admin@internops.com'
+            password: 'Admin@123'
+          capture:
+            - json: '$.accessToken'
+              as: 'accessToken'
+      # 3. Query paginated users directory
+      - get:
+          url: '/api/users'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          qs:
+            page: 1
+            limit: 20
+      # 4. Fetch dashboard overview statistics
+      - get:
+          url: '/api/analytics/overview'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+      # 5. Retrieve top-performers list
+      - get:
+          url: '/api/analytics/top-performers'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          qs:
+            role: 'INTERN'
+            limit: 10
+      # 6. Fetch attendance trends (fixed ReferenceError)
+      - get:
+          url: '/api/analytics/attendance-trends'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          qs:
+            months: 6
+      - get:
+          url: '/health'
