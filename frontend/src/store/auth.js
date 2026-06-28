@@ -1,16 +1,27 @@
 import { create } from 'zustand';
-import { clearCsrfToken } from '../lib/axios';
+
 // Hydrate from localStorage so a refresh keeps the session.
 // We defer the read so it always runs inside a browser context and
 // can never crash module import in environments without localStorage
 // (SSR, tests, locked-down sandboxes, etc.).
+let hasStorageError = false;
+
 function safeGet(key) {
   try {
     return typeof window !== 'undefined'
       ? window.localStorage.getItem(key)
       : null;
-  } catch {
-    return null;
+  } catch (err) {
+    console.warn(`[localStorage] Failed to read key "${key}", falling back to sessionStorage:`, err);
+    hasStorageError = true;
+    try {
+      return typeof window !== 'undefined'
+        ? window.sessionStorage.getItem(key)
+        : null;
+    } catch (sessErr) {
+      console.warn(`[sessionStorage] Failed to read key "${key}":`, sessErr);
+      return null;
+    }
   }
 }
 function safeSet(key, value) {
@@ -21,8 +32,18 @@ function safeSet(key, value) {
     } else {
       window.localStorage.setItem(key, value);
     }
-  } catch {
-    /* storage may be disabled — fall through */
+  } catch (err) {
+    console.warn(`[localStorage] Failed to write key "${key}", falling back to sessionStorage:`, err);
+    hasStorageError = true;
+    try {
+      if (value === null || value === undefined) {
+        window.sessionStorage.removeItem(key);
+      } else {
+        window.sessionStorage.setItem(key, value);
+      }
+    } catch (sessErr) {
+      console.warn(`[sessionStorage] Failed to write key "${key}":`, sessErr);
+    }
   }
 }
 function safeGetJSON(key) {
@@ -42,6 +63,7 @@ const useAuthStore = create((set, get) => ({
   accessToken: initialToken,
   user: initialUser,
   hydrated: false,
+  storageError: hasStorageError,
 
   // setAuth always writes both fields together so partial updates
   // can't leave localStorage and the in-memory store disagree.
@@ -54,7 +76,7 @@ const useAuthStore = create((set, get) => ({
     if (accessToken !== undefined) safeSet('accessToken', accessToken);
     if (user !== undefined) safeSet('user', JSON.stringify(user));
 
-    set({ accessToken: nextToken, user: nextUser });
+    set({ accessToken: nextToken, user: nextUser, storageError: hasStorageError });
   },
 
   setHydrated: () => set({ hydrated: true }),
@@ -62,8 +84,7 @@ const useAuthStore = create((set, get) => ({
   logout: () => {
     safeSet('accessToken', null);
     safeSet('user', null);
-    clearCsrfToken();
-    set({ accessToken: null, user: null });
+    set({ accessToken: null, user: null, storageError: hasStorageError });
   },
 }));
 
