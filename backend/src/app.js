@@ -284,6 +284,10 @@ const start = async () => {
   }
 };
 
+app.addHook('onClose', async () => {
+  await pool.end();
+});
+
 const gracefulShutdown = async (signal) => {
   console.log(`Received ${signal}, shutting down gracefully...`);
 

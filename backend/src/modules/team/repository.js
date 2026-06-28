@@ -108,39 +108,47 @@ async function updateMember(id, data) {
   return getMemberById(id);
 }
 
-// Create a new member under the given manager, with optional detail fields.
 async function createMember(data, client = pool) {
   if (!data.full_name?.trim()) {
     throw new Error('Full name is required');
   }
   const hash = await argon2.hash(data.password);
-  const {
-    rows: [created],
-  } = await client.query(
-    `INSERT INTO users
-       (email, password_hash, role, manager_id, department_id, full_name,
-        phone, college, course, year_of_study, position, joining_date, internship_status, location, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-     RETURNING id`,
-    [
-      data.email,
-      hash,
-      data.role,
-      data.manager_id,
-      data.department_id || null,
-      data.full_name || null,
-      data.phone || null,
-      data.college || null,
-      data.course || null,
-      data.year_of_study || null,
-      data.position || null,
-      data.joining_date || null,
-      data.internship_status || 'ACTIVE',
-      data.location || null,
-      data.notes || null,
-    ]
-  );
-  return getMemberById(created.id, client);
+  try {
+    const {
+      rows: [created],
+    } = await client.query(
+      `INSERT INTO users
+         (email, password_hash, role, manager_id, department_id, full_name,
+          phone, college, course, year_of_study, position, joining_date, internship_status, location, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       RETURNING id`,
+      [
+        data.email,
+        hash,
+        data.role,
+        data.manager_id,
+        data.department_id || null,
+        data.full_name || null,
+        data.phone || null,
+        data.college || null,
+        data.course || null,
+        data.year_of_study || null,
+        data.position || null,
+        data.joining_date || null,
+        data.internship_status || 'ACTIVE',
+        data.location || null,
+        data.notes || null,
+      ]
+    );
+    return getMemberById(created.id, client);
+  } catch (err) {
+    if (err.code === '23505') {
+      const error = new Error('A user with this email already exists');
+      error.statusCode = 409;
+      throw error;
+    }
+    throw err;
+  }
 }
 
 async function emailExists(email, client = pool) {
