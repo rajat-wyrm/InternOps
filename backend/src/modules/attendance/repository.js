@@ -142,5 +142,5 @@ module.exports = {
   getMonthlyStats,
   bulkMark,
   listHierarchySubordinates,
-  getAuthorizedSubordinates
+  getAuthorizedSubordinates,
 };
