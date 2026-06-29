@@ -9,6 +9,26 @@ async function verifyProof(proofId, verifierId, verifierRole) {
   );
   return res.rows[0];
 }
+async function getAllInternEmails() {
+  const res = await pool.query(
+    `SELECT email
+     FROM users
+     WHERE role IN ('INTERN', 'CAPTAIN')
+       AND email IS NOT NULL`
+  );
+
+  return res.rows.map((row) => row.email);
+}
+async function getTasks(filters, userId, userRole) {
+  const params = [];
+  const where = ['st.deleted_at IS NULL'];
+
+  if (!['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(userRole)) {
+    params.push(userId);
+    where.push(
+      `(st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL) OR st.created_by = $${params.length})`
+    );
+  }
 
 async function updateTask(id, data) {
   const res = await pool.query(
@@ -65,6 +85,21 @@ async function getProofsByIntern(internId) {
   ).rows;
 }
 
+async function getProof(proofId) {
+  const res = await pool.query(
+    'SELECT * FROM proof_submissions WHERE id = $1',
+    [proofId]
+  );
+  return res.rows[0] || null;
+}
+
+async function deleteProof(proofId) {
+  await pool.query(
+    'UPDATE proof_submissions SET deleted_at = NOW() WHERE id = $1',
+    [proofId]
+  );
+}
+
 module.exports = {
   getUserEmail,
   isTaskAssignedToUser,
@@ -75,4 +110,7 @@ module.exports = {
   verifyProof,
   getProofsByTask,
   getProofsByIntern,
+  getProof,
+  deleteProof,
+  getAllInternEmails,
 };

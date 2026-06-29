@@ -13,6 +13,7 @@ import {
   Clock,
   Plus,
   X,
+  Trash2,
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
@@ -28,7 +29,7 @@ const PLATFORM_ICON = {
 };
 
 export default function Tasks() {
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const [selectedTask, setSelectedTask] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -70,6 +71,14 @@ export default function Tasks() {
   const verifyMutation = useMutation({
     mutationFn: (proofId) => api.patch(`/proofs/${proofId}/verify`),
     onSuccess: () => refetchProofs(),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (proofId) => api.delete(`/proofs/${proofId}`),
+    onSuccess: () => {
+      refetchProofs();
+      queryClient.invalidateQueries({ queryKey: ['proofs'] });
+    },
   });
 
   const handleUpload = (e, taskId) => {
@@ -322,6 +331,26 @@ export default function Tasks() {
                             >
                               <span className="flex items-center gap-1">
                                 <CheckCircle className="w-4 h-4" /> Verify
+                              </span>
+                            </Btn>
+                          )}
+
+                          {user?.role === 'ADMIN' && (
+                            <Btn
+                              variant="outline"
+                              className="rounded-2xl text-red-500 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30"
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    'Delete this proof? This cannot be undone.'
+                                  )
+                                ) {
+                                  deleteMutation.mutate(p.id);
+                                }
+                              }}
+                            >
+                              <span className="flex items-center gap-1">
+                                <Trash2 className="w-4 h-4" /> Delete
                               </span>
                             </Btn>
                           )}

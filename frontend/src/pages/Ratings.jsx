@@ -43,7 +43,7 @@ function Stars({ value }) {
 }
 
 export default function Ratings() {
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
   const canRate = ['ADMIN', 'CAPTAIN', 'TL', 'SENIOR_TL'].includes(user?.role);
   const isManager = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(
     user?.role

@@ -431,7 +431,7 @@ function InternHome({ user }) {
 }
 
 export default function Home() {
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
 
   const { data: me } = useQuery({
     queryKey: ['myProfile'],
