@@ -12,6 +12,7 @@ const {
 const { verifyEmail, sendVerificationEmail } = require('./verificationService');
 const repo = require('./repository');
 const { forgotPassword, resetPassword } = require('./resetService');
+const { toSchema } = require('../../utils/schemaHelper');
 const isProduction = process.env.NODE_ENV === 'production';
 
 async function routes(fastify) {
@@ -23,6 +24,21 @@ async function routes(fastify) {
       schema: {
         tags: ['Authentication'],
         description: 'Register a new user (Admin only)',
+        body: {
+          type: 'object',
+          required: ['email', 'password', 'role'],
+          properties: {
+            email: { type: 'string', format: 'email' },
+            password: { type: 'string', minLength: 8 },
+            role: {
+              type: 'string',
+              enum: ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+            },
+            managerId: { type: 'string', format: 'uuid' },
+            departmentId: { type: 'string', format: 'uuid' },
+            fullName: { type: 'string' },
+          },
+        },
       },
     },
     async (req, reply) => {
@@ -48,6 +64,14 @@ async function routes(fastify) {
       schema: {
         tags: ['Authentication'],
         description: 'Login with email and password',
+        body: {
+          type: 'object',
+          required: ['email', 'password'],
+          properties: {
+            email: { type: 'string', format: 'email' },
+            password: { type: 'string' },
+          },
+        },
       },
     },
     async (req, reply) => {
@@ -125,6 +149,12 @@ async function routes(fastify) {
       schema: {
         tags: ['Authentication'],
         description: 'Logout and revoke refresh token',
+        body: {
+          type: 'object',
+          properties: {
+            refreshToken: { type: 'string' },
+          },
+        },
       },
     },
     async (req, reply) => {
@@ -157,28 +187,52 @@ async function routes(fastify) {
   );
 
   // Get CSRF token
-  fastify.get('/csrf-token', async (req, reply) => {
-    const csrfToken = generateToken(req, reply);
-    reply.setCookie('csrf-token', csrfToken, {
-      httpOnly: false,
-      secure: isProduction,
-      sameSite: 'strict',
-      path: '/',
-    });
-    return { csrfToken };
-  });
+  fastify.get(
+    '/csrf-token',
+    { schema: { tags: ['Authentication'], description: 'Get CSRF token' } },
+    async (req, reply) => {
+      const csrfToken = generateToken(req, reply);
+      reply.setCookie('csrf-token', csrfToken, {
+        httpOnly: false,
+        secure: isProduction,
+        sameSite: 'strict',
+        path: '/',
+      });
+      return { csrfToken };
+    }
+  );
 
   // Verify email
-  fastify.post('/verify-email', async (req, reply) => {
-    const { token } = z.object({ token: z.string() }).parse(req.body);
-    await verifyEmail(token);
-    return { message: 'Email verified successfully. You can now log in.' };
-  });
+  fastify.post(
+    '/verify-email',
+    {
+      schema: {
+        tags: ['Authentication'],
+        description: 'Verify email with token',
+        body: {
+          type: 'object',
+          required: ['token'],
+          properties: { token: { type: 'string' } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { token } = z.object({ token: z.string() }).parse(req.body);
+      await verifyEmail(token);
+      return { message: 'Email verified successfully. You can now log in.' };
+    }
+  );
 
   // Resend verification email
   fastify.post(
     '/resend-verification',
-    { preHandler: [auth] },
+    {
+      preHandler: [auth],
+      schema: {
+        tags: ['Authentication'],
+        description: 'Resend verification email',
+      },
+    },
     async (req, reply) => {
       const user = await repo.findById(req.user.id);
       if (!user) return reply.status(404).send({ error: 'User not found' });
@@ -188,23 +242,54 @@ async function routes(fastify) {
   );
 
   // Forgot password
-  fastify.post('/forgot-password', async (req, reply) => {
-    const { email } = z.object({ email: z.string().email() }).parse(req.body);
-    await forgotPassword(email, audit.extractRequestInfo(req));
-    return { message: 'If that email exists, a reset link has been sent.' };
-  });
+  fastify.post(
+    '/forgot-password',
+    {
+      schema: {
+        tags: ['Authentication'],
+        description: 'Send password reset email',
+        body: {
+          type: 'object',
+          required: ['email'],
+          properties: { email: { type: 'string', format: 'email' } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { email } = z.object({ email: z.string().email() }).parse(req.body);
+      await forgotPassword(email, audit.extractRequestInfo(req));
+      return { message: 'If that email exists, a reset link has been sent.' };
+    }
+  );
 
   // Reset password
-  fastify.post('/reset-password', async (req, reply) => {
-    const { token, newPassword } = z
-      .object({ token: z.string(), newPassword: z.string().min(8) })
-      .parse(req.body);
-    await resetPassword(token, newPassword, audit.extractRequestInfo(req));
-    return {
-      message:
-        'Password reset successful. Please log in with your new password.',
-    };
-  });
+  fastify.post(
+    '/reset-password',
+    {
+      schema: {
+        tags: ['Authentication'],
+        description: 'Reset password with token',
+        body: {
+          type: 'object',
+          required: ['token', 'newPassword'],
+          properties: {
+            token: { type: 'string' },
+            newPassword: { type: 'string', minLength: 8 },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { token, newPassword } = z
+        .object({ token: z.string(), newPassword: z.string().min(8) })
+        .parse(req.body);
+      await resetPassword(token, newPassword, audit.extractRequestInfo(req));
+      return {
+        message:
+          'Password reset successful. Please log in with your new password.',
+      };
+    }
+  );
 }
 
 module.exports = routes;

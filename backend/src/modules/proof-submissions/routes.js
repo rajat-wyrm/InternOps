@@ -1,4 +1,6 @@
 const auth = require('../../middleware/auth');
+const { z } = require('zod');
+const { toSchema } = require('../../utils/schemaHelper');
 const rbac = require('../../middleware/rbac');
 const repo = require('../social-tasks/repository');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
@@ -30,7 +32,13 @@ async function routes(fastify) {
   // Submit proof (intern only)
   fastify.post(
     '/submit',
-    { preHandler: [auth, rbac('INTERN')] },
+    {
+      preHandler: [auth, rbac('INTERN')],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Submit proof with image file (multipart)',
+      },
+    },
     async (req, reply) => {
       const data = await req.file();
 
@@ -108,7 +116,14 @@ async function routes(fastify) {
   // Verify proof (Captain, TL, Senior TL) with ownership over the intern
   fastify.patch(
     '/:id/verify',
-    { preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')] },
+    {
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Verify a proof submission',
+        params: toSchema(z.object({ id: z.string() })),
+      },
+    },
     async (req, reply) => {
       // Repository enforces hierarchy check; the route only validates
       // existence and delegates authorization to the data layer.
@@ -142,19 +157,40 @@ async function routes(fastify) {
 
   fastify.get(
     '/task/:taskId',
-    { preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')] },
+    {
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Get proofs by task',
+        params: toSchema(z.object({ taskId: z.string() })),
+      },
+    },
     async (req) => {
       return repo.getProofsByTask(req.params.taskId);
     }
   );
 
-  fastify.get('/my', { preHandler: [auth] }, async (req) => {
-    return repo.getProofsByIntern(req.user.id);
-  });
+  fastify.get(
+    '/my',
+    {
+      preHandler: [auth],
+      schema: { tags: ['Proofs'], description: 'Get own proof submissions' },
+    },
+    async (req) => {
+      return repo.getProofsByIntern(req.user.id);
+    }
+  );
 
   fastify.delete(
     '/:id',
-    { preHandler: [auth, rbac('ADMIN')] },
+    {
+      preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Delete a proof submission',
+        params: toSchema(z.object({ id: z.string() })),
+      },
+    },
     async (req, reply) => {
       const proof = await repo.getProof(req.params.id);
       if (!proof) {

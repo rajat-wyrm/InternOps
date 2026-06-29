@@ -247,6 +247,18 @@ app.addHook('onResponse', async (request) => {
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
 
+  // Fastify AJV validation errors (from schema.body/params/querystring)
+  if (error.validation) {
+    return reply.status(400).send({
+      error: 'Validation error',
+      details: error.validation.map((v) => ({
+        path: v.instancePath || v.dataPath,
+        message: v.message,
+        keyword: v.keyword,
+      })),
+    });
+  }
+
   if (error.name === 'ZodError' || Array.isArray(error.issues)) {
     return reply.status(400).send({
       error: 'Validation error',
