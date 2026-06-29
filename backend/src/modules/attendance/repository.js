@@ -119,10 +119,28 @@ async function listHierarchySubordinates(managerId, targetIds) {
   return new Set(res.rows.map((r) => r.id));
 }
 
+// Add this to your repository.js
+async function getAuthorizedSubordinates(managerId) {
+  const res = await pool.query(
+    `WITH RECURSIVE subordinates AS (
+       SELECT id, full_name, email, role, 0 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+       UNION ALL
+       SELECT u.id, u.full_name, u.email, u.role, s.depth + 1
+       FROM users u
+       INNER JOIN subordinates s ON u.manager_id = s.id
+       WHERE u.deleted_at IS NULL AND s.depth < 100
+     )
+     SELECT id, full_name, email, role FROM subordinates`,
+    [managerId]
+  );
+  return res.rows;
+}
+
 module.exports = {
   markAttendance,
   getAttendance,
   getMonthlyStats,
   bulkMark,
   listHierarchySubordinates,
+  getAuthorizedSubordinates
 };

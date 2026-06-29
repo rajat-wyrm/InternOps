@@ -17,8 +17,18 @@ async function noticesRoutes(fastify) {
 
   // PUBLIC — no auth
   fastify.get('/api/notices/public', async (_req, reply) => {
-    const notices = await repo.getActiveNotices();
-    return reply.send(notices);
+    try {
+      const notices = await repo.getActiveNotices();
+      return reply.send(notices);
+    } catch (err) {
+      // If the notices table does not yet exist (migration pending), return an
+      // empty list rather than a 500 so the Login page still loads correctly.
+      _req.log.warn(
+        { err },
+        'notices table unavailable – returning empty list'
+      );
+      return reply.send([]);
+    }
   });
 
   // PROTECTED — admin + senior_tl

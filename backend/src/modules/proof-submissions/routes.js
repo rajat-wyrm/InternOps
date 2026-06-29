@@ -9,7 +9,7 @@ const config = require('../../config');
 const { pipeline } = require('stream/promises');
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/gif'];
 const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.gif'];
-
+const uploadRepo = require('../uploads/repository');
 const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
   'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
@@ -151,6 +151,28 @@ async function routes(fastify) {
   fastify.get('/my', { preHandler: [auth] }, async (req) => {
     return repo.getProofsByIntern(req.user.id);
   });
+
+  fastify.delete(
+    '/:id',
+    { preHandler: [auth, rbac('ADMIN')] },
+    async (req, reply) => {
+      const proof = await repo.getProof(req.params.id);
+      if (!proof) {
+        return reply.status(404).send({ error: 'Proof not found' });
+      }
+      await repo.deleteProof(req.params.id);
+      await uploadRepo.deleteFile(proof.image_path);
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'PROOF_DELETED',
+        resourceType: 'proof',
+        resourceId: req.params.id,
+      };
+
+      return { success: true };
+    }
+  );
 }
 
 module.exports = routes;

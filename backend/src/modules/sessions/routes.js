@@ -1,6 +1,5 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
-const sessionOwnership = require('../../middleware/sessionOwnership');
 const repo = require('./repository');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 
@@ -10,11 +9,11 @@ async function routes(fastify) {
     return repo.getUserSessions(req.user.id);
   });
 
-  // Revoke a specific session
+  // Revoke a specific session (atomic ownership check + revoke)
   fastify.delete(
     '/me/:sessionId',
     {
-      preHandler: [auth, sessionOwnership('sessionId')],
+      preHandler: [auth],
     },
     async (req, reply) => {
       const success = await repo.revokeSession(
