@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, Calendar, Star, Target, Filter } from 'lucide-react';
 import api from '../../lib/axios';
-import { Card, Input, Badge, Spinner } from '../../components/ui';
+import { Card, Badge, Spinner } from '../../components/ui';
+import CustomDatePicker from '../../components/CustomDatePicker';
 
 const ROLE_COLOR = {
   ADMIN: 'purple',
@@ -150,10 +151,11 @@ export default function Reports() {
               From
             </label>
 
-            <Input
-              type="date"
+            <CustomDatePicker
               value={from}
-              onChange={(e) => setFrom(e.target.value)}
+              onChange={setFrom}
+              placeholder="Select from date"
+              className="w-full"
             />
           </div>
 
@@ -162,10 +164,11 @@ export default function Reports() {
               To
             </label>
 
-            <Input
-              type="date"
+            <CustomDatePicker
               value={to}
-              onChange={(e) => setTo(e.target.value)}
+              onChange={setTo}
+              placeholder="Select to date"
+              className="w-full"
             />
           </div>
         </div>

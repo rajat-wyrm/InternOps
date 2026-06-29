@@ -73,7 +73,7 @@ const nav = [
 ];
 
 const adminNav = [
-  { path: '/admin', label: 'users', icon: Settings },
+  { path: '/admin', label: 'Users', icon: Settings },
   { path: '/departments', label: 'Departments', icon: Building },
   { path: '/audit', label: 'Audit Log', icon: ClipboardList },
   { path: '/assistant', label: 'AI Assistant', icon: Bot },
@@ -85,7 +85,8 @@ const MINI_LOGO_SRC = '/uslogo.ico';
 export default function DashboardLayout() {
   const loc = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
   const role = user?.role;
   const isAdmin = role === 'ADMIN';

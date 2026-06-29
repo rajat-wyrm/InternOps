@@ -3,6 +3,7 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { Card, Btn, Input } from './ui';
 import CustomSelect from './CustomSelect';
+import CustomDatePicker from './CustomDatePicker';
 
 // Client-side cap that matches the backend zod limit in
 // backend/src/modules/attendance/routes.js. We refuse to even render the
@@ -40,6 +41,7 @@ export default function BulkAttendanceForm() {
   const team = reports ?? [];
   const atLimit = selectedUsers.length >= BULK_MAX;
   const allSelected = team.length > 0 && selectedUsers.length === team.length;
+  const today = new Date().toISOString().slice(0, 10);
 
   const statusOptions = [
     { value: 'PRESENT', label: 'Present' },
@@ -79,7 +81,7 @@ export default function BulkAttendanceForm() {
       return setError(`Cannot bulk-mark more than ${BULK_MAX} members at once`);
     }
 
-    if (date > new Date().toISOString().slice(0, 10)) {
+    if (date > today) {
       return setError('Future dates cannot be selected for bulk operations');
     }
 
@@ -188,12 +190,13 @@ export default function BulkAttendanceForm() {
               Date
             </label>
 
-            <Input
-              type="date"
+            <CustomDatePicker
               value={date}
-              onChange={(e) => setDate(e.target.value)}
-              max={new Date().toISOString().slice(0, 10)}
-              required
+              onChange={setDate}
+              max={today}
+              placeholder="Select date"
+              disabled={bulkMutation.isPending}
+              className="w-full"
             />
           </div>
 
@@ -207,6 +210,7 @@ export default function BulkAttendanceForm() {
               onChange={setStatus}
               options={statusOptions}
               placeholder="Select status"
+              disabled={bulkMutation.isPending}
               className="w-full"
             />
           </div>
@@ -220,6 +224,7 @@ export default function BulkAttendanceForm() {
               placeholder="Optional remarks"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
+              disabled={bulkMutation.isPending}
             />
           </div>
         </div>

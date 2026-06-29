@@ -85,11 +85,12 @@ async function routes(fastify) {
         const adminCount = await repo.countOtherActiveAdmins(req.params.id);
 
         if (adminCount === 0) {
-          return reply.status(409).send({
-            error: 'Cannot suspend the last admin',
+          return reply.status(400).send({
+            error: 'Cannot suspend the last active admin',
           });
         }
       }
+
       await repo.suspendUser(req.params.id);
       req.auditOnResponse = {
         userId: req.user.id,

@@ -243,3 +243,25 @@ html.dark select option:hover {
 .dark .text-purple-700 {
   color: #d8b4fe !important;
 }
+
+.notice-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.notice-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notice-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(129, 140, 248, 0.5);
+  border-radius: 9999px;
+}
+
+.notice-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 140, 248, 0.8);
+}
+
+.notice-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 140, 248, 0.6) transparent;
+}

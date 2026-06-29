@@ -8,7 +8,8 @@ import {
   AlertCircle,
   FileSpreadsheet,
 } from 'lucide-react';
-import { Card, Input } from '../../components/ui';
+import { Card } from '../../components/ui';
+import CustomDatePicker from '../../components/CustomDatePicker';
 import api from '../../lib/axios';
 
 const EXPORTS = [
@@ -140,10 +141,11 @@ export default function Exports() {
               From
             </label>
 
-            <Input
-              type="date"
+            <CustomDatePicker
               value={from}
-              onChange={(e) => setFrom(e.target.value)}
+              onChange={setFrom}
+              placeholder="Select from date"
+              className="w-full"
             />
           </div>
 
@@ -152,10 +154,11 @@ export default function Exports() {
               To
             </label>
 
-            <Input
-              type="date"
+            <CustomDatePicker
               value={to}
-              onChange={(e) => setTo(e.target.value)}
+              onChange={setTo}
+              placeholder="Select to date"
+              className="w-full"
             />
           </div>
         </div>

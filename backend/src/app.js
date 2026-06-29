@@ -1,4 +1,7 @@
 require('dotenv').config();
+const validateEnv = require('./config/validateEnv');
+validateEnv();
+
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
@@ -9,8 +12,7 @@ const { initializeWebSocket } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
 
 const app = Fastify({
-  trustProxy:
-    config.nodeEnv === 'production' ? [config.trustedProxyCidr] : 'loopback',
+  trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
   logger:
     config.nodeEnv === 'development'
       ? { transport: { target: 'pino-pretty' } }
@@ -252,8 +254,15 @@ app.setErrorHandler((error, request, reply) => {
     });
   }
 
-  return reply.status(error.statusCode || 500).send({
-    error: error.message || 'Internal Server Error',
+  // Preserve messages for explicit HTTP errors, otherwise hide internal details
+  const statusCode = error.statusCode || 500;
+  const message =
+    statusCode < 500
+      ? error.message
+      : 'An unexpected error occurred. Please try again later.';
+
+  return reply.status(statusCode).send({
+    error: message,
   });
 });
 

@@ -1,18 +1,69 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, Trophy, TrendingUp, Building2, Filter } from 'lucide-react';
 import api from '../../lib/axios';
-import { Card, Input, Table, Badge, Spinner } from '../../components/ui';
+import { Card, Table, Badge, Spinner } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
 
 const MEDAL = ['🥇', '🥈', '🥉'];
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const ALL_MONTH_OPTIONS = [
+  { value: '1', label: 'January' },
+  { value: '2', label: 'February' },
+  { value: '3', label: 'March' },
+  { value: '4', label: 'April' },
+  { value: '5', label: 'May' },
+  { value: '6', label: 'June' },
+  { value: '7', label: 'July' },
+  { value: '8', label: 'August' },
+  { value: '9', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+];
+
+function getYearOptions() {
+  const startYear = 2000;
+  const currentYear = new Date().getFullYear();
+
+  return Array.from({ length: currentYear - startYear + 1 }, (_, index) => {
+    const year = currentYear - index;
+
+    return {
+      value: String(year),
+      label: String(year),
+    };
+  });
+}
+
+function getMonthOptions(selectedYear) {
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
+
+  if (Number(selectedYear) === currentYear) {
+    return ALL_MONTH_OPTIONS.filter(
+      (month) => Number(month.value) <= currentMonth
+    );
+  }
+
+  return ALL_MONTH_OPTIONS;
+}
+
 export default function Analytics() {
   const [deptId, setDeptId] = useState('');
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [month, setMonth] = useState(String(new Date().getMonth() + 1));
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+
+  const yearOptions = getYearOptions();
+  const monthOptions = getMonthOptions(year);
+
+  useEffect(() => {
+    if (!monthOptions.some((option) => option.value === month)) {
+      setMonth(monthOptions[monthOptions.length - 1]?.value || '1');
+    }
+  }, [month, monthOptions]);
 
   const { data: departments = [], isLoading: loadingDepts } = useQuery({
     queryKey: ['departmentsList'],
@@ -235,7 +286,7 @@ export default function Analytics() {
         </div>
 
         <div className="flex flex-wrap gap-4 mb-6 p-4 bg-slate-50 dark:bg-slate-800/70 rounded-3xl border border-slate-200 dark:border-slate-700">
-          <div className="flex-1 min-w-[220px]">
+          <div className="flex-1 min-w-[260px]">
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase mb-2 flex items-center gap-1">
               <Filter className="w-3 h-3" /> Department
             </label>
@@ -250,29 +301,31 @@ export default function Analytics() {
             />
           </div>
 
-          <div className="w-28">
+          <div className="w-full sm:w-44">
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase mb-2 block">
               Month
             </label>
 
-            <Input
-              type="number"
-              min="1"
-              max="12"
+            <CustomSelect
               value={month}
-              onChange={(e) => setMonth(e.target.value)}
+              onChange={setMonth}
+              options={monthOptions}
+              placeholder="Select month"
+              className="w-full"
             />
           </div>
 
-          <div className="w-32">
+          <div className="w-full sm:w-40">
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase mb-2 block">
               Year
             </label>
 
-            <Input
-              type="number"
+            <CustomSelect
               value={year}
-              onChange={(e) => setYear(e.target.value)}
+              onChange={setYear}
+              options={yearOptions}
+              placeholder="Select year"
+              className="w-full"
             />
           </div>
         </div>
