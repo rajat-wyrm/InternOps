@@ -13,6 +13,7 @@ const { verifyEmail, sendVerificationEmail } = require('./verificationService');
 const repo = require('./repository');
 const { forgotPassword, resetPassword } = require('./resetService');
 const isProduction = process.env.NODE_ENV === 'production';
+const pLimit = require('p-limit');
 
 async function routes(fastify) {
   // Register
@@ -37,6 +38,139 @@ async function routes(fastify) {
       const data = schema.parse(req.body);
       const user = await service.register(data, req.user);
       return reply.status(201).send(user);
+    }
+  );
+
+  // Bulk Register
+  fastify.post(
+    '/register/bulk',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Authentication'],
+        description: 'Bulk register users (Admin only)',
+        body: {
+          type: 'object',
+          required: ['users'],
+          properties: {
+            users: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 100,
+              items: {
+                type: 'object',
+                required: ['email', 'password', 'role'],
+                properties: {
+                  fullName: { type: 'string' },
+                  email: { type: 'string', format: 'email' },
+                  password: { type: 'string', minLength: 8 },
+                  role: {
+                    type: 'string',
+                    enum: ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+                  },
+                  managerId: { type: 'string', format: 'uuid' },
+                  departmentId: { type: 'string', format: 'uuid' },
+                },
+              },
+            },
+          },
+        },
+        response: {
+          207: {
+            type: 'object',
+            properties: {
+              success: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    email: { type: 'string' },
+                    id: { type: 'string' },
+                  },
+                },
+              },
+              failed: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    email: { type: 'string' },
+                    error: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const userSchema = z.object({
+        email: z.string().email(),
+        password: z.string().min(8),
+        role: z.enum(['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
+        managerId: z.string().uuid().optional(),
+        departmentId: z.string().uuid().optional(),
+        fullName: z.string().optional(),
+      });
+      const schema = z.object({ users: z.array(userSchema).min(1).max(100) });
+      const { users } = schema.parse(req.body);
+
+      const ROLE_HIERARCHY = ['INTERN', 'CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'];
+      const callerLevel = ROLE_HIERARCHY.indexOf(req.user.role);
+
+      const results = { success: [], failed: [] };
+      const limit = pLimit(5); // max 5 concurrent registrations
+
+      await Promise.allSettled(
+        users.map((userData) =>
+          limit(async () => {
+            const targetLevel = ROLE_HIERARCHY.indexOf(userData.role);
+
+            // Handle unknown roles
+            if (callerLevel === -1 || targetLevel === -1) {
+              results.failed.push({
+                email: userData.email,
+                error: 'Invalid role specified.',
+              });
+              return;
+            }
+
+            if (targetLevel >= callerLevel) {
+              results.failed.push({
+                email: userData.email,
+                error: 'Cannot assign a role equal to or higher than your own.',
+              });
+              return;
+            }
+
+            try {
+              const user = await service.register(userData, req.user);
+              results.success.push({ email: userData.email, id: user.id });
+            } catch (err) {
+              // Log without password
+              req.log.error(
+                { email: userData.email, code: err.code, message: err.message },
+                'Bulk register failed for user'
+              );
+
+              // Structured error classification
+              let safeMessage = 'Failed to create user.';
+              if (err.code === '23505') safeMessage = 'Email already exists.';
+              else if (err.code === '23503')
+                safeMessage = 'Invalid manager or department ID.';
+              else if (err.statusCode === 400) safeMessage = err.message;
+
+              results.failed.push({
+                email: userData.email,
+                error: safeMessage,
+              });
+            }
+          })
+        )
+      );
+
+      return reply.status(207).send(results);
     }
   );
 
