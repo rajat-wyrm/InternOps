@@ -23,7 +23,10 @@ async function noticesRoutes(fastify) {
     } catch (err) {
       // If the notices table does not yet exist (migration pending), return an
       // empty list rather than a 500 so the Login page still loads correctly.
-      _req.log.warn({ err }, 'notices table unavailable – returning empty list');
+      _req.log.warn(
+        { err },
+        'notices table unavailable – returning empty list'
+      );
       return reply.send([]);
     }
   });
