@@ -53,27 +53,36 @@ async function getUserSessions(userId) {
 }
 
 // ─── revokeSession ────────────────────────────────────────────────────────────
-// WHY: The original ran UPDATE refresh_tokens … WHERE id = $1. In Redis mode
-// the session ID is a token hash (not a UUID), and the row doesn't exist in
-// Postgres — so the update silently matched 0 rows and returned false every time.
-// FIX: In Redis mode, use the sessionId as a hash key. Delete the
-// refresh_token:<hash> entry and remove it from the user's set.
+// Atomic session revocation with ownership check in a single operation.
+// Prevents TOCTOU race conditions by combining ownership verification
+// and deletion into one atomic step using Lua script (Redis) or
+// DELETE ... RETURNING (Postgres).
 async function revokeSession(sessionId, userId) {
   const redis = await getRedisClient();
 
   if (redis) {
-    // Confirm the token belongs to this user before deleting
-    const storedUserId = await redis.get(`refresh_token:${sessionId}`);
-    if (!storedUserId || storedUserId !== String(userId)) return false;
-
-    await redis.del(`refresh_token:${sessionId}`);
-    await redis.sRem(`user_tokens:${userId}`, sessionId);
-    return true;
+    // Atomic Lua script: verify ownership AND delete in single operation
+    const script = `
+      local key = KEYS[1]
+      local userId = ARGV[1]
+      local stored = redis.call('GET', key)
+      if not stored or stored ~= userId then
+        return 0
+      end
+      redis.call('DEL', key)
+      redis.call('SREM', 'user_tokens:' .. userId, ARGV[2])
+      return 1
+    `;
+    const result = await redis.eval(script, {
+      keys: [`refresh_token:${sessionId}`],
+      arguments: [String(userId), sessionId],
+    });
+    return result === 1;
   }
 
-  // ── Postgres fallback ──────────────────────────────────────────────────────
+  // ── Postgres fallback: Atomic DELETE with ownership check ──
   const res = await pool.query(
-    'UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1 AND user_id = $2 RETURNING id',
+    'DELETE FROM refresh_tokens WHERE id = $1 AND user_id = $2 RETURNING id',
     [sessionId, userId]
   );
   return res.rowCount > 0;

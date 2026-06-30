@@ -6,6 +6,7 @@ const {
   SEEDED_ADMIN_PASSWORD,
   resetSeededAdminPassword,
   clearPasswordResetAttempts,
+  clearLoginAttempts,
   parseSetCookie,
   mergeCookies,
 } = require('./helpers');
@@ -32,6 +33,7 @@ beforeAll(async () => {
   // running a single file in isolation may bypass that path.
   await resetSeededAdminPassword();
   await clearPasswordResetAttempts();
+  await clearLoginAttempts();
 
   cookies = {};
   const csrfRes = await app.inject({
@@ -55,11 +57,14 @@ function updateCookieJar(res) {
 }
 
 afterAll(async () => {
-  // Restore the admin password so any other suite loaded after this
-  // one (e.g. when the test glob includes both) starts from a known
-  // state. globalTeardown does the same at the end of the whole run.
   await resetSeededAdminPassword();
   await app.close();
+});
+
+// Clear brute-force state before each test so failed login attempts in one
+// test cannot accumulate into a lockout that breaks the next test.
+beforeEach(async () => {
+  await clearLoginAttempts();
 });
 
 function authHeaders(extra) {

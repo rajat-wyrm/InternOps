@@ -1,4 +1,7 @@
 require('dotenv').config();
+const validateEnv = require('./config/validateEnv');
+validateEnv();
+
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
@@ -6,10 +9,10 @@ const config = require('./config');
 const pool = require('./config/db');
 const metrics = require('./utils/metrics');
 const { initializeWebSocket } = require('./websocket');
+const noticesRoutes = require('./modules/notices/routes');
 
 const app = Fastify({
-  trustProxy:
-    config.nodeEnv === 'production' ? [config.trustedProxyCidr] : 'loopback',
+  trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
   logger:
     config.nodeEnv === 'development'
       ? { transport: { target: 'pino-pretty' } }
@@ -140,6 +143,8 @@ app.register(require('./modules/uptoskills/routes'), {
   prefix: '/api/uptoskills',
 });
 
+app.register(noticesRoutes);
+
 app.get('/', async (req, reply) => {
   reply.redirect('/docs');
 });
@@ -242,6 +247,18 @@ app.addHook('onResponse', async (request) => {
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
 
+  // Fastify AJV validation errors (from schema.body/params/querystring)
+  if (error.validation) {
+    return reply.status(400).send({
+      error: 'Validation error',
+      details: error.validation.map((v) => ({
+        path: v.instancePath || v.dataPath,
+        message: v.message,
+        keyword: v.keyword,
+      })),
+    });
+  }
+
   if (error.name === 'ZodError' || Array.isArray(error.issues)) {
     return reply.status(400).send({
       error: 'Validation error',
@@ -249,8 +266,15 @@ app.setErrorHandler((error, request, reply) => {
     });
   }
 
-  return reply.status(error.statusCode || 500).send({
-    error: error.message || 'Internal Server Error',
+  // Preserve messages for explicit HTTP errors, otherwise hide internal details
+  const statusCode = error.statusCode || 500;
+  const message =
+    statusCode < 500
+      ? error.message
+      : 'An unexpected error occurred. Please try again later.';
+
+  return reply.status(statusCode).send({
+    error: message,
   });
 });
 

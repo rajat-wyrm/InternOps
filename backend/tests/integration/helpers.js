@@ -17,11 +17,14 @@ async function resetSeededAdminPassword() {
   ]);
 }
 
-async function clearPasswordResetAttempts(emails = [SEEDED_ADMIN_EMAIL]) {
-  await pool.query(
-    'DELETE FROM password_reset_attempts WHERE email = ANY($1::text[])',
-    [emails]
-  );
+async function clearPasswordResetAttempts() {
+  await pool.query('DELETE FROM password_reset_attempts');
+}
+
+// Clear brute-force login attempt records so tests that make failed login
+// calls don't accumulate into a lockout for subsequent tests.
+async function clearLoginAttempts() {
+  await pool.query('DELETE FROM login_attempts');
 }
 
 // Parse a Set-Cookie header into a { name: value } map. Fastify inject
@@ -77,6 +80,7 @@ module.exports = {
   SEEDED_ADMIN_PASSWORD,
   resetSeededAdminPassword,
   clearPasswordResetAttempts,
+  clearLoginAttempts,
   parseSetCookie,
   mergeCookies,
 };

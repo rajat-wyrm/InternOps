@@ -1,3 +1,4 @@
+const pool = require('../../config/db');
 const { notifyUser } = require('../../websocket');
 const auth = require('../../middleware/auth');
 const direct = require('../../middleware/directManager');
@@ -188,8 +189,9 @@ async function routes(fastify) {
     },
     async (req) => {
       if (req.user.role === 'ADMIN') {
+        const pool = require('../../config/db');
         const all = await pool.query(
-          'SELECT id, full_name, role FROM users WHERE deleted_at IS NULL'
+          'SELECT id, full_name, email, role FROM users WHERE deleted_at IS NULL'
         );
         return all.rows;
       }

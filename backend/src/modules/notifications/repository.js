@@ -1,10 +1,20 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 
 async function send(userId, message) {
-  await pool.query(
-    'INSERT INTO notifications (user_id, message) VALUES ($1,$2)',
+  const res = await pool.query(
+    'INSERT INTO notifications (user_id, message) VALUES ($1,$2) RETURNING *',
     [userId, message]
   );
+  try {
+    const { notifyUser } = require('../../websocket');
+    const unread = await getUnreadCount(userId);
+    await notifyUser(userId, 'notification-received', {
+      notification: res.rows[0],
+      unreadCount: unread,
+    });
+  } catch (err) {
+    console.error('[Websocket Notify] Error:', err.message);
+  }
 }
 
 async function get(userId, { page = 1, limit = 20 } = {}) {
@@ -65,7 +75,12 @@ async function deleteNotification(notificationId, userId) {
   }
   return res.rowCount;
 }
-
+async function deleteAllNotifications(userId) {
+  await pool.query(
+    'UPDATE notifications SET deleted_at = NOW() WHERE user_id = $1 AND deleted_at IS NULL',
+    [userId]
+  );
+}
 async function getUnreadCount(userId) {
   const res = await pool.query(
     'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = FALSE AND deleted_at IS NULL',
@@ -74,11 +89,31 @@ async function getUnreadCount(userId) {
   return parseInt(res.rows[0].count, 10);
 }
 
+async function notifyAdmin(message) {
+  const audit = require('../audit/repository'); // Lazy load
+  const adminRes = await pool.query(
+    "SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1"
+  );
+  if (adminRes.rows.length > 0) {
+    const adminId = adminRes.rows[0].id;
+    await send(adminId, message);
+    if (audit && typeof audit.logEvent === 'function') {
+      await audit.logEvent({
+        userId: adminId,
+        action: 'ADMIN_NOTIFIED',
+        details: { message },
+      });
+    }
+  }
+}
+
 module.exports = {
   send,
+  notifyAdmin,
   get,
   markRead,
   markAllRead,
   deleteNotification,
+  deleteAllNotifications,
   getUnreadCount,
 };

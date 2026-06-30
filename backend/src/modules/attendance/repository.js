@@ -17,7 +17,7 @@ async function getAttendance(userId, { from, to, page = 1, limit = 30 } = {}) {
   const safePage = Math.max(parseInt(page, 10) || 1, 1);
   const offset = (safePage - 1) * safeLimit;
 
-  const where = ['user_id=$1', 'deleted_at IS NULL'];
+  const where = ['user_id=$1', 'a.deleted_at IS NULL'];
   const params = [userId];
   if (from) {
     params.push(from);
@@ -30,7 +30,7 @@ async function getAttendance(userId, { from, to, page = 1, limit = 30 } = {}) {
   const whereClause = where.join(' AND ');
 
   const countRes = await pool.query(
-    `SELECT COUNT(*)::int AS total FROM attendance WHERE ${whereClause}`,
+    `SELECT COUNT(*)::int AS total FROM attendance a WHERE ${whereClause}`,
     params
   );
   const total = countRes.rows[0].total;
@@ -123,14 +123,14 @@ async function listHierarchySubordinates(managerId, targetIds) {
 async function getAuthorizedSubordinates(managerId) {
   const res = await pool.query(
     `WITH RECURSIVE subordinates AS (
-       SELECT id, full_name, role, 0 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+       SELECT id, full_name, email, role, 0 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL
        UNION ALL
-       SELECT u.id, u.full_name, u.role, s.depth + 1
+       SELECT u.id, u.full_name, u.email, u.role, s.depth + 1
        FROM users u
        INNER JOIN subordinates s ON u.manager_id = s.id
        WHERE u.deleted_at IS NULL AND s.depth < 100
      )
-     SELECT id, full_name, role FROM subordinates`,
+     SELECT id, full_name, email, role FROM subordinates`,
     [managerId]
   );
   return res.rows;

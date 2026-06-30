@@ -20,6 +20,7 @@ import Exports from './pages/admin/Exports';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import Departments from './pages/admin/Departments';
 import AuditLog from './pages/admin/AuditLog';
+import Notices from './pages/admin/Notices';
 import useAuthStore from './store/auth';
 import api from './lib/axios';
 import RoleGuard from './components/RoleGuard';
@@ -36,6 +37,7 @@ function Private({ children }) {
 export default function App() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const setHydrated = useAuthStore((s) => s.setHydrated);
+  const logout = useAuthStore((s) => s.logout);
 
   useEffect(() => {
     api
@@ -43,7 +45,15 @@ export default function App() {
       .then((res) =>
         setAuth({ accessToken: res.data.accessToken, user: res.data.user })
       )
-      .catch(() => {})
+      .catch(() => {
+        // Server could not verify the session (no valid refresh cookie, or the
+        // token was manipulated client-side). Clear ANY token that was read
+        // from localStorage so it is never surfaced in a protected route once
+        // hydrated becomes true. Without this, an attacker who sets a fake
+        // token via the browser console would see protected UI for as long as
+        // the refresh request is in-flight.
+        logout();
+      })
       .finally(() => setHydrated());
   }, []);
 
@@ -81,6 +91,14 @@ export default function App() {
           element={
             <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
               <Reports />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="notices"
+          element={
+            <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+              <Notices />
             </RoleGuard>
           }
         />

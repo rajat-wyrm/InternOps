@@ -1,30 +1,39 @@
 const { z } = require('zod');
+const { toSchema } = require('../../utils/schemaHelper');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 async function routes(fastify) {
   fastify.get(
     '/overview',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: { tags: ['Analytics'], description: 'Get user overview counts' },
+    },
     async () => {
       return { users: await repo.userCountsByRole() };
     }
   );
 
   // Department attendance rate (admin/senior TL)
+  const departmentAttendanceSchema = z.object({
+    departmentId: z.string().uuid(),
+    month: z.coerce.number().int().min(1).max(12),
+    year: z.coerce.number().int().min(1970).max(3000),
+    role: z.enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']).optional(),
+  });
   fastify.get(
     '/department-attendance',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Analytics'],
+        description: 'Get department attendance rate',
+        querystring: toSchema(departmentAttendanceSchema),
+      },
+    },
     async (req, reply) => {
-      const schema = z.object({
-        departmentId: z.string().uuid(),
-        month: z.coerce.number().int().min(1).max(12),
-        year: z.coerce.number().int().min(1970).max(3000),
-        role: z
-          .enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'])
-          .optional(),
-      });
-      const parsed = schema.safeParse(req.query);
+      const parsed = departmentAttendanceSchema.safeParse(req.query);
       if (!parsed.success) {
         return reply.status(400).send({
           error: 'Validation failed',
@@ -43,20 +52,25 @@ async function routes(fastify) {
     }
   );
   // Top performers (Fully Secured & Optimized)
+  const topPerformersSchema = z.object({
+    role: z
+      .enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'])
+      .default('INTERN'),
+    limit: z.coerce.number().int().min(1).max(50).default(10),
+  });
   fastify.get(
     '/top-performers',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')] },
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
+      schema: {
+        tags: ['Analytics'],
+        description: 'Get top performers',
+        querystring: toSchema(topPerformersSchema),
+      },
+    },
     async (req, reply) => {
-      // 1. Define strict validation schema
-      const schema = z.object({
-        role: z
-          .enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'])
-          .default('INTERN'),
-        limit: z.coerce.number().int().min(1).max(50).default(10),
-      });
-
       // 2. Parse data safely and catch malformed inputs
-      const result = schema.safeParse(req.query);
+      const result = topPerformersSchema.safeParse(req.query);
       if (!result.success) {
         return reply.status(400).send({
           error: 'Bad Request',
@@ -89,15 +103,22 @@ async function routes(fastify) {
   );
 
   // Attendance trends
+  const attendanceTrendsSchema = z.object({
+    months: z.coerce.number().int().min(1).max(24).default(6),
+    departmentId: z.string().uuid().optional(),
+  });
   fastify.get(
     '/attendance-trends',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Analytics'],
+        description: 'Get attendance trends',
+        querystring: toSchema(attendanceTrendsSchema),
+      },
+    },
     async (req, reply) => {
-      const schema = z.object({
-        months: z.coerce.number().int().min(1).max(24).default(6),
-        departmentId: z.string().uuid().optional(),
-      });
-      const validation = schema.safeParse(req.query);
+      const validation = attendanceTrendsSchema.safeParse(req.query);
       if (!validation.success) {
         return reply.status(400).send({
           error: 'Validation failed',
