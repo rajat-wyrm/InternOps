@@ -93,7 +93,11 @@ const useAuthStore = create((set) => ({
       if (accessToken !== undefined) safeSet('accessToken', accessToken);
       if (user !== undefined) safeSet('user', JSON.stringify(user));
 
-      return { accessToken: nextToken, user: nextUser, storageError: hasStorageError };
+      return {
+        accessToken: nextToken,
+        user: nextUser,
+        storageError: hasStorageError,
+      };
     }),
 
   setHydrated: () => set({ hydrated: true }),
