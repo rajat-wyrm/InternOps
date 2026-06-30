@@ -17,7 +17,7 @@ const STATUS_BADGE = {
 };
 
 export default function Attendance() {
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
   const canMark = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(user?.role);
   const isManager = canMark;
   const [viewUserId, setViewUserId] = useState(user?.id || '');

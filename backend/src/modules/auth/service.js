@@ -10,6 +10,7 @@ const { createAuditLog } = require('../../utils/audit');
 const {
   recordLoginAttempt,
   clearFailedAttempts,
+  incrementAttempt,
 } = require('../../middleware/bruteForce');
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
@@ -48,6 +49,16 @@ const DUMMY_HASH =
   '$argon2id$v=19$m=65536,t=3,p=4$c29tZXJhbmRvbXNhbHQ$RdescudvJCsgt3ub+b27Ze4AXpxcKAspe5gOjBosC2o';
 
 async function login(email, password, ip, userAgent) {
+  try {
+    const currentAttempts = (await incrementAttempt(email, ip)) || 0;
+    if (currentAttempts > 5) {
+      throw new UnauthorizedError(
+        'Account temporarily locked. Please try again later.'
+      );
+    }
+  } catch (err) {
+    console.error('Redis Brute Force Check Failed:', err);
+  }
   const user = await repo.findByEmail(email);
   if (!user || user.suspended) {
     // Always run argon2.verify even when user not found to flatten timing
@@ -58,7 +69,7 @@ async function login(email, password, ip, userAgent) {
   }
   const valid = await repo.verifyPassword(user, password);
   if (!valid) {
-    await recordLoginAttempt(email, ip, false);
+    recordLoginAttempt(email, ip, false).catch(() => {});
     throw new UnauthorizedError('Invalid credentials');
   }
   // Clear all prior failed attempts so attacker-seeded failures don't

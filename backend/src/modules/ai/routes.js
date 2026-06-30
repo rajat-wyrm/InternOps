@@ -1,3 +1,5 @@
+const { z } = require('zod');
+const { toSchema } = require('../../utils/schemaHelper');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const aiRepo = require('./repository');
@@ -9,10 +11,27 @@ const {
 
 const AI_CHAT_RATE_LIMIT = Number(process.env.AI_CHAT_RATE_LIMIT_PER_MIN || 10);
 
+const chatBodySchema = z.object({
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string(),
+      })
+    )
+    .optional(),
+  prompt: z.string().optional(),
+});
+
 async function routes(fastify) {
   fastify.post(
     '/chat',
     {
+      schema: {
+        tags: ['AI'],
+        description: 'Send chat message to AI',
+        body: toSchema(chatBodySchema),
+      },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
       bodyLimit: 10485760,
       config: {
@@ -154,6 +173,7 @@ async function routes(fastify) {
     '/health',
     {
       preHandler: [auth, rbac('ADMIN')],
+      schema: { tags: ['AI'], description: 'Check AI provider health' },
     },
     async () => {
       return {
@@ -166,6 +186,7 @@ async function routes(fastify) {
     '/usage',
     {
       preHandler: [auth, rbac('ADMIN')],
+      schema: { tags: ['AI'], description: 'Get AI usage report' },
     },
     async () => {
       const usage = await aiRepo.getDailyUsageReport();

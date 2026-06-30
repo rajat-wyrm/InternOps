@@ -134,7 +134,7 @@ function ManagerHome({ user }) {
         <StatCard
           label="Avg rating"
           value={avgRating}
-          sub="out of 5"
+          sub="out of 10"
           icon="⭐"
           gradient="from-amber-400 to-orange-500"
         />
@@ -323,7 +323,7 @@ function InternHome({ user }) {
         <StatCard
           label="My avg rating"
           value={avg}
-          sub="out of 5"
+          sub="out of 10"
           icon="⭐"
           gradient="from-amber-400 to-orange-500"
         />
@@ -431,7 +431,7 @@ function InternHome({ user }) {
 }
 
 export default function Home() {
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
 
   const { data: me } = useQuery({
     queryKey: ['myProfile'],

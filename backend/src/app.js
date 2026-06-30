@@ -1,4 +1,7 @@
 require('dotenv').config();
+const validateEnv = require('./config/validateEnv');
+validateEnv();
+
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
@@ -9,8 +12,7 @@ const { initializeWebSocket } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
 
 const app = Fastify({
-  trustProxy:
-    config.nodeEnv === 'production' ? [config.trustedProxyCidr] : 'loopback',
+  trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
   logger:
     config.nodeEnv === 'development'
       ? { transport: { target: 'pino-pretty' } }
@@ -244,6 +246,18 @@ app.addHook('onResponse', async (request) => {
 
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
+
+  // Fastify AJV validation errors (from schema.body/params/querystring)
+  if (error.validation) {
+    return reply.status(400).send({
+      error: 'Validation error',
+      details: error.validation.map((v) => ({
+        path: v.instancePath || v.dataPath,
+        message: v.message,
+        keyword: v.keyword,
+      })),
+    });
+  }
 
   if (error.name === 'ZodError' || Array.isArray(error.issues)) {
     return reply.status(400).send({

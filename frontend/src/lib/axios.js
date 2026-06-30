@@ -51,6 +51,22 @@ function clearCsrfToken() {
   csrfPromise = null;
 }
 
+// ---------------------------------------------------------------------------
+// Auth-store bridge
+// ---------------------------------------------------------------------------
+// auth.js calls registerAuthStore() after the Zustand store is created.
+// Using a registration pattern (rather than a direct import) avoids a circular
+// module dependency: auth.js already imports clearCsrfToken from this file, so
+// this file must not import from auth.js at module-evaluation time.
+// All mutations (new token on refresh, logout on expiry) are routed through
+// the store so that Zustand state and localStorage never diverge.
+// ---------------------------------------------------------------------------
+let _authStore = null;
+
+export function registerAuthStore(store) {
+  _authStore = store;
+}
+
 api.interceptors.request.use(async (config) => {
   const token = localStorage.getItem('accessToken');
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -115,7 +131,14 @@ api.interceptors.response.use(
         refreshing = null;
         const newToken = refreshRes.data?.accessToken;
         if (newToken) {
-          localStorage.setItem('accessToken', newToken);
+          // Route the new token through the store so Zustand in-memory state
+          // and localStorage are updated atomically — direct localStorage.setItem
+          // would leave the Zustand store holding the old (expired) token.
+          if (_authStore) {
+            _authStore.getState().setAuth({ accessToken: newToken });
+          } else {
+            localStorage.setItem('accessToken', newToken);
+          }
           // The server rotated the refresh cookie. The CSRF token may also
           // have changed (some implementations bind them together), so reset
           // it so the next request picks up the new one.
@@ -129,9 +152,17 @@ api.interceptors.response.use(
         // Refresh failed — fall through to logout.
       }
 
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('user');
-      clearCsrfToken();
+      // Route the logout through the store so Zustand clears accessToken and
+      // user atomically with localStorage — previously only localStorage was
+      // cleared here, leaving the in-memory store stale until the next render.
+      if (_authStore) {
+        _authStore.getState().logout();
+      } else {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('user');
+        clearCsrfToken();
+      }
+
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';
       }
