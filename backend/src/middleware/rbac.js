@@ -2,7 +2,7 @@ const PERMISSIONS = {
   ADMIN: ['all'],
   TL: ['read:team', 'write:team', 'read:attendance'],
   CAPTAIN: ['read:team'],
-  INTERN: ['read:own_profile']
+  INTERN: ['read:own_profile'],
 };
 
 // '...requirements' use karke hum multiple arguments accept kar sakte hain (pehle wale code ki tarah)
