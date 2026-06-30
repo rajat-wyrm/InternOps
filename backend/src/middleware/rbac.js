@@ -17,8 +17,8 @@ function rbac(...requirements) {
     }
 
     // Check karo ki paas kiye gaye requirements mein se koi action ya legacy role match hota hai kya
-    const hasPermission = requirements.some(reqItem =>
-      allowedActions.includes(reqItem) || reqItem === userRole
+    const hasPermission = requirements.some(
+      (reqItem) => allowedActions.includes(reqItem) || reqItem === userRole
     );
 
     if (hasPermission) {
