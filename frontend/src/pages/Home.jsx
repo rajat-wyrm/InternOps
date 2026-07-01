@@ -433,10 +433,28 @@ function InternHome({ user }) {
 export default function Home() {
   const user = useAuthStore((s) => s.user);
 
-  const { data: me } = useQuery({
+  const {
+    data: me,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['myProfile'],
     queryFn: () => api.get('/users/me').then((r) => r.data),
   });
+
+  if (isLoading) {
+    return (
+      <p className="text-slate-600 dark:text-slate-300">Loading profile...</p>
+    );
+  }
+
+  if (isError) {
+    return (
+      <p className="text-red-500 dark:text-red-400">
+        Error loading profile. Please refresh.
+      </p>
+    );
+  }
 
   const u = { ...user, fullName: me?.full_name || user?.fullName };
 

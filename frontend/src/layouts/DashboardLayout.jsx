@@ -80,7 +80,7 @@ const adminNav = [
 ];
 
 const FULL_LOGO_SRC = '/UptoSkills.webp';
-const MINI_LOGO_SRC = '/uslogo.ico';
+const MINI_LOGO_SRC = '/Uptoskills_log_fevicon.png';
 
 export default function DashboardLayout() {
   const loc = useLocation();
