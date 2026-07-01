@@ -1,4 +1,7 @@
-'use strict';
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
+('use strict');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
@@ -32,7 +35,7 @@ module.exports = async function socialTasksRoutes(fastify) {
     '/',
     {
       schema: { tags: ['Tasks'], description: 'Create a social task' },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       const parsed = createTaskSchema.safeParse(req.body);
@@ -91,7 +94,7 @@ module.exports = async function socialTasksRoutes(fastify) {
     '/:id/assign',
     {
       schema: { tags: ['Tasks'], description: 'Assign task to interns' },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       const parsed = assignTaskSchema.safeParse(req.body);

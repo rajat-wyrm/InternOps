@@ -4,8 +4,57 @@ const path = require('path');
 const crypto = require('crypto');
 
 const MIGRATION_REGEX = /^\d{3}_[a-z0-9_]+\.sql$/;
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 100;
+
+const fsPromises = fs.promises;
+
+async function readFileWithRetry(filePath, retries = MAX_RETRIES) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const buffer = await fsPromises.readFile(filePath);
+      if (buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+        return buffer.toString('utf8', 3);
+      }
+      return buffer.toString('utf8');
+    } catch (err) {
+      if (attempt === retries) {
+        throw new Error(
+          `Failed to read ${path.basename(filePath)} after ${retries} attempts: ${err.message}`
+        );
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, RETRY_DELAY_MS * attempt)
+      );
+    }
+  }
+}
+
+async function loadMigrations(dir) {
+  const entries = await fsPromises.readdir(dir);
+  const files = entries.filter((f) => f.endsWith('.sql')).sort();
+
+  const migrations = [];
+  for (const file of files) {
+    if (!MIGRATION_REGEX.test(file)) {
+      throw new Error(`Invalid migration filename: ${file}`);
+    }
+    const filePath = path.join(dir, file);
+    const sql = await readFileWithRetry(filePath);
+    const checksum = crypto
+      .createHash('sha256')
+      .update(sql, 'utf8')
+      .digest('hex');
+    migrations.push({ name: file, sql, checksum });
+  }
+
+  return migrations;
+}
 
 async function migrate(migrationsDir) {
+  const dir = migrationsDir || path.resolve(__dirname, '../../migrations');
+  const migrations = await loadMigrations(dir);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -24,67 +73,41 @@ async function migrate(migrationsDir) {
       )
     `);
 
-    const dir = migrationsDir || path.resolve(__dirname, '../../migrations');
-    const files = fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith('.sql'))
-      .sort();
-
-    for (const file of files) {
-      if (!MIGRATION_REGEX.test(file)) {
-        throw new Error(`Invalid migration filename: ${file}`);
-      }
-
-      const filePath = path.join(dir, file);
-      let sql;
-      try {
-        const buffer = fs.readFileSync(filePath);
-        if (buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
-          sql = buffer.toString('utf8', 3);
-        } else {
-          sql = buffer.toString('utf8');
-        }
-      } catch (readErr) {
-        throw new Error(`Failed to read ${file}: ${readErr.message}`);
-      }
-
-      const checksum = crypto
-        .createHash('sha256')
-        .update(sql, 'utf8')
-        .digest('hex');
+    for (const migration of migrations) {
+      const { name, sql, checksum } = migration;
 
       const alreadyApplied = await client.query(
         'SELECT 1 FROM _migrations WHERE name = $1',
-        [file]
+        [name]
       );
 
       if (alreadyApplied.rowCount > 0) {
         const stored = await client.query(
           'SELECT sha256 FROM _migration_checksums WHERE name = $1',
-          [file]
+          [name]
         );
         if (stored.rowCount > 0 && stored.rows[0].sha256 !== checksum) {
           throw new Error(
-            `Migration "${file}" has been modified since it was applied. Expected checksum ${stored.rows[0].sha256}, got ${checksum}.`
+            `Migration "${name}" has been modified since it was applied. Expected checksum ${stored.rows[0].sha256}, got ${checksum}.`
           );
         }
-        console.log(`Skipping (already applied): ${file}`);
+        console.log(`Skipping (already applied): ${name}`);
         continue;
       }
 
       try {
         await client.query(sql);
-        console.log(`Migration applied: ${file}`);
+        console.log(`Migration applied: ${name}`);
         await client.query('INSERT INTO _migrations (name) VALUES ($1)', [
-          file,
+          name,
         ]);
         await client.query(
           'INSERT INTO _migration_checksums (name, sha256) VALUES ($1, $2)',
-          [file, checksum]
+          [name, checksum]
         );
       } catch (execErr) {
         throw new Error(
-          `Migration failed in file "${file}": ${execErr.message}\nSQL:\n${sql.substring(0, 500)}...`
+          `Migration failed in file "${name}": ${execErr.message}\nSQL:\n${sql.substring(0, 500)}...`
         );
       }
     }

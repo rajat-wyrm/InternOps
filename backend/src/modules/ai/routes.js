@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
 const auth = require('../../middleware/auth');
@@ -32,7 +35,7 @@ async function routes(fastify) {
         description: 'Send chat message to AI',
         body: toSchema(chatBodySchema),
       },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
       bodyLimit: 10485760,
       config: {
         rateLimit: {

@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
@@ -57,7 +60,7 @@ async function noticesRoutes(fastify) {
           })
         ),
       },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       const { title, content, category } = req.body;
@@ -101,7 +104,7 @@ async function noticesRoutes(fastify) {
           })
         ),
       },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       const { id } = req.params;
