@@ -1,45 +1,102 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const { csrfMiddleware } = require('../../middleware/csrf');
 const repo = require('./repository');
-const { createAuditLog } = require('../../utils/audit');
 
 async function routes(fastify) {
   // Create a department (Admin only)
   fastify.post(
     '/',
-    { preHandler: [auth, rbac('ADMIN'), csrfMiddleware] },
+    {
+      preHandler: [auth, rbac('ADMIN'), csrfMiddleware, sanitize],
+      schema: {
+        tags: ['Departments'],
+        description: 'Create a new department',
+        body: {
+          type: 'object',
+          required: ['name'],
+          properties: { name: { type: 'string' } },
+        },
+      },
+    },
     async (req, reply) => {
       const name = (req.body?.name || '').trim();
-      if (!name) return reply.status(400).send({ error: 'Name required' });
+
+      if (!name) {
+        return reply.status(400).send({ error: 'Name required' });
+      }
+
       const dept = await repo.createDepartment(name, req.user.id);
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'DEPARTMENT_CREATED',
         resourceType: 'department',
         resourceId: dept.id,
-      });
+      };
       return dept;
     }
   );
 
-  // List departments (any authenticated user — needed for member forms/dropdowns)
-  fastify.get('/', { preHandler: [auth] }, async () => repo.getAll());
+  // List departments
+  fastify.get(
+    '/',
+    {
+      preHandler: [auth],
+      schema: { tags: ['Departments'], description: 'List all departments' },
+    },
+    async () => repo.getAll()
+  );
 
-  // Soft-delete a department (Admin only)
+  // Delete department
   fastify.delete(
     '/:id',
-    { preHandler: [auth, rbac('ADMIN'), csrfMiddleware] },
-    async (req) => {
-      await repo.softDelete(req.params.id);
-      await createAuditLog({
+    {
+      preHandler: [auth, rbac('ADMIN'), csrfMiddleware],
+      schema: {
+        tags: ['Departments'],
+        description: 'Delete a department',
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+        querystring: {
+          type: 'object',
+          properties: { force: { type: 'string', enum: ['true', 'false'] } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const force = req.query?.force === 'true';
+
+      const result = await repo.deleteDepartment(req.params.id, force);
+
+      if (!result.success) {
+        return reply.status(409).send({
+          error: `Department has ${result.userCount} assigned users. Reassign them first or use ?force=true.`,
+          userCount: result.userCount,
+        });
+      }
+
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'DEPARTMENT_DELETED',
         resourceType: 'department',
         resourceId: req.params.id,
-      });
-      return { success: true };
+        details: {
+          force,
+        },
+      };
+
+      return {
+        success: true,
+        force,
+      };
     }
   );
 }
+
 module.exports = routes;

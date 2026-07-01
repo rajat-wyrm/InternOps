@@ -13,6 +13,17 @@ async function createTask({
   );
   return res.rows[0];
 }
+
+async function assignTask(taskId, userIds, assignedBy) {
+  if (!userIds || userIds.length === 0) return;
+  const values = userIds
+    .map((_, i) => `($1, $${i + 2}, $${userIds.length + 2})`)
+    .join(',');
+  await pool.query(
+    `INSERT INTO task_assignments (task_id, user_id, assigned_by) VALUES ${values}`,
+    [taskId, ...userIds, assignedBy]
+  );
+}
 async function getUserEmail(userId) {
   const res = await pool.query('SELECT email FROM users WHERE id = $1', [
     userId,
@@ -27,14 +38,24 @@ async function isTaskAssignedToUser(taskId, userId) {
   );
   return res.rowCount > 0;
 }
+async function getAllInternEmails() {
+  const res = await pool.query(
+    `SELECT email
+     FROM users
+     WHERE role IN ('INTERN', 'CAPTAIN')
+       AND email IS NOT NULL`
+  );
+
+  return res.rows.map((row) => row.email);
+}
 async function getTasks(filters, userId, userRole) {
   const params = [];
   const where = ['st.deleted_at IS NULL'];
 
-  if (!['ADMIN', 'SENIOR_TL'].includes(userRole)) {
+  if (!['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(userRole)) {
     params.push(userId);
     where.push(
-      `st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL)`
+      `(st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL) OR st.created_by = $${params.length})`
     );
   }
 
@@ -66,6 +87,10 @@ async function verifyProof(proofId, verifierId, verifierRole) {
 
   if (proofRes.rowCount === 0) {
     throw new Error('Proof not found');
+  }
+
+  if (verifierId === proofRes.rows[0].intern_id) {
+    throw new Error('Forbidden: you cannot verify your own proof submission');
   }
 
   // Admin can verify anyone; everyone else must be in the intern's hierarchy
@@ -111,8 +136,25 @@ async function getProofsByIntern(internId) {
     )
   ).rows;
 }
+
+async function getProof(proofId) {
+  const res = await pool.query(
+    'SELECT * FROM proof_submissions WHERE id = $1',
+    [proofId]
+  );
+  return res.rows[0] || null;
+}
+
+async function deleteProof(proofId) {
+  await pool.query(
+    'UPDATE proof_submissions SET deleted_at = NOW() WHERE id = $1',
+    [proofId]
+  );
+}
+
 module.exports = {
   createTask,
+  assignTask,
   getUserEmail,
   isTaskAssignedToUser,
   getTasks,
@@ -120,4 +162,7 @@ module.exports = {
   verifyProof,
   getProofsByTask,
   getProofsByIntern,
+  getProof,
+  deleteProof,
+  getAllInternEmails,
 };

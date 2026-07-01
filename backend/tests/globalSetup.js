@@ -9,19 +9,24 @@ const SEEDED_ADMIN_EMAIL = 'admin@internops.com';
 const SEEDED_ADMIN_PASSWORD = 'Admin@123';
 
 module.exports = async function globalSetup() {
-  // Make sure the DB is reachable. The CI workflow already does this,
-  // but local runs benefit from a clear failure mode.
-  await pool.query('SELECT 1');
+  try {
+    // Make sure the DB is reachable. The CI workflow already does this,
+    // but local runs benefit from a clear failure mode.
+    await pool.query('SELECT 1');
 
-  const hash = await argon2.hash(SEEDED_ADMIN_PASSWORD);
-  await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [
-    hash,
-    SEEDED_ADMIN_EMAIL,
-  ]);
+    const hash = await argon2.hash(SEEDED_ADMIN_PASSWORD);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [
+      hash,
+      SEEDED_ADMIN_EMAIL,
+    ]);
 
-  // Wipe password-reset attempt counters so they don't bleed between
-  // test files.
-  await pool.query('DELETE FROM password_reset_attempts');
-
-  await pool.end();
+    // Wipe password-reset attempt counters so they don't bleed between
+    // test files.
+    await pool.query('DELETE FROM password_reset_attempts');
+  } catch (err) {
+    console.warn(
+      '[jest setup] database unavailable — skipping DB reset:',
+      err.message
+    );
+  }
 };

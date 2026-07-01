@@ -1,4 +1,4 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 const crypto = require('crypto');
 const argon2 = require('argon2');
 const { revokeAllUserTokensRedis } = require('./repository');
@@ -120,10 +120,35 @@ async function resetPasswordAtomic(rawToken, newPassword) {
   }
 }
 
+async function getResetAttemptState(email) {
+  const last = await pool.query(
+    `SELECT attempted_at FROM password_reset_attempts
+     WHERE email = $1 ORDER BY attempted_at DESC LIMIT 1`,
+    [email]
+  );
+  const count = await pool.query(
+    `SELECT COUNT(*) AS count FROM password_reset_attempts
+     WHERE email = $1 AND attempted_at > NOW() - INTERVAL '1 hour'`,
+    [email]
+  );
+  return {
+    lastAttempt: last.rows[0]?.attempted_at || null,
+    hourlyCount: parseInt(count.rows[0].count, 10) || 0,
+  };
+}
+
+async function recordResetAttempt(email) {
+  await pool.query('INSERT INTO password_reset_attempts (email) VALUES ($1)', [
+    email,
+  ]);
+}
+
 module.exports = {
   createResetToken,
   verifyResetToken,
   markTokenUsed,
   updateUserPassword,
   resetPasswordAtomic,
+  getResetAttemptState,
+  recordResetAttempt,
 };

@@ -1,20 +1,9 @@
 const crypto = require('crypto');
 
-// In-memory store of CSRF tokens keyed by a server-issued session id.
-// The session id is delivered to the client in a signed (HMAC) cookie so
-// it cannot be forged; the token is the HMAC of the session id, which
-// makes it deterministic and stable across calls. This fixes the issue
-// where each GET /api/auth/csrf-token call generated a fresh token and
-// overwrote the cookie, breaking subsequent mutation requests that
-// still held the previous token (#138).
 const SESSION_COOKIE = 'csrf-sid';
 const TOKEN_COOKIE = 'csrf-token';
 
 function getSecret() {
-  // Re-use the JWT secret so a misconfigured deployment fails the
-  // existing validateEnv() check at boot. The CSRF secret is only
-  // used to sign the session id cookie; if it leaks, an attacker can
-  // mint CSRF session ids but cannot authenticate requests.
   const secret = require('../config').jwt?.secret;
   if (!secret) {
     throw new Error('JWT_SECRET is not configured; cannot sign CSRF session');
@@ -46,8 +35,6 @@ function parseCookies(header) {
   return out;
 }
 
-const tokens = new Map();
-
 function newSessionId() {
   return crypto.randomBytes(24).toString('hex');
 }
@@ -60,14 +47,22 @@ function readSession(request) {
   const cookies = parseCookies(request.headers.cookie);
   const raw = cookies[SESSION_COOKIE];
   if (!raw) return null;
-  const [sid, sig] = raw.split('.');
-  if (!sid || !sig) return null;
-  if (!verifySigned(sid, sig)) return null;
-  return sid;
+  const [payload, sig] = raw.split('.');
+  if (!payload || !sig) return null;
+  if (!verifySigned(payload, sig)) return null;
+
+  const colonIdx = payload.indexOf(':');
+  if (colonIdx === -1) {
+    return { sid: payload, userId: null };
+  }
+  const sid = payload.slice(0, colonIdx);
+  const userId = payload.slice(colonIdx + 1);
+  return { sid, userId: userId || null };
 }
 
-function writeSession(reply, sessionId) {
-  const signed = `${sessionId}.${sign(sessionId)}`;
+function writeSession(reply, sessionId, userId = null) {
+  const payload = userId ? `${sessionId}:${userId}` : `${sessionId}:`;
+  const signed = `${payload}.${sign(payload)}`;
   reply.setCookie(SESSION_COOKIE, signed, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -76,13 +71,50 @@ function writeSession(reply, sessionId) {
   });
 }
 
-function getOrCreateToken(request, reply) {
-  let sid = readSession(request);
-  if (!sid) {
-    sid = newSessionId();
-    writeSession(reply, sid);
-  }
+function rotateSession(reply) {
+  const sid = newSessionId();
+  writeSession(reply, sid);
   return tokenFor(sid);
+}
+
+function rotateAndSetCsrf(request, reply, userId = null) {
+  const newSid = newSessionId();
+  writeSession(reply, newSid, userId);
+  const csrfToken = tokenFor(newSid);
+
+  reply.setCookie(TOKEN_COOKIE, csrfToken, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+  });
+
+  return csrfToken;
+}
+
+function getOrCreateToken(request, reply) {
+  let session = readSession(request);
+
+  let tokenUserId = null;
+  const authHeader = request.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const { verifyAccessToken } = require('../utils/tokens');
+      const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+      tokenUserId = decoded.id;
+    } catch (err) {}
+  }
+
+  if (!session) {
+    const sid = newSessionId();
+    writeSession(reply, sid, tokenUserId);
+    session = { sid, userId: tokenUserId };
+  } else if (tokenUserId && session.userId !== String(tokenUserId)) {
+    const sid = newSessionId();
+    writeSession(reply, sid, tokenUserId);
+    session = { sid, userId: tokenUserId };
+  }
+  return tokenFor(session.sid);
 }
 
 function generateToken(request, reply) {
@@ -98,20 +130,39 @@ const EXEMPT = [
 
 async function csrfCheck(request, reply) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
-  if (EXEMPT.some((p) => request.url.startsWith(p))) return;
+  if (!request.url) return;
 
-  const sid = readSession(request);
+  const path =
+    request.routerPath ??
+    request.routeOptions?.url ??
+    request.url.split('?')[0].split('#')[0];
+  if (EXEMPT.includes(path)) return;
+
+  const session = readSession(request);
   const headerToken = request.headers['x-csrf-token'];
 
-  if (!sid || !headerToken) {
+  if (!session || !session.sid || !headerToken) {
     return reply.status(403).send({ error: 'CSRF validation failed' });
   }
 
-  // The expected token is derived from the signed session id, so we
-  // don't need to keep anything in memory. A request with a valid
-  // session cookie and the matching header passes; anything else fails.
-  if (headerToken !== tokenFor(sid)) {
+  if (headerToken !== tokenFor(session.sid)) {
     return reply.status(403).send({ error: 'CSRF validation failed' });
+  }
+
+  let tokenUserId = null;
+  const authHeader = request.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const { verifyAccessToken } = require('../utils/tokens');
+      const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+      tokenUserId = decoded.id;
+    } catch (err) {}
+  }
+
+  if (tokenUserId) {
+    if (session.userId !== String(tokenUserId)) {
+      return reply.status(403).send({ error: 'CSRF validation failed' });
+    }
   }
 }
 
@@ -123,8 +174,9 @@ const csrfMiddleware = csrfCheck;
 
 module.exports = {
   generateToken,
+  rotateSession,
   csrfProtection,
   csrfMiddleware,
-  // exported for tests
+  rotateAndSetCsrf,
   _internal: { tokenFor, verifySigned, readSession, writeSession },
 };

@@ -1,8 +1,12 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const ownership = require('../../middleware/ownership');
 const repo = require('./repository');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
+const { toSchema } = require('../../utils/schemaHelper');
 const { checkHierarchyAccess, ROLE_RANK } = require('../../utils/hierarchy');
 const { z } = require('zod');
 
@@ -36,6 +40,18 @@ const createSchema = z.object({
   ...detailFields,
 });
 
+const toggleStatusSchema = z.object({
+  suspended: z.boolean(),
+});
+
+const changeRoleSchema = z.object({
+  role: z.enum(ASSIGNABLE_ROLES),
+});
+
+const changeManagerSchema = z.object({
+  manager_id: z.string().uuid(),
+});
+
 function toCsv(rows) {
   const cols = [
     'full_name',
@@ -60,7 +76,10 @@ async function routes(fastify) {
   // List everyone in the requester's team, with details + performance summary.
   fastify.get(
     '/members',
-    { preHandler: [auth, rbac(...MANAGER_ROLES)] },
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES)],
+      schema: { tags: ['Team'], description: 'List team members' },
+    },
     async (req) => {
       return repo.getTeamMembers(req.user.id);
     }
@@ -69,7 +88,10 @@ async function routes(fastify) {
   // Export the requester's team as CSV.
   fastify.get(
     '/members/export',
-    { preHandler: [auth, rbac(...MANAGER_ROLES)] },
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES)],
+      schema: { tags: ['Team'], description: 'Export team members as CSV' },
+    },
     async (req, reply) => {
       const members = await repo.getTeamMembers(req.user.id);
       reply.header('Content-Type', 'text/csv');
@@ -84,7 +106,10 @@ async function routes(fastify) {
   // Recent proofs across the requester's team that are awaiting verification.
   fastify.get(
     '/pending-proofs',
-    { preHandler: [auth, rbac(...MANAGER_ROLES)] },
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES)],
+      schema: { tags: ['Team'], description: 'Get pending proofs for team' },
+    },
     async (req) => {
       return repo.getPendingProofs(req.user.id);
     }
@@ -93,7 +118,40 @@ async function routes(fastify) {
   // Add a new member under the requester (or a sub-manager in their team).
   fastify.post(
     '/members',
-    { preHandler: [auth, rbac(...MANAGER_ROLES)] },
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES), sanitize],
+      schema: {
+        tags: ['Team'],
+        description: 'Create new team member',
+        body: {
+          type: 'object',
+          required: ['email', 'password', 'role'],
+          properties: {
+            email: { type: 'string', format: 'email' },
+            password: { type: 'string', minLength: 8 },
+            role: {
+              type: 'string',
+              enum: ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+            },
+            manager_id: { type: 'string', format: 'uuid' },
+            department_id: { type: 'string', format: 'uuid' },
+            full_name: { type: 'string', maxLength: 255 },
+            phone: { type: 'string', maxLength: 20 },
+            college: { type: 'string', maxLength: 255 },
+            course: { type: 'string', maxLength: 255 },
+            year_of_study: { type: 'string', maxLength: 50 },
+            position: { type: 'string', maxLength: 255 },
+            joining_date: { type: 'string', maxLength: 20 },
+            internship_status: {
+              type: 'string',
+              enum: ['ACTIVE', 'COMPLETED', 'ON_HOLD', 'TERMINATED'],
+            },
+            location: { type: 'string', maxLength: 255 },
+            notes: { type: 'string', maxLength: 2000 },
+          },
+        },
+      },
+    },
     async (req, reply) => {
       const data = createSchema.parse(req.body);
 
@@ -145,7 +203,14 @@ async function routes(fastify) {
   // Single member's full detail (must be inside the requester's hierarchy).
   fastify.get(
     '/members/:id',
-    { preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id')] },
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id')],
+      schema: {
+        tags: ['Team'],
+        description: 'Get team member by ID',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+      },
+    },
     async (req, reply) => {
       const member = await repo.getMemberById(req.params.id);
       return member || reply.status(404).send({ error: 'Member not found' });
@@ -155,7 +220,14 @@ async function routes(fastify) {
   // Attendance + ratings history for a member.
   fastify.get(
     '/members/:id/history',
-    { preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id')] },
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id')],
+      schema: {
+        tags: ['Team'],
+        description: 'Get member history',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+      },
+    },
     async (req) => {
       return repo.getMemberHistory(req.params.id);
     }
@@ -164,7 +236,14 @@ async function routes(fastify) {
   // Update a member's detail fields (within hierarchy), with audit trail.
   fastify.patch(
     '/members/:id',
-    { preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id')] },
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id'), sanitize],
+      schema: {
+        tags: ['Team'],
+        description: 'Update team member details',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+      },
+    },
     async (req, reply) => {
       const data = updateSchema.parse(req.body);
       const before = await repo.getMemberById(req.params.id);
@@ -186,7 +265,15 @@ async function routes(fastify) {
   // Suspend / activate a member (within hierarchy).
   fastify.patch(
     '/members/:id/status',
-    { preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id')] },
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id'), sanitize],
+      schema: {
+        tags: ['Team'],
+        description: 'Toggle member suspension',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+        body: toSchema(toggleStatusSchema),
+      },
+    },
     async (req, reply) => {
       const { suspended } = z
         .object({ suspended: z.boolean() })
@@ -207,7 +294,15 @@ async function routes(fastify) {
   // Promote / demote a member's role (within hierarchy).
   fastify.patch(
     '/members/:id/role',
-    { preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id')] },
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id'), sanitize],
+      schema: {
+        tags: ['Team'],
+        description: 'Change member role',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+        body: toSchema(changeRoleSchema),
+      },
+    },
     async (req, reply) => {
       const { role } = z
         .object({ role: z.enum(ASSIGNABLE_ROLES) })
@@ -246,24 +341,42 @@ async function routes(fastify) {
         });
       }
 
-      const after = await repo.updateMemberRole(req.params.id, role);
-      await createAuditLog({
-        userId: req.user.id,
-        action: 'MEMBER_ROLE_CHANGED',
-        resourceType: 'user',
-        resourceId: req.params.id,
-        oldValue: { role: before.role },
-        newValue: { role: after.role },
-        ...extractRequestInfo(req),
-      });
-      return after;
+      try {
+        const after = await repo.updateMemberRole(req.params.id, role);
+        await createAuditLog({
+          userId: req.user.id,
+          action: 'MEMBER_ROLE_CHANGED',
+          resourceType: 'user',
+          resourceId: req.params.id,
+          oldValue: { role: before.role },
+          newValue: { role: after.role },
+          ...extractRequestInfo(req),
+        });
+        return after;
+      } catch (err) {
+        if (
+          err.message.includes('outrank') ||
+          err.message.includes('not found')
+        ) {
+          return reply.status(400).send({ error: err.message });
+        }
+        throw err;
+      }
     }
   );
 
   // Reassign a member to a different manager inside the requester's team.
   fastify.patch(
     '/members/:id/manager',
-    { preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id')] },
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id'), sanitize],
+      schema: {
+        tags: ['Team'],
+        description: 'Change member manager',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+        body: toSchema(changeManagerSchema),
+      },
+    },
     async (req, reply) => {
       const { manager_id } = z
         .object({ manager_id: z.string().uuid() })
@@ -313,17 +426,28 @@ async function routes(fastify) {
           .send({ error: 'That assignment would create a cycle' });
       }
 
-      const after = await repo.updateMemberManager(req.params.id, manager_id);
-      await createAuditLog({
-        userId: req.user.id,
-        action: 'MEMBER_MANAGER_CHANGED',
-        resourceType: 'user',
-        resourceId: req.params.id,
-        oldValue: { manager_id: member.manager_id },
-        newValue: { manager_id },
-        ...extractRequestInfo(req),
-      });
-      return after;
+      try {
+        const after = await repo.updateMemberManager(req.params.id, manager_id);
+        await createAuditLog({
+          userId: req.user.id,
+          action: 'MEMBER_MANAGER_CHANGED',
+          resourceType: 'user',
+          resourceId: req.params.id,
+          oldValue: { manager_id: member.manager_id },
+          newValue: { manager_id },
+          ...extractRequestInfo(req),
+        });
+        return after;
+      } catch (err) {
+        if (
+          err.message.includes('cycle') ||
+          err.message.includes('outrank') ||
+          err.message.includes('not found')
+        ) {
+          return reply.status(400).send({ error: err.message });
+        }
+        throw err;
+      }
     }
   );
 }

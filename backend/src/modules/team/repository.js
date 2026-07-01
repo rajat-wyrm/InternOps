@@ -201,6 +201,8 @@ async function getPendingProofs(managerId, limit = 50) {
   return rows;
 }
 
+const { ROLE_RANK } = require('../../utils/hierarchy');
+
 async function setMemberStatus(id, suspended) {
   await pool.query(
     'UPDATE users SET suspended = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
@@ -220,19 +222,98 @@ async function getDirectReportRoles(id) {
 }
 
 async function updateMemberRole(id, role) {
-  await pool.query(
-    'UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
-    [role, id]
-  );
-  return getMemberById(id);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const memberRes = await client.query(
+      'SELECT role FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [id]
+    );
+    if (memberRes.rowCount === 0) {
+      throw new Error('Member not found');
+    }
+
+    const reportsRes = await client.query(
+      'SELECT DISTINCT role FROM users WHERE manager_id = $1 AND deleted_at IS NULL FOR UPDATE',
+      [id]
+    );
+    const reportRoles = reportsRes.rows.map((r) => r.role);
+    const highestReport = reportRoles.reduce(
+      (max, r) => Math.max(max, ROLE_RANK[r] ?? 0),
+      -1
+    );
+    if (highestReport >= ROLE_RANK[role]) {
+      throw new Error(
+        'New role would not outrank this member’s existing reports. Reassign their reports first.'
+      );
+    }
+
+    await client.query(
+      'UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
+      [role, id]
+    );
+    await client.query('COMMIT');
+    return getMemberById(id);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function updateMemberManager(id, managerId) {
-  await pool.query(
-    'UPDATE users SET manager_id = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
-    [managerId, id]
-  );
-  return getMemberById(id);
+  if (id === managerId) {
+    throw new Error('That assignment would create a cycle');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const lockRes = await client.query(
+      'SELECT id, role FROM users WHERE id IN ($1, $2) AND deleted_at IS NULL FOR UPDATE',
+      [id, managerId]
+    );
+    if (lockRes.rowCount < 2) {
+      const memberCheck = lockRes.rows.find((r) => r.id === id);
+      if (!memberCheck) throw new Error('Member not found');
+      throw new Error('Manager not found');
+    }
+
+    const memberRow = lockRes.rows.find((r) => r.id === id);
+    const managerRow = lockRes.rows.find((r) => r.id === managerId);
+    if (ROLE_RANK[memberRow.role] >= ROLE_RANK[managerRow.role]) {
+      throw new Error(
+        `Manager (${managerRow.role}) must outrank the member (${memberRow.role})`
+      );
+    }
+
+    const cycleCheck = await client.query(
+      `WITH RECURSIVE subordinates AS (
+         SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+         UNION ALL
+         SELECT u.id
+         FROM users u INNER JOIN subordinates s ON u.manager_id = s.id
+         WHERE u.deleted_at IS NULL
+       )
+       SELECT 1 FROM subordinates WHERE id = $2`,
+      [id, managerId]
+    );
+    if (cycleCheck.rowCount > 0) {
+      throw new Error('That assignment would create a cycle');
+    }
+
+    await client.query(
+      'UPDATE users SET manager_id = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL',
+      [managerId, id]
+    );
+    await client.query('COMMIT');
+    return getMemberById(id);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 module.exports = {

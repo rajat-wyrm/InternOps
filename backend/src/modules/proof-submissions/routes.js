@@ -1,16 +1,20 @@
-﻿const auth = require('../../middleware/auth');
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
+const auth = require('../../middleware/auth');
+const { z } = require('zod');
+const { toSchema } = require('../../utils/schemaHelper');
 const rbac = require('../../middleware/rbac');
 const repo = require('../social-tasks/repository');
-const { createAuditLog } = require('../../utils/audit');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../../config');
-
+const { pipeline } = require('stream/promises');
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/gif'];
 const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.gif'];
-
+const uploadRepo = require('../uploads/repository');
 const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
   'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
@@ -31,7 +35,13 @@ async function routes(fastify) {
   // Submit proof (intern only)
   fastify.post(
     '/submit',
-    { preHandler: [auth, rbac('INTERN')] },
+    {
+      preHandler: [auth, rbac('INTERN'), sanitize],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Submit proof with image file (multipart)',
+      },
+    },
     async (req, reply) => {
       const data = await req.file();
 
@@ -58,15 +68,6 @@ async function routes(fastify) {
       }
 
       // Buffer the upload to validate contents, then persist
-      const buffer = await data.toBuffer();
-
-      // Magic-byte verification — defends against MIME spoofing
-      const detectedMime = detectMimeFromBuffer(buffer);
-      if (!detectedMime || detectedMime !== data.mimetype) {
-        return reply
-          .status(400)
-          .send({ error: 'File contents do not match declared image type' });
-      }
 
       // Authorization: the intern must actually be assigned to the task
       const isAssigned = await repo.isTaskAssignedToUser(task_id, req.user.id);
@@ -82,19 +83,35 @@ async function routes(fastify) {
         __dirname,
         '..',
         '..',
+        '..',
         config.uploadDir
       );
       await fs.promises.mkdir(absoluteUploadDir, { recursive: true });
       const uploadPath = path.join(absoluteUploadDir, filename);
-      await fs.promises.writeFile(uploadPath, buffer);
+
+      const firstChunk = await data.file.read(16);
+
+      const detectedMime = detectMimeFromBuffer(firstChunk);
+      if (!detectedMime || detectedMime !== data.mimetype) {
+        return reply
+          .status(400)
+          .send({ error: 'File contents do not match declared image type' });
+      }
+
+      const writeStream = fs.createWriteStream(uploadPath);
+
+      writeStream.write(firstChunk);
+
+      await pipeline(data.file, writeStream);
+
       const dbSavedPath = ['uploads', filename].join('/');
       const proof = await repo.submitProof(task_id, req.user.id, dbSavedPath);
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         action: 'PROOF_SUBMITTED',
         resourceType: 'proof',
         resourceId: proof.id,
-      });
+      };
       return proof;
     }
   );
@@ -102,7 +119,14 @@ async function routes(fastify) {
   // Verify proof (Captain, TL, Senior TL) with ownership over the intern
   fastify.patch(
     '/:id/verify',
-    { preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')] },
+    {
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Verify a proof submission',
+        params: toSchema(z.object({ id: z.string() })),
+      },
+    },
     async (req, reply) => {
       // Repository enforces hierarchy check; the route only validates
       // existence and delegates authorization to the data layer.
@@ -115,12 +139,12 @@ async function routes(fastify) {
         if (!verified) {
           return reply.status(404).send({ error: 'Proof not found' });
         }
-        await createAuditLog({
+        req.auditOnResponse = {
           userId: req.user.id,
           action: 'PROOF_VERIFIED',
           resourceType: 'proof',
           resourceId: verified.id,
-        });
+        };
         return verified;
       } catch (err) {
         if (err.message === 'Proof not found') {
@@ -136,15 +160,58 @@ async function routes(fastify) {
 
   fastify.get(
     '/task/:taskId',
-    { preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')] },
+    {
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Get proofs by task',
+        params: toSchema(z.object({ taskId: z.string() })),
+      },
+    },
     async (req) => {
       return repo.getProofsByTask(req.params.taskId);
     }
   );
 
-  fastify.get('/my', { preHandler: [auth] }, async (req) => {
-    return repo.getProofsByIntern(req.user.id);
-  });
+  fastify.get(
+    '/my',
+    {
+      preHandler: [auth],
+      schema: { tags: ['Proofs'], description: 'Get own proof submissions' },
+    },
+    async (req) => {
+      return repo.getProofsByIntern(req.user.id);
+    }
+  );
+
+  fastify.delete(
+    '/:id',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Delete a proof submission',
+        params: toSchema(z.object({ id: z.string() })),
+      },
+    },
+    async (req, reply) => {
+      const proof = await repo.getProof(req.params.id);
+      if (!proof) {
+        return reply.status(404).send({ error: 'Proof not found' });
+      }
+      await repo.deleteProof(req.params.id);
+      await uploadRepo.deleteFile(proof.image_path);
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'PROOF_DELETED',
+        resourceType: 'proof',
+        resourceId: req.params.id,
+      };
+
+      return { success: true };
+    }
+  );
 }
 
 module.exports = routes;

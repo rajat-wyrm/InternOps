@@ -1,22 +1,40 @@
-﻿// Basic input sanitization for common injection patterns
-function sanitizeInput(obj) {
+// Basic input sanitization for common injection patterns
+const sanitizeHtml = require('sanitize-html');
+function sanitizeInput(obj, allowedFields = []) {
   if (typeof obj !== 'object' || obj === null) return;
+
   for (const key of Object.keys(obj)) {
     const val = obj[key];
+
     if (typeof val === 'string') {
-      // Strip HTML tags and common SQL injection patterns
-      obj[key] = val.replace(/<[^>]*>/g, '');
-    } else if (typeof val === 'object') {
-      sanitizeInput(val);
+      if (allowedFields.length === 0 || allowedFields.includes(key)) {
+        obj[key] = sanitizeHtml(val, {
+          allowedTags: [],
+          allowedAttributes: {},
+        });
+      }
+    } else if (val && typeof val === 'object') {
+      sanitizeInput(val, allowedFields);
     }
   }
 }
 
 function sanitizationMiddleware(request, reply, done) {
-  if (request.body) sanitizeInput(request.body);
-  if (request.query) sanitizeInput(request.query);
-  if (request.params) sanitizeInput(request.params);
-  done(); // ✅ Call done to pass control to the next handler/route
+  const SAFE_FIELDS = ['name', 'description', 'message', 'title', 'content'];
+
+  if (request.body) {
+    sanitizeInput(request.body, SAFE_FIELDS);
+  }
+
+  if (request.query) {
+    sanitizeInput(request.query, SAFE_FIELDS);
+  }
+
+  if (request.params) {
+    sanitizeInput(request.params, SAFE_FIELDS);
+  }
+
+  done();
 }
 
-module.exports = sanitizationMiddleware;
+module.exports = { sanitizeInput, sanitizationMiddleware };

@@ -23,7 +23,7 @@ async function createUser(data) {
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING id, email, role, full_name, manager_id, department_id, created_at`,
     [
-      data.email,
+      data.email.trim().toLowerCase(),
       passwordHash,
       data.role,
       data.managerId || null,
@@ -36,7 +36,7 @@ async function createUser(data) {
 
 async function findByEmail(email) {
   const res = await pool.query(
-    'SELECT * FROM users WHERE email=$1 AND deleted_at IS NULL',
+    'SELECT * FROM users WHERE LOWER(email)=LOWER($1) AND deleted_at IS NULL',
     [email]
   );
   return res.rows[0] || null;
@@ -173,6 +173,43 @@ async function validateRefreshToken(tokenHash) {
   return rows.length > 0;
 }
 
+// Atomically claim a refresh token — returns userId string if claimed, null if
+// already used/revoked (race condition or replay attack).
+async function claimRefreshToken(tokenHash) {
+  const redis = await getRedisClient();
+  if (redis) {
+    // Lua script: GET then DEL only if key still exists — atomic, no TOCTOU.
+    const lua = `
+      local val = redis.call('GET', KEYS[1])
+      if val then
+        redis.call('DEL', KEYS[1])
+        return val
+      end
+      return false
+    `;
+    const raw = await redis.eval(lua, {
+      keys: [`refresh_token:${tokenHash}`],
+      arguments: [],
+    });
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw).userId;
+    } catch {
+      return raw; // legacy plain-string fallback
+    }
+  }
+  // Postgres fallback: atomic UPDATE — only one concurrent request can flip
+  // revoked=FALSE → TRUE; the second gets 0 rows back.
+  const { rows } = await pool.query(
+    `UPDATE refresh_tokens
+     SET revoked = TRUE
+     WHERE token_hash = $1 AND revoked = FALSE AND expires_at > NOW()
+     RETURNING user_id`,
+    [tokenHash]
+  );
+  return rows[0]?.user_id ?? null;
+}
+
 async function revokeRefreshTokenRedis(tokenHash) {
   const redis = await getRedisClient();
   if (redis) {
@@ -191,8 +228,12 @@ async function revokeRefreshTokenRedis(tokenHash) {
   await revokeRefreshToken(tokenHash);
 }
 
+// WHY: Postgres is the source of truth and must always be revoked, even if
+// Redis is unreachable. Redis cleanup is deliberately kept OUTSIDE the
+// Postgres write path and wrapped in its own try/catch so a Redis failure
+// can never roll back — or block — the Postgres revocation (#507).
 async function revokeAllUserTokensRedis(userId) {
-  // 1. Postgres UPDATE first
+  // 1. Postgres UPDATE first — must succeed
   await revokeAllUserTokens(userId);
 
   // 2. Redis cleanup (best-effort)
@@ -200,10 +241,14 @@ async function revokeAllUserTokensRedis(userId) {
     const redis = await getRedisClient();
     if (redis) {
       const tokens = await redis.sMembers(`user_tokens:${userId}`);
-      if (tokens && tokens.length > 0) {
-        await redis.del(tokens.map((token) => `refresh_token:${token}`));
+      if (tokens.length > 0) {
+        const multi = redis.multi();
+        for (const token of tokens) {
+          multi.del(`refresh_token:${token}`);
+        }
+        multi.del(`user_tokens:${userId}`);
+        await multi.exec();
       }
-      await redis.del(`user_tokens:${userId}`);
     }
   } catch (err) {
     console.error(
@@ -230,4 +275,5 @@ module.exports = {
   revokeAllUserTokensRedis,
   getRefreshTokenRedis,
   validateRefreshToken,
+  claimRefreshToken,
 };
