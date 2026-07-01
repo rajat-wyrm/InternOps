@@ -301,6 +301,8 @@ async function routes(fastify) {
       await service.logout(
         token,
         req.user.id,
+        req.user.jti,
+        req.user.exp,
         req.ip,
         req.headers['user-agent']
       );

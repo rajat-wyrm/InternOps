@@ -14,6 +14,7 @@ const {
 } = require('../../middleware/bruteForce');
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
+const { blacklistAccessToken } = require('../../config/redis');
 
 const DUMMY_USER = {
   password_hash:
@@ -129,7 +130,7 @@ async function refreshTokens(token, ip) {
     refreshToken: newRefresh,
   };
 }
-async function logout(token, authenticatedUserId, ip, userAgent) {
+async function logout(token, authenticatedUserId, accessJti, accessExp, ip, userAgent) {
   let decoded;
 
   try {
@@ -143,5 +144,12 @@ async function logout(token, authenticatedUserId, ip, userAgent) {
   }
 
   await repo.revokeRefreshTokenRedis(hashToken(token));
+
+  const ttl = accessExp - Math.floor(Date.now() / 1000);
+
+  if (ttl > 0) {
+    await blacklistAccessToken(accessJti, ttl);
+  }
+  
 }
 module.exports = { register, login, refreshTokens, logout };
