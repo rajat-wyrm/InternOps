@@ -74,7 +74,28 @@ api.interceptors.request.use(async (config) => {
 // Silent refresh: when an access token expires, the server returns 401.
 // Before destroying the session, try the refresh-token flow once. If that
 // fails, fall through to the original "drop session" behaviour.
-let refreshing = null;
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+function handleLogout() {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('user');
+  clearCsrfToken();
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login';
+  }
+}
 
 api.interceptors.response.use(
   (res) => {
@@ -109,32 +130,50 @@ api.interceptors.response.use(
 
     if (status === 401 && !original._retry && !isAuthRoute) {
       original._retry = true;
-      try {
-        refreshing = refreshing || api.post('/auth/refresh', {});
-        const refreshRes = await refreshing;
-        refreshing = null;
-        const newToken = refreshRes.data?.accessToken;
-        if (newToken) {
-          localStorage.setItem('accessToken', newToken);
-          // The server rotated the refresh cookie. The CSRF token may also
-          // have changed (some implementations bind them together), so reset
-          // it so the next request picks up the new one.
-          clearCsrfToken();
-          original.headers = original.headers || {};
-          original.headers.Authorization = `Bearer ${newToken}`;
-          return api(original);
-        }
-      } catch (refreshErr) {
-        refreshing = null;
-        // Refresh failed — fall through to logout.
+
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            original.headers = original.headers || {};
+            original.headers.Authorization = `Bearer ${token}`;
+            return api(original);
+          })
+          .catch((queueErr) => {
+            return Promise.reject(queueErr);
+          });
       }
 
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('user');
-      clearCsrfToken();
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
-      }
+      isRefreshing = true;
+
+      return new Promise((resolve, reject) => {
+        api.post('/auth/refresh', {})
+          .then((res) => {
+            const newToken = res.data?.accessToken;
+            if (newToken) {
+              localStorage.setItem('accessToken', newToken);
+              clearCsrfToken();
+              original.headers = original.headers || {};
+              original.headers.Authorization = `Bearer ${newToken}`;
+              processQueue(null, newToken);
+              resolve(api(original));
+            } else {
+              const noTokenErr = new Error('No access token returned from refresh');
+              processQueue(noTokenErr, null);
+              handleLogout();
+              reject(err);
+            }
+          })
+          .catch((refreshErr) => {
+            processQueue(refreshErr, null);
+            handleLogout();
+            reject(err);
+          })
+          .finally(() => {
+            isRefreshing = false;
+          });
+      });
     }
     return Promise.reject(err);
   }
