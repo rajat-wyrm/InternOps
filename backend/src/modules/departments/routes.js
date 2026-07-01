@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const { csrfMiddleware } = require('../../middleware/csrf');
@@ -8,7 +11,7 @@ async function routes(fastify) {
   fastify.post(
     '/',
     {
-      preHandler: [auth, rbac('ADMIN'), csrfMiddleware],
+      preHandler: [auth, rbac('ADMIN'), csrfMiddleware, sanitize],
       schema: {
         tags: ['Departments'],
         description: 'Create a new department',

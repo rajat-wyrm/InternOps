@@ -24,7 +24,7 @@ function getRefreshSecret() {
 
 function generateAccessToken(user) {
   return jwt.sign(
-    { id: user.id, role: user.role, typ: 'access' },
+    { id: user.id, role: user.role, typ: 'access', jti: crypto.randomUUID() },
     getAccessSecret(),
     {
       expiresIn: config.jwt.expiry || '15m',

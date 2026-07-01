@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const fs = require('fs');
 const { toSchema } = require('../../utils/schemaHelper');
 const path = require('path');
@@ -38,7 +41,7 @@ async function routes(fastify) {
   fastify.post(
     '/avatar',
     {
-      preHandler: [auth],
+      preHandler: [auth, sanitize],
       schema: {
         tags: ['Uploads'],
         description: 'Upload/replace avatar image (multipart)',

@@ -25,6 +25,8 @@ import useAuthStore from './store/auth';
 import api from './lib/axios';
 import RoleGuard from './components/RoleGuard';
 
+let bootRefreshPromise = null;
+
 function Private({ children }) {
   const token = useAuthStore((s) => s.accessToken);
   const hydrated = useAuthStore((s) => s.hydrated);
@@ -40,22 +42,31 @@ export default function App() {
   const logout = useAuthStore((s) => s.logout);
 
   useEffect(() => {
-    api
-      .post('/auth/refresh')
-      .then((res) =>
-        setAuth({ accessToken: res.data.accessToken, user: res.data.user })
-      )
-      .catch(() => {
-        // Server could not verify the session (no valid refresh cookie, or the
-        // token was manipulated client-side). Clear ANY token that was read
-        // from localStorage so it is never surfaced in a protected route once
-        // hydrated becomes true. Without this, an attacker who sets a fake
-        // token via the browser console would see protected UI for as long as
-        // the refresh request is in-flight.
-        logout();
+    if (!bootRefreshPromise) {
+      bootRefreshPromise = api.post('/auth/refresh', {});
+    }
+
+    bootRefreshPromise
+      .then((res) => {
+        setAuth({
+          accessToken: res.data.accessToken,
+          user: res.data.user,
+        });
       })
-      .finally(() => setHydrated());
-  }, []);
+      .catch(() => {
+        const currentToken = useAuthStore.getState().accessToken;
+
+        // If another in-flight startup refresh already succeeded, do not
+        // destroy the valid in-memory session because of a duplicate refresh
+        // request caused by React dev StrictMode.
+        if (!currentToken) {
+          logout();
+        }
+      })
+      .finally(() => {
+        setHydrated();
+      });
+  }, [logout, setAuth, setHydrated]);
 
   return (
     <Routes>
