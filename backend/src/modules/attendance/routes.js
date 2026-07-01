@@ -1,3 +1,7 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
+const pool = require('../../config/db');
 const { notifyUser } = require('../../websocket');
 const auth = require('../../middleware/auth');
 const direct = require('../../middleware/directManager');
@@ -15,7 +19,7 @@ async function routes(fastify) {
     '/mark',
     {
       schema: { tags: ['Attendance'], description: 'Mark single attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
     },
     async (req, reply) => {
       const schema = z.object({
@@ -78,7 +82,7 @@ async function routes(fastify) {
     '/bulk',
     {
       schema: { tags: ['Attendance'], description: 'Bulk mark attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
     },
     async (req, reply) => {
       const entrySchema = z.object({
@@ -190,7 +194,7 @@ async function routes(fastify) {
       if (req.user.role === 'ADMIN') {
         const pool = require('../../config/db');
         const all = await pool.query(
-          'SELECT id, full_name, role FROM users WHERE deleted_at IS NULL'
+          'SELECT id, full_name, email, role FROM users WHERE deleted_at IS NULL'
         );
         return all.rows;
       }

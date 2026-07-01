@@ -1,10 +1,14 @@
-﻿const auth = require('../../middleware/auth');
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
+const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const ownership = require('../../middleware/ownership');
 const repo = require('./repository');
 const argon2 = require('argon2');
 const { z } = require('zod');
 const authRepo = require('../auth/repository');
+const { toSchema } = require('../../utils/schemaHelper');
 
 const listUsersQuerySchema = z.object({
   search: z.string().trim().max(100).optional(),
@@ -17,14 +21,50 @@ const listUsersQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+const changePasswordSchema = z.object({
+  oldPassword: z.string(),
+  newPassword: z.string().min(8),
+});
+
+const updateProfileSchema = z.object({
+  full_name: z.string().optional(),
+  phone: z.string().optional(),
+  college: z.string().optional(),
+  course: z.string().optional(),
+  year_of_study: z.string().optional(),
+  position: z.string().optional(),
+  joining_date: z.string().optional(),
+  internship_status: z.string().optional(),
+  location: z.string().optional(),
+  notes: z.string().optional(),
+  avatar_url: z.string().optional(),
+});
+
 async function routes(fastify) {
   // Admin: list users (paginated, with total count)
   fastify.get(
     '/',
-    { preHandler: [auth, rbac('ADMIN')] },
+    {
+      preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Users'],
+        description: 'List all users (Admin only)',
+        querystring: {
+          type: 'object',
+          properties: {
+            search: { type: 'string', maxLength: 100 },
+            role: {
+              type: 'string',
+              enum: ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+            },
+            suspended: { type: 'string', enum: ['true', 'false'] },
+            page: { type: 'integer', minimum: 1, default: 1 },
+            limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+        },
+      },
+    },
     async (req, reply) => {
-      const parsed = listUsersQuerySchema.safeParse(req.query);
-
       if (!parsed.success) {
         return reply.status(400).send({
           error: 'Invalid query parameters',
@@ -47,17 +87,31 @@ async function routes(fastify) {
   );
 
   // Get own profile
-  fastify.get('/me', { preHandler: [auth] }, async (req) => {
-    const {
-      rows: [user],
-    } = await repo.getUserById(req.user.id);
-    return user;
-  });
+  fastify.get(
+    '/me',
+    {
+      preHandler: [auth],
+      schema: { tags: ['Users'], description: 'Get own profile' },
+    },
+    async (req) => {
+      const {
+        rows: [user],
+      } = await repo.getUserById(req.user.id);
+      return user;
+    }
+  );
 
   // Get single user (ownership check)
   fastify.get(
     '/:id',
-    { preHandler: [auth, ownership('id')] },
+    {
+      preHandler: [auth, ownership('id')],
+      schema: {
+        tags: ['Users'],
+        description: 'Get single user',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+      },
+    },
     async (req, reply) => {
       const {
         rows: [user],
@@ -69,7 +123,14 @@ async function routes(fastify) {
   // Suspend / Activate / Soft delete (admin only)
   fastify.patch(
     '/:id/suspend',
-    { preHandler: [auth, rbac('ADMIN')] },
+    {
+      preHandler: [auth, rbac('ADMIN'), sanitize],
+      schema: {
+        tags: ['Users'],
+        description: 'Suspend user (Admin only)',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+      },
+    },
     async (req, reply) => {
       if (req.user.id === req.params.id) {
         return reply.status(400).send({
@@ -104,7 +165,14 @@ async function routes(fastify) {
 
   fastify.patch(
     '/:id/activate',
-    { preHandler: [auth, rbac('ADMIN')] },
+    {
+      preHandler: [auth, rbac('ADMIN'), sanitize],
+      schema: {
+        tags: ['Users'],
+        description: 'Activate user (Admin only)',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+      },
+    },
     async (req) => {
       await repo.activateUser(req.params.id);
       req.auditOnResponse = {
@@ -117,72 +185,107 @@ async function routes(fastify) {
     }
   );
 
-  fastify.delete('/:id', { preHandler: [auth, rbac('ADMIN')] }, async (req) => {
-    await repo.softDeleteUser(req.params.id);
-    req.auditOnResponse = {
-      userId: req.user.id,
-      action: 'USER_DELETED',
-      resourceType: 'user',
-      resourceId: req.params.id,
-    };
-    return { message: 'Soft-deleted' };
-  });
+  fastify.delete(
+    '/:id',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Users'],
+        description: 'Soft-delete user (Admin only)',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+      },
+    },
+    async (req) => {
+      await repo.softDeleteUser(req.params.id);
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'USER_DELETED',
+        resourceType: 'user',
+        resourceId: req.params.id,
+      };
+      return { message: 'Soft-deleted' };
+    }
+  );
 
   // Change own password
-  fastify.patch('/me/password', { preHandler: [auth] }, async (req, reply) => {
-    const schema = z.object({
-      oldPassword: z.string(),
-      newPassword: z.string().min(8),
-    });
+  fastify.patch(
+    '/me/password',
+    {
+      preHandler: [auth, sanitize],
+      schema: {
+        tags: ['Users'],
+        description: 'Change own password',
+        body: toSchema(changePasswordSchema),
+      },
+    },
+    async (req, reply) => {
+      const schema = z.object({
+        oldPassword: z.string(),
+        newPassword: z.string().min(8),
+      });
 
-    const { oldPassword, newPassword } = schema.parse(req.body);
-    const user = await authRepo.findById(req.user.id);
+      const { oldPassword, newPassword } = schema.parse(req.body);
+      const user = await authRepo.findById(req.user.id);
 
-    if (!user) return reply.status(404).send({ error: 'User not found' });
+      if (!user) return reply.status(404).send({ error: 'User not found' });
 
-    const valid = await authRepo.verifyPassword(user, oldPassword);
+      const valid = await authRepo.verifyPassword(user, oldPassword);
 
-    if (!valid) {
-      return reply.status(400).send({ error: 'Current password is incorrect' });
+      if (!valid) {
+        return reply
+          .status(400)
+          .send({ error: 'Current password is incorrect' });
+      }
+
+      const newHash = await argon2.hash(newPassword);
+
+      await authRepo.updatePassword(req.user.id, newHash);
+
+      // Use the deferred audit log pattern for consistency
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'PASSWORD_CHANGED',
+        resourceType: 'user',
+        resourceId: req.user.id,
+      };
+
+      return { message: 'Password updated' };
     }
-
-    const newHash = await argon2.hash(newPassword);
-
-    await authRepo.updatePassword(req.user.id, newHash);
-
-    // Use the deferred audit log pattern for consistency
-    req.auditOnResponse = {
-      userId: req.user.id,
-      action: 'PASSWORD_CHANGED',
-      resourceType: 'user',
-      resourceId: req.user.id,
-    };
-
-    return { message: 'Password updated' };
-  });
+  );
 
   // Update own profile
-  fastify.patch('/me', { preHandler: [auth] }, async (req) => {
-    const schema = z.object({
-      full_name: z.string().optional(),
-      phone: z.string().optional(),
-      college: z.string().optional(),
-      course: z.string().optional(),
-      year_of_study: z.string().optional(),
-      position: z.string().optional(),
-      joining_date: z.string().optional(),
-      internship_status: z.string().optional(),
-      location: z.string().optional(),
-      notes: z.string().optional(),
-      avatar_url: z.string().optional(),
-    });
+  fastify.patch(
+    '/me',
+    {
+      preHandler: [auth, sanitize],
+      schema: {
+        tags: ['Users'],
+        description: 'Update own profile',
+        body: toSchema(updateProfileSchema),
+      },
+    },
+    async (req) => {
+      const schema = z.object({
+        full_name: z.string().optional(),
+        phone: z.string().optional(),
+        college: z.string().optional(),
+        course: z.string().optional(),
+        year_of_study: z.string().optional(),
+        position: z.string().optional(),
+        joining_date: z.string().optional(),
+        internship_status: z.string().optional(),
+        location: z.string().optional(),
+        notes: z.string().optional(),
+        avatar_url: z.string().optional(),
+      });
 
-    const data = schema.parse(req.body);
+      const data = schema.parse(req.body);
 
-    await authRepo.updateProfile(req.user.id, data);
+      await authRepo.updateProfile(req.user.id, data);
 
-    return { message: 'Profile updated' };
-  });
+      return { message: 'Profile updated' };
+    }
+  );
 }
 
 module.exports = routes;
