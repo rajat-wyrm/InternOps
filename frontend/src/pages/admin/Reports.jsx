@@ -12,55 +12,6 @@ const ROLE_COLOR = {
 };
 const STATUS_COLOR = { PRESENT: 'green', ABSENT: 'red', HALF_DAY: 'yellow' };
 
-const MOCK_ATTENDANCE = [
-  { role: 'INTERN', status: 'PRESENT', count: 42 },
-  { role: 'INTERN', status: 'ABSENT', count: 5 },
-  { role: 'INTERN', status: 'HALF_DAY', count: 3 },
-
-  { role: 'CAPTAIN', status: 'PRESENT', count: 8 },
-  { role: 'CAPTAIN', status: 'ABSENT', count: 1 },
-
-  { role: 'TL', status: 'PRESENT', count: 4 },
-
-  { role: 'SENIOR_TL', status: 'PRESENT', count: 2 },
-
-  { role: 'ADMIN', status: 'PRESENT', count: 1 },
-];
-
-const MOCK_RATINGS = [
-  { role: 'INTERN', avg_score: 4.12, total: 52 },
-  { role: 'CAPTAIN', avg_score: 4.35, total: 12 },
-  { role: 'TL', avg_score: 4.51, total: 6 },
-  { role: 'SENIOR_TL', avg_score: 4.72, total: 3 },
-];
-
-const MOCK_TASKS = [
-  {
-    id: 'mock-task-1',
-    title: 'LinkedIn Outreach Campaign',
-    verified: 18,
-    pending: 4,
-  },
-  {
-    id: 'mock-task-2',
-    title: 'Instagram Marketing Sprint',
-    verified: 25,
-    pending: 6,
-  },
-  {
-    id: 'mock-task-3',
-    title: 'Community Engagement Drive',
-    verified: 14,
-    pending: 2,
-  },
-  {
-    id: 'mock-task-4',
-    title: 'Weekly Progress Report',
-    verified: 30,
-    pending: 5,
-  },
-];
-
 export default function Reports() {
   const today = new Date().toISOString().slice(0, 10);
   const [from, setFrom] = useState(today);
@@ -87,13 +38,11 @@ export default function Reports() {
     queryFn: () => api.get('/reports/task-completion').then((r) => r.data),
   });
 
-  const attendanceData =
-    attendanceQuery.data?.length > 0 ? attendanceQuery.data : MOCK_ATTENDANCE;
+  const attendanceData = attendanceQuery.data || [];
 
-  const ratingsData =
-    ratingsQuery.data?.length > 0 ? ratingsQuery.data : MOCK_RATINGS;
+  const ratingsData = ratingsQuery.data || [];
 
-  const tasksData = tasksQuery.data?.length > 0 ? tasksQuery.data : MOCK_TASKS;
+  const tasksData = tasksQuery.data || [];
 
   return (
     <div>

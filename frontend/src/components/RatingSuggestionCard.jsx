@@ -22,7 +22,7 @@ export default function RatingSuggestionCard({ suggestion, loading }) {
           {suggestion.recommendation?.suggestedScore ?? '-'}
         </span>
 
-        <span className="text-gray-500">/ 5</span>
+        <span className="text-gray-500">/ 10</span>
       </div>
 
       <p className="text-sm text-gray-600 mt-2">

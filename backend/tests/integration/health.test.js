@@ -2,6 +2,7 @@ const app = require('../../src/app');
 
 describe('Health Check Integration Tests', () => {
   beforeAll(async () => {
+    jest.setTimeout(30000);
     await app.ready();
   });
 

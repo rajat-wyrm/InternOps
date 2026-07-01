@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // All backend routes are mounted under /api; Vite proxies this to :5000 in dev.
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
 });
 
@@ -14,37 +14,88 @@ const api = axios.create({
 // which is the correct behaviour when CSRF protection is unavailable.
 let csrfToken = null;
 let csrfPromise = null;
+let csrfGeneration = 0;
 
 async function getCsrfToken() {
-  if (csrfToken) return csrfToken;
-  if (csrfPromise) return csrfPromise;
+  if (csrfToken) {
+    return csrfToken;
+  }
+
+  if (csrfPromise) {
+    return csrfPromise;
+  }
+
+  const generation = csrfGeneration;
+
   csrfPromise = api
     .get('/auth/csrf-token')
     .then((res) => {
+      // Ignore stale responses that finished after a token reset.
+      if (generation !== csrfGeneration) {
+        throw new Error('Discarding stale CSRF token');
+      }
+
       csrfToken = res.data.csrfToken;
       return csrfToken;
     })
-    .catch((err) => {
+    .finally(() => {
       csrfPromise = null;
-      throw err;
     });
+
   return csrfPromise;
 }
 
 function clearCsrfToken() {
+  csrfGeneration++;
   csrfToken = null;
   csrfPromise = null;
 }
 
+function removeLegacyAuthStorage() {
+  try {
+    if (typeof window === 'undefined') return;
+
+    // Remove access tokens saved by older versions of the app.
+    window.localStorage.removeItem('accessToken');
+  } catch {
+    /* localStorage may be unavailable — ignore */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auth-store bridge
+// ---------------------------------------------------------------------------
+// auth.js calls registerAuthStore() after the Zustand store is created.
+// Using a registration pattern avoids a circular module dependency.
+// Access tokens are read from Zustand memory only and are never read from or
+// written to localStorage.
+// ---------------------------------------------------------------------------
+let _authStore = null;
+
+export function registerAuthStore(store) {
+  _authStore = store;
+  removeLegacyAuthStorage();
+}
+
+function getMemoryAccessToken() {
+  return _authStore?.getState?.()?.accessToken || null;
+}
+
 api.interceptors.request.use(async (config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const token = getMemoryAccessToken();
+
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
 
   const method = (config.method || 'get').toLowerCase();
+
   if (!['get', 'head', 'options'].includes(method)) {
     try {
+      config.headers = config.headers || {};
       config.headers['X-CSRF-Token'] = await getCsrfToken();
-    } catch (err) {
+    } catch {
       // Surface a real error rather than allowing the request through
       // with a fake/spoofed token. The route handler will reject the
       // mutation with 403 if the server can't enforce CSRF.
@@ -53,49 +104,174 @@ api.interceptors.request.use(async (config) => {
       );
     }
   }
+
   return config;
 });
 
 // Silent refresh: when an access token expires, the server returns 401.
-// Before destroying the session, try the refresh-token flow once. If that
-// fails, fall through to the original "drop session" behaviour.
-let refreshing = null;
+// Before destroying the session, try the refresh-token flow once. The refresh
+// token is stored in an HttpOnly cookie, so JavaScript cannot read it.
+// The new access token is stored only in Zustand memory.
+let isRefreshing = false;
+let failedQueue = [];
+
+function processQueue(error, token = null) {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+}
+
+function handleLogout() {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('user');
+  clearCsrfToken();
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login';
+  }
+}
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    const url = res.config?.url;
+
+    if (
+      url &&
+      (url.includes('/auth/login') ||
+        url.includes('/auth/logout') ||
+        url.includes('/me/revoke-all') ||
+        url.includes('/auth/reset-password'))
+    ) {
+      clearCsrfToken();
+    }
+
+    return res;
+  },
   async (err) => {
+    console.error(
+      '[Global API Error]',
+      err.response?.data || err.message,
+      err.config?.url
+    );
+
     const original = err.config || {};
     const status = err.response?.status;
 
-    if (status === 401 && !original._retry) {
-      original._retry = true;
-      try {
-        refreshing = refreshing || api.post('/auth/refresh', {});
-        const refreshRes = await refreshing;
-        refreshing = null;
-        const newToken = refreshRes.data?.accessToken;
-        if (newToken) {
-          localStorage.setItem('accessToken', newToken);
-          // The server rotated the refresh cookie. The CSRF token may also
-          // have changed (some implementations bind them together), so reset
-          // it so the next request picks up the new one.
-          clearCsrfToken();
+    const isAuthRoute =
+      original.url &&
+      (original.url.includes('/auth/login') ||
+        original.url.includes('/auth/refresh') ||
+        original.url.includes('/auth/register'));
+
+    if (status === 401 && !original._retry && !isAuthRoute) {
+      // Another refresh is already in flight — queue this request.
+      if (isRefreshing) {
+        original._retry = true;
+
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then((token) => {
           original.headers = original.headers || {};
-          original.headers.Authorization = `Bearer ${newToken}`;
+          original.headers.Authorization = `Bearer ${token}`;
           return api(original);
-        }
-      } catch (refreshErr) {
-        refreshing = null;
-        // Refresh failed — fall through to logout.
+        });
       }
 
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('user');
-      clearCsrfToken();
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
+      original._retry = true;
+      isRefreshing = true;
+
+      try {
+        const refreshRes = await api.post('/auth/refresh', {});
+        const newToken = refreshRes.data?.accessToken;
+
+        if (newToken) {
+          // Store refreshed token in memory only.
+          if (_authStore) {
+            _authStore.getState().setAuth({ accessToken: newToken });
+          }
+
+          // The server rotated the refresh cookie. The CSRF token may also
+          // have changed, so reset it so the next request picks up a fresh one.
+          clearCsrfToken();
+          removeLegacyAuthStorage();
+
+          processQueue(null, newToken);
+
+          original.headers = original.headers || {};
+          original.headers.Authorization = `Bearer ${newToken}`;
+
+          return api(original);
+        }
+
+        throw new Error('Refresh returned no token');
+      } catch (refreshErr) {
+        processQueue(refreshErr);
+
+        if (_authStore) {
+          _authStore.getState().logout();
+        } else {
+          removeLegacyAuthStorage();
+          clearCsrfToken();
+
+          try {
+            if (typeof window !== 'undefined') {
+              window.localStorage.removeItem('user');
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
+        if (
+          typeof window !== 'undefined' &&
+          !window.location.pathname.startsWith('/login')
+        ) {
+          window.location.href = '/login';
+        }
+
+        return Promise.reject(refreshErr);
+      } finally {
+        isRefreshing = false;
       }
+
+      isRefreshing = true;
+
+      return new Promise((resolve, reject) => {
+        api
+          .post('/auth/refresh', {})
+          .then((res) => {
+            const newToken = res.data?.accessToken;
+            if (newToken) {
+              localStorage.setItem('accessToken', newToken);
+              clearCsrfToken();
+              original.headers = original.headers || {};
+              original.headers.Authorization = `Bearer ${newToken}`;
+              processQueue(null, newToken);
+              resolve(api(original));
+            } else {
+              const noTokenErr = new Error(
+                'No access token returned from refresh'
+              );
+              processQueue(noTokenErr, null);
+              handleLogout();
+              reject(err);
+            }
+          })
+          .catch((refreshErr) => {
+            processQueue(refreshErr, null);
+            handleLogout();
+            reject(err);
+          })
+          .finally(() => {
+            isRefreshing = false;
+          });
+      });
     }
+
     return Promise.reject(err);
   }
 );

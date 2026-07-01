@@ -1,5 +1,5 @@
-﻿const pool = require('../../config/db');
 const auth = require('../../middleware/auth');
+const { toSchema } = require('../../utils/schemaHelper');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 const { z } = require('zod');
@@ -21,11 +21,28 @@ function parseDateRange(query, reply) {
   return parsed.data;
 }
 
+const departmentQuerySchema = z.object({
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD')
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD')
+    .optional(),
+  departmentId: z.string().uuid().optional(),
+});
+
 async function routes(fastify) {
   fastify.get(
     '/attendance-summary',
     {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Attendance summary by role for date range',
+        querystring: toSchema(dateRangeSchema),
+      },
     },
     async (req, reply) => {
       const range = parseDateRange(req.query, reply);
@@ -38,6 +55,11 @@ async function routes(fastify) {
     '/ratings-summary',
     {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Ratings summary for date range',
+        querystring: toSchema(dateRangeSchema),
+      },
     },
     async (req, reply) => {
       const range = parseDateRange(req.query, reply);
@@ -50,6 +72,7 @@ async function routes(fastify) {
     '/task-completion',
     {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: { tags: ['Reports'], description: 'Task completion statistics' },
     },
     async () => {
       return repo.taskCompletionStats();
@@ -60,20 +83,14 @@ async function routes(fastify) {
     '/department-attendance',
     {
       preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Department attendance with optional filters',
+        querystring: toSchema(departmentQuerySchema),
+      },
     },
     async (req, reply) => {
-      const schema = z.object({
-        from: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD')
-          .optional(),
-        to: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD')
-          .optional(),
-        departmentId: z.string().uuid().optional(),
-      });
-      const parsed = schema.safeParse(req.query);
+      const parsed = departmentQuerySchema.safeParse(req.query);
       if (!parsed.success) {
         return reply.status(400).send({
           error: 'Invalid query parameters',
@@ -97,20 +114,7 @@ async function routes(fastify) {
         where.push(`d.id = $${params.length}`);
       }
 
-      const { rows } = await pool.query(
-        `SELECT d.name AS department,
-                COUNT(a.id) AS total,
-                SUM(CASE WHEN a.status='PRESENT' THEN 1 ELSE 0 END) AS present,
-                SUM(CASE WHEN a.status='ABSENT' THEN 1 ELSE 0 END) AS absent,
-                SUM(CASE WHEN a.status='HALF_DAY' THEN 1 ELSE 0 END) AS half_day
-         FROM attendance a
-         JOIN users u ON a.user_id = u.id
-         JOIN departments d ON u.department_id = d.id
-         WHERE ${where.join(' AND ')}
-         GROUP BY d.id, d.name ORDER BY d.name`,
-        params
-      );
-      return rows;
+      return repo.departmentAttendance(where.join(' AND '), params);
     }
   );
 
@@ -118,26 +122,17 @@ async function routes(fastify) {
     '/custom-summary',
     {
       preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Custom summary for date range',
+        querystring: toSchema(dateRangeSchema),
+      },
     },
     async (req, reply) => {
       const range = parseDateRange(req.query, reply);
       if (!range) return;
 
-      const { rows } = await pool.query(
-        `SELECT DATE(a.date) AS date,
-                COUNT(*) AS total,
-                SUM(CASE WHEN a.status='PRESENT' THEN 1 ELSE 0 END) AS present,
-                SUM(CASE WHEN a.status='ABSENT' THEN 1 ELSE 0 END) AS absent,
-                SUM(CASE WHEN a.status='HALF_DAY' THEN 1 ELSE 0 END) AS half_day
-         FROM attendance a
-         WHERE a.date BETWEEN $1 AND $2
-           AND a.deleted_at IS NULL
-         GROUP BY DATE(a.date)
-         ORDER BY DATE(a.date)`,
-        [range.from, range.to]
-      );
-
-      return rows;
+      return repo.customSummary(range.from, range.to);
     }
   );
 }

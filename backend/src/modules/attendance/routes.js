@@ -1,11 +1,15 @@
-﻿const { notifyUser } = require('../../websocket');
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
+const pool = require('../../config/db');
+const { notifyUser } = require('../../websocket');
 const auth = require('../../middleware/auth');
 const direct = require('../../middleware/directManager');
 const ownership = require('../../middleware/ownership');
 const rbac = require('../../middleware/rbac');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const repo = require('./repository');
-const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
+const { extractRequestInfo } = require('../../utils/audit');
 const { send: sendNotification } = require('../notifications/repository');
 const { z } = require('zod');
 
@@ -15,7 +19,7 @@ async function routes(fastify) {
     '/mark',
     {
       schema: { tags: ['Attendance'], description: 'Mark single attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
     },
     async (req, reply) => {
       const schema = z.object({
@@ -35,6 +39,12 @@ async function routes(fastify) {
       }
       const { user_id, date, status, remarks } = parsed.data;
 
+      if (req.user.role !== 'ADMIN' && req.user.id === user_id) {
+        return reply
+          .status(400)
+          .send({ error: 'You cannot mark your own attendance' });
+      }
+
       if (req.user.role !== 'ADMIN') {
         const ok = await checkHierarchyAccess(req.user.id, user_id);
         if (!ok)
@@ -49,14 +59,14 @@ async function routes(fastify) {
         status,
         remarks
       );
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         ...extractRequestInfo(req),
         action: 'ATTENDANCE_MARKED',
         resourceType: 'attendance',
         resourceId: att.id,
         details: { target: user_id, date, status, remarks },
-      });
+      };
       await sendNotification(
         user_id,
         `Your attendance for ${date} has been marked as ${status}.`
@@ -72,7 +82,7 @@ async function routes(fastify) {
     '/bulk',
     {
       schema: { tags: ['Attendance'], description: 'Bulk mark attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
     },
     async (req, reply) => {
       const entrySchema = z.object({
@@ -98,6 +108,11 @@ async function routes(fastify) {
       // Authorize all entries in a single recursive query — avoids N+1.
       if (req.user.role !== 'ADMIN') {
         const targetIds = [...new Set(entries.map((e) => e.user_id))];
+        if (targetIds.includes(req.user.id)) {
+          return reply.status(400).send({
+            error: 'You cannot mark your own attendance',
+          });
+        }
         const allowedIds = await repo.listHierarchySubordinates(
           req.user.id,
           targetIds
@@ -112,13 +127,13 @@ async function routes(fastify) {
       }
 
       const results = await repo.bulkMark(entries, req.user.id);
-      await createAuditLog({
+      req.auditOnResponse = {
         userId: req.user.id,
         ...extractRequestInfo(req),
         action: 'ATTENDANCE_BULK_MARKED',
         resourceType: 'attendance',
         details: { count: results.length, date: entries[0]?.date },
-      });
+      };
       for (const e of entries)
         await sendNotification(
           e.user_id,
@@ -165,6 +180,25 @@ async function routes(fastify) {
       }
       const { month, year } = parsed.data;
       return repo.getMonthlyStats(req.params.userId, month, year);
+    }
+  );
+
+  //Authorized members
+  fastify.get(
+    '/authorized-members',
+    {
+      schema: { tags: ['Attendance'], description: 'Get members I can view' },
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+    },
+    async (req) => {
+      if (req.user.role === 'ADMIN') {
+        const pool = require('../../config/db');
+        const all = await pool.query(
+          'SELECT id, full_name, email, role FROM users WHERE deleted_at IS NULL'
+        );
+        return all.rows;
+      }
+      return await repo.getAuthorizedSubordinates(req.user.id);
     }
   );
 }

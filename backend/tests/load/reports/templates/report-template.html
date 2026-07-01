@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Load Test Report Template</title>
+    <style>
+      :root {
+        --primary: #2563eb;
+        --success: #16a34a;
+        --warning: #d97706;
+        --danger: #dc2626;
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --text: #1e293b;
+        --muted: #64748b;
+        --border: #e2e8f0;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        padding: 40px;
+      }
+      h1 {
+        font-size: 32px;
+        margin-bottom: 4px;
+        letter-spacing: -0.5px;
+      }
+      h2 {
+        font-size: 22px;
+        margin: 32px 0 16px;
+        color: #475569;
+      }
+      .subtitle {
+        color: var(--muted);
+        font-size: 15px;
+        margin-bottom: 32px;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 32px;
+      }
+      .card {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+      .card .value {
+        font-size: 32px;
+        font-weight: 700;
+        color: var(--primary);
+      }
+      .card .label {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .card.success .value {
+        color: var(--success);
+      }
+      .card.warning .value {
+        color: var(--warning);
+      }
+      .card.danger .value {
+        color: var(--danger);
+      }
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        background: var(--card);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        margin-bottom: 24px;
+      }
+      th {
+        background: #f1f5f9;
+        text-align: left;
+        padding: 14px 16px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      td {
+        padding: 14px 16px;
+        border-top: 1px solid var(--border);
+        font-size: 14px;
+      }
+      tbody tr:hover {
+        background: #f8fafc;
+      }
+      .badge {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 100px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .badge-pass {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .badge-fail {
+        background: #fef2f2;
+        color: #991b1b;
+      }
+      .badge-warn {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      .chart {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        margin-bottom: 24px;
+      }
+      .chart-placeholder {
+        height: 250px;
+        background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .footer {
+        margin-top: 48px;
+        padding: 20px;
+        background: var(--card);
+        border-radius: 12px;
+        font-size: 13px;
+        color: var(--muted);
+        text-align: center;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+      .row {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .col {
+        flex: 1;
+      }
+      @media (max-width: 768px) {
+        body {
+          padding: 16px;
+        }
+        .row {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Load Test Report</h1>
+    <p class="subtitle">Intern Management System — Generated {{DATE}}</p>
+
+    <div class="cards">
+      <div class="card success">
+        <div class="value">{{TOTAL_REQUESTS}}</div>
+        <div class="label">Total Requests</div>
+      </div>
+      <div class="card" class="card {{ERROR_CARD_CLASS}}">
+        <div class="value">{{TOTAL_ERRORS}}</div>
+        <div class="label">Errors</div>
+      </div>
+      <div class="card {{ERROR_RATE_CLASS}}">
+        <div class="value">{{ERROR_RATE}}%</div>
+        <div class="label">Error Rate</div>
+      </div>
+      <div class="card">
+        <div class="value">{{AVG_RESPONSE_TIME}}ms</div>
+        <div class="label">Avg Response Time</div>
+      </div>
+      <div class="card">
+        <div class="value">{{P95_RESPONSE_TIME}}ms</div>
+        <div class="label">P95 Latency</div>
+      </div>
+      <div class="card">
+        <div class="value">{{THROUGHPUT}}</div>
+        <div class="label">Peak Throughput</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col chart">
+        <h2 style="margin-top: 0">Response Time Distribution</h2>
+        <div class="chart-placeholder">
+          Chart: Response time percentiles over test duration
+        </div>
+      </div>
+      <div class="col chart">
+        <h2 style="margin-top: 0">Throughput Over Time</h2>
+        <div class="chart-placeholder">
+          Chart: Requests per second across test phases
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col chart">
+        <h2 style="margin-top: 0">Error Rate</h2>
+        <div class="chart-placeholder">
+          Chart: Error percentage across different endpoints
+        </div>
+      </div>
+      <div class="col chart">
+        <h2 style="margin-top: 0">Resource Utilization</h2>
+        <div class="chart-placeholder">
+          Chart: CPU / Memory / DB connections over time
+        </div>
+      </div>
+    </div>
+
+    <h2>Test Scenarios</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Scenario</th>
+          <th>Requests</th>
+          <th>Avg (ms)</th>
+          <th>P95 (ms)</th>
+          <th>P99 (ms)</th>
+          <th>Errors</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{TABLE_ROWS}}
+      </tbody>
+    </table>
+
+    <h2>Endpoint Performance</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Endpoint</th>
+          <th>Method</th>
+          <th>Avg (ms)</th>
+          <th>P95 (ms)</th>
+          <th>Error Rate</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>/api/auth/login</td>
+          <td>POST</td>
+          <td>45</td>
+          <td>89</td>
+          <td>0.2%</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>/api/auth/csrf-token</td>
+          <td>GET</td>
+          <td>12</td>
+          <td>23</td>
+          <td>0.1%</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>/api/auth/refresh</td>
+          <td>POST</td>
+          <td>34</td>
+          <td>67</td>
+          <td>0.3%</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>/api/interns</td>
+          <td>GET</td>
+          <td>89</td>
+          <td>156</td>
+          <td>0.5%</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>/api/interns/search</td>
+          <td>GET</td>
+          <td>145</td>
+          <td>289</td>
+          <td>1.2%</td>
+          <td><span class="badge badge-warn">WARN</span></td>
+        </tr>
+        <tr>
+          <td>/api/interns/create</td>
+          <td>POST</td>
+          <td>78</td>
+          <td>134</td>
+          <td>0.8%</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>/api/attendance/today</td>
+          <td>GET</td>
+          <td>34</td>
+          <td>67</td>
+          <td>0.4%</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>/api/attendance/bulk</td>
+          <td>POST</td>
+          <td>234</td>
+          <td>456</td>
+          <td>2.1%</td>
+          <td><span class="badge badge-warn">WARN</span></td>
+        </tr>
+        <tr>
+          <td>/api/dashboard/stats</td>
+          <td>GET</td>
+          <td>56</td>
+          <td>98</td>
+          <td>0.3%</td>
+          <td><span class="badge badge-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>/api/dashboard/analytics</td>
+          <td>GET</td>
+          <td>345</td>
+          <td>678</td>
+          <td>1.5%</td>
+          <td><span class="badge badge-warn">WARN</span></td>
+        </tr>
+        <tr>
+          <td>/api/reports/generate</td>
+          <td>POST</td>
+          <td>567</td>
+          <td>1234</td>
+          <td>3.2%</td>
+          <td><span class="badge badge-fail">FAIL</span></td>
+        </tr>
+        <tr>
+          <td>/api/exports/csv</td>
+          <td>POST</td>
+          <td>456</td>
+          <td>890</td>
+          <td>2.8%</td>
+          <td><span class="badge badge-fail">FAIL</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Recommendations</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Issue</th>
+          <th>Impact</th>
+          <th>Priority</th>
+          <th>Recommendation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Report/Export endpoints slow</td>
+          <td>High user wait time</td>
+          <td><span class="badge badge-fail">HIGH</span></td>
+          <td>Implement async job queue with progress tracking</td>
+        </tr>
+        <tr>
+          <td>Search latency under load</td>
+          <td>Degraded UX</td>
+          <td><span class="badge badge-warn">MEDIUM</span></td>
+          <td>Add full-text search indexes</td>
+        </tr>
+        <tr>
+          <td>Bulk attendance performance</td>
+          <td>Admin workflow delay</td>
+          <td><span class="badge badge-warn">MEDIUM</span></td>
+          <td>Optimize with batch INSERT transactions</td>
+        </tr>
+        <tr>
+          <td>Dashboard analytics slow</td>
+          <td>Dashboard load time</td>
+          <td><span class="badge badge-warn">MEDIUM</span></td>
+          <td>Implement materialized views</td>
+        </tr>
+        <tr>
+          <td>Auth endpoints stable</td>
+          <td>No issue</td>
+          <td><span class="badge badge-pass">LOW</span></td>
+          <td>No action needed</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="footer">
+      <strong>InternOps</strong> — Load Testing Suite | Generated by automated
+      test runner | {{DATE}}
+    </div>
+  </body>
+</html>

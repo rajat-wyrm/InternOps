@@ -1,4 +1,4 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 
 async function attendanceSummaryByRole(from, to) {
   const res = await pool.query(
@@ -46,8 +46,44 @@ async function taskCompletionStats() {
   return res.rows;
 }
 
+async function departmentAttendance(whereClause, params) {
+  const { rows } = await pool.query(
+    `SELECT d.name AS department,
+            COUNT(a.id) AS total,
+            SUM(CASE WHEN a.status='PRESENT' THEN 1 ELSE 0 END) AS present,
+            SUM(CASE WHEN a.status='ABSENT' THEN 1 ELSE 0 END) AS absent,
+            SUM(CASE WHEN a.status='HALF_DAY' THEN 1 ELSE 0 END) AS half_day
+     FROM attendance a
+     JOIN users u ON a.user_id = u.id
+     JOIN departments d ON u.department_id = d.id AND d.deleted_at IS NULL
+     WHERE ${whereClause}
+     GROUP BY d.id, d.name ORDER BY d.name`,
+    params
+  );
+  return rows;
+}
+
+async function customSummary(from, to) {
+  const { rows } = await pool.query(
+    `SELECT DATE(a.date) AS date,
+            COUNT(*) AS total,
+            SUM(CASE WHEN a.status='PRESENT' THEN 1 ELSE 0 END) AS present,
+            SUM(CASE WHEN a.status='ABSENT' THEN 1 ELSE 0 END) AS absent,
+            SUM(CASE WHEN a.status='HALF_DAY' THEN 1 ELSE 0 END) AS half_day
+     FROM attendance a
+     WHERE a.date BETWEEN $1 AND $2
+       AND a.deleted_at IS NULL
+     GROUP BY DATE(a.date)
+     ORDER BY DATE(a.date)`,
+    [from, to]
+  );
+  return rows;
+}
+
 module.exports = {
   attendanceSummaryByRole,
   ratingsSummary,
   taskCompletionStats,
+  departmentAttendance,
+  customSummary,
 };

@@ -1,4 +1,4 @@
-﻿const pool = require('../../config/db');
+const pool = require('../../config/db');
 const { getRedisClient } = require('../../config/redis');
 
 // ─── getUserSessions ──────────────────────────────────────────────────────────
@@ -13,8 +13,22 @@ async function getUserSessions(userId) {
   if (redis) {
     const tokenHashes = await redis.sMembers(`user_tokens:${userId}`);
     const sessions = [];
-
-    // ... (Your existing loop code to populate the sessions array) ...
+    for (const hash of tokenHashes) {
+      const raw = await redis.get(`refresh_token:${hash}`);
+      if (raw) {
+        let createdAt = 'N/A';
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed.createdAt) {
+            createdAt = new Date(parsed.createdAt).toISOString();
+          }
+        } catch {}
+        sessions.push({
+          sessionId: hash,
+          createdAt,
+        });
+      }
+    }
 
     // Only return if we actually found something in Redis
     if (sessions.length > 0) {
@@ -39,56 +53,99 @@ async function getUserSessions(userId) {
 }
 
 // ─── revokeSession ────────────────────────────────────────────────────────────
-// WHY: The original ran UPDATE refresh_tokens … WHERE id = $1. In Redis mode
-// the session ID is a token hash (not a UUID), and the row doesn't exist in
-// Postgres — so the update silently matched 0 rows and returned false every time.
-// FIX: In Redis mode, use the sessionId as a hash key. Delete the
-// refresh_token:<hash> entry and remove it from the user's set.
+// Atomic session revocation with ownership check in a single operation.
+// Prevents TOCTOU race conditions by combining ownership verification
+// and deletion into one atomic step using Lua script (Redis) or
+// DELETE ... RETURNING (Postgres).
 async function revokeSession(sessionId, userId) {
   const redis = await getRedisClient();
 
   if (redis) {
-    // Confirm the token belongs to this user before deleting
-    const storedUserId = await redis.get(`refresh_token:${sessionId}`);
-    if (!storedUserId || storedUserId !== String(userId)) return false;
-
-    await redis.del(`refresh_token:${sessionId}`);
-    await redis.sRem(`user_tokens:${userId}`, sessionId);
-    return true;
+    // Atomic Lua script: verify ownership AND delete in single operation
+    const script = `
+      local key = KEYS[1]
+      local userId = ARGV[1]
+      local stored = redis.call('GET', key)
+      if not stored or stored ~= userId then
+        return 0
+      end
+      redis.call('DEL', key)
+      redis.call('SREM', 'user_tokens:' .. userId, ARGV[2])
+      return 1
+    `;
+    const result = await redis.eval(script, {
+      keys: [`refresh_token:${sessionId}`],
+      arguments: [String(userId), sessionId],
+    });
+    return result === 1;
   }
 
-  // ── Postgres fallback ──────────────────────────────────────────────────────
+  // ── Postgres fallback: Atomic DELETE with ownership check ──
   const res = await pool.query(
-    'UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1 AND user_id = $2 RETURNING id',
+    'DELETE FROM refresh_tokens WHERE id = $1 AND user_id = $2 RETURNING id',
     [sessionId, userId]
   );
   return res.rowCount > 0;
 }
 
-// ─── revokeAllUserSessions ───────────────────────────────────────────────────
-// WHY: The original ran UPDATE refresh_tokens SET revoked = TRUE for all rows.
-// In Redis mode there are no rows to update — all sessions survive revocation.
-// FIX: In Redis mode, delete every hash in user_tokens:<userId> and the set
-// itself. This is the exact same logic already used in auth/repository.js
-// (revokeAllUserTokensRedis) — we replicate it here to keep sessions/
-// repository.js self-contained without a circular dependency.
 async function revokeAllUserSessions(userId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Revoke all refresh tokens for the user in Postgres
+    await client.query(
+      'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
+      [userId]
+    );
+
+    // Revoke from Redis atomically
+    const redis = await getRedisClient();
+    if (redis) {
+      const tokens = await redis.sMembers(`user_tokens:${userId}`);
+      if (tokens.length > 0) {
+        const multi = redis.multi();
+        for (const token of tokens) {
+          multi.del(`refresh_token:${token}`);
+        }
+        multi.del(`user_tokens:${userId}`);
+        await multi.exec();
+      }
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+async function getSessionById(sessionId, userId) {
   const redis = await getRedisClient();
 
   if (redis) {
-    const tokens = await redis.sMembers(`user_tokens:${userId}`);
-    for (const token of tokens) {
-      await redis.del(`refresh_token:${token}`);
+    const tokenHashes = await redis.sMembers(`user_tokens:${userId}`);
+
+    if (tokenHashes.includes(sessionId)) {
+      return { id: sessionId };
     }
-    await redis.del(`user_tokens:${userId}`);
-    return;
+
+    return null;
   }
 
-  // ── Postgres fallback ──────────────────────────────────────────────────────
-  await pool.query(
-    'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
-    [userId]
+  const res = await pool.query(
+    `SELECT id
+     FROM refresh_tokens
+     WHERE id = $1 AND user_id = $2`,
+    [sessionId, userId]
   );
-}
 
-module.exports = { getUserSessions, revokeSession, revokeAllUserSessions };
+  return res.rows[0] || null;
+}
+module.exports = {
+  getUserSessions,
+  revokeSession,
+  revokeAllUserSessions,
+  getSessionById,
+};

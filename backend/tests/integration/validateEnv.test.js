@@ -180,4 +180,18 @@ describe('Environment Variable Validation Tests', () => {
       expect.stringContaining('• EMAIL_API_KEY')
     );
   });
+
+  it('should terminate the process if environment variable types are invalid', () => {
+    process.env.JWT_SECRET = 'secret';
+    process.env.DATABASE_URL = 'postgresql://localhost:5432';
+    process.env.NODE_ENV = 'development';
+    process.env.PORT = 'not-a-number';
+
+    validateEnv();
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('❌ Invalid environment variable types:')
+    );
+  });
 });

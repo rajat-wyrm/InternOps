@@ -62,6 +62,7 @@ module.exports = {
     deepseekKey: process.env.DEEPSEEK_API_KEY,
     deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL,
     huggingfaceToken: process.env.HUGGINGFACE_TOKEN,
+    dailyLimit: parseInt(process.env.AI_CHAT_DAILY_LIMIT, 10) || 100,
   },
   uptoskills: {
     baseUrl: process.env.UPTOSKILLS_BASE_URL || '',
@@ -70,10 +71,10 @@ module.exports = {
   rateLimit: {
     globalMax:
       parseInt(process.env.RATE_LIMIT_GLOBAL_MAX, 10) ||
-      (process.env.NODE_ENV === 'test' ? 1000 : 100),
+      (process.env.NODE_ENV === 'test' ? 10000 : 100),
     authMax:
       parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) ||
-      (process.env.NODE_ENV === 'test' ? 100 : 50),
+      (process.env.NODE_ENV === 'test' ? 10000 : 50),
     timeWindow: process.env.RATE_LIMIT_TIME_WINDOW || '1 minute',
   },
   email: {
