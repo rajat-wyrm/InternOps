@@ -25,7 +25,18 @@ app.register(require('@fastify/cors'), {
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 });
 
-app.register(require('@fastify/helmet'));
+app.register(require('@fastify/helmet'), {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+});
 
 //  Register once globally — no Redis dependency
 app.register(require('@fastify/rate-limit'), {
@@ -198,7 +209,7 @@ app.get('/health/full', async (req, reply) => {
   try {
     await pool.query('SELECT 1');
     checks.db = true;
-  } catch {}
+  } catch { }
 
   const { getRedisStatus } = require('./config/redis');
   const redisStatus = getRedisStatus();
