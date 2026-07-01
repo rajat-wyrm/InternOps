@@ -1,4 +1,7 @@
-﻿const auth = require('../../middleware/auth');
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
+const auth = require('../../middleware/auth');
 const repo = require('./repository');
 const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
@@ -44,7 +47,7 @@ async function routes(fastify) {
         tags: ['Notifications'],
         description: 'Mark all notifications as read',
       },
-      preHandler: [auth],
+      preHandler: [auth, sanitize],
     },
     async (req) => {
       await repo.markAllRead(req.user.id);
@@ -75,7 +78,7 @@ async function routes(fastify) {
         description: 'Mark a notification as read',
         params: toSchema(z.object({ id: z.string() })),
       },
-      preHandler: [auth],
+      preHandler: [auth, sanitize],
     },
     async (req) => {
       await repo.markRead(req.params.id, req.user.id);

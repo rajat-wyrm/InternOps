@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
@@ -33,7 +36,7 @@ async function routes(fastify) {
   fastify.post(
     '/submit',
     {
-      preHandler: [auth, rbac('INTERN')],
+      preHandler: [auth, rbac('INTERN'), sanitize],
       schema: {
         tags: ['Proofs'],
         description: 'Submit proof with image file (multipart)',
@@ -117,7 +120,7 @@ async function routes(fastify) {
   fastify.patch(
     '/:id/verify',
     {
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
       schema: {
         tags: ['Proofs'],
         description: 'Verify a proof submission',
