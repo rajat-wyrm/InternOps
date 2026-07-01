@@ -124,7 +124,7 @@ function processQueue(error, token = null) {
     }
   });
   failedQueue = [];
-};
+}
 
 function handleLogout() {
   localStorage.removeItem('accessToken');
