@@ -1,0 +1,149 @@
+config:
+  target: 'http://localhost:5000'
+  phases:
+    - duration: 5
+      arrivalRate: 10
+      name: 'Warm up'
+    - duration: 15
+      arrivalRate: 20
+      rampTo: 50
+      name: 'Ramp to 50'
+    - duration: 20
+      arrivalRate: 50
+      rampTo: 100
+      name: 'Ramp to 100'
+    - duration: 15
+      arrivalRate: 100
+      name: 'Sustained 100 users'
+    - duration: 5
+      arrivalRate: 50
+      rampTo: 10
+      name: 'Cool down'
+  processor: '../../load-processor.js'
+  variables:
+    email:
+      - 'user1@test.com'
+      - 'user2@test.com'
+      - 'user3@test.com'
+      - 'user4@test.com'
+      - 'user5@test.com'
+      - 'user6@test.com'
+      - 'user7@test.com'
+      - 'user8@test.com'
+      - 'user9@test.com'
+      - 'user10@test.com'
+      - 'user11@test.com'
+      - 'user12@test.com'
+      - 'user13@test.com'
+      - 'user14@test.com'
+      - 'user15@test.com'
+    password: 'LoadTest123!'
+  ensure:
+    p95: 500
+    p99: 1000
+    maxErrorRate: 2
+  http:
+    timeout: 15
+    maxSockets: 100
+
+scenarios:
+  - name: 'Full user journey'
+    flow:
+      - get:
+          url: '/api/auth/csrf-token'
+          capture:
+            - json: $.csrfToken
+              as: csrfToken
+          think: 0.5
+
+      - post:
+          url: '/api/auth/login'
+          json:
+            email: '{{ email }}'
+            password: '{{ password }}'
+          capture:
+            - json: $.accessToken
+              as: accessToken
+          think: 1
+
+      - get:
+          url: '/api/dashboard/stats'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/dashboard/summary'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/interns?page=1&limit=20'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/interns/search?q=engineering&limit=20'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/attendance/today'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/attendance/stats?startDate=2026-01-01&endDate=2026-12-31'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/progress/stats'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/mentors/list'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/notifications/count'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/notifications?page=1&limit=10'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/dashboard/charts?period=monthly&metric=users'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - get:
+          url: '/api/sessions/current'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+
+      - post:
+          url: '/api/auth/refresh'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          json: {}
+          capture:
+            - json: $.accessToken
+              as: newAccessToken
+          think: 1
