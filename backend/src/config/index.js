@@ -69,8 +69,8 @@ module.exports = {
     apiKey: process.env.UPTOSKILLS_API_KEY || '',
   },
   rateLimit: {
-    globalMax: process.env.NODE_ENV === 'test' ? 1000 : 100,
-    authMax: process.env.NODE_ENV === 'test' ? 100 : 50,
+    globalMax: process.env.NODE_ENV === 'test' ? 10000 : 100,
+    authMax: process.env.NODE_ENV === 'test' ? 10000 : 50,
     timeWindow: '1 minute',
   },
   email: {

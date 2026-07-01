@@ -1,4 +1,8 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const fs = require('fs');
+const { toSchema } = require('../../utils/schemaHelper');
 const path = require('path');
 const crypto = require('crypto');
 const auth = require('../../middleware/auth');
@@ -34,35 +38,51 @@ function detectMimeFromBuffer(buf) {
 
 async function routes(fastify) {
   // Upload / replace the current user's avatar
-  fastify.post('/avatar', { preHandler: [auth] }, async (req, reply) => {
-    const data = await req.file();
-    if (!data) return reply.status(400).send({ error: 'No file uploaded' });
+  fastify.post(
+    '/avatar',
+    {
+      preHandler: [auth, sanitize],
+      schema: {
+        tags: ['Uploads'],
+        description: 'Upload/replace avatar image (multipart)',
+      },
+    },
+    async (req, reply) => {
+      const data = await req.file();
+      if (!data) return reply.status(400).send({ error: 'No file uploaded' });
 
-    const ext = path.extname(data.filename || '').toLowerCase();
-    if (!ALLOWED.includes(data.mimetype) || !ALLOWED_EXTS.includes(ext)) {
-      return reply.status(400).send({ error: 'Unsupported file type' });
+      const ext = path.extname(data.filename || '').toLowerCase();
+      if (!ALLOWED.includes(data.mimetype) || !ALLOWED_EXTS.includes(ext)) {
+        return reply.status(400).send({ error: 'Unsupported file type' });
+      }
+
+      const buffer = await data.toBuffer();
+
+      // Magic-byte verification — defends against MIME spoofing
+      const detectedMime = detectMimeFromBuffer(buffer);
+      if (!detectedMime || detectedMime !== data.mimetype) {
+        return reply
+          .status(400)
+          .send({ error: 'File contents do not match declared image type' });
+      }
+
+      const fileName = `avatar_${req.user.id}_${crypto.randomBytes(6).toString('hex')}${ext}`;
+      const uploadPath = path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        config.uploadDir
+      );
+      fs.mkdirSync(uploadPath, { recursive: true });
+      fs.writeFileSync(path.join(uploadPath, fileName), buffer);
+
+      const url = `/uploads/${fileName}`;
+      await repo.updateAvatarUrl(req.user.id, url);
+
+      return { success: true, avatar_url: url };
     }
-
-    const buffer = await data.toBuffer();
-
-    // Magic-byte verification — defends against MIME spoofing
-    const detectedMime = detectMimeFromBuffer(buffer);
-    if (!detectedMime || detectedMime !== data.mimetype) {
-      return reply
-        .status(400)
-        .send({ error: 'File contents do not match declared image type' });
-    }
-
-    const fileName = `avatar_${req.user.id}_${crypto.randomBytes(6).toString('hex')}${ext}`;
-    const uploadPath = path.join(__dirname, '..', '..', '..', config.uploadDir);
-    fs.mkdirSync(uploadPath, { recursive: true });
-    fs.writeFileSync(path.join(uploadPath, fileName), buffer);
-
-    const url = `/uploads/${fileName}`;
-    await repo.updateAvatarUrl(req.user.id, url);
-
-    return { success: true, avatar_url: url };
-  });
+  );
 }
 
 module.exports = routes;

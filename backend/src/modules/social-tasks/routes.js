@@ -1,4 +1,7 @@
-'use strict';
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
+('use strict');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
@@ -32,7 +35,7 @@ module.exports = async function socialTasksRoutes(fastify) {
     '/',
     {
       schema: { tags: ['Tasks'], description: 'Create a social task' },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       const parsed = createTaskSchema.safeParse(req.body);
@@ -68,6 +71,21 @@ module.exports = async function socialTasksRoutes(fastify) {
           'Task created but notification email failed'
         );
       }
+      try {
+        const internEmails = await repo.getAllInternEmails();
+
+        for (const email of internEmails) {
+          await emailService.sendNotification(email, {
+            title: 'New Social Media Task',
+            message: `A new task "${task.title}" has been posted. Please complete it before the deadline.`,
+          });
+        }
+      } catch (emailErr) {
+        req.log.warn(
+          { emailErr },
+          'Task created but intern notification emails failed'
+        );
+      }
       return task;
     }
   );
@@ -76,7 +94,7 @@ module.exports = async function socialTasksRoutes(fastify) {
     '/:id/assign',
     {
       schema: { tags: ['Tasks'], description: 'Assign task to interns' },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       const parsed = assignTaskSchema.safeParse(req.body);

@@ -1,9 +1,13 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const { extractRequestInfo } = require('../../utils/audit');
 const { z } = require('zod');
+const { toSchema } = require('../../utils/schemaHelper');
 
 function formatMeeting(m) {
   if (!m) return null;
@@ -23,79 +27,136 @@ function formatMeeting(m) {
   };
 }
 
+const createMeetingBody = z.object({
+  title: z.string().min(3),
+  description: z.string().optional(),
+  meetingDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  meeting_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  startTime: z.string().optional(),
+  start_time: z.string().optional(),
+  endTime: z.string().optional(),
+  end_time: z.string().optional(),
+  departmentId: z.string().uuid().optional(),
+  department_id: z.string().uuid().optional(),
+  attendeeIds: z.array(z.string().uuid()).optional(),
+  attendee_ids: z.array(z.string().uuid()).optional(),
+});
+
+const updateMeetingBody = z.object({
+  title: z.string().min(3).optional(),
+  description: z.string().optional(),
+  meetingDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  meeting_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  startTime: z.string().optional(),
+  start_time: z.string().optional(),
+  endTime: z.string().optional(),
+  end_time: z.string().optional(),
+});
+
 async function routes(fastify) {
   // List meetings (hierarchy-aware)
-  fastify.get('/', { preHandler: [auth] }, async (req) => {
-    const { from, to } = req.query;
-    const departmentId = await repo.getUserDepartmentId(req.user.id);
-    const result = await repo.listMeetings({
-      userId: req.user.id,
-      departmentId: req.user.role !== 'INTERN' ? departmentId : null,
-      fromDate: from,
-      toDate: to,
-    });
-    return {
-      ...result,
-      data: result.data.map(formatMeeting),
-    };
-  });
+  fastify.get(
+    '/',
+    {
+      schema: {
+        tags: ['Meetings'],
+        description: 'List meetings',
+        querystring: toSchema(
+          z.object({ from: z.string().optional(), to: z.string().optional() })
+        ),
+      },
+      preHandler: [auth],
+    },
+    async (req) => {
+      const { from, to } = req.query;
+      const departmentId = await repo.getUserDepartmentId(req.user.id);
+      const result = await repo.listMeetings({
+        userId: req.user.id,
+        departmentId: req.user.role !== 'INTERN' ? departmentId : null,
+        fromDate: from,
+        toDate: to,
+      });
+      return {
+        ...result,
+        data: result.data.map(formatMeeting),
+      };
+    }
+  );
 
   // Get single meeting
-  fastify.get('/:id', { preHandler: [auth] }, async (req, reply) => {
-    const meeting = await repo.getMeetingById(req.params.id);
-    if (!meeting) return reply.status(404).send({ error: 'Meeting not found' });
+  fastify.get(
+    '/:id',
+    {
+      schema: {
+        tags: ['Meetings'],
+        description: 'Get a meeting by ID',
+        params: toSchema(z.object({ id: z.string().uuid() })),
+      },
+      preHandler: [auth],
+    },
+    async (req, reply) => {
+      const meeting = await repo.getMeetingById(req.params.id);
+      if (!meeting)
+        return reply.status(404).send({ error: 'Meeting not found' });
 
-    const attendees = await repo.getAttendees(meeting.id);
-    const isCreator = meeting.created_by === req.user.id;
-    const isAttendee = attendees.some((a) => a.id === req.user.id);
-    const isManager =
-      req.user.role !== 'INTERN' &&
-      attendees.filter((a) => a.id !== req.user.id).length > 0 &&
-      (
-        await Promise.all(
-          attendees
-            .filter((a) => a.id !== req.user.id)
-            .map((a) => checkHierarchyAccess(req.user.id, a.id))
-        )
-      ).some(Boolean);
+      const attendees = await repo.getAttendees(meeting.id);
+      const isCreator = meeting.created_by === req.user.id;
+      const isAttendee = attendees.some((a) => a.id === req.user.id);
+      const isManager =
+        req.user.role !== 'INTERN' &&
+        attendees.filter((a) => a.id !== req.user.id).length > 0 &&
+        (
+          await Promise.all(
+            attendees
+              .filter((a) => a.id !== req.user.id)
+              .map((a) => checkHierarchyAccess(req.user.id, a.id))
+          )
+        ).some(Boolean);
 
-    if (!isCreator && !isAttendee && !isManager && req.user.role !== 'ADMIN') {
-      return reply.status(403).send({ error: 'Access denied' });
+      if (
+        !isCreator &&
+        !isAttendee &&
+        !isManager &&
+        req.user.role !== 'ADMIN'
+      ) {
+        return reply.status(403).send({ error: 'Access denied' });
+      }
+
+      return { ...formatMeeting(meeting), attendees };
     }
-
-    return { ...formatMeeting(meeting), attendees };
-  });
+  );
 
   // Create meeting
   fastify.post(
     '/',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')] },
+    {
+      schema: {
+        tags: ['Meetings'],
+        description: 'Create a meeting',
+        body: toSchema(createMeetingBody),
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
+    },
     async (req, reply) => {
-      const schema = z
-        .object({
-          title: z.string().min(3),
-          description: z.string().optional(),
-          meetingDate: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/)
-            .optional(),
-          meeting_date: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/)
-            .optional(),
-          startTime: z.string().optional(),
-          start_time: z.string().optional(),
-          endTime: z.string().optional(),
-          end_time: z.string().optional(),
-          departmentId: z.string().uuid().optional(),
-          department_id: z.string().uuid().optional(),
-          attendeeIds: z.array(z.string().uuid()).optional(),
-          attendee_ids: z.array(z.string().uuid()).optional(),
-        })
-        .refine((d) => d.meetingDate || d.meeting_date, {
+      const schema = createMeetingBody.refine(
+        (d) => d.meetingDate || d.meeting_date,
+        {
           message: 'meetingDate or meeting_date is required',
           path: ['meetingDate'],
-        });
+        }
+      );
 
       const validation = schema.safeParse(req.body);
       if (!validation.success) {
@@ -157,26 +218,17 @@ async function routes(fastify) {
   // Update meeting
   fastify.patch(
     '/:id',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')] },
+    {
+      schema: {
+        tags: ['Meetings'],
+        description: 'Update a meeting',
+        params: toSchema(z.object({ id: z.string().uuid() })),
+        body: toSchema(updateMeetingBody),
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
+    },
     async (req, reply) => {
-      const schema = z
-        .object({
-          title: z.string().min(3).optional(),
-          description: z.string().optional(),
-          meetingDate: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/)
-            .optional(),
-          meeting_date: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/)
-            .optional(),
-          startTime: z.string().optional(),
-          start_time: z.string().optional(),
-          endTime: z.string().optional(),
-          end_time: z.string().optional(),
-        })
-        .strict();
+      const schema = updateMeetingBody.strict();
 
       const validation = schema.safeParse(req.body);
       if (!validation.success) {
@@ -216,7 +268,14 @@ async function routes(fastify) {
   // Delete meeting (soft)
   fastify.delete(
     '/:id',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')] },
+    {
+      schema: {
+        tags: ['Meetings'],
+        description: 'Delete a meeting',
+        params: toSchema(z.object({ id: z.string().uuid() })),
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
+    },
     async (req, reply) => {
       const meeting = await repo.getMeetingById(req.params.id);
       if (!meeting) return reply.status(404).send({ error: 'Not found' });
@@ -238,7 +297,15 @@ async function routes(fastify) {
   // Add attendee
   fastify.post(
     '/:id/attendees',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')] },
+    {
+      schema: {
+        tags: ['Meetings'],
+        description: 'Add attendee to meeting',
+        params: toSchema(z.object({ id: z.string().uuid() })),
+        body: toSchema(z.object({ userId: z.string() })),
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'), sanitize],
+    },
     async (req, reply) => {
       const meeting = await repo.getMeetingById(req.params.id);
       if (!meeting) return reply.status(404).send({ error: 'Not found' });
@@ -283,7 +350,16 @@ async function routes(fastify) {
   // Remove attendee
   fastify.delete(
     '/:id/attendees/:userId',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')] },
+    {
+      schema: {
+        tags: ['Meetings'],
+        description: 'Remove attendee from meeting',
+        params: toSchema(
+          z.object({ id: z.string().uuid(), userId: z.string().uuid() })
+        ),
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')],
+    },
     async (req, reply) => {
       const meeting = await repo.getMeetingById(req.params.id);
       if (!meeting) return reply.status(404).send({ error: 'Not found' });

@@ -1,14 +1,11 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const metrics = require('../../utils/metrics'); // Import your updated tracking module
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const MAX_REASON_WORDS = 15;
 const MIN_REASON_WORDS = 10;
 
-// Hard sandbox around the data we send to the model — user-controlled
-// fields (full_name, remarks, etc.) are truncated and stripped of control
-// characters so they can't break out of the JSON envelope and inject
-// adversarial instructions.
 function safeSandbox(value, maxLen = 200) {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -22,14 +19,14 @@ function safeSandbox(value, maxLen = 200) {
 
 function buildUserSnapshot(data) {
   const user = data?.user || {};
-  const metrics = data?.metrics || {};
+  const metricsData = data?.metrics || {};
   return {
     id: safeSandbox(user.id),
     role: safeSandbox(user.role, 32),
-    attendancePercentage: Number(metrics.attendancePercentage) || 0,
-    verificationRate: Number(metrics.verificationRate) || 0,
-    averageRating: Number(metrics.averageRating) || 0,
-    ratingTrend: safeSandbox(metrics.ratingTrend, 32),
+    attendancePercentage: Number(metricsData.attendancePercentage) || 0,
+    verificationRate: Number(metricsData.verificationRate) || 0,
+    averageRating: Number(metricsData.averageRating) || 0,
+    ratingTrend: safeSandbox(metricsData.ratingTrend, 32),
     ratingsCount: Array.isArray(data?.ratings) ? data.ratings.length : 0,
     tasksSubmitted: Number(data?.tasks?.submitted) || 0,
     tasksVerified: Number(data?.tasks?.verified) || 0,
@@ -46,9 +43,6 @@ async function generateRatingSuggestion(data) {
 
   const snapshot = buildUserSnapshot(data);
 
-  // The user data is JSON-encoded and placed inside a clearly delimited
-  // DATA block. The model is told to treat anything inside DATA as
-  // untrusted input and to ignore any instructions appearing within.
   const prompt = `
   You are a workforce performance evaluator for InternOps.
 
@@ -92,7 +86,34 @@ async function generateRatingSuggestion(data) {
   Focus on attendance, task completion and rating history.
   `.trim();
 
-  const result = await model.generateContent(prompt);
+  const start = Date.now(); // Start tracking API call duration
+  let result;
+
+  try {
+    // Perform external AI vendor API request
+    result = await model.generateContent(prompt);
+
+    // Log latency to tracking system
+    const duration = Date.now() - start;
+    if (typeof metrics.recordLatency === 'function') {
+      metrics.recordLatency('ai_service', duration);
+    }
+
+    // Capture token billing counts from Google Gemini response objects
+    if (
+      result?.response?.usageMetadata?.totalTokenCount &&
+      typeof metrics.recordTokenUsage === 'function'
+    ) {
+      metrics.recordTokenUsage(result.response.usageMetadata.totalTokenCount);
+    }
+  } catch (err) {
+    // Log telemetry error status count if the server crashes or times out
+    if (typeof metrics.recordError === 'function') {
+      metrics.recordError('ai_service');
+    }
+    throw err;
+  }
+
   const raw = result.response.text();
   const text = raw
     .replace(/```json/g, '')

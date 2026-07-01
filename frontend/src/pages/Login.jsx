@@ -50,7 +50,7 @@ function NoticeList() {
   }
 
   return (
-    <div className="space-y-4 divide-y divide-white/10">
+    <div className="notice-scrollbar max-h-[500px] overflow-y-auto pr-2 space-y-4 divide-y divide-white/10">
       {notices.map((notice) => (
         <div key={notice.id} className="pt-4 first:pt-0">
           <p
