@@ -148,7 +148,8 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       return new Promise((resolve, reject) => {
-        api.post('/auth/refresh', {})
+        api
+          .post('/auth/refresh', {})
           .then((res) => {
             const newToken = res.data?.accessToken;
             if (newToken) {
@@ -159,7 +160,9 @@ api.interceptors.response.use(
               processQueue(null, newToken);
               resolve(api(original));
             } else {
-              const noTokenErr = new Error('No access token returned from refresh');
+              const noTokenErr = new Error(
+                'No access token returned from refresh'
+              );
               processQueue(noTokenErr, null);
               handleLogout();
               reject(err);
