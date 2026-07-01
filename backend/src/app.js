@@ -51,7 +51,11 @@ app.register(require('@fastify/rate-limit'), {
 app.register(require('@fastify/cookie'));
 
 const { csrfMiddleware } = require('./middleware/csrf');
+const { sanitizationMiddleware } = require('./middleware/sanitize');
 app.addHook('onRequest', csrfMiddleware);
+// Sanitize all string fields in body, query, and params using sanitize-html
+// (allowlist of zero tags) to prevent XSS. Runs after body parsing.
+app.addHook('preHandler', sanitizationMiddleware);
 
 app.register(require('@fastify/multipart'), {
   limits: {
