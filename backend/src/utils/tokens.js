@@ -47,7 +47,9 @@ function generateRefreshToken(user) {
 }
 
 function verifyAccessToken(t) {
-  const decoded = jwt.verify(t, getAccessSecret());
+  const decoded = jwt.verify(t, getAccessSecret(), {
+    algorithms: ['HS256'],
+  });
   if (decoded.typ && decoded.typ !== 'access') {
     throw new Error('Token type mismatch: expected access');
   }
@@ -55,7 +57,9 @@ function verifyAccessToken(t) {
 }
 
 function verifyRefreshToken(t) {
-  const decoded = jwt.verify(t, getRefreshSecret());
+  const decoded = jwt.verify(t, getRefreshSecret(), {
+    algorithms: ['HS256'],
+  });
   if (decoded.typ && decoded.typ !== 'refresh') {
     throw new Error('Token type mismatch: expected refresh');
   }

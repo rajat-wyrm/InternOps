@@ -1,6 +1,24 @@
+const { z } = require('zod');
+
 const REQUIRED_VARS = ['JWT_SECRET', 'DATABASE_URL', 'NODE_ENV'];
 
 const OPTIONAL_VARS = ['REDIS_URL', 'GOOGLE_CLIENT_ID', 'EMAIL_API_KEY'];
+
+const envSchema = z.object({
+  PORT: z.string().regex(/^\d+$/, 'PORT must be a valid integer').optional(),
+  SMTP_PORT: z
+    .string()
+    .regex(/^\d+$/, 'SMTP_PORT must be a valid integer')
+    .optional(),
+  MAX_FILE_SIZE: z
+    .string()
+    .regex(/^\d+$/, 'MAX_FILE_SIZE must be a valid integer')
+    .optional(),
+  AI_TIMEOUT: z
+    .string()
+    .regex(/^\d+$/, 'AI_TIMEOUT must be a valid integer')
+    .optional(),
+});
 
 function validateEnv() {
   // Skip validation in test environment
@@ -39,10 +57,26 @@ function validateEnv() {
     }
   }
 
-  if (missingRequired.length > 0) {
-    console.error('❌ Missing required environment variables:');
-    for (const key of missingRequired) {
-      console.error(`   • ${key}`);
+  const schemaResult = envSchema.safeParse(process.env);
+  const typeErrors = [];
+  if (!schemaResult.success) {
+    for (const issue of schemaResult.error.issues) {
+      typeErrors.push(`${issue.path.join('.')}: ${issue.message}`);
+    }
+  }
+
+  if (missingRequired.length > 0 || typeErrors.length > 0) {
+    if (missingRequired.length > 0) {
+      console.error('❌ Missing required environment variables:');
+      for (const key of missingRequired) {
+        console.error(`   • ${key}`);
+      }
+    }
+    if (typeErrors.length > 0) {
+      console.error('❌ Invalid environment variable types:');
+      for (const err of typeErrors) {
+        console.error(`   • ${err}`);
+      }
     }
 
     process.exit(1);

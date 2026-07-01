@@ -30,10 +30,14 @@ export default function Meetings() {
 
   const canCreate = ['ADMIN', 'SENIOR_TL', 'TL'].includes(user?.role);
 
-  const { data: meetings, isLoading } = useQuery({
+  const { data: rawMeetings, isLoading } = useQuery({
     queryKey: ['meetings'],
     queryFn: () => api.get('/meetings').then((res) => res.data),
   });
+
+  const meetings = Array.isArray(rawMeetings)
+    ? rawMeetings
+    : rawMeetings?.data || [];
 
   const { data: team = [] } = useQuery({
     queryKey: ['teamMembers'],

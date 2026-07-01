@@ -90,7 +90,22 @@ api.interceptors.request.use(async (config) => {
 // Silent refresh: when an access token expires, the server returns 401.
 // Before destroying the session, try the refresh-token flow once. If that
 // fails, fall through to the original "drop session" behaviour.
-let refreshing = null;
+// Uses a formal queue to prevent race conditions when multiple concurrent
+// requests trigger simultaneous 401 responses — the first initiates the
+// refresh, the rest await the same result via the queue.
+let isRefreshing = false;
+let failedQueue = [];
+
+function processQueue(error, token = null) {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+}
 
 api.interceptors.response.use(
   (res) => {
@@ -124,11 +139,23 @@ api.interceptors.response.use(
         original.url.includes('/auth/register'));
 
     if (status === 401 && !original._retry && !isAuthRoute) {
+      // Another refresh is already in flight — queue this request.
+      if (isRefreshing) {
+        original._retry = true;
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then((token) => {
+          original.headers = original.headers || {};
+          original.headers.Authorization = `Bearer ${token}`;
+          return api(original);
+        });
+      }
+
       original._retry = true;
+      isRefreshing = true;
+
       try {
-        refreshing = refreshing || api.post('/auth/refresh', {});
-        const refreshRes = await refreshing;
-        refreshing = null;
+        const refreshRes = await api.post('/auth/refresh', {});
         const newToken = refreshRes.data?.accessToken;
         if (newToken) {
           // Route the new token through the store so Zustand in-memory state
@@ -143,28 +170,31 @@ api.interceptors.response.use(
           // have changed (some implementations bind them together), so reset
           // it so the next request picks up the new one.
           clearCsrfToken();
+          processQueue(null, newToken);
           original.headers = original.headers || {};
           original.headers.Authorization = `Bearer ${newToken}`;
           return api(original);
         }
+        throw new Error('Refresh returned no token');
       } catch (refreshErr) {
-        refreshing = null;
-        // Refresh failed — fall through to logout.
-      }
+        processQueue(refreshErr);
+        // Route the logout through the store so Zustand clears accessToken and
+        // user atomically with localStorage — previously only localStorage was
+        // cleared here, leaving the in-memory store stale until the next render.
+        if (_authStore) {
+          _authStore.getState().logout();
+        } else {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('user');
+          clearCsrfToken();
+        }
 
-      // Route the logout through the store so Zustand clears accessToken and
-      // user atomically with localStorage — previously only localStorage was
-      // cleared here, leaving the in-memory store stale until the next render.
-      if (_authStore) {
-        _authStore.getState().logout();
-      } else {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('user');
-        clearCsrfToken();
-      }
-
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login';
+        if (!window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login';
+        }
+        return Promise.reject(refreshErr);
+      } finally {
+        isRefreshing = false;
       }
     }
     return Promise.reject(err);

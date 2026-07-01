@@ -7,7 +7,18 @@ async function routes(fastify) {
   // Create a department (Admin only)
   fastify.post(
     '/',
-    { preHandler: [auth, rbac('ADMIN'), csrfMiddleware] },
+    {
+      preHandler: [auth, rbac('ADMIN'), csrfMiddleware],
+      schema: {
+        tags: ['Departments'],
+        description: 'Create a new department',
+        body: {
+          type: 'object',
+          required: ['name'],
+          properties: { name: { type: 'string' } },
+        },
+      },
+    },
     async (req, reply) => {
       const name = (req.body?.name || '').trim();
 
@@ -27,12 +38,34 @@ async function routes(fastify) {
   );
 
   // List departments
-  fastify.get('/', { preHandler: [auth] }, async () => repo.getAll());
+  fastify.get(
+    '/',
+    {
+      preHandler: [auth],
+      schema: { tags: ['Departments'], description: 'List all departments' },
+    },
+    async () => repo.getAll()
+  );
 
   // Delete department
   fastify.delete(
     '/:id',
-    { preHandler: [auth, rbac('ADMIN'), csrfMiddleware] },
+    {
+      preHandler: [auth, rbac('ADMIN'), csrfMiddleware],
+      schema: {
+        tags: ['Departments'],
+        description: 'Delete a department',
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+        querystring: {
+          type: 'object',
+          properties: { force: { type: 'string', enum: ['true', 'false'] } },
+        },
+      },
+    },
     async (req, reply) => {
       const force = req.query?.force === 'true';
 

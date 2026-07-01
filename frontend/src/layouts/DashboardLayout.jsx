@@ -85,7 +85,7 @@ const MINI_LOGO_SRC = '/uslogo.ico';
 export default function DashboardLayout() {
   const loc = useLocation();
   const navigate = useNavigate();
-  const user   = useAuthStore((s) => s.user);
+  const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
   const role = user?.role;

@@ -89,8 +89,27 @@ async function getUnreadCount(userId) {
   return parseInt(res.rows[0].count, 10);
 }
 
+async function notifyAdmin(message) {
+  const audit = require('../audit/repository'); // Lazy load
+  const adminRes = await pool.query(
+    "SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1"
+  );
+  if (adminRes.rows.length > 0) {
+    const adminId = adminRes.rows[0].id;
+    await send(adminId, message);
+    if (audit && typeof audit.logEvent === 'function') {
+      await audit.logEvent({
+        userId: adminId,
+        action: 'ADMIN_NOTIFIED',
+        details: { message },
+      });
+    }
+  }
+}
+
 module.exports = {
   send,
+  notifyAdmin,
   get,
   markRead,
   markAllRead,

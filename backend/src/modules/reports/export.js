@@ -1,4 +1,5 @@
 ﻿const auth = require('../../middleware/auth');
+const { toSchema } = require('../../utils/schemaHelper');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 const { z } = require('zod');
@@ -36,7 +37,14 @@ function csvCell(value) {
 async function routes(fastify) {
   fastify.get(
     '/attendance-csv',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Export attendance as CSV',
+        querystring: toSchema(dateRangeSchema),
+      },
+    },
     async (req, reply) => {
       const range = parseDateRange(req.query, reply);
       if (!range) return;
@@ -55,7 +63,14 @@ async function routes(fastify) {
 
   fastify.get(
     '/ratings-csv',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Export ratings as CSV',
+        querystring: toSchema(dateRangeSchema),
+      },
+    },
     async (req, reply) => {
       const range = parseDateRange(req.query, reply);
       if (!range) return;
@@ -79,7 +94,13 @@ async function routes(fastify) {
 
   fastify.get(
     '/tasks-csv',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Export task completion as CSV',
+      },
+    },
     async (req, reply) => {
       const data = await repo.taskCompletionStats();
       const csv = ['Task Title,Verified,Pending']
