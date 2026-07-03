@@ -1,4 +1,4 @@
-import { ROLE_LABEL } from "../constants/roles";
+import { ROLE_LABEL } from '../constants/roles';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
