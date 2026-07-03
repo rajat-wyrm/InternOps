@@ -25,7 +25,12 @@ async function noticesRoutes(fastify) {
         // return an empty list with 503 rather than crashing with 500.
         req.log.error({ err }, 'notices table unavailable in GET /notices');
         if (err.code === '42P01') {
-          return reply.status(503).send({ error: 'Notices service temporarily unavailable', notices: [] });
+          return reply
+            .status(503)
+            .send({
+              error: 'Notices service temporarily unavailable',
+              notices: [],
+            });
         }
         return reply.status(500).send({ error: 'Failed to fetch notices' });
       }
