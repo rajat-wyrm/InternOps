@@ -1,16 +1,5 @@
  
 
-class AppError extends Error {
-  constructor(message, statusCode) {
-    super(message);
-    this.name = this.constructor.name;
-    this.statusCode = statusCode;
-    this.internalMessage = internalMessage;
-    this.isOperational = true;
-    this.isOperational = true; 
-  }
-}// safe, known error — message can be shown to client
-
 ﻿class AppError extends Error {
   constructor(message, statusCode = 500, internalMessage = null) {
     super(message);
@@ -46,7 +35,7 @@ class UnauthorizedError extends AppError {
   }
 }
 
- HEAD
+ 
 class ForbiddenError extends AppError {
   constructor(message = 'Forbidden') {
     super(message, 403);
@@ -148,18 +137,6 @@ function notFoundHandler(req, res, next) {
 // -----------------------------------------------------------------------------
 // Exports
 // -----------------------------------------------------------------------------
-module.exports = {
-  // Middleware
-  globalErrorHandler,
-  notFoundHandler,
-  // Error classes
-  AppError,
-  NotFoundError,
-  ValidationError,
-  UnauthorizedError,
-  ForbiddenError,
-  ConflictError,
-};
 
 class BadRequestError extends AppError {
   constructor(message = 'Bad Request', internalMessage = null) {
@@ -167,5 +144,4 @@ class BadRequestError extends AppError {
   }
 }
 
-module.exports = { AppError, UnauthorizedError, BadRequestError };
 
