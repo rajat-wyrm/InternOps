@@ -9,6 +9,8 @@ const config = require('./config');
 const pool = require('./config/db');
 const metrics = require('./utils/metrics');
 const { initializeWebSocket } = require('./websocket');
+const noticesRoutes = require('./modules/notices/routes');
+const { getRedisStatus } = require('./config/redis');
 
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
@@ -173,7 +175,6 @@ app.get(
       checks.db = true;
     } catch {}
 
-    const { getRedisStatus } = require('./config/redis');
     const redisStatus = getRedisStatus();
 
     checks.redis =

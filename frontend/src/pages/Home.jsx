@@ -1,17 +1,10 @@
+import { ROLE_LABEL } from '../constants/roles';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, StatCard } from '../components/ui';
-
-const ROLE_LABEL = {
-  ADMIN: 'Admin',
-  SENIOR_TL: 'Senior TL',
-  TL: 'TL',
-  CAPTAIN: 'Captain',
-  INTERN: 'Intern',
-};
 
 function attendancePct(m) {
   const total = Number(m.attendance_total) || 0;

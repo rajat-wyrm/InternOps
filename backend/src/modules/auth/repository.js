@@ -1,3 +1,4 @@
+const { ConflictError } = require('../../utils/errors');
 const pool = require('../../config/db');
 const argon2 = require('argon2');
 
@@ -18,20 +19,30 @@ async function listUsersByRole(role) {
 
 async function createUser(data) {
   const passwordHash = await argon2.hash(data.password);
-  const res = await pool.query(
-    `INSERT INTO users (email, password_hash, role, manager_id, department_id, full_name)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, email, role, full_name, manager_id, department_id, created_at`,
-    [
-      data.email.trim().toLowerCase(),
-      passwordHash,
-      data.role,
-      data.managerId || null,
-      data.departmentId || null,
-      data.fullName || null,
-    ]
-  );
-  return res.rows[0];
+
+  try {
+    const res = await pool.query(
+      `INSERT INTO users (email, password_hash, role, manager_id, department_id, full_name)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, email, role, full_name, manager_id, department_id, created_at`,
+      [
+        data.email.trim().toLowerCase(),
+        passwordHash,
+        data.role,
+        data.managerId || null,
+        data.departmentId || null,
+        data.fullName || null,
+      ]
+    );
+
+    return res.rows[0];
+  } catch (err) {
+    if (err.code === '23505' && err.constraint === 'users_email_active_key') {
+      throw new ConflictError('A user with this email already exists');
+    }
+
+    throw err;
+  }
 }
 
 async function findByEmail(email) {

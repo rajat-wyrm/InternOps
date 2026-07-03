@@ -40,6 +40,8 @@ export default function App() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const setHydrated = useAuthStore((s) => s.setHydrated);
   const logout = useAuthStore((s) => s.logout);
+  const setSystemError = useAuthStore((s) => s.setSystemError);
+  const systemError = useAuthStore((s) => s.systemError);
 
   useEffect(() => {
     if (!bootRefreshPromise) {
@@ -53,20 +55,50 @@ export default function App() {
           user: res.data.user,
         });
       })
-      .catch(() => {
-        const currentToken = useAuthStore.getState().accessToken;
-
-        // If another in-flight startup refresh already succeeded, do not
-        // destroy the valid in-memory session because of a duplicate refresh
-        // request caused by React dev StrictMode.
-        if (!currentToken) {
-          logout();
+      .catch((err) => {
+        const status = err.response?.status;
+        if (status === 400 || status === 401 || status === 403) {
+          const currentToken = useAuthStore.getState().accessToken;
+          if (!currentToken) logout();
+        } else {
+          setSystemError(
+            'Service temporarily unavailable. Please try again later.'
+          );
         }
       })
       .finally(() => {
         setHydrated();
       });
-  }, [logout, setAuth, setHydrated]);
+  }, [logout, setAuth, setHydrated, setSystemError]);
+
+  if (systemError) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          gap: '12px',
+        }}
+      >
+        <p style={{ fontSize: '1.1rem', color: '#b91c1c', fontWeight: 600 }}>
+          {systemError}
+        </p>
+        <button
+          onClick={() => {
+            useAuthStore.getState().setSystemError(null);
+            bootRefreshPromise = null;
+            window.location.reload();
+          }}
+          style={{ padding: '8px 20px', cursor: 'pointer' }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <Routes>
