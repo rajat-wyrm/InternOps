@@ -1,14 +1,31 @@
+ 
 
 class AppError extends Error {
   constructor(message, statusCode) {
     super(message);
     this.name = this.constructor.name;
-    this.status = statusCode || 500;
-    this.isOperational = true; // safe, known error — message can be shown to client
+    this.statusCode = statusCode;
+    this.internalMessage = internalMessage;
+    this.isOperational = true;
+    this.isOperational = true; 
+  }
+}// safe, known error — message can be shown to client
+
+﻿class AppError extends Error {
+  constructor(message, statusCode = 500, internalMessage = null) {
+    super(message);
+
+    this.name = this.constructor.name;
+    this.statusCode = statusCode;
+    this.internalMessage = internalMessage;
+    this.isOperational = true;
+
+ 
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
+ 
 class NotFoundError extends AppError {
   constructor(resource = 'Resource') {
     super(`${resource} not found`, 404);
@@ -21,12 +38,15 @@ class ValidationError extends AppError {
   }
 }
 
+
+ 
 class UnauthorizedError extends AppError {
-  constructor(message = 'Unauthorized') {
-    super(message, 401);
+  constructor(message = 'Unauthorized', internalMessage = null) {
+    super(message, 401, internalMessage);
   }
 }
 
+ HEAD
 class ForbiddenError extends AppError {
   constructor(message = 'Forbidden') {
     super(message, 403);
@@ -140,3 +160,12 @@ module.exports = {
   ForbiddenError,
   ConflictError,
 };
+
+class BadRequestError extends AppError {
+  constructor(message = 'Bad Request', internalMessage = null) {
+    super(message, 400, internalMessage);
+  }
+}
+
+module.exports = { AppError, UnauthorizedError, BadRequestError };
+

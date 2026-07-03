@@ -538,4 +538,72 @@ describe('Auth Integration Tests', () => {
       expect([401, 400]).toContain(refreshFail.statusCode);
     });
   });
+
+  describe('Session Invalidation and Revocation', () => {
+    let adminUserId;
+
+    beforeAll(async () => {
+      await resetSeededAdminPassword();
+      const loginRes = await login();
+      const body = JSON.parse(loginRes.body);
+      freshAccessToken = body.accessToken;
+
+      const userRes = await inject('GET', '/api/users/me', {
+        headers: { Authorization: `Bearer ${freshAccessToken}` },
+      });
+      adminUserId = JSON.parse(userRes.body).id;
+    });
+
+    it('should revoke all user sessions and invalidate refresh token', async () => {
+      // 1. Login to get a valid refresh token cookie
+      const loginRes = await login();
+      const activeRefreshCookie = cookies['refreshToken'];
+      expect(activeRefreshCookie).toBeDefined();
+
+      // 2. Call revoke-all sessions
+      const revokeRes = await inject('POST', '/api/sessions/me/revoke-all', {
+        headers: { Authorization: `Bearer ${freshAccessToken}` },
+        payload: {},
+      });
+      expect(revokeRes.statusCode).toBe(200);
+
+      // 3. Attempt to refresh using the revoked cookie - must fail (401 or 400)
+      const refreshRes = await inject('POST', '/api/auth/refresh', {
+        cookies: {
+          'csrf-token': cookies['csrf-token'] || '',
+          refreshToken: activeRefreshCookie,
+        },
+        payload: {},
+      });
+      expect([400, 401]).toContain(refreshRes.statusCode);
+    });
+
+    it('should allow admin to revoke a specific user sessions', async () => {
+      // 1. Login to get a valid refresh token cookie
+      const loginRes = await login();
+      const activeRefreshCookie = cookies['refreshToken'];
+      expect(activeRefreshCookie).toBeDefined();
+
+      // 2. Call admin revoke-user endpoint
+      const revokeRes = await inject(
+        'POST',
+        `/api/sessions/admin/revoke-user/${adminUserId}`,
+        {
+          headers: { Authorization: `Bearer ${freshAccessToken}` },
+          payload: {},
+        }
+      );
+      expect(revokeRes.statusCode).toBe(200);
+
+      // 3. Attempt to refresh using the revoked cookie - must fail
+      const refreshRes = await inject('POST', '/api/auth/refresh', {
+        cookies: {
+          'csrf-token': cookies['csrf-token'] || '',
+          refreshToken: activeRefreshCookie,
+        },
+        payload: {},
+      });
+      expect([400, 401]).toContain(refreshRes.statusCode);
+    });
+  });
 });

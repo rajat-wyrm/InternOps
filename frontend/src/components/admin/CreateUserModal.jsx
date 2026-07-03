@@ -12,6 +12,15 @@ import {
   X,
 } from 'lucide-react';
 import api from '../../lib/axios';
+import CustomSelect from '../CustomSelect';
+
+const ROLE_OPTIONS = [
+  { value: '', label: 'Select Role' },
+  { value: 'SENIOR_TL', label: 'Senior TL' },
+  { value: 'TL', label: 'TL' },
+  { value: 'CAPTAIN', label: 'Captain' },
+  { value: 'INTERN', label: 'Intern' },
+];
 
 export default function CreateUserModal({ open, onClose }) {
   const queryClient = useQueryClient();
@@ -76,6 +85,22 @@ export default function CreateUserModal({ open, onClose }) {
     if (role === 'TL') return seniorTls;
     return [];
   })();
+
+  const departmentOptions = [
+    { value: '', label: 'Select Dept' },
+    ...departments.map((d) => ({
+      value: d.id,
+      label: d.name,
+    })),
+  ];
+
+  const reportsToOptions = [
+    { value: '', label: 'Select Reports-To Manager' },
+    ...managerOptions.map((m) => ({
+      value: m.id,
+      label: `${m.full_name || m.email} (${m.role})`,
+    })),
+  ];
 
   const showManagerSelection = ['INTERN', 'CAPTAIN', 'TL'].includes(role);
 
@@ -142,9 +167,6 @@ export default function CreateUserModal({ open, onClose }) {
 
   const inputClass =
     'w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 outline-none transition text-sm';
-
-  const selectClass =
-    'w-full pl-11 pr-11 py-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 outline-none transition text-sm appearance-none';
 
   const labelClass =
     'block text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2';
@@ -265,22 +287,19 @@ export default function CreateUserModal({ open, onClose }) {
               <div>
                 <label className={labelClass}>User Role</label>
                 <div className="relative">
-                  <Layers className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <select
-                    required
+                  <Layers className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 z-10" />
+
+                  <CustomSelect
                     value={role}
-                    onChange={(e) => {
-                      setRole(e.target.value);
+                    onChange={(value) => {
+                      setRole(value);
                       setManagerId(''); // Reset manager on role change
                     }}
-                    className={selectClass}
-                  >
-                    <option value="">Select Role</option>
-                    <option value="SENIOR_TL">Senior TL</option>
-                    <option value="TL">TL</option>
-                    <option value="CAPTAIN">Captain</option>
-                    <option value="INTERN">Intern</option>
-                  </select>
+                    options={ROLE_OPTIONS}
+                    placeholder="Select Role"
+                    disabled={registerMutation.isPending}
+                    className="[&>button]:pl-11"
+                  />
                 </div>
               </div>
 
@@ -288,19 +307,16 @@ export default function CreateUserModal({ open, onClose }) {
               <div>
                 <label className={labelClass}>Department</label>
                 <div className="relative">
-                  <HelpCircle className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <select
+                  <HelpCircle className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 z-10" />
+
+                  <CustomSelect
                     value={departmentId}
-                    onChange={(e) => setDepartmentId(e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">Select Dept</option>
-                    {departments.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setDepartmentId}
+                    options={departmentOptions}
+                    placeholder="Select Dept"
+                    disabled={registerMutation.isPending}
+                    className="[&>button]:pl-11"
+                  />
                 </div>
               </div>
 
@@ -308,18 +324,15 @@ export default function CreateUserModal({ open, onClose }) {
               {showManagerSelection && (
                 <div className="md:col-span-2">
                   <label className={labelClass}>Assign Manager</label>
-                  <select
+
+                  <CustomSelect
                     value={managerId}
-                    onChange={(e) => setManagerId(e.target.value)}
-                    className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 outline-none transition text-sm"
-                  >
-                    <option value="">Select Reports-To Manager</option>
-                    {managerOptions.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.full_name || m.email} ({m.role})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setManagerId}
+                    options={reportsToOptions}
+                    placeholder="Select Reports-To Manager"
+                    disabled={registerMutation.isPending}
+                    className="w-full"
+                  />
 
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                     Ensures access permissions are mapped recursively according

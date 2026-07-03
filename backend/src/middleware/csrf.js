@@ -1,20 +1,9 @@
 const crypto = require('crypto');
 
-// In-memory store of CSRF tokens keyed by a server-issued session id.
-// The session id is delivered to the client in a signed (HMAC) cookie so
-// it cannot be forged; the token is the HMAC of the session id, which
-// makes it deterministic and stable across calls. This fixes the issue
-// where each GET /api/auth/csrf-token call generated a fresh token and
-// overwrote the cookie, breaking subsequent mutation requests that
-// still held the previous token (#138).
 const SESSION_COOKIE = 'csrf-sid';
 const TOKEN_COOKIE = 'csrf-token';
 
 function getSecret() {
-  // Re-use the JWT secret so a misconfigured deployment fails the
-  // existing validateEnv() check at boot. The CSRF secret is only
-  // used to sign the session id cookie; if it leaks, an attacker can
-  // mint CSRF session ids but cannot authenticate requests.
   const secret = require('../config').jwt?.secret;
   if (!secret) {
     throw new Error('JWT_SECRET is not configured; cannot sign CSRF session');
@@ -82,6 +71,12 @@ function writeSession(reply, sessionId, userId = null) {
   });
 }
 
+function rotateSession(reply) {
+  const sid = newSessionId();
+  writeSession(reply, sid);
+  return tokenFor(sid);
+}
+
 function rotateAndSetCsrf(request, reply, userId = null) {
   const newSid = newSessionId();
   writeSession(reply, newSid, userId);
@@ -100,7 +95,6 @@ function rotateAndSetCsrf(request, reply, userId = null) {
 function getOrCreateToken(request, reply) {
   let session = readSession(request);
 
-  // Extract authenticated user ID from Authorization header
   let tokenUserId = null;
   const authHeader = request.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -155,7 +149,6 @@ async function csrfCheck(request, reply) {
     return reply.status(403).send({ error: 'CSRF validation failed' });
   }
 
-  // Extract authenticated user ID from Authorization header
   let tokenUserId = null;
   const authHeader = request.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -163,9 +156,7 @@ async function csrfCheck(request, reply) {
       const { verifyAccessToken } = require('../utils/tokens');
       const decoded = verifyAccessToken(authHeader.split(' ')[1]);
       tokenUserId = decoded.id;
-    } catch (err) {
-      // Ignore token verification errors, request authentication will be checked in auth middleware.
-    }
+    } catch (err) {}
   }
 
   if (tokenUserId) {
@@ -183,9 +174,9 @@ const csrfMiddleware = csrfCheck;
 
 module.exports = {
   generateToken,
+  rotateSession,
   csrfProtection,
   csrfMiddleware,
   rotateAndSetCsrf,
-  // exported for tests
   _internal: { tokenFor, verifySigned, readSession, writeSession },
 };

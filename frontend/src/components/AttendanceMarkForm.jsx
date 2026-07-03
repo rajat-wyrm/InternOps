@@ -3,6 +3,7 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { Card, Btn, Input } from './ui';
 import CustomSelect from './CustomSelect';
+import CustomDatePicker from './CustomDatePicker';
 
 const INITIAL_FORM = {
   userId: '',
@@ -132,12 +133,13 @@ export default function AttendanceMarkForm() {
               Date
             </label>
 
-            <Input
-              type="date"
+            <CustomDatePicker
               value={form.date}
-              onChange={update('date')}
+              onChange={updateValue('date')}
               max={today}
-              required
+              placeholder="Select date"
+              disabled={markMutation.isPending}
+              className="w-full"
             />
           </div>
 

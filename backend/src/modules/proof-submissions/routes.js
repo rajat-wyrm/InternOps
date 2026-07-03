@@ -1,4 +1,9 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
+const { z } = require('zod');
+const { toSchema } = require('../../utils/schemaHelper');
 const rbac = require('../../middleware/rbac');
 const repo = require('../social-tasks/repository');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
@@ -9,7 +14,7 @@ const config = require('../../config');
 const { pipeline } = require('stream/promises');
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/gif'];
 const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.gif'];
-
+const uploadRepo = require('../uploads/repository');
 const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
   'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
@@ -30,7 +35,13 @@ async function routes(fastify) {
   // Submit proof (intern only)
   fastify.post(
     '/submit',
-    { preHandler: [auth, rbac('INTERN')] },
+    {
+      preHandler: [auth, rbac('INTERN'), sanitize],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Submit proof with image file (multipart)',
+      },
+    },
     async (req, reply) => {
       const data = await req.file();
 
@@ -108,7 +119,14 @@ async function routes(fastify) {
   // Verify proof (Captain, TL, Senior TL) with ownership over the intern
   fastify.patch(
     '/:id/verify',
-    { preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')] },
+    {
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Verify a proof submission',
+        params: toSchema(z.object({ id: z.string() })),
+      },
+    },
     async (req, reply) => {
       // Repository enforces hierarchy check; the route only validates
       // existence and delegates authorization to the data layer.
@@ -142,15 +160,58 @@ async function routes(fastify) {
 
   fastify.get(
     '/task/:taskId',
-    { preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')] },
+    {
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Get proofs by task',
+        params: toSchema(z.object({ taskId: z.string() })),
+      },
+    },
     async (req) => {
       return repo.getProofsByTask(req.params.taskId);
     }
   );
 
-  fastify.get('/my', { preHandler: [auth] }, async (req) => {
-    return repo.getProofsByIntern(req.user.id);
-  });
+  fastify.get(
+    '/my',
+    {
+      preHandler: [auth],
+      schema: { tags: ['Proofs'], description: 'Get own proof submissions' },
+    },
+    async (req) => {
+      return repo.getProofsByIntern(req.user.id);
+    }
+  );
+
+  fastify.delete(
+    '/:id',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Delete a proof submission',
+        params: toSchema(z.object({ id: z.string() })),
+      },
+    },
+    async (req, reply) => {
+      const proof = await repo.getProof(req.params.id);
+      if (!proof) {
+        return reply.status(404).send({ error: 'Proof not found' });
+      }
+      await repo.deleteProof(req.params.id);
+      await uploadRepo.deleteFile(proof.image_path);
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'PROOF_DELETED',
+        resourceType: 'proof',
+        resourceId: req.params.id,
+      };
+
+      return { success: true };
+    }
+  );
 }
 
 module.exports = routes;

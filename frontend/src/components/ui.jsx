@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -295,38 +297,50 @@ export function ConfirmationModal({
   loading = false,
   danger = true,
 }) {
+  // Handle body scroll locking and background blurring
+  useEffect(() => {
+    const root = document.getElementById('root');
+
+    if (open) {
+      document.body.style.overflow = 'hidden';
+      if (root) root.classList.add('blur-sm', 'transition-all', 'duration-300');
+    } else {
+      document.body.style.overflow = 'unset';
+      if (root)
+        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
+    }
+
+    return () => {
+      document.body.style.overflow = 'unset';
+      if (root)
+        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
+    };
+  }, [open]);
+
   if (!open) return null;
 
   const handleClose = () => {
     if (loading) return;
-
-    if (onCancel) {
-      onCancel();
-      return;
-    }
-
-    if (onClose) {
-      onClose();
-    }
+    if (onCancel) onCancel();
+    else if (onClose) onClose();
   };
 
   const finalConfirmText = confirmLabel || confirmText;
   const finalCancelText = cancelLabel || cancelText;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden"
+        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-slate-200 dark:border-slate-700">
           <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
             {title}
           </h3>
-
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
             {message}
           </p>
@@ -349,13 +363,14 @@ export function ConfirmationModal({
             className={`px-5 py-3 rounded-2xl text-white text-sm font-extrabold transition disabled:opacity-60 ${
               danger
                 ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-lg hover:shadow-indigo-200 dark:hover:shadow-none'
+                : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-lg hover:shadow-indigo-200'
             }`}
           >
             {loading ? 'Please wait...' : finalConfirmText}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

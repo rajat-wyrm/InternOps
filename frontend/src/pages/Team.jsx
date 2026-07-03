@@ -5,6 +5,7 @@ import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import { Users } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
+import CustomDatePicker from '../components/CustomDatePicker';
 
 const ROLE_LABEL = {
   SENIOR_TL: 'Senior TL',
@@ -173,7 +174,7 @@ function Field({ label, children }) {
 
 function AddMemberModal({ onClose }) {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
   const allowedRoles = rolesBelow(user?.role);
 
   const [form, setForm] = useState({
@@ -388,13 +389,13 @@ function AddMemberModal({ onClose }) {
               </Field>
 
               <Field label="Joining date">
-                <input
-                  type="date"
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-3 w-full rounded-2xl focus:ring-2 focus:ring-indigo-400/50 outline-none"
+                <CustomDatePicker
                   value={form.joining_date}
-                  onChange={(e) =>
-                    setForm({ ...form, joining_date: e.target.value })
+                  onChange={(value) =>
+                    setForm({ ...form, joining_date: value })
                   }
+                  placeholder="Select joining date"
+                  className="w-full"
                 />
               </Field>
 
@@ -543,7 +544,7 @@ function Row({ label, value }) {
 
 function MemberDetail({ memberId, onClose }) {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
 
   const [form, setForm] = useState(null);
   const [edit, setEdit] = useState(false);
@@ -858,9 +859,18 @@ function MemberDetail({ memberId, onClose }) {
                               placeholder="Select status"
                               className="w-full"
                             />
+                          ) : f.type === 'date' ? (
+                            <CustomDatePicker
+                              value={form[f.key]}
+                              onChange={(value) =>
+                                setForm({ ...form, [f.key]: value })
+                              }
+                              placeholder={`Select ${f.label.toLowerCase()}`}
+                              className="w-full"
+                            />
                           ) : (
                             <input
-                              type={f.type || 'text'}
+                              type="text"
                               className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-3 w-full rounded-2xl"
                               value={form[f.key]}
                               onChange={(e) =>
@@ -1072,7 +1082,7 @@ export default function Team() {
   const [selected, setSelected] = useState(null);
   const [adding, setAdding] = useState(false);
 
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
   const canAdd = rolesBelow(user?.role).length > 0;
 
   const {
@@ -1474,4 +1484,3 @@ export default function Team() {
     </div>
   );
 }
-``;

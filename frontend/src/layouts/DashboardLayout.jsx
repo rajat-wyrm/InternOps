@@ -18,13 +18,16 @@ import {
   LogOut,
   Sun,
   Moon,
+  Megaphone,
 } from 'lucide-react';
+
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
-import { UserAvatar } from '../components/ui';
+import { UserAvatar, ConfirmationModal } from '../components/ui';
 import useAuthStore from '../store/auth';
+import { QUERY_KEYS } from '../constants/queryKeys';
 
 const ROLE_LABEL = {
   ADMIN: 'Admin',
@@ -34,9 +37,18 @@ const ROLE_LABEL = {
   INTERN: 'Intern',
 };
 
+const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
+const ADMIN_AND_SENIOR_TL_ROLES = ['ADMIN', 'SENIOR_TL'];
+const ADMIN_ONLY_ROLES = ['ADMIN'];
+
 const nav = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/team', label: 'My Team', icon: Users, managerOnly: true },
+  {
+    path: '/team',
+    label: 'My Team',
+    icon: Users,
+    allowedRoles: MANAGER_ROLES,
+  },
   { path: '/attendance', label: 'Attendance', icon: CalendarCheck },
   { path: '/ratings', label: 'Ratings', icon: Star },
   { path: '/tasks', label: 'Tasks', icon: Target },
@@ -48,40 +60,70 @@ const nav = [
     path: '/reports',
     label: 'Reports',
     icon: FileText,
-    roles: ['ADMIN', 'SENIOR_TL'],
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
   },
   {
     path: '/analytics',
     label: 'Analytics',
     icon: BarChart2,
-    roles: ['ADMIN', 'SENIOR_TL'],
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
   },
   {
     path: '/exports',
     label: 'Exports',
     icon: Download,
-    roles: ['ADMIN', 'SENIOR_TL'],
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
+  },
+  {
+    path: '/notices',
+    label: 'Notice Board',
+    icon: Megaphone,
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
   },
 ];
 
 const adminNav = [
-  { path: '/admin', label: 'users', icon: Settings },
-  { path: '/departments', label: 'Departments', icon: Building },
-  { path: '/audit', label: 'Audit Log', icon: ClipboardList },
-  { path: '/assistant', label: 'AI Assistant', icon: Bot },
+  {
+    path: '/admin',
+    label: 'Users',
+    icon: Settings,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/departments',
+    label: 'Departments',
+    icon: Building,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/audit',
+    label: 'Audit Log',
+    icon: ClipboardList,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/assistant',
+    label: 'AI Assistant',
+    icon: Bot,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
 ];
 
 const FULL_LOGO_SRC = '/UptoSkills.webp';
-const MINI_LOGO_SRC = '/uslogo.ico';
+const MINI_LOGO_SRC = '/Uptoskills_log_fevicon.png';
+
+function canShowNavItem(item, role) {
+  if (!item.allowedRoles) return true;
+  return item.allowedRoles.includes(role);
+}
 
 export default function DashboardLayout() {
   const loc = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
   const role = user?.role;
-  const isAdmin = role === 'ADMIN';
-  const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(role);
 
   const sidebarNavRef = useRef(null);
 
@@ -94,7 +136,7 @@ export default function DashboardLayout() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const { data: me } = useQuery({
-    queryKey: ['myProfile'],
+    queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
   });
 
@@ -110,19 +152,15 @@ export default function DashboardLayout() {
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }, [dark]);
 
-  const visibleNav = nav.filter((n) => {
-    if (n.managerOnly && !isManager) return false;
-    if (n.roles && !n.roles.includes(role)) return false;
-    return true;
-  });
+  const visibleNav = nav.filter((item) => canShowNavItem(item, role));
+  const visibleAdminNav = adminNav.filter((item) => canShowNavItem(item, role));
 
-  const allItems = [...visibleNav, ...(isAdmin ? adminNav : [])];
+  const allItems = [...visibleNav, ...visibleAdminNav];
 
   const current = allItems.find((n) => n.path === loc.pathname) || {
     label: 'Dashboard',
   };
 
-  // Restore sidebar scroll position after route changes.
   useEffect(() => {
     const savedScroll = Number(
       sessionStorage.getItem('internopsSidebarScroll') || 0
@@ -144,7 +182,10 @@ export default function DashboardLayout() {
     }
   };
 
-  const handleLogout = () => setShowLogoutConfirm(true);
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const NavLink = ({ n }) => {
     const active = loc.pathname === n.path;
@@ -164,13 +205,10 @@ export default function DashboardLayout() {
           }`}
       >
         <Icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2.5 : 2} />
-
         {!collapsed && <span className="whitespace-nowrap">{n.label}</span>}
-
         {!collapsed && active && (
           <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600" />
         )}
-
         {collapsed && active && (
           <span className="absolute right-1.5 w-1.5 h-6 rounded-full bg-white/80" />
         )}
@@ -186,9 +224,7 @@ export default function DashboardLayout() {
         } shrink-0 bg-gradient-to-b from-indigo-700 via-indigo-800 to-violet-950 text-white flex flex-col transition-all duration-300 ease-in-out shadow-2xl shadow-indigo-950/20`}
       >
         <div
-          className={`p-5 flex items-center ${
-            collapsed ? 'justify-center' : 'justify-start'
-          }`}
+          className={`p-5 flex items-center ${collapsed ? 'justify-center' : 'justify-start'}`}
         >
           {collapsed ? (
             <div className="w-12 h-12 rounded-2xl bg-white p-2 border border-white/20 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-950/20 overflow-hidden">
@@ -216,20 +252,17 @@ export default function DashboardLayout() {
           {visibleNav.map((n) => (
             <NavLink key={n.path} n={n} />
           ))}
-
-          {isAdmin && (
+          {visibleAdminNav.length > 0 && (
             <>
               {!collapsed && (
                 <p className="px-3 pt-5 pb-1.5 text-[11px] uppercase tracking-[0.18em] text-indigo-300/90 font-extrabold">
                   Admin
                 </p>
               )}
-
               {collapsed && (
                 <div className="my-3 mx-3 border-t border-white/10" />
               )}
-
-              {adminNav.map((n) => (
+              {visibleAdminNav.map((n) => (
                 <NavLink key={n.path} n={n} />
               ))}
             </>
@@ -238,9 +271,7 @@ export default function DashboardLayout() {
 
         <div className="p-3 shrink-0">
           <div
-            className={`rounded-3xl border border-white/10 bg-white/10 backdrop-blur-xl flex items-center shadow-lg shadow-indigo-950/20 ${
-              collapsed ? 'justify-center p-2.5' : 'gap-3 p-3'
-            }`}
+            className={`rounded-3xl border border-white/10 bg-white/10 backdrop-blur-xl flex items-center shadow-lg shadow-indigo-950/20 ${collapsed ? 'justify-center p-2.5' : 'gap-3 p-3'}`}
           >
             <UserAvatar
               name={displayName}
@@ -248,7 +279,6 @@ export default function DashboardLayout() {
               src={avatarUrl}
               text="text-xs"
             />
-
             {!collapsed && (
               <>
                 <div className="min-w-0 flex-1">
@@ -259,9 +289,8 @@ export default function DashboardLayout() {
                     {ROLE_LABEL[role] || role}
                   </p>
                 </div>
-
                 <button
-                  onClick={handleLogout}
+                  onClick={() => setShowLogoutConfirm(true)}
                   title="Logout"
                   className="w-9 h-9 rounded-2xl text-indigo-200 hover:text-white hover:bg-white/10 flex items-center justify-center transition"
                 >
@@ -279,11 +308,9 @@ export default function DashboardLayout() {
             <button
               onClick={() => setCollapsed((c) => !c)}
               className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition font-extrabold"
-              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               {collapsed ? '»' : '«'}
             </button>
-
             <div className="hidden sm:block">
               <p className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">
                 Current page
@@ -293,12 +320,10 @@ export default function DashboardLayout() {
               </p>
             </div>
           </div>
-
           <div className="flex items-center gap-2">
             <button
               onClick={() => setDark((d) => !d)}
               className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition text-slate-600 dark:text-slate-300"
-              title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {dark ? (
                 <Sun className="w-5 h-5" />
@@ -306,21 +331,17 @@ export default function DashboardLayout() {
                 <Moon className="w-5 h-5" />
               )}
             </button>
-
             <Link
               to="/notifications"
               onClick={saveSidebarScroll}
               className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition"
-              title="Notifications"
             >
               <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
             </Link>
-
             <Link
               to="/profile"
               onClick={saveSidebarScroll}
               className="rounded-full hover:scale-105 transition"
-              title="Profile"
             >
               <UserAvatar
                 name={displayName}
@@ -331,54 +352,20 @@ export default function DashboardLayout() {
             </Link>
           </div>
         </header>
-
         <main className="flex-1 overflow-auto p-5 sm:p-6">
-          {/* This Outlet renders the active page component (e.g. Dashboard, Tasks, Profile) */}
           <Outlet />
         </main>
       </div>
 
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[9999] animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl max-w-sm w-full mx-4 border border-slate-200 dark:border-slate-700 animate-scale-up">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center mb-4 border border-indigo-100 dark:border-indigo-900/60">
-                <LogOut className="w-6 h-6" />
-              </div>
-
-              <h3 className="text-lg font-extrabold text-slate-950 dark:text-white mb-2">
-                Confirm Logout
-              </h3>
-
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                Are you sure you want to log out?
-              </p>
-
-              <div className="flex gap-3 w-full">
-                <button
-                  type="button"
-                  onClick={() => setShowLogoutConfirm(false)}
-                  className="flex-1 px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowLogoutConfirm(false);
-                    logout();
-                    navigate('/login');
-                  }}
-                  className="flex-1 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 text-white text-sm font-bold hover:shadow-lg hover:shadow-rose-200 dark:hover:shadow-none"
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmationModal
+        open={showLogoutConfirm}
+        title="Confirm Logout"
+        message="Are you sure you want to log out?"
+        confirmText="Logout"
+        onConfirm={handleLogout}
+        onCancel={() => setShowLogoutConfirm(false)}
+        danger={true}
+      />
     </div>
   );
 }

@@ -25,6 +25,8 @@ import useAuthStore from './store/auth';
 import api from './lib/axios';
 import RoleGuard from './components/RoleGuard';
 
+let bootRefreshPromise = null;
+
 function Private({ children }) {
   const token = useAuthStore((s) => s.accessToken);
   const hydrated = useAuthStore((s) => s.hydrated);
@@ -37,16 +39,34 @@ function Private({ children }) {
 export default function App() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const setHydrated = useAuthStore((s) => s.setHydrated);
+  const logout = useAuthStore((s) => s.logout);
 
   useEffect(() => {
-    api
-      .post('/auth/refresh')
-      .then((res) =>
-        setAuth({ accessToken: res.data.accessToken, user: res.data.user })
-      )
-      .catch(() => {})
-      .finally(() => setHydrated());
-  }, []);
+    if (!bootRefreshPromise) {
+      bootRefreshPromise = api.post('/auth/refresh', {});
+    }
+
+    bootRefreshPromise
+      .then((res) => {
+        setAuth({
+          accessToken: res.data.accessToken,
+          user: res.data.user,
+        });
+      })
+      .catch(() => {
+        const currentToken = useAuthStore.getState().accessToken;
+
+        // If another in-flight startup refresh already succeeded, do not
+        // destroy the valid in-memory session because of a duplicate refresh
+        // request caused by React dev StrictMode.
+        if (!currentToken) {
+          logout();
+        }
+      })
+      .finally(() => {
+        setHydrated();
+      });
+  }, [logout, setAuth, setHydrated]);
 
   return (
     <Routes>

@@ -53,44 +53,85 @@ async function getUserSessions(userId) {
 }
 
 // ─── revokeSession ────────────────────────────────────────────────────────────
-// WHY: The original ran UPDATE refresh_tokens … WHERE id = $1. In Redis mode
-// the session ID is a token hash (not a UUID), and the row doesn't exist in
-// Postgres — so the update silently matched 0 rows and returned false every time.
-// FIX: In Redis mode, use the sessionId as a hash key. Delete the
-// refresh_token:<hash> entry and remove it from the user's set.
+// WHY: Ensure both Redis and Postgres stores are updated, and avoid a
+// TOCTOU race in the Redis path by combining the ownership check and the
+// delete into a single atomic Lua script rather than GET-then-DEL.
+// The Postgres side stays a soft revoke (UPDATE revoked = TRUE), not a
+// hard DELETE, so revoked sessions remain in the audit trail (#507).
 async function revokeSession(sessionId, userId) {
   const redis = await getRedisClient();
+  let redisSuccess = false;
 
   if (redis) {
-    // Confirm the token belongs to this user before deleting
-    const storedUserId = await redis.get(`refresh_token:${sessionId}`);
-    if (!storedUserId || storedUserId !== String(userId)) return false;
-
-    await redis.del(`refresh_token:${sessionId}`);
-    await redis.sRem(`user_tokens:${userId}`, sessionId);
-    return true;
+    try {
+      // Atomic Lua script: verify ownership AND delete in a single operation.
+      const script = `
+        local key = KEYS[1]
+        local userId = ARGV[1]
+        local stored = redis.call('GET', key)
+        if not stored then
+          return 0
+        end
+        local ok, parsed = pcall(cjson.decode, stored)
+        local storedUserId = stored
+        if ok and parsed and parsed.userId then
+          storedUserId = tostring(parsed.userId)
+        end
+        if storedUserId ~= userId then
+          return 0
+        end
+        redis.call('DEL', key)
+        redis.call('SREM', 'user_tokens:' .. userId, ARGV[2])
+        return 1
+      `;
+      const result = await redis.eval(script, {
+        keys: [`refresh_token:${sessionId}`],
+        arguments: [String(userId), sessionId],
+      });
+      redisSuccess = result === 1;
+    } catch (err) {
+      console.error(
+        `Failed to clean up Redis session ${sessionId} for user ${userId}:`,
+        err
+      );
+    }
   }
 
-  // ── Postgres fallback ──────────────────────────────────────────────────────
-  const res = await pool.query(
-    'UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1 AND user_id = $2 RETURNING id',
-    [sessionId, userId]
-  );
-  return res.rowCount > 0;
+  // Update Postgres — soft revoke, preserves the row for audit purposes.
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      sessionId
+    );
+  let pgRes;
+  if (isUuid) {
+    pgRes = await pool.query(
+      'UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1 AND user_id = $2 RETURNING id',
+      [sessionId, userId]
+    );
+  } else {
+    pgRes = await pool.query(
+      'UPDATE refresh_tokens SET revoked = TRUE WHERE token_hash = $1 AND user_id = $2 RETURNING id',
+      [sessionId, userId]
+    );
+  }
+
+  return redisSuccess || pgRes.rowCount > 0;
 }
 
+// ─── revokeAllUserSessions ───────────────────────────────────────────────────
+// WHY: Postgres is the source of truth and must always commit the revocation,
+// even if Redis is unreachable. Redis cleanup is deliberately kept OUTSIDE
+// the Postgres transaction and wrapped in its own try/catch so a Redis
+// failure can never roll back — or block — the Postgres revocation (#507).
 async function revokeAllUserSessions(userId) {
-  const client = await pool.connect();
+  // 1. Postgres UPDATE first — must succeed
+  await pool.query(
+    'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
+    [userId]
+  );
+
+  // 2. Redis cleanup (best-effort)
   try {
-    await client.query('BEGIN');
-
-    // Revoke all refresh tokens for the user in Postgres
-    await client.query(
-      'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
-      [userId]
-    );
-
-    // Revoke from Redis atomically
     const redis = await getRedisClient();
     if (redis) {
       const tokens = await redis.sMembers(`user_tokens:${userId}`);
@@ -103,15 +144,15 @@ async function revokeAllUserSessions(userId) {
         await multi.exec();
       }
     }
-
-    await client.query('COMMIT');
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
+    console.error(
+      `Failed to clean up Redis sessions for user ${userId} in revokeAllUserSessions:`,
+      err
+    );
   }
 }
+
+// ─── getSessionById ───────────────────────────────────────────────────────────
 async function getSessionById(sessionId, userId) {
   const redis = await getRedisClient();
 
@@ -134,6 +175,7 @@ async function getSessionById(sessionId, userId) {
 
   return res.rows[0] || null;
 }
+
 module.exports = {
   getUserSessions,
   revokeSession,

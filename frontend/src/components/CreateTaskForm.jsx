@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/axios';
-import { Card, Btn, Input, Textarea, Select } from './ui';
+import { Card, Btn, Input, Textarea } from './ui';
+import CustomSelect from './CustomSelect';
+import CustomDateTimePicker from './CustomDateTimePicker';
 
 const PLATFORMS = [
   'LinkedIn',
@@ -41,6 +43,11 @@ export default function CreateTaskForm() {
     },
     onError: (err) => setError(err.response?.data?.error || 'Failed'),
   });
+
+  const platformOptions = PLATFORMS.map((platform) => ({
+    value: platform,
+    label: platform,
+  }));
 
   return (
     <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
@@ -87,6 +94,7 @@ export default function CreateTaskForm() {
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
             required
+            disabled={createMutation.isPending}
           />
         </div>
 
@@ -99,6 +107,7 @@ export default function CreateTaskForm() {
             rows={3}
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
+            disabled={createMutation.isPending}
           />
         </div>
 
@@ -107,29 +116,28 @@ export default function CreateTaskForm() {
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
               Target Platform
             </label>
-            <Select
+
+            <CustomSelect
               value={form.targetPlatform}
-              onChange={(e) =>
-                setForm({ ...form, targetPlatform: e.target.value })
-              }
-            >
-              {PLATFORMS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </Select>
+              onChange={(value) => setForm({ ...form, targetPlatform: value })}
+              options={platformOptions}
+              placeholder="Select platform"
+              disabled={createMutation.isPending}
+              className="w-full"
+            />
           </div>
 
           <div>
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
               Deadline
             </label>
-            <Input
-              type="datetime-local"
+
+            <CustomDateTimePicker
               value={form.deadline}
-              onChange={(e) => setForm({ ...form, deadline: e.target.value })}
-              required
+              onChange={(value) => setForm({ ...form, deadline: value })}
+              placeholder="Select deadline"
+              disabled={createMutation.isPending}
+              className="w-full"
             />
           </div>
         </div>
@@ -143,6 +151,7 @@ export default function CreateTaskForm() {
             placeholder="Task link (https://…)"
             value={form.taskLink}
             onChange={(e) => setForm({ ...form, taskLink: e.target.value })}
+            disabled={createMutation.isPending}
           />
         </div>
 
