@@ -1039,41 +1039,80 @@ function PendingProofsPanel({ onMember }) {
             </p>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-80 overflow-auto">
-              {proofs.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between gap-3 py-3 text-sm"
-                >
-                  <div className="min-w-0">
-                    <button
-                      onClick={() => onMember(p.intern_id)}
-                      className="font-bold text-slate-800 dark:text-white hover:underline truncate text-left"
-                    >
-                      {p.intern_name || p.intern_email}
-                    </button>
+                        {proofs.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between gap-3 py-3 text-sm"
+                      >
+                        {/* Core Modification: Injects claimed activity indicators for evaluation managers */}
+                        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                          <a
+                            href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/${p.image_path}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline truncate"
+                          >
+                            View screenshot proof attachment
+                          </a>
+                          
+                          {/* Color-coded badges for verifier view granularity matching TL layout spec */}
+                          <div className="flex flex-wrap gap-1.5 mt-0.5">
+                            {p.did_comment && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/40 shadow-sm">
+                                Comment
+                              </span>
+                            )}
+                            {p.did_repost && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/40 shadow-sm">
+                                Repost
+                              </span>
+                            )}
+                            {p.did_share && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-100 dark:border-teal-900/40 shadow-sm">
+                                Share
+                              </span>
+                            )}
+                            {!p.did_comment && !p.did_repost && !p.did_share && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium tracking-wide bg-slate-50 dark:bg-slate-800 text-slate-400 border border-slate-200/50 dark:border-slate-700/50">
+                                No actions claimed
+                              </span>
+                            )}
+                          </div>
+                        </div>
 
-                    <div className="text-slate-500 dark:text-slate-400 text-xs truncate">
-                      {p.task_title || 'Task'} ·{' '}
-                      {new Date(p.created_at).toLocaleDateString()}
-                    </div>
-                  </div>
+                        <div className="flex items-center gap-2">
+                          {p.status === 'VERIFIED' ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2.5 py-1 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                              Verified
+                            </span>
+                          ) : (
+                            canVerify && (
+                              <button
+                                onClick={() => verifyMutation.mutate(p.id)}
+                                disabled={verifyMutation.isPending}
+                                className="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 shadow-sm transition-all"
+                              >
+                                Approve
+                              </button>
+                            )
+                          )}
 
-                  <button
-                    onClick={() => verifyMut.mutate(p.id)}
-                    disabled={verifyMut.isPending}
-                    className="shrink-0 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-60"
-                  >
-                    Verify
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+                          {canVerify && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm('Delete this proof submission record?')) {
+                                  deleteMutation.mutate(p.id);
+                                }
+                              }}
+                              disabled={deleteMutation.isPending}
+                              className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
 
 export default function Team() {
   const [search, setSearch] = useState('');
