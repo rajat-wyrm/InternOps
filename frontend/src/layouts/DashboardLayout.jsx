@@ -18,15 +18,16 @@ import {
   LogOut,
   Sun,
   Moon,
-  Menu,
   Megaphone,
 } from 'lucide-react';
+
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
 import { UserAvatar, ConfirmationModal } from '../components/ui';
 import useAuthStore from '../store/auth';
+import { QUERY_KEYS } from '../constants/queryKeys';
 
 const ROLE_LABEL = {
   ADMIN: 'Admin',
@@ -36,9 +37,18 @@ const ROLE_LABEL = {
   INTERN: 'Intern',
 };
 
+const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
+const ADMIN_AND_SENIOR_TL_ROLES = ['ADMIN', 'SENIOR_TL'];
+const ADMIN_ONLY_ROLES = ['ADMIN'];
+
 const nav = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/team', label: 'My Team', icon: Users, managerOnly: true },
+  {
+    path: '/team',
+    label: 'My Team',
+    icon: Users,
+    allowedRoles: MANAGER_ROLES,
+  },
   { path: '/attendance', label: 'Attendance', icon: CalendarCheck },
   { path: '/ratings', label: 'Ratings', icon: Star },
   { path: '/tasks', label: 'Tasks', icon: Target },
@@ -50,37 +60,62 @@ const nav = [
     path: '/reports',
     label: 'Reports',
     icon: FileText,
-    roles: ['ADMIN', 'SENIOR_TL'],
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
   },
   {
     path: '/analytics',
     label: 'Analytics',
     icon: BarChart2,
-    roles: ['ADMIN', 'SENIOR_TL'],
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
   },
   {
     path: '/exports',
     label: 'Exports',
     icon: Download,
-    roles: ['ADMIN', 'SENIOR_TL'],
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
   },
   {
     path: '/notices',
     label: 'Notice Board',
     icon: Megaphone,
-    roles: ['ADMIN', 'SENIOR_TL'],
+    allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
   },
 ];
 
 const adminNav = [
-  { path: '/admin', label: 'Users', icon: Settings },
-  { path: '/departments', label: 'Departments', icon: Building },
-  { path: '/audit', label: 'Audit Log', icon: ClipboardList },
-  { path: '/assistant', label: 'AI Assistant', icon: Bot },
+  {
+    path: '/admin',
+    label: 'Users',
+    icon: Settings,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/departments',
+    label: 'Departments',
+    icon: Building,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/audit',
+    label: 'Audit Log',
+    icon: ClipboardList,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/assistant',
+    label: 'AI Assistant',
+    icon: Bot,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
 ];
 
 const FULL_LOGO_SRC = '/UptoSkills.webp';
 const MINI_LOGO_SRC = '/Uptoskills_log_fevicon.png';
+
+function canShowNavItem(item, role) {
+  if (!item.allowedRoles) return true;
+  return item.allowedRoles.includes(role);
+}
 
 export default function DashboardLayout() {
   const loc = useLocation();
@@ -89,8 +124,6 @@ export default function DashboardLayout() {
   const logout = useAuthStore((s) => s.logout);
 
   const role = user?.role;
-  const isAdmin = role === 'ADMIN';
-  const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(role);
 
   const sidebarNavRef = useRef(null);
 
@@ -103,7 +136,7 @@ export default function DashboardLayout() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const { data: me } = useQuery({
-    queryKey: ['myProfile'],
+    queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
   });
 
@@ -119,13 +152,10 @@ export default function DashboardLayout() {
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }, [dark]);
 
-  const visibleNav = nav.filter((n) => {
-    if (n.managerOnly && !isManager) return false;
-    if (n.roles && !n.roles.includes(role)) return false;
-    return true;
-  });
+  const visibleNav = nav.filter((item) => canShowNavItem(item, role));
+  const visibleAdminNav = adminNav.filter((item) => canShowNavItem(item, role));
 
-  const allItems = [...visibleNav, ...(isAdmin ? adminNav : [])];
+  const allItems = [...visibleNav, ...visibleAdminNav];
 
   const current = allItems.find((n) => n.path === loc.pathname) || {
     label: 'Dashboard',
@@ -222,7 +252,7 @@ export default function DashboardLayout() {
           {visibleNav.map((n) => (
             <NavLink key={n.path} n={n} />
           ))}
-          {isAdmin && (
+          {visibleAdminNav.length > 0 && (
             <>
               {!collapsed && (
                 <p className="px-3 pt-5 pb-1.5 text-[11px] uppercase tracking-[0.18em] text-indigo-300/90 font-extrabold">
@@ -232,7 +262,7 @@ export default function DashboardLayout() {
               {collapsed && (
                 <div className="my-3 mx-3 border-t border-white/10" />
               )}
-              {adminNav.map((n) => (
+              {visibleAdminNav.map((n) => (
                 <NavLink key={n.path} n={n} />
               ))}
             </>

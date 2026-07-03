@@ -11,7 +11,7 @@ const { toSchema } = require('../../utils/schemaHelper');
 async function noticesRoutes(fastify) {
   //
   fastify.get(
-    '/api/notices',
+    '/notices',
     {
       schema: { tags: ['Notices'], description: 'Get all notices (admin)' },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
@@ -25,7 +25,7 @@ async function noticesRoutes(fastify) {
 
   // PUBLIC — no auth
   fastify.get(
-    '/api/notices/public',
+    '/notices/public',
     {
       schema: { tags: ['Notices'], description: 'Get active notices (public)' },
     },
@@ -47,7 +47,7 @@ async function noticesRoutes(fastify) {
 
   // PROTECTED — admin + senior_tl
   fastify.post(
-    '/api/notices',
+    '/notices',
     {
       schema: {
         tags: ['Notices'],
@@ -89,7 +89,7 @@ async function noticesRoutes(fastify) {
   );
 
   fastify.patch(
-    '/api/notices/:id',
+    '/notices/:id',
     {
       schema: {
         tags: ['Notices'],
@@ -144,7 +144,7 @@ async function noticesRoutes(fastify) {
   );
 
   fastify.delete(
-    '/api/notices/:id',
+    '/notices/:id',
     {
       schema: {
         tags: ['Notices'],

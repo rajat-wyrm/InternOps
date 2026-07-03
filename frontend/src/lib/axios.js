@@ -1,8 +1,21 @@
 import axios from 'axios';
 
-// All backend routes are mounted under /api; Vite proxies this to :5000 in dev.
+function getBaseUrl() {
+  const raw = import.meta.env.VITE_API_URL;
+  if (!raw) return '/api';
+  let url = raw.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    console.warn(
+      `[api] VITE_API_URL "${raw}" has no protocol; defaulting to http://`
+    );
+    url = `http://${url}`;
+  }
+  url = url.replace(/\/+$/, '');
+
+  return url;
+}
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: getBaseUrl(),
   withCredentials: true,
 });
 
