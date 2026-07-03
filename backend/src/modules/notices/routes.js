@@ -78,27 +78,22 @@ async function noticesRoutes(fastify) {
       if (!content?.trim())
         return reply.status(400).send({ error: 'content is required' });
 
-      try {
-        const notice = await repo.createNotice({
-          title: title.trim(),
-          content: content.trim(),
-          category: category ?? 'GENERAL',
-          createdBy: req.user.id,
-        });
+      const notice = await repo.createNotice({
+        title: title.trim(),
+        content: content.trim(),
+        category: category ?? 'GENERAL',
+        createdBy: req.user.id,
+      });
 
-        req.auditOnResponse = {
-          userId: req.user.id,
-          action: 'NOTICE_CREATED',
-          resourceType: 'notice',
-          resourceId: notice.id,
-          details: { title: notice.title, category: notice.category },
-          ...extractRequestInfo(req),
-        };
-        return reply.status(201).send(notice);
-      } catch (err) {
-        req.log.error({ err }, 'Failed to create notice');
-        return reply.status(500).send({ error: 'Failed to create notice' });
-      }
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'NOTICE_CREATED',
+        resourceType: 'notice',
+        resourceId: notice.id,
+        details: { title: notice.title, category: notice.category },
+        ...extractRequestInfo(req),
+      };
+      return reply.status(201).send(notice);
     }
   );
 
@@ -135,31 +130,25 @@ async function noticesRoutes(fastify) {
           error: 'content cannot be empty',
         });
       }
-
-      try {
-        const updated = await repo.updateNotice(id, {
-          title,
-          content,
-          category,
-          is_active,
-        });
-        if (!updated)
-          return reply.status(404).send({ error: 'Notice not found' });
-        const action =
-          is_active === false ? 'NOTICE_DEACTIVATED' : 'NOTICE_UPDATED';
-        req.auditOnResponse = {
-          userId: req.user.id,
-          action,
-          resourceType: 'notice',
-          resourceId: updated.id,
-          details: { title: updated.title },
-          ...extractRequestInfo(req),
-        };
-        return reply.send(updated);
-      } catch (err) {
-        req.log.error({ err }, 'Failed to update notice');
-        return reply.status(500).send({ error: 'Failed to update notice' });
-      }
+      const updated = await repo.updateNotice(id, {
+        title,
+        content,
+        category,
+        is_active,
+      });
+      if (!updated)
+        return reply.status(404).send({ error: 'Notice not found' });
+      const action =
+        is_active === false ? 'NOTICE_DEACTIVATED' : 'NOTICE_UPDATED';
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action,
+        resourceType: 'notice',
+        resourceId: updated.id,
+        details: { title: updated.title },
+        ...extractRequestInfo(req),
+      };
+      return reply.send(updated);
     }
   );
 
@@ -175,22 +164,17 @@ async function noticesRoutes(fastify) {
     },
     async (req, reply) => {
       const { id } = req.params;
-      try {
-        const deleted = await repo.softDeleteNotice(id);
-        if (!deleted)
-          return reply.status(404).send({ error: 'Notice not found' });
-        req.auditOnResponse = {
-          userId: req.user.id,
-          action: 'NOTICE_DELETED',
-          resourceType: 'notice',
-          resourceId: deleted.id,
-          ...extractRequestInfo(req),
-        };
-        return reply.status(204).send();
-      } catch (err) {
-        req.log.error({ err }, 'Failed to delete notice');
-        return reply.status(500).send({ error: 'Failed to delete notice' });
-      }
+      const deleted = await repo.softDeleteNotice(id);
+      if (!deleted)
+        return reply.status(404).send({ error: 'Notice not found' });
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'NOTICE_DELETED',
+        resourceType: 'notice',
+        resourceId: deleted.id,
+        ...extractRequestInfo(req),
+      };
+      return reply.status(204).send();
     }
   );
 }
