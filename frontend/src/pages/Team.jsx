@@ -1039,7 +1039,7 @@ function PendingProofsPanel({ onMember }) {
             </p>
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-80 overflow-auto">
-              {proofs.map((p) => (
+             {proofs.map((p) => (
                 <div
                   key={p.id}
                   className="flex items-center justify-between gap-3 py-3 text-sm"
@@ -1055,6 +1055,30 @@ function PendingProofsPanel({ onMember }) {
                     <div className="text-slate-500 dark:text-slate-400 text-xs truncate">
                       {p.task_title || 'Task'} ·{' '}
                       {new Date(p.created_at).toLocaleDateString()}
+                    </div>
+
+                    {/* Color-coded badges for verifier view granularity matching TL layout spec */}
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {p.did_comment && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/40 shadow-sm">
+                          Comment
+                        </span>
+                      )}
+                      {p.did_repost && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/40 shadow-sm">
+                          Repost
+                        </span>
+                      )}
+                      {p.did_share && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-100 dark:border-teal-900/40 shadow-sm">
+                          Share
+                        </span>
+                      )}
+                      {!p.did_comment && !p.did_repost && !p.did_share && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium tracking-wide bg-slate-50 dark:bg-slate-800 text-slate-400 border border-slate-200/50 dark:border-slate-700/50">
+                          No actions claimed
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -1074,6 +1098,7 @@ function PendingProofsPanel({ onMember }) {
     </div>
   );
 }
+
 
 export default function Team() {
   const [search, setSearch] = useState('');
