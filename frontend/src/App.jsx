@@ -24,6 +24,7 @@ import Notices from './pages/admin/Notices';
 import useAuthStore from './store/auth';
 import api from './lib/axios';
 import RoleGuard from './components/RoleGuard';
+import ErrorBoundary from './components/ErrorBoundary';
 
 let bootRefreshPromise = null;
 
@@ -69,7 +70,8 @@ export default function App() {
   }, [logout, setAuth, setHydrated]);
 
   return (
-    <Routes>
+    <ErrorBoundary>
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
@@ -155,6 +157,7 @@ export default function App() {
           }
         />
       </Route>
-    </Routes>
+      </Routes>
+    </ErrorBoundary>
   );
 }
