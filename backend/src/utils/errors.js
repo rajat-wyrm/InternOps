@@ -137,12 +137,25 @@ function notFoundHandler(req, res, next) {
 // -----------------------------------------------------------------------------
 // Exports
 // -----------------------------------------------------------------------------
-
 class BadRequestError extends AppError {
   constructor(message = 'Bad Request', internalMessage = null) {
     super(message, 400, internalMessage);
   }
 }
+
+module.exports = {
+  AppError,
+  NotFoundError,
+  ValidationError,
+  UnauthorizedError,
+  ForbiddenError,
+  ConflictError,
+  BadRequestError,
+  globalErrorHandler,
+  notFoundHandler,
+  sanitizeDbError,
+};
+  
 
 
 class ConflictError extends AppError {
