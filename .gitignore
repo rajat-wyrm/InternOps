@@ -39,6 +39,7 @@ check_plugins.js
 db-test.js
 fix_async_done.js
 *.log
+*.err
 *-report.txt
 
 # Docker volumes
