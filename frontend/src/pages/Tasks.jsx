@@ -34,7 +34,11 @@ export default function Tasks() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [notification, setNotification] = useState(null);
-  const [draftFiles, setDraftFiles] = useState({ taskId: null, files: [], previews: [] });
+  const [draftFiles, setDraftFiles] = useState({
+    taskId: null,
+    files: [],
+    previews: [],
+  });
   const [deletingProofId, setDeletingProofId] = useState(null);
 
   const showNotification = (msg) => {
@@ -116,7 +120,9 @@ export default function Tasks() {
     if (!files.length) return;
 
     if (files.length > 5) {
-      showNotification('You can only upload up to 5 images at a time. Only the first 5 images were kept.');
+      showNotification(
+        'You can only upload up to 5 images at a time. Only the first 5 images were kept.'
+      );
       files = files.slice(0, 5); // Take max 5 files
     }
 
@@ -131,7 +137,7 @@ export default function Tasks() {
       }
     }
 
-    const previews = files.map(f => URL.createObjectURL(f));
+    const previews = files.map((f) => URL.createObjectURL(f));
     setDraftFiles({ taskId, files, previews });
   };
 
@@ -292,8 +298,8 @@ export default function Tasks() {
                     </Btn>
                   )}
 
-                  {user?.role === 'INTERN' && (
-                    myProofs?.some((p) => p.task_id === t.id) ? (
+                  {user?.role === 'INTERN' &&
+                    (myProofs?.some((p) => p.task_id === t.id) ? (
                       <div className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed">
                         <CheckCircle className="w-4 h-4" /> Submitted
                       </div>
@@ -301,16 +307,45 @@ export default function Tasks() {
                       <div className="flex flex-col gap-3 w-full animate-fade-in">
                         <div className="flex gap-2 overflow-x-auto pb-2">
                           {draftFiles.previews.map((src, i) => (
-                            <img key={i} src={src} alt="Preview" className="w-16 h-16 object-cover rounded-xl border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm" />
+                            <img
+                              key={i}
+                              src={src}
+                              alt="Preview"
+                              className="w-16 h-16 object-cover rounded-xl border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm"
+                            />
                           ))}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Btn variant="outline" className="text-sm rounded-2xl py-1.5" onClick={() => setDraftFiles({ taskId: null, files: [], previews: [] })}>
+                          <Btn
+                            variant="outline"
+                            className="text-sm rounded-2xl py-1.5"
+                            onClick={() =>
+                              setDraftFiles({
+                                taskId: null,
+                                files: [],
+                                previews: [],
+                              })
+                            }
+                          >
                             Cancel
                           </Btn>
-                          <Btn variant="success" className="text-sm rounded-2xl py-1.5 flex items-center gap-2" onClick={() => submitMutation.mutate({ taskId: t.id, files: draftFiles.files })} disabled={submitMutation.isPending}>
-                            {submitMutation.isPending && <span className="w-3 h-3 rounded-full border-2 border-t-white border-white/30 animate-spin" />}
-                            {submitMutation.isPending ? 'Submitting...' : 'Confirm Upload'}
+                          <Btn
+                            variant="success"
+                            className="text-sm rounded-2xl py-1.5 flex items-center gap-2"
+                            onClick={() =>
+                              submitMutation.mutate({
+                                taskId: t.id,
+                                files: draftFiles.files,
+                              })
+                            }
+                            disabled={submitMutation.isPending}
+                          >
+                            {submitMutation.isPending && (
+                              <span className="w-3 h-3 rounded-full border-2 border-t-white border-white/30 animate-spin" />
+                            )}
+                            {submitMutation.isPending
+                              ? 'Submitting...'
+                              : 'Confirm Upload'}
                           </Btn>
                         </div>
                       </div>
@@ -325,8 +360,7 @@ export default function Tasks() {
                           className="hidden"
                         />
                       </label>
-                    )
-                  )}
+                    ))}
                 </div>
 
                 {selectedTask === t.id && (
@@ -355,25 +389,42 @@ export default function Tasks() {
                           className="flex flex-col md:flex-row items-start md:items-center gap-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 w-full"
                         >
                           {(() => {
-                            const images = p.images && p.images.length > 0 ? p.images : (p.image_path ? [{ image_path: p.image_path }] : []);
+                            const images =
+                              p.images && p.images.length > 0
+                                ? p.images
+                                : p.image_path
+                                  ? [{ image_path: p.image_path }]
+                                  : [];
                             if (!images.length) return null;
-                            
+
                             return (
                               <div className="flex gap-2 overflow-x-auto max-w-[200px] md:max-w-[300px]">
                                 {images.map((imgObj, i) => {
                                   const imgPath = imgObj.image_path || imgObj;
-                                  const normalized = imgPath.replace(/\\/g, '/').replace(/^\/+/, '');
-                                  const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
-                                  const src = base ? `${base}/${normalized}` : `/${normalized}`;
+                                  const normalized = imgPath
+                                    .replace(/\\/g, '/')
+                                    .replace(/^\/+/, '');
+                                  const base = (
+                                    import.meta.env.VITE_API_BASE_URL || ''
+                                  ).replace(/\/+$/, '');
+                                  const src = base
+                                    ? `${base}/${normalized}`
+                                    : `/${normalized}`;
                                   return (
-                                    <div key={i} className="relative group shrink-0">
+                                    <div
+                                      key={i}
+                                      className="relative group shrink-0"
+                                    >
                                       <img
                                         src={src}
                                         alt="proof"
                                         className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer hover:opacity-80 transition"
-                                        onClick={() => window.open(src, '_blank')}
+                                        onClick={() =>
+                                          window.open(src, '_blank')
+                                        }
                                         onError={(e) => {
-                                          e.currentTarget.style.visibility = 'hidden';
+                                          e.currentTarget.style.visibility =
+                                            'hidden';
                                         }}
                                       />
                                       {user?.role === 'ADMIN' && imgObj.id && (
@@ -382,7 +433,9 @@ export default function Tasks() {
                                           className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-sm hover:bg-red-600"
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            deleteImageMutation.mutate(imgObj.id);
+                                            deleteImageMutation.mutate(
+                                              imgObj.id
+                                            );
                                           }}
                                           title="Delete this image"
                                         >
@@ -426,8 +479,8 @@ export default function Tasks() {
                               </Btn>
                             )}
 
-                            {user?.role === 'ADMIN' && (
-                              deletingProofId === p.id ? (
+                            {user?.role === 'ADMIN' &&
+                              (deletingProofId === p.id ? (
                                 <div className="flex items-center gap-2 animate-fade-in">
                                   <Btn
                                     variant="outline"
@@ -442,7 +495,9 @@ export default function Tasks() {
                                     onClick={() => deleteMutation.mutate(p.id)}
                                     disabled={deleteMutation.isPending}
                                   >
-                                    {deleteMutation.isPending ? 'Deleting...' : 'Confirm'}
+                                    {deleteMutation.isPending
+                                      ? 'Deleting...'
+                                      : 'Confirm'}
                                   </Btn>
                                 </div>
                               ) : (
@@ -455,8 +510,7 @@ export default function Tasks() {
                                     <Trash2 className="w-4 h-4" /> Delete
                                   </span>
                                 </Btn>
-                              )
-                            )}
+                              ))}
                           </div>
                         </div>
                       ))

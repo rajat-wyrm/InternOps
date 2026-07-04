@@ -91,7 +91,7 @@ async function submitProof(taskId, internId, imagePath) {
 async function submitProofWithImages(taskId, internId, imagePaths) {
   // Insert with null for image_path since it's legacy
   const proof = await submitProof(taskId, internId, null);
-  
+
   if (imagePaths && imagePaths.length > 0) {
     const values = imagePaths.map((_, i) => `($1, $${i + 2})`).join(',');
     await pool.query(
@@ -99,7 +99,7 @@ async function submitProofWithImages(taskId, internId, imagePaths) {
       [proof.id, ...imagePaths]
     );
   }
-  
+
   return proof;
 }
 async function verifyProof(proofId, verifierId, verifierRole) {
@@ -191,18 +191,14 @@ async function deleteProof(proofId) {
 }
 
 async function getProofImage(imageId) {
-  const res = await pool.query(
-    'SELECT * FROM proof_images WHERE id = $1',
-    [imageId]
-  );
+  const res = await pool.query('SELECT * FROM proof_images WHERE id = $1', [
+    imageId,
+  ]);
   return res.rows[0] || null;
 }
 
 async function deleteProofImage(imageId) {
-  await pool.query(
-    'DELETE FROM proof_images WHERE id = $1',
-    [imageId]
-  );
+  await pool.query('DELETE FROM proof_images WHERE id = $1', [imageId]);
 }
 
 module.exports = {

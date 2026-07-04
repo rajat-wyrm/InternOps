@@ -70,7 +70,7 @@ async function routes(fastify) {
 
       if (filesData.length === 0)
         return reply.status(400).send({ error: 'Image file required' });
-        
+
       if (filesData.length > 5)
         return reply.status(400).send({ error: 'Maximum 5 images allowed' });
 
@@ -122,7 +122,11 @@ async function routes(fastify) {
         dbSavedPaths.push(['uploads', filename].join('/'));
       }
 
-      const proof = await repo.submitProofWithImages(task_id, req.user.id, dbSavedPaths);
+      const proof = await repo.submitProofWithImages(
+        task_id,
+        req.user.id,
+        dbSavedPaths
+      );
 
       req.auditOnResponse = {
         userId: req.user.id,
@@ -218,16 +222,18 @@ async function routes(fastify) {
         return reply.status(404).send({ error: 'Proof not found' });
       }
       await repo.deleteProof(req.params.id);
-      
+
       // Delete legacy image if it exists
       if (proof.image_path) {
         await uploadRepo.deleteFile(proof.image_path).catch(() => {});
       }
-      
+
       // Delete multiple images if they exist
       if (proof.images && proof.images.length > 0) {
         await Promise.all(
-          proof.images.map(imgPath => uploadRepo.deleteFile(imgPath).catch(() => {}))
+          proof.images.map((imgPath) =>
+            uploadRepo.deleteFile(imgPath).catch(() => {})
+          )
         );
       }
 
@@ -246,14 +252,17 @@ async function routes(fastify) {
     '/images/:imageId',
     {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'), sanitize],
-      schema: { tags: ['Proofs'], description: 'Delete a single image from a proof submission' },
+      schema: {
+        tags: ['Proofs'],
+        description: 'Delete a single image from a proof submission',
+      },
     },
     async (req, reply) => {
       const image = await repo.getProofImage(req.params.imageId);
       if (!image) {
         return reply.status(404).send({ error: 'Image not found' });
       }
-      
+
       await repo.deleteProofImage(req.params.imageId);
       await uploadRepo.deleteFile(image.image_path).catch(() => {});
 
