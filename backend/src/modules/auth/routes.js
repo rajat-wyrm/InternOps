@@ -244,14 +244,6 @@ async function routes(fastify) {
         { action: 'LOGIN', userId: result.user.id, ip: req.ip, userAgent },
         'login success'
       );
-      audit
-        .createAuditLog({
-          userId: result.user.id,
-          action: 'LOGIN',
-          ipAddress: req.ip,
-          userAgent,
-        })
-        .catch((err) => req.log.error(err, 'audit log failed'));
     }
   );
 
