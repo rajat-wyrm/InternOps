@@ -197,13 +197,6 @@ export default function Tasks() {
                         </Badge>
                       )}
                     </div>
-
-                    {t.description && (
-                      <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
-                        {t.description}
-                      </p>
-                    )}
-
                     <div className="flex flex-wrap items-center gap-3 mt-4 text-xs text-slate-500 dark:text-slate-400">
                       {t.task_link && (
                         <a
@@ -231,68 +224,78 @@ export default function Tasks() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
-                  {canVerify && (
-                    <Btn
-                      variant="outline"
-                      className="rounded-2xl"
-                      onClick={() =>
-                        setSelectedTask(selectedTask === t.id ? null : t.id)
-                      }
-                    >
-                      {selectedTask === t.id ? 'Hide proofs' : 'View proofs'}
-                    </Btn>
+                <div className="flex flex-col gap-4 mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  {/* Social Action Selection for Interns */}
+                  {user?.role === 'INTERN' && (
+                    <div className="flex flex-wrap gap-4 items-center bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800 w-full">
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block w-full mb-1">
+                        Select completed actions:
+                      </span>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={didComment} 
+                          onChange={(e) => setDidComment(e.target.checked)}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-600 dark:bg-slate-700 w-4 h-4"
+                        />
+                        Comment
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={didRepost} 
+                          onChange={(e) => setDidRepost(e.target.checked)}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-600 dark:bg-slate-700 w-4 h-4"
+                        />
+                        Repost
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={didShare} 
+                          onChange={(e) => setDidShare(e.target.checked)}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-600 dark:bg-slate-700 w-4 h-4"
+                        />
+                        Share
+                      </label>
+                    </div>
                   )}
 
-                  {user?.role === 'INTERN' && (
-                    <label className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white cursor-pointer hover:shadow-lg hover:shadow-emerald-200 dark:hover:shadow-none transition">
-                      <Upload className="w-4 h-4" /> Submit Proof
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleUpload(e, t.id)}
-                        className="hidden"
-                      />
-                    </label>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {canVerify && (
+                      <Btn
+                        variant="outline"
+                        className="rounded-2xl"
+                        onClick={() =>
+                          setSelectedTask(selectedTask === t.id ? null : t.id)
+                        }
+                      >
+                        {selectedTask === t.id ? 'Hide proofs' : 'View proofs'}
+                      </Btn>
+                    )}
+
+                    {user?.role === 'INTERN' && (
+                      <label 
+                        className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold text-white transition ${
+                          atLeastOneChecked 
+                            ? 'bg-gradient-to-r from-emerald-500 to-teal-500 cursor-pointer hover:shadow-lg hover:shadow-emerald-200 dark:hover:shadow-none' 
+                            : 'bg-slate-300 dark:bg-slate-700 cursor-not-allowed opacity-60'
+                        }`}
+                      >
+                        <Upload className="w-4 h-4" /> Submit Proof
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleUpload(e, t.id)}
+                          className="hidden"
+                          disabled={!atLeastOneChecked}
+                        />
+                      </label>
+                    )}
+                  </div>
                 </div>
 
                 {selectedTask === t.id && (
-                  <div className="mt-5 border-t border-slate-200 dark:border-slate-700 pt-5 space-y-3 animate-fade-in">
-                    <div className="flex items-center justify-between gap-3">
-                      <h4 className="text-sm font-extrabold text-slate-800 dark:text-white">
-                        Proof submissions
-                      </h4>
-
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {proofs?.length || 0} submission
-                        {proofs?.length === 1 ? '' : 's'}
-                      </span>
-                    </div>
-
-                    {!proofs?.length ? (
-                      <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          No submissions yet.
-                        </p>
-                      </div>
-                    ) : (
-                      proofs.map((p) => (
-                        <div
-                          key={p.id}
-                          className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3"
-                        >
-                          {p.image_path &&
-                            (() => {
-                              const normalized = p.image_path
-                                .replace(/\\/g, '/')
-                                .replace(/^\/+/, '');
-                              const base = (
-                                import.meta.env.VITE_API_BASE_URL || ''
-                              ).replace(/\/+$/, '');
-                              const src = base
-                                ? `${base}/${normalized}`
-                                : `/${normalized}`;
 
                               return (
                                 <img
