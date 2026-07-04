@@ -358,7 +358,6 @@ export default function Tasks() {
                       ))
                     )}
                   </div>
-                )}
               </Card>
             );
           })}
