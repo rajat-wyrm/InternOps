@@ -28,14 +28,7 @@ import api from '../lib/axios';
 import { UserAvatar, ConfirmationModal } from '../components/ui';
 import useAuthStore from '../store/auth';
 import { QUERY_KEYS } from '../constants/queryKeys';
-
-const ROLE_LABEL = {
-  ADMIN: 'Admin',
-  SENIOR_TL: 'Senior TL',
-  TL: 'Team Lead',
-  CAPTAIN: 'Captain',
-  INTERN: 'Intern',
-};
+import { ROLE_LABEL } from '../constants/roles';
 
 const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
 const ADMIN_AND_SENIOR_TL_ROLES = ['ADMIN', 'SENIOR_TL'];

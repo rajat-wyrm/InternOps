@@ -139,8 +139,8 @@ export default function AdminDashboard() {
     onSettled: () => setDeletingUserId(null),
   });
 
-  const rows = data?.data ?? [];
-  const total = data?.total ?? 0;
+  const rows = data?.data ?? data?.users ?? data?.items ?? [];
+  const total = data?.total ?? data?.count ?? rows.length;
   const totalPages = Math.max(Math.ceil(total / limit), 1);
 
   const handleRoleFilterChange = (value) => {

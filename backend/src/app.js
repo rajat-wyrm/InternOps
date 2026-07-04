@@ -9,6 +9,8 @@ const config = require('./config');
 const pool = require('./config/db');
 const metrics = require('./utils/metrics');
 const { initializeWebSocket } = require('./websocket');
+const noticesRoutes = require('./modules/notices/routes');
+const { getRedisStatus } = require('./config/redis');
 
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
@@ -18,6 +20,95 @@ const app = Fastify({
       : true,
   genReqId: () => uuidv4(),
 });
+
+// Layer 1: Register monitoring routes BEFORE global middleware to ensure observability
+app.get(
+  '/metrics',
+  {
+    config: {
+      rateLimit: false,
+    },
+  },
+  metrics.metricsEndpoint
+);
+
+app.get(
+  '/health',
+  {
+    config: {
+      rateLimit: false,
+    },
+  },
+  async (req, reply) => {
+    const { getRedisStatus } = require('./config/redis');
+    const redisStatus = getRedisStatus();
+
+    if (process.env.NODE_ENV === 'test') {
+      return reply.send({ status: 'ok' });
+    }
+
+    if (redisStatus === 'disconnected') {
+      return reply
+        .status(503)
+        .send({ status: 'degraded', redis: 'disconnected' });
+    }
+
+    return reply.send({ status: 'ok' });
+  }
+);
+
+app.get(
+  '/health/db',
+  {
+    config: {
+      rateLimit: false,
+    },
+  },
+  async (req, reply) => {
+    try {
+      await pool.query('SELECT 1');
+      reply.send({
+        status: 'ok',
+        db: 'connected',
+      });
+    } catch {
+      reply.status(503).send({
+        status: 'error',
+        db: 'disconnected',
+      });
+    }
+  }
+);
+
+app.get(
+  '/health/full',
+  {
+    config: {
+      rateLimit: false,
+    },
+  },
+  async (req, reply) => {
+    const checks = { db: false, redis: false };
+
+    try {
+      await pool.query('SELECT 1');
+      checks.db = true;
+    } catch {}
+
+    const redisStatus = getRedisStatus();
+
+    checks.redis =
+      process.env.NODE_ENV === 'test' ||
+      redisStatus === 'connected' ||
+      redisStatus === 'disabled';
+
+    const healthy = checks.db && checks.redis;
+
+    reply
+      .status(healthy ? 200 : 503)
+      .send({ status: healthy ? 'healthy' : 'degraded', checks });
+  }
+);
 
 app.register(require('@fastify/cors'), {
   origin: config.nodeEnv === 'production' ? config.corsOrigin : true,
@@ -100,95 +191,6 @@ app.get('/fallback', async (req, reply) => {
   `);
 });
 
-app.get(
-  '/metrics',
-  {
-    config: {
-      rateLimit: false,
-    },
-  },
-  metrics.metricsEndpoint
-);
-
-app.get(
-  '/health',
-  {
-    config: {
-      rateLimit: false,
-    },
-  },
-  async (req, reply) => {
-    const { getRedisStatus } = require('./config/redis');
-    const redisStatus = getRedisStatus();
-
-    if (process.env.NODE_ENV === 'test') {
-      return reply.send({ status: 'ok' });
-    }
-
-    if (redisStatus === 'disconnected') {
-      return reply
-        .status(503)
-        .send({ status: 'degraded', redis: 'disconnected' });
-    }
-
-    return reply.send({ status: 'ok' });
-  }
-);
-
-app.get(
-  '/health/db',
-  {
-    config: {
-      rateLimit: false,
-    },
-  },
-  async (req, reply) => {
-    try {
-      await pool.query('SELECT 1');
-      reply.send({
-        status: 'ok',
-        db: 'connected',
-      });
-    } catch {
-      reply.status(503).send({
-        status: 'error',
-        db: 'disconnected',
-      });
-    }
-  }
-);
-
-app.get(
-  '/health/full',
-  {
-    config: {
-      rateLimit: false,
-    },
-  },
-  async (req, reply) => {
-    const checks = { db: false, redis: false };
-
-    try {
-      await pool.query('SELECT 1');
-      checks.db = true;
-    } catch {}
-
-    const { getRedisStatus } = require('./config/redis');
-    const redisStatus = getRedisStatus();
-
-    checks.redis =
-      process.env.NODE_ENV === 'test' ||
-      redisStatus === 'connected' ||
-      redisStatus === 'disabled';
-
-    const healthy = checks.db && checks.redis;
-
-    reply
-      .status(healthy ? 200 : 503)
-      .send({ status: healthy ? 'healthy' : 'degraded', checks });
-  }
-);
-
 app.addHook('onRequest', metrics.trackActiveRequests);
 
 app.addHook('onRequest', async (request) => {
@@ -203,7 +205,8 @@ app.addHook('onRequest', async (request) => {
 });
 
 app.addHook('onResponse', async (request) => {
-  if (!request.auditOnResponse) return;
+  // Layer 3: Defensive hook - safely check for audit data using optional chaining
+  if (!request?.auditOnResponse) return;
 
   const { createAuditLog } = require('./utils/audit');
   try {

@@ -20,6 +20,7 @@ function formatMeeting(m) {
     ...m,
     meeting_date: dateStr,
     meetingDate: dateStr,
+    meetingUrl: m.meeting_url,
     startTime: m.start_time,
     endTime: m.end_time,
     departmentId: m.department_id,
@@ -38,6 +39,8 @@ const createMeetingBody = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
+  meetingUrl: z.string().url().optional(),
+  meeting_url: z.string().url().optional(),
   startTime: z.string().optional(),
   start_time: z.string().optional(),
   endTime: z.string().optional(),
@@ -59,6 +62,8 @@ const updateMeetingBody = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
+  meetingUrl: z.string().url().optional(),
+  meeting_url: z.string().url().optional(),
   startTime: z.string().optional(),
   start_time: z.string().optional(),
   endTime: z.string().optional(),
@@ -168,6 +173,7 @@ async function routes(fastify) {
 
       const data = validation.data;
       const meetingDate = data.meetingDate || data.meeting_date;
+      const meetingUrl = data.meetingUrl || data.meeting_url;
       const startTime = data.startTime || data.start_time;
       const endTime = data.endTime || data.end_time;
       const departmentId = data.departmentId || data.department_id;
@@ -177,6 +183,7 @@ async function routes(fastify) {
         title: data.title,
         description: data.description,
         meetingDate,
+        meetingUrl,
         startTime,
         endTime,
         departmentId,
@@ -251,6 +258,8 @@ async function routes(fastify) {
       if (data.title !== undefined) normalized.title = data.title;
       if (data.description !== undefined)
         normalized.description = data.description;
+      const mUrl = data.meeting_url || data.meetingUrl;
+      if (mUrl !== undefined) normalized.meeting_url = mUrl;
       const mDate = data.meeting_date || data.meetingDate;
       if (mDate !== undefined) normalized.meeting_date = mDate;
       const sTime = data.start_time || data.startTime;

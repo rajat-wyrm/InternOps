@@ -1,17 +1,10 @@
+import { ROLE_LABEL } from '../constants/roles';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, StatCard } from '../components/ui';
-
-const ROLE_LABEL = {
-  ADMIN: 'Admin',
-  SENIOR_TL: 'Senior TL',
-  TL: 'TL',
-  CAPTAIN: 'Captain',
-  INTERN: 'Intern',
-};
 
 function attendancePct(m) {
   const total = Number(m.attendance_total) || 0;
@@ -434,10 +427,28 @@ function InternHome({ user }) {
 export default function Home() {
   const user = useAuthStore((s) => s.user);
 
-  const { data: me } = useQuery({
+  const {
+    data: me,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
   });
+
+  if (isLoading) {
+    return (
+      <p className="text-slate-600 dark:text-slate-300">Loading profile...</p>
+    );
+  }
+
+  if (isError) {
+    return (
+      <p className="text-red-500 dark:text-red-400">
+        Error loading profile. Please refresh.
+      </p>
+    );
+  }
 
   const u = { ...user, fullName: me?.full_name || user?.fullName };
 

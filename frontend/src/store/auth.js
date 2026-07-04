@@ -105,6 +105,7 @@ const useAuthStore = create((set) => ({
   // completes. Private and RoleGuard render nothing while hydrated is false.
   hydrated: false,
   storageError: hasStorageError,
+  systemError: null,
 
   setAuth: ({ accessToken, user }) =>
     set((prev) => {
@@ -134,6 +135,8 @@ const useAuthStore = create((set) => ({
     }),
 
   setHydrated: () => set({ hydrated: true }),
+
+  setSystemError: (message) => set({ systemError: message }),
 
   logout: () => {
     // Thoroughly clear any legacy persisted token and cached user data.
