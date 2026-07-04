@@ -32,8 +32,12 @@ async function getUserEmail(userId) {
 }
 async function isTaskAssignedToUser(taskId, userId) {
   const res = await pool.query(
-    `SELECT 1 FROM task_assignments
-     WHERE task_id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+    `SELECT 1 FROM social_tasks st
+     WHERE st.id = $1 AND st.deleted_at IS NULL
+       AND (
+         NOT EXISTS (SELECT 1 FROM task_assignments WHERE task_id = st.id AND deleted_at IS NULL)
+         OR EXISTS (SELECT 1 FROM task_assignments WHERE task_id = st.id AND user_id = $2 AND deleted_at IS NULL)
+       )`,
     [taskId, userId]
   );
   return res.rowCount > 0;
@@ -55,7 +59,11 @@ async function getTasks(filters, userId, userRole) {
   if (!['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(userRole)) {
     params.push(userId);
     where.push(
-      `(st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL) OR st.created_by = $${params.length})`
+      `(
+         NOT EXISTS (SELECT 1 FROM task_assignments WHERE task_id = st.id AND deleted_at IS NULL)
+         OR st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL)
+         OR st.created_by = $${params.length}
+       )`
     );
   }
 
@@ -78,6 +86,21 @@ async function submitProof(taskId, internId, imagePath) {
     [taskId, internId, imagePath]
   );
   return res.rows[0];
+}
+
+async function submitProofWithImages(taskId, internId, imagePaths) {
+  // Insert with null for image_path since it's legacy
+  const proof = await submitProof(taskId, internId, null);
+  
+  if (imagePaths && imagePaths.length > 0) {
+    const values = imagePaths.map((_, i) => `($1, $${i + 2})`).join(',');
+    await pool.query(
+      `INSERT INTO proof_images (proof_id, image_path) VALUES ${values}`,
+      [proof.id, ...imagePaths]
+    );
+  }
+  
+  return proof;
 }
 async function verifyProof(proofId, verifierId, verifierRole) {
   const proofRes = await pool.query(
@@ -120,7 +143,11 @@ async function verifyProof(proofId, verifierId, verifierRole) {
 async function getProofsByTask(taskId) {
   return (
     await pool.query(
-      `SELECT ps.*, u.full_name AS intern_name, u.email AS intern_email
+      `SELECT ps.*, u.full_name AS intern_name, u.email AS intern_email,
+        COALESCE(
+          (SELECT json_agg(json_build_object('id', pi.id, 'image_path', pi.image_path)) FROM proof_images pi WHERE pi.proof_id = ps.id),
+          '[]'::json
+        ) AS images
        FROM proof_submissions ps
        LEFT JOIN users u ON u.id = ps.intern_id
        WHERE ps.task_id = $1 AND ps.deleted_at IS NULL`,
@@ -131,7 +158,13 @@ async function getProofsByTask(taskId) {
 async function getProofsByIntern(internId) {
   return (
     await pool.query(
-      'SELECT * FROM proof_submissions WHERE intern_id=$1 AND deleted_at IS NULL',
+      `SELECT ps.*,
+        COALESCE(
+          (SELECT json_agg(json_build_object('id', pi.id, 'image_path', pi.image_path)) FROM proof_images pi WHERE pi.proof_id = ps.id),
+          '[]'::json
+        ) AS images
+       FROM proof_submissions ps 
+       WHERE ps.intern_id=$1 AND ps.deleted_at IS NULL`,
       [internId]
     )
   ).rows;
@@ -139,7 +172,12 @@ async function getProofsByIntern(internId) {
 
 async function getProof(proofId) {
   const res = await pool.query(
-    'SELECT * FROM proof_submissions WHERE id = $1',
+    `SELECT ps.*,
+      COALESCE(
+        (SELECT json_agg(json_build_object('id', pi.id, 'image_path', pi.image_path)) FROM proof_images pi WHERE pi.proof_id = ps.id),
+        '[]'::json
+      ) AS images
+     FROM proof_submissions ps WHERE ps.id = $1`,
     [proofId]
   );
   return res.rows[0] || null;
@@ -152,6 +190,21 @@ async function deleteProof(proofId) {
   );
 }
 
+async function getProofImage(imageId) {
+  const res = await pool.query(
+    'SELECT * FROM proof_images WHERE id = $1',
+    [imageId]
+  );
+  return res.rows[0] || null;
+}
+
+async function deleteProofImage(imageId) {
+  await pool.query(
+    'DELETE FROM proof_images WHERE id = $1',
+    [imageId]
+  );
+}
+
 module.exports = {
   createTask,
   assignTask,
@@ -159,10 +212,13 @@ module.exports = {
   isTaskAssignedToUser,
   getTasks,
   submitProof,
+  submitProofWithImages,
   verifyProof,
   getProofsByTask,
   getProofsByIntern,
   getProof,
   deleteProof,
+  getProofImage,
+  deleteProofImage,
   getAllInternEmails,
 };
