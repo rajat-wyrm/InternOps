@@ -257,113 +257,77 @@ export default function Tasks() {
                   )}
                 </div>
 
-                {selectedTask === t.id && (
-                  <div className="mt-5 border-t border-slate-200 dark:border-slate-700 pt-5 space-y-3 animate-fade-in">
-                    <div className="flex items-center justify-between gap-3">
-                      <h4 className="text-sm font-extrabold text-slate-800 dark:text-white">
-                        Proof submissions
-                      </h4>
+               {selectedTask === t.id && (
+  <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+    {proofs?.length ? (
+      proofs.map((p) => (
+        <div
+          key={p.id}
+          className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800"
+        >
+          {p.image_url && (
+            <img
+              src={p.image_url}
+              alt="proof"
+              className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+              onError={(e) => {
+                e.currentTarget.style.visibility = 'hidden';
+              }}
+            />
+          )}
 
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {proofs?.length || 0} submission
-                        {proofs?.length === 1 ? '' : 's'}
-                      </span>
-                    </div>
+          <div className="flex-1 min-w-0 text-xs">
+            <Badge
+              color={
+                p.status === 'VERIFIED' ? 'green' : 'yellow'
+              }
+            >
+              {p.status}
+            </Badge>
 
-                    {!proofs?.length ? (
-                      <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          No submissions yet.
-                        </p>
-                      </div>
-                    ) : (
-                      proofs.map((p) => (
-                        <div
-                          key={p.id}
-                          className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3"
-                        >
-                          {p.image_path &&
-                            (() => {
-                              const normalized = p.image_path
-                                .replace(/\\/g, '/')
-                                .replace(/^\/+/, '');
-                              const base = (
-                                import.meta.env.VITE_API_BASE_URL || ''
-                              ).replace(/\/+$/, '');
-                              const src = base
-                                ? `${base}/${normalized}`
-                                : `/${normalized}`;
+            <p className="text-slate-500 dark:text-slate-400 mt-2 truncate">
+              Intern:{' '}
+              {p.intern_name ||
+                p.intern_email ||
+                `${p.intern_id.slice(0, 8)}…`}
+            </p>
+          </div>
 
-                              return (
-                                <img
-                                  src={src}
-                                  alt="proof"
-                                  className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
-                                  onError={(e) => {
-                                    e.currentTarget.style.visibility = 'hidden';
-                                  }}
-                                />
-                              );
-                            })()}
+          {canVerify && p.status === 'PENDING' && (
+            <Btn
+              variant="success"
+              className="rounded-2xl"
+              onClick={() => verifyMutation.mutate(p.id)}
+            >
+              <span className="flex items-center gap-1">
+                <CheckCircle className="w-4 h-4" /> Verify
+              </span>
+            </Btn>
+          )}
 
-                          <div className="flex-1 min-w-0 text-xs">
-                            <Badge
-                              color={
-                                p.status === 'VERIFIED' ? 'green' : 'yellow'
-                              }
-                            >
-                              {p.status}
-                            </Badge>
-
-                            <p className="text-slate-500 dark:text-slate-400 mt-2 truncate">
-                              Intern:{' '}
-                              {p.intern_name ||
-                                p.intern_email ||
-                                `${p.intern_id.slice(0, 8)}…`}
-                            </p>
-                          </div>
-
-                          {canVerify && p.status === 'PENDING' && (
-                            <Btn
-                              variant="success"
-                              className="rounded-2xl"
-                              onClick={() => verifyMutation.mutate(p.id)}
-                            >
-                              <span className="flex items-center gap-1">
-                                <CheckCircle className="w-4 h-4" /> Verify
-                              </span>
-                            </Btn>
-                          )}
-
-                          {user?.role === 'ADMIN' && (
-                            <Btn
-                              variant="outline"
-                              className="rounded-2xl text-red-500 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30"
-                              onClick={() => {
-                                if (
-                                  confirm(
-                                    'Delete this proof? This cannot be undone.'
-                                  )
-                                ) {
-                                  deleteMutation.mutate(p.id);
-                                }
-                              }}
-                            >
-                              <span className="flex items-center gap-1">
-                                <Trash2 className="w-4 h-4" /> Delete
-                              </span>
-                            </Btn>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
+          {user?.role === 'ADMIN' && (
+            <Btn
+              variant="outline"
+              className="rounded-2xl text-red-500 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30"
+              onClick={() => {
+                if (
+                  confirm(
+                    'Delete this proof? This cannot be undone.'
+                  )
+                ) {
+                  deleteMutation.mutate(p.id);
+                }
+              }}
+            >
+              <span className="flex items-center gap-1">
+                <Trash2 className="w-4 h-4" /> Delete
+              </span>
+            </Btn>
+          )}
         </div>
-      )}
-    </div>
-  );
-}
+      ))
+    ) : (
+      <p className="text-sm text-slate-500 dark:text-slate-400">No proofs submitted yet.</p>
+    )}
+  </div>
+)}
