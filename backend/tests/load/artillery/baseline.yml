@@ -1,0 +1,106 @@
+config:
+  target: 'http://localhost:5000'
+  phases:
+    - duration: 2
+      arrivalRate: 1
+      name: 'Warm up'
+    - duration: 5
+      arrivalRate: 5
+      rampTo: 10
+      name: 'Ramp up'
+    - duration: 10
+      arrivalRate: 10
+      name: 'Sustained baseline'
+    - duration: 3
+      arrivalRate: 5
+      rampTo: 1
+      name: 'Cool down'
+  processor: '../../load-processor.js'
+  variables:
+    email:
+      - 'baseline1@test.com'
+      - 'baseline2@test.com'
+      - 'baseline3@test.com'
+      - 'baseline4@test.com'
+      - 'baseline5@test.com'
+      - 'baseline6@test.com'
+      - 'baseline7@test.com'
+      - 'baseline8@test.com'
+    password: 'LoadTest123!'
+  ensure:
+    p95: 300
+    p99: 500
+    maxErrorRate: 1
+  http:
+    timeout: 10
+    maxSockets: 50
+
+scenarios:
+  - name: 'Get CSRF token'
+    flow:
+      - get:
+          url: '/api/auth/csrf-token'
+          capture:
+            - json: $.csrfToken
+              as: csrfToken
+          think: 1
+
+  - name: 'Login flow'
+    flow:
+      - post:
+          url: '/api/auth/login'
+          json:
+            email: '{{ email }}'
+            password: '{{ password }}'
+          capture:
+            - json: $.accessToken
+              as: accessToken
+          think: 2
+
+  - name: 'Get dashboard stats'
+    flow:
+      - get:
+          url: '/api/dashboard/stats'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 1
+
+  - name: 'List interns'
+    flow:
+      - get:
+          url: '/api/interns?page=1&limit=20'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 1
+
+  - name: 'Search interns'
+    flow:
+      - get:
+          url: '/api/interns/search?q=engineering&limit=10'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 1
+
+  - name: 'Get attendance today'
+    flow:
+      - get:
+          url: '/api/attendance/today'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 1
+
+  - name: 'Get notifications'
+    flow:
+      - get:
+          url: '/api/notifications?page=1&limit=10'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 1
+
+  - name: 'Check session'
+    flow:
+      - get:
+          url: '/api/sessions/current'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 1

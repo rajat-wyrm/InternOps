@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
+import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, StatCard } from '../components/ui';
 
 const ROLE_LABEL = {
@@ -48,7 +49,7 @@ function ManagerHome({ user }) {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['teamMembers'],
+    queryKey: QUERY_KEYS.TEAM_MEMBERS,
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
 
@@ -434,7 +435,7 @@ export default function Home() {
   const user = useAuthStore((s) => s.user);
 
   const { data: me } = useQuery({
-    queryKey: ['myProfile'],
+    queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
   });
 

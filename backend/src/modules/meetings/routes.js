@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
@@ -144,7 +147,7 @@ async function routes(fastify) {
         description: 'Create a meeting',
         body: toSchema(createMeetingBody),
       },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
     },
     async (req, reply) => {
       const schema = createMeetingBody.refine(
@@ -222,7 +225,7 @@ async function routes(fastify) {
         params: toSchema(z.object({ id: z.string().uuid() })),
         body: toSchema(updateMeetingBody),
       },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
     },
     async (req, reply) => {
       const schema = updateMeetingBody.strict();
@@ -301,7 +304,7 @@ async function routes(fastify) {
         params: toSchema(z.object({ id: z.string().uuid() })),
         body: toSchema(z.object({ userId: z.string() })),
       },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'), sanitize],
     },
     async (req, reply) => {
       const meeting = await repo.getMeetingById(req.params.id);
