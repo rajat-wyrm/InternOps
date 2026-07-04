@@ -29,6 +29,20 @@ const assignTaskSchema = z.object({
   userIds: z.array(z.string().uuid()),
 });
 
+// Added submission validation schema with custom refinement rule
+const submitProofSchema = z.object({
+  proofUrl: z.string().url(),
+  did_comment: z.boolean().default(false),
+  did_repost: z.boolean().default(false),
+  did_share: z.boolean().default(false),
+}).refine(
+  (data) => data.did_comment || data.did_repost || data.did_share,
+  {
+    message: "You must perform at least one action (Comment, Repost, or Share) to submit proof.",
+    path: ["did_comment"],
+  }
+);
+
 module.exports = async function socialTasksRoutes(fastify) {
   // Create a social task (Admin / Senior TL).
   fastify.post(
@@ -130,6 +144,45 @@ module.exports = async function socialTasksRoutes(fastify) {
     },
     async (req) => {
       return repo.getTasks(req.query || {}, req.user.id, req.user.role);
+    }
+  );
+
+  // Submit proof for a task (Interns only)
+  fastify.post(
+    '/:id/submit',
+    {
+      schema: { tags: ['Tasks'], description: 'Submit task proof with engagement actions' },
+      preHandler: [auth, rbac('INTERN'), sanitize],
+    },
+    async (req, reply) => {
+      const parsed = submitProofSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
+      }
+      
+      const { proofUrl, did_comment, did_repost, did_share } = parsed.data;
+
+      const submission = await repo.submitProof({
+        taskId: req.params.id,
+        internId: req.user.id,
+        proofUrl,
+        did_comment,
+        did_repost,
+        did_share
+      });
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'PROOF_SUBMITTED',
+        resourceType: 'proof_submission',
+        resourceId: req.params.id,
+        details: { did_comment, did_repost, did_share },
+      };
+
+      return submission;
     }
   );
 };
