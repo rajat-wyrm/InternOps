@@ -55,7 +55,7 @@ async function departmentAttendance(whereClause, params) {
             SUM(CASE WHEN a.status='HALF_DAY' THEN 1 ELSE 0 END) AS half_day
      FROM attendance a
      JOIN users u ON a.user_id = u.id
-     JOIN departments d ON u.department_id = d.id AND d.deleted_at IS NULL
+     LEFT JOIN departments d ON u.department_id = d.id AND d.deleted_at IS NULL
      WHERE ${whereClause}
      GROUP BY d.id, d.name ORDER BY d.name`,
     params
