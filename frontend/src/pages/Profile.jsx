@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User,
@@ -48,10 +48,11 @@ export default function Profile() {
   const { data: profile, isLoading } = useQuery({
     queryKey: ['myProfile'],
     queryFn: () => api.get('/users/me').then((res) => res.data),
-    onSuccess: (data) => {
-      if (data) setFullName(data.full_name || '');
-    },
   });
+
+  useEffect(() => {
+    if (profile) setFullName(profile.full_name || '');
+  }, [profile]);
 
   const flash = (m) => {
     setMessage(m);
