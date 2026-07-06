@@ -162,9 +162,7 @@ export default function DashboardLayout() {
   };
 
   useEffect(() => {
-    const savedScroll = Number(
-      sessionStorage.getItem(SIDEBAR_KEY) || 0
-    );
+    const savedScroll = Number(sessionStorage.getItem(SIDEBAR_KEY) || 0);
 
     requestAnimationFrame(() => {
       if (sidebarNavRef.current) {
