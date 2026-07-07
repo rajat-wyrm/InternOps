@@ -6,6 +6,7 @@ const {
   SEEDED_ADMIN_PASSWORD,
   resetSeededAdminPassword,
   clearPasswordResetAttempts,
+  clearLoginAttempts,
   parseSetCookie,
   mergeCookies,
 } = require('./helpers');
@@ -32,6 +33,7 @@ beforeAll(async () => {
   // running a single file in isolation may bypass that path.
   await resetSeededAdminPassword();
   await clearPasswordResetAttempts();
+  await clearLoginAttempts();
 
   cookies = {};
   const csrfRes = await app.inject({
@@ -55,11 +57,14 @@ function updateCookieJar(res) {
 }
 
 afterAll(async () => {
-  // Restore the admin password so any other suite loaded after this
-  // one (e.g. when the test glob includes both) starts from a known
-  // state. globalTeardown does the same at the end of the whole run.
   await resetSeededAdminPassword();
   await app.close();
+});
+
+// Clear brute-force state before each test so failed login attempts in one
+// test cannot accumulate into a lockout that breaks the next test.
+beforeEach(async () => {
+  await clearLoginAttempts();
 });
 
 function authHeaders(extra) {
@@ -213,8 +218,13 @@ describe('Auth Integration Tests', () => {
 
       // Ensure that their values represent deletion/clearing (either empty or 'deleted')
       expect(['', 'deleted']).toContain(responseCookies['refreshToken']);
-      expect(['', 'deleted']).toContain(responseCookies['csrf-sid']);
-      expect(['', 'deleted']).toContain(responseCookies['csrf-token']);
+      // csrf-sid and csrf-token are rotated on logout rather than cleared
+      expect(responseCookies['csrf-sid']).toBeDefined();
+      expect(responseCookies['csrf-sid']).not.toBe('');
+      expect(responseCookies['csrf-sid']).not.toBe('deleted');
+      expect(responseCookies['csrf-token']).toBeDefined();
+      expect(responseCookies['csrf-token']).not.toBe('');
+      expect(responseCookies['csrf-token']).not.toBe('deleted');
     });
   });
 
@@ -531,6 +541,180 @@ describe('Auth Integration Tests', () => {
         cookies: { refreshToken: userRefresh },
       });
       expect([401, 400]).toContain(refreshFail.statusCode);
+    });
+  });
+
+  describe('Session Invalidation and Revocation', () => {
+    let adminUserId;
+
+    beforeAll(async () => {
+      await resetSeededAdminPassword();
+      const loginRes = await login();
+      const body = JSON.parse(loginRes.body);
+      freshAccessToken = body.accessToken;
+
+      const userRes = await inject('GET', '/api/users/me', {
+        headers: { Authorization: `Bearer ${freshAccessToken}` },
+      });
+      adminUserId = JSON.parse(userRes.body).id;
+    });
+
+    it('should revoke all user sessions and invalidate refresh token', async () => {
+      // 1. Login to get a valid refresh token cookie
+      const loginRes = await login();
+      const activeRefreshCookie = cookies['refreshToken'];
+      expect(activeRefreshCookie).toBeDefined();
+
+      // 2. Call revoke-all sessions
+      const revokeRes = await inject('POST', '/api/sessions/me/revoke-all', {
+        headers: { Authorization: `Bearer ${freshAccessToken}` },
+        payload: {},
+      });
+      expect(revokeRes.statusCode).toBe(200);
+
+      // 3. Attempt to refresh using the revoked cookie - must fail (401 or 400)
+      const refreshRes = await inject('POST', '/api/auth/refresh', {
+        cookies: {
+          'csrf-token': cookies['csrf-token'] || '',
+          refreshToken: activeRefreshCookie,
+        },
+        payload: {},
+      });
+      expect([400, 401]).toContain(refreshRes.statusCode);
+    });
+
+    it('should allow admin to revoke a specific user sessions', async () => {
+      // 1. Login to get a valid refresh token cookie
+      const loginRes = await login();
+      const activeRefreshCookie = cookies['refreshToken'];
+      expect(activeRefreshCookie).toBeDefined();
+
+      // 2. Call admin revoke-user endpoint
+      const revokeRes = await inject(
+        'POST',
+        `/api/sessions/admin/revoke-user/${adminUserId}`,
+        {
+          headers: { Authorization: `Bearer ${freshAccessToken}` },
+          payload: {},
+        }
+      );
+      expect(revokeRes.statusCode).toBe(200);
+
+      // 3. Attempt to refresh using the revoked cookie - must fail
+      const refreshRes = await inject('POST', '/api/auth/refresh', {
+        cookies: {
+          'csrf-token': cookies['csrf-token'] || '',
+          refreshToken: activeRefreshCookie,
+        },
+        payload: {},
+      });
+      expect([400, 401]).toContain(refreshRes.statusCode);
+    });
+  });
+
+  describe('Compound Vulnerability Fixes (Layers 1, 2, and 3)', () => {
+    it('should lock out an account only per-IP-and-email (Layer 1)', async () => {
+      // 1. Make 5 failed attempts from 127.0.0.1 (remoteAddress: 127.0.0.1)
+      for (let i = 0; i < 5; i++) {
+        await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          remoteAddress: '127.0.0.1',
+          payload: { email: SEEDED_ADMIN_EMAIL, password: 'wrong-password' },
+        });
+      }
+
+      // 2. 6th attempt from 127.0.0.1 should be locked (429)
+      const lockedRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        remoteAddress: '127.0.0.1',
+        payload: { email: SEEDED_ADMIN_EMAIL, password: 'wrong-password' },
+      });
+      expect(lockedRes.statusCode).toBe(429);
+
+      // 3. Attempt from 127.0.0.2 should NOT be locked (401 instead of 429)
+      const normalRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        remoteAddress: '127.0.0.2',
+        payload: { email: SEEDED_ADMIN_EMAIL, password: 'wrong-password' },
+      });
+      expect(normalRes.statusCode).toBe(401);
+    });
+
+    it('should rotate CSRF session cookies on logout and verify user binding (Layer 2)', async () => {
+      // 1. Get initial CSRF state
+      const initialRes = await app.inject({
+        method: 'GET',
+        url: '/api/auth/csrf-token',
+      });
+      const initialCookies = parseSetCookie(initialRes.headers['set-cookie']);
+      const initialSid = initialCookies['csrf-sid'];
+      expect(initialSid).toBeDefined();
+
+      // 2. Login should rotate csrf-sid
+      const loginRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: SEEDED_ADMIN_EMAIL, password: SEEDED_ADMIN_PASSWORD },
+      });
+      const loginCookies = parseSetCookie(loginRes.headers['set-cookie']);
+      const loggedSid = loginCookies['csrf-sid'];
+      expect(loggedSid).toBeDefined();
+      expect(loggedSid).not.toBe(initialSid);
+
+      // 3. Logout should rotate csrf-sid again (providing valid X-CSRF-Token header)
+      const logoutRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/logout',
+        headers: {
+          Authorization: `Bearer ${JSON.parse(loginRes.body).accessToken}`,
+          'X-CSRF-Token': loginCookies['csrf-token'],
+        },
+        cookies: loginCookies,
+        payload: {},
+      });
+      expect(logoutRes.statusCode).toBe(200);
+      const logoutCookies = parseSetCookie(logoutRes.headers['set-cookie']);
+      const finalSid = logoutCookies['csrf-sid'];
+      expect(finalSid).toBeDefined();
+      expect(finalSid).not.toBe(loggedSid);
+    });
+
+    it('should revoke all refresh tokens and rotate CSRF cookie on revoke-all (Layer 3)', async () => {
+      const loginRes = await login();
+      const loginBody = JSON.parse(loginRes.body);
+      const userToken = loginBody.accessToken;
+      const refreshCookie = cookies['refreshToken'];
+      expect(refreshCookie).toBeDefined();
+
+      const initialCsrfSid = cookies['csrf-sid'];
+
+      // Perform revoke-all
+      const revokeRes = await app.inject({
+        method: 'POST',
+        url: '/api/sessions/me/revoke-all',
+        headers: {
+          Authorization: `Bearer ${userToken}`,
+          'X-CSRF-Token': csrfToken,
+        },
+        cookies: cookies,
+      });
+      expect(revokeRes.statusCode).toBe(200);
+
+      // CSRF should be rotated
+      const revokeCookies = parseSetCookie(revokeRes.headers['set-cookie']);
+      expect(revokeCookies['csrf-sid']).toBeDefined();
+      expect(revokeCookies['csrf-sid']).not.toBe(initialCsrfSid);
+
+      // Refresh token should be revoked
+      const refreshRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/refresh',
+        cookies: { refreshToken: refreshCookie },
+      });
+      expect([400, 401]).toContain(refreshRes.statusCode);
     });
   });
 });

@@ -6,6 +6,7 @@
 //   3. useAuthStore gains `storageError` so the UI can surface a banner
 
 import { create } from 'zustand';
+import { clearCsrfToken, registerAuthStore } from '../lib/axios';
 
 // ---------------------------------------------------------------------------
 // Storage abstraction with fallback chain

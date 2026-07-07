@@ -33,6 +33,22 @@ function buildReasoning(attendance, tasks, history) {
   return `Fallback estimate based on ${parts.join(', ')}.`;
 }
 
+function parseFallbackPayload(payload) {
+  if (payload === null || payload === undefined) {
+    return { raw: null };
+  }
+
+  if (typeof payload === 'string') {
+    return { raw: payload };
+  }
+
+  if (typeof payload === 'object') {
+    return payload;
+  }
+
+  return { raw: String(payload) };
+}
+
 function calculateFallbackRating(metrics) {
   const attendance = attendanceScore(metrics.attendancePercentage);
 
@@ -65,4 +81,5 @@ function calculateFallbackRating(metrics) {
 
 module.exports = {
   calculateFallbackRating,
+  parseFallbackPayload,
 };

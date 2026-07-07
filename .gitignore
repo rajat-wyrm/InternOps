@@ -39,6 +39,7 @@ check_plugins.js
 db-test.js
 fix_async_done.js
 *.log
+*.err
 *-report.txt
 
 # Docker volumes
@@ -46,3 +47,13 @@ postgres_data/
 
 # Backup files
 *.bak
+*.dump
+*.dump.gpg
+*.sql.gz.gpg
+
+# Backup secrets (never commit encryption keys)
+scripts/backup.key
+scripts/backup-config.sh
+
+# Backup temp directory
+/tmp/internops-backup/

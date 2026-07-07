@@ -38,13 +38,16 @@ describe('AI Chat Integration Tests (#498)', () => {
     });
   }
 
-  async function login() {
+  async function login(
+    email = SEEDED_ADMIN_EMAIL,
+    password = SEEDED_ADMIN_PASSWORD
+  ) {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
       cookies,
       headers: authHeaders(),
-      payload: { email: SEEDED_ADMIN_EMAIL, password: SEEDED_ADMIN_PASSWORD },
+      payload: { email, password },
     });
     mergeCookies(cookies, parseSetCookie(res.headers['set-cookie']));
     mergeCookies(cookies, res.cookies);
@@ -87,6 +90,8 @@ describe('AI Chat Integration Tests (#498)', () => {
       app = require('../../src/app');
       await app.ready();
       await resetSeededAdminPassword();
+      const pool = require('../../src/config/db');
+      await pool.query('DELETE FROM ai_usage');
 
       cookies = {};
       const csrfRes = await app.inject({
@@ -143,6 +148,8 @@ describe('AI Chat Integration Tests (#498)', () => {
       app = require('../../src/app');
       await app.ready();
       await resetSeededAdminPassword();
+      const pool = require('../../src/config/db');
+      await pool.query('DELETE FROM ai_usage');
 
       cookies = {};
       const csrfRes = await app.inject({
@@ -226,6 +233,8 @@ describe('AI Chat Integration Tests (#498)', () => {
       app = require('../../src/app');
       await app.ready();
       await resetSeededAdminPassword();
+      const pool = require('../../src/config/db');
+      await pool.query('DELETE FROM ai_usage');
 
       cookies = {};
       const csrfRes = await app.inject({
@@ -237,6 +246,30 @@ describe('AI Chat Integration Tests (#498)', () => {
       mergeCookies(cookies, csrfRes.cookies);
 
       await login();
+      const uniqueEmail = `tl-rate-${Date.now()}@example.com`;
+      const regRes = await inject('POST', '/api/auth/register', {
+        payload: {
+          email: uniqueEmail,
+          password: 'TLPassword123!',
+          role: 'TL',
+          fullName: 'TL Rate Limit Test',
+        },
+      });
+      expect(regRes.statusCode).toBe(201);
+      await pool.query(
+        'UPDATE users SET email_verified = TRUE WHERE email = $1',
+        [uniqueEmail]
+      );
+
+      cookies = {};
+      const csrfRes2 = await app.inject({
+        method: 'GET',
+        url: '/api/auth/csrf-token',
+      });
+      csrfToken = JSON.parse(csrfRes2.body).csrfToken;
+      mergeCookies(cookies, parseSetCookie(csrfRes2.headers['set-cookie']));
+      mergeCookies(cookies, csrfRes2.cookies);
+      await login(uniqueEmail, 'TLPassword123!');
     });
 
     afterAll(async () => {
@@ -292,6 +325,8 @@ describe('AI Chat Integration Tests (#498)', () => {
       app = require('../../src/app');
       await app.ready();
       await resetSeededAdminPassword();
+      const pool = require('../../src/config/db');
+      await pool.query('DELETE FROM ai_usage');
 
       cookies = {};
       const csrfRes = await app.inject({
@@ -303,6 +338,30 @@ describe('AI Chat Integration Tests (#498)', () => {
       mergeCookies(cookies, csrfRes.cookies);
 
       await login();
+      const uniqueEmail = `tl-size-${Date.now()}@example.com`;
+      const regRes = await inject('POST', '/api/auth/register', {
+        payload: {
+          email: uniqueEmail,
+          password: 'TLPassword123!',
+          role: 'TL',
+          fullName: 'TL Size Limit Test',
+        },
+      });
+      expect(regRes.statusCode).toBe(201);
+      await pool.query(
+        'UPDATE users SET email_verified = TRUE WHERE email = $1',
+        [uniqueEmail]
+      );
+
+      cookies = {};
+      const csrfRes2 = await app.inject({
+        method: 'GET',
+        url: '/api/auth/csrf-token',
+      });
+      csrfToken = JSON.parse(csrfRes2.body).csrfToken;
+      mergeCookies(cookies, parseSetCookie(csrfRes2.headers['set-cookie']));
+      mergeCookies(cookies, csrfRes2.cookies);
+      await login(uniqueEmail, 'TLPassword123!');
     });
 
     afterAll(async () => {
