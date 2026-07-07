@@ -1,13 +1,14 @@
+'use strict';
 const {
   sanitizationMiddleware: sanitize,
 } = require('../../middleware/sanitize');
 const { notifyUser } = require('../../websocket');
-('use strict');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const ownership = require('../../middleware/ownership');
 const repo = require('./repository');
-const { extractRequestInfo } = require('../../utils/audit');
+const pool = require('../../config/db');
+const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const { send: sendNotification } = require('../notifications/repository');
 const { z } = require('zod');
@@ -44,20 +45,40 @@ module.exports = async function ratingsRoutes(fastify) {
             .send({ error: 'This member is not in your team' });
       }
 
-      const rating = await repo.addRating(
-        rated_user_id,
-        req.user.id,
-        score,
-        remarks || null
-      );
-      req.auditOnResponse = {
-        userId: req.user.id,
-        ...extractRequestInfo(req),
-        action: 'RATING_GIVEN',
-        resourceType: 'rating',
-        resourceId: rating.id,
-        details: { target: rated_user_id, score },
-      };
+      const client = await pool.connect();
+      let rating;
+
+      try {
+        await client.query('BEGIN');
+
+        rating = await repo.addRating(
+          rated_user_id,
+          req.user.id,
+          score,
+          remarks || null,
+          client
+        );
+
+        await createAuditLog(
+          {
+            userId: req.user.id,
+            ...extractRequestInfo(req),
+            action: 'RATING_GIVEN',
+            resourceType: 'rating',
+            resourceId: rating.id,
+            details: { target: rated_user_id, score },
+          },
+          client
+        );
+
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+      
       await sendNotification(
         rated_user_id,
         `You received a new rating: ${score}/10.`

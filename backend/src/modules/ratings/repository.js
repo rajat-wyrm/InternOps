@@ -1,6 +1,6 @@
 ﻿const pool = require('../../config/db');
-async function addRating(rated, by, score, remarks) {
-  const res = await pool.query(
+async function addRating(rated, by, score, remarks, client = pool) {
+  const res = await client.query(
     'INSERT INTO ratings (rated_user_id, rated_by, score, remarks) VALUES ($1,$2,$3,$4) RETURNING *',
     [rated, by, score, remarks]
   );
