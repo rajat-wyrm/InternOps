@@ -25,7 +25,9 @@ async function register(data, creator) {
   // Default to the creator (admin) as manager if none was explicitly chosen,
   // so users created via Admin > Users also show up in team/hierarchy views.
   const managerId =
-    data.role === 'ADMIN' ? data.managerId || null : data.managerId || creator.id;
+    data.role === 'ADMIN'
+      ? data.managerId || null
+      : data.managerId || creator.id;
 
   if (managerId) {
     const manager = await repo.findByIdRaw(managerId);
