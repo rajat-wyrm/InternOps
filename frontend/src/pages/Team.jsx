@@ -559,24 +559,27 @@ function MemberDetail({ memberId, onClose }) {
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
 
-  const { data: member, isLoading } = useQuery({
-    queryKey: ['teamMember', memberId],
-    queryFn: () => api.get(`/team/members/${memberId}`).then((res) => res.data),
-    onSuccess: (data) => {
-      setForm({
-        full_name: data.full_name || '',
-        phone: data.phone || '',
-        location: data.location || '',
-        college: data.college || '',
-        course: data.course || '',
-        year_of_study: data.year_of_study || '',
-        position: data.position || '',
-        joining_date: data.joining_date ? data.joining_date.slice(0, 10) : '',
-        internship_status: data.internship_status || 'ACTIVE',
-        notes: data.notes || '',
-      });
-    },
-  });
+const { data: member, isLoading } = useQuery({
+  queryKey: ['teamMember', memberId],
+  queryFn: () => api.get(`/team/members/${memberId}`).then((res) => res.data),
+});
+
+useEffect(() => {
+  if (member) {
+    setForm({
+      full_name: member.full_name || '',
+      phone: member.phone || '',
+      location: member.location || '',
+      college: member.college || '',
+      course: member.course || '',
+      year_of_study: member.year_of_study || '',
+      position: member.position || '',
+      joining_date: member.joining_date ? member.joining_date.slice(0, 10) : '',
+      internship_status: member.internship_status || 'ACTIVE',
+      notes: member.notes || '',
+    });
+  }
+}, [member]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['teamMember', memberId] });
