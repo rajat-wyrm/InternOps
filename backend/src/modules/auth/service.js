@@ -104,7 +104,6 @@ async function login(email, password, ip, userAgent) {
 
   await repo.storeRefreshTokenRedis(user.id, hashToken(refresh), expires);
 
-
   return {
     accessToken: access,
     refreshToken: refresh,
