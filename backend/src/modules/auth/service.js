@@ -22,8 +22,13 @@ const DUMMY_USER = {
 };
 
 async function register(data, creator) {
-  if (data.managerId) {
-    const manager = await repo.findByIdRaw(data.managerId);
+  // Default to the creator (admin) as manager if none was explicitly chosen,
+  // so users created via Admin > Users also show up in team/hierarchy views.
+  const managerId =
+    data.role === 'ADMIN' ? data.managerId || null : data.managerId || creator.id;
+
+  if (managerId) {
+    const manager = await repo.findByIdRaw(managerId);
     if (!manager) throw new Error('Manager not found');
     if (!isValidStep(manager.role, data.role)) {
       throw new Error(
@@ -32,7 +37,7 @@ async function register(data, creator) {
     }
   }
 
-  const user = await repo.createUser(data);
+  const user = await repo.createUser({ ...data, managerId });
 
   await createAuditLog({
     userId: creator.id,
