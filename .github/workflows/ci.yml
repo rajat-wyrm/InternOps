@@ -46,7 +46,10 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - name: Install backend dependencies
-        run: cd backend && npm ci
+        shell: bash
+        run: |
+          cd backend
+          npm install --no-audit --no-fund
 
       - name: Wait for PostgreSQL
         run: |
@@ -65,7 +68,10 @@ jobs:
         run: cd backend && npm test -- --forceExit --detectOpenHandles --runInBand
 
       - name: Install frontend dependencies
-        run: cd frontend && npm ci
+        shell: bash
+        run: |
+          cd frontend
+          npm install --no-audit --no-fund
 
       - name: Build frontend
         run: cd frontend && npm run build

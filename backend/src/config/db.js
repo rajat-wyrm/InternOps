@@ -3,7 +3,7 @@ const config = require('./index');
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
-  max: 20,
+  max: config.dbPoolMax,
   idleTimeoutMillis: 30000,
 });
 

@@ -21,9 +21,14 @@ const envSchema = z.object({
 });
 
 function validateEnv() {
-  // Skip validation in test environment
   if (process.env.NODE_ENV === 'test') {
     return;
+  }
+  if (process.env.JWT_SECRET === 'change_this_secret_in_production') {
+    console.error(
+      '❌ CRITICAL ERROR: JWT_SECRET is set to the default insecure value.'
+    );
+    process.exit(1);
   }
 
   const missingRequired = [];

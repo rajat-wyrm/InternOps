@@ -1,20 +1,30 @@
 const pool = require('../../config/db');
 
-async function send(userId, message) {
-  const res = await pool.query(
+async function send(userId, message, client = pool, options = {}) {
+  const { emit = true } = options;
+
+  const res = await client.query(
     'INSERT INTO notifications (user_id, message) VALUES ($1,$2) RETURNING *',
     [userId, message]
   );
-  try {
-    const { notifyUser } = require('../../websocket');
-    const unread = await getUnreadCount(userId);
-    await notifyUser(userId, 'notification-received', {
-      notification: res.rows[0],
-      unreadCount: unread,
-    });
-  } catch (err) {
-    console.error('[Websocket Notify] Error:', err.message);
+
+  const notification = res.rows[0];
+
+  if (emit) {
+    try {
+      const { notifyUser } = require('../../websocket');
+      const unread = await getUnreadCount(userId);
+
+      await notifyUser(userId, 'notification-received', {
+        notification,
+        unreadCount: unread,
+      });
+    } catch (err) {
+      console.error('[Websocket Notify] Error:', err.message);
+    }
   }
+
+  return notification;
 }
 
 async function get(userId, { page = 1, limit = 20 } = {}) {
@@ -51,6 +61,7 @@ async function markRead(notificationId, userId) {
     'UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL',
     [notificationId, userId]
   );
+
   if (res.rowCount === 0) {
     throw new Error('Notification not found or does not belong to this user');
   }
@@ -68,35 +79,44 @@ async function deleteNotification(notificationId, userId) {
     'UPDATE notifications SET deleted_at = NOW() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL',
     [notificationId, userId]
   );
+
   if (res.rowCount === 0) {
     // Caller (route layer) is expected to translate this into 404. The
     // repository is the single source of truth for "did anything happen?".
     throw new Error('Notification not found or does not belong to this user');
   }
+
   return res.rowCount;
 }
+
 async function deleteAllNotifications(userId) {
   await pool.query(
     'UPDATE notifications SET deleted_at = NOW() WHERE user_id = $1 AND deleted_at IS NULL',
     [userId]
   );
 }
-async function getUnreadCount(userId) {
-  const res = await pool.query(
+
+async function getUnreadCount(userId, client = pool) {
+  const res = await client.query(
     'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = FALSE AND deleted_at IS NULL',
     [userId]
   );
+
   return parseInt(res.rows[0].count, 10);
 }
 
 async function notifyAdmin(message) {
   const audit = require('../audit/repository'); // Lazy load
+
   const adminRes = await pool.query(
     "SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1"
   );
+
   if (adminRes.rows.length > 0) {
     const adminId = adminRes.rows[0].id;
+
     await send(adminId, message);
+
     if (audit && typeof audit.logEvent === 'function') {
       await audit.logEvent({
         userId: adminId,

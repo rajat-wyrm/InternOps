@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
@@ -52,11 +55,12 @@ async function routes(fastify) {
     '/me/revoke-all',
     {
       schema: { tags: ['Sessions'], description: 'Revoke all other sessions' },
-      preHandler: [auth],
+      preHandler: [auth, sanitize],
     },
     async (req, reply) => {
       await repo.revokeAllUserSessions(req.user.id);
-      await require('../auth/repository').revokeAllUserTokensRedis(req.user.id);
+      const { rotateAndSetCsrf } = require('../../middleware/csrf');
+      rotateAndSetCsrf(req, reply, null);
       await createAuditLog({
         userId: req.user.id,
         action: 'ALL_SESSIONS_REVOKED',
@@ -76,12 +80,11 @@ async function routes(fastify) {
         description: 'Admin: revoke all sessions of a user',
         params: toSchema(z.object({ userId: z.string() })),
       },
-      preHandler: [auth, rbac('ADMIN')],
+      preHandler: [auth, rbac('ADMIN'), sanitize],
     },
     async (req, reply) => {
       const { userId } = req.params;
       await repo.revokeAllUserSessions(userId);
-      await require('../auth/repository').revokeAllUserTokensRedis(userId);
       await createAuditLog({
         userId: req.user.id,
         action: 'ADMIN_REVOKED_USER_SESSIONS',

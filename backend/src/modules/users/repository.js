@@ -94,6 +94,7 @@ async function softDeleteUser(id) {
     [id]
   );
 }
+
 async function countOtherActiveAdmins(id) {
   const result = await pool.query(
     `SELECT COUNT(*)::int AS total

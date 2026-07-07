@@ -8,20 +8,16 @@ async function incrementAttempt(email, ip) {
   if (!redis) return 0;
 
   const key = `brute:${email}:${ip}`;
-  const count = await redis.incr(key);
-
-  if (count === 1) {
-    await redis.expire(key, 15 * 60);
-  }
-  return count;
+  const count = await redis.get(key);
+  return count ? parseInt(count, 10) : 0;
 }
 
 async function isAccountLocked(email, ip) {
   const windowStart = new Date(Date.now() - LOCKOUT_MINUTES * 60 * 1000);
   const emailRes = await pool.query(
     `SELECT COUNT(*) AS failed FROM login_attempts
-     WHERE email = $1 AND success = false AND attempted_at > $2`,
-    [email, windowStart]
+     WHERE email = $1 AND ip_address = $2 AND success = false AND attempted_at > $3`,
+    [email, ip, windowStart]
   );
   const ipRes = await pool.query(
     `SELECT COUNT(*) AS failed FROM login_attempts

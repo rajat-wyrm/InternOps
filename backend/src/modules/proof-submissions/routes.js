@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
@@ -33,38 +36,59 @@ async function routes(fastify) {
   fastify.post(
     '/submit',
     {
-      preHandler: [auth, rbac('INTERN')],
+      preHandler: [auth, rbac('INTERN'), sanitize],
       schema: {
         tags: ['Proofs'],
-        description: 'Submit proof with image file (multipart)',
+        description: 'Submit proof with multiple image files (multipart)',
       },
     },
     async (req, reply) => {
-      const data = await req.file();
+      const parts = req.parts();
+      let task_id = null;
+      let didComment = false;
+      let didRepost = false;
+      let didShare = false;
 
-      if (!data)
+      const filesData = [];
+
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          if (buffer.length > 0) {
+            filesData.push({
+              filename: part.filename,
+              mimetype: part.mimetype,
+              buffer: buffer,
+              truncated: part.file.truncated,
+            });
+          }
+        } else {
+          switch (part.fieldname) {
+            case 'task_id':
+              task_id = part.value;
+              break;
+            case 'didComment':
+              didComment = part.value === 'true';
+              break;
+            case 'didRepost':
+              didRepost = part.value === 'true';
+              break;
+            case 'didShare':
+              didShare = part.value === 'true';
+              break;
+          }
+        }
+      }
+
+      if (!task_id) {
+        return reply.status(400).send({ error: 'task_id required' });
+      }
+
+      if (filesData.length === 0)
         return reply.status(400).send({ error: 'Image file required' });
 
-      const task_id = data.fields?.task_id?.value;
-
-      if (!task_id)
-        return reply.status(400).send({ error: 'task_id required' });
-
-      // Validate MIME type and extension (declared values)
-      const ext = path.extname(data.filename).toLowerCase();
-      if (
-        !ALLOWED_MIMES.includes(data.mimetype) ||
-        !ALLOWED_EXTS.includes(ext)
-      ) {
-        return reply
-          .status(400)
-          .send({ error: 'Only JPEG, PNG, GIF images are allowed' });
-      }
-      if (data.file.truncated) {
-        return reply.status(400).send({ error: 'File size exceeds limit' });
-      }
-
-      // Buffer the upload to validate contents, then persist
+      if (filesData.length > 5)
+        return reply.status(400).send({ error: 'Maximum 5 images allowed' });
 
       // Authorization: the intern must actually be assigned to the task
       const isAssigned = await repo.isTaskAssignedToUser(task_id, req.user.id);
@@ -74,8 +98,6 @@ async function routes(fastify) {
           .send({ error: 'You are not assigned to this task' });
       }
 
-      // Generate UUID filename (use forward slashes only — works on Windows too)
-      const filename = uuidv4() + ext;
       const absoluteUploadDir = path.resolve(
         __dirname,
         '..',
@@ -84,25 +106,53 @@ async function routes(fastify) {
         config.uploadDir
       );
       await fs.promises.mkdir(absoluteUploadDir, { recursive: true });
-      const uploadPath = path.join(absoluteUploadDir, filename);
 
-      const firstChunk = await data.file.read(16);
+      const dbSavedPaths = [];
 
-      const detectedMime = detectMimeFromBuffer(firstChunk);
-      if (!detectedMime || detectedMime !== data.mimetype) {
-        return reply
-          .status(400)
-          .send({ error: 'File contents do not match declared image type' });
+      for (const data of filesData) {
+        const ext = path.extname(data.filename).toLowerCase();
+        if (
+          !ALLOWED_MIMES.includes(data.mimetype) ||
+          !ALLOWED_EXTS.includes(ext)
+        ) {
+          return reply
+            .status(400)
+            .send({ error: 'Only JPEG, PNG, GIF images are allowed' });
+        }
+        if (data.truncated) {
+          return reply.status(400).send({ error: 'File size exceeds limit' });
+        }
+
+        const firstChunk = data.buffer.subarray(0, 16);
+        const detectedMime = detectMimeFromBuffer(firstChunk);
+        if (!detectedMime || detectedMime !== data.mimetype) {
+          return reply
+            .status(400)
+            .send({ error: 'File contents do not match declared image type' });
+        }
+
+        const filename = uuidv4() + ext;
+        const uploadPath = path.join(absoluteUploadDir, filename);
+
+        await fs.promises.writeFile(uploadPath, data.buffer);
+        dbSavedPaths.push(['uploads', filename].join('/'));
       }
+      if (!didComment && !didRepost && !didShare) {
+        return reply.status(400).send({
+          error: 'At least one engagement action must be selected.',
+        });
+      }
+      const proof = await repo.submitProofWithImages(
+        task_id,
+        req.user.id,
+        dbSavedPaths,
+        {
+          didComment,
+          didRepost,
+          didShare,
+        }
+      );
 
-      const writeStream = fs.createWriteStream(uploadPath);
-
-      writeStream.write(firstChunk);
-
-      await pipeline(data.file, writeStream);
-
-      const dbSavedPath = ['uploads', filename].join('/');
-      const proof = await repo.submitProof(task_id, req.user.id, dbSavedPath);
       req.auditOnResponse = {
         userId: req.user.id,
         action: 'PROOF_SUBMITTED',
@@ -117,7 +167,7 @@ async function routes(fastify) {
   fastify.patch(
     '/:id/verify',
     {
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
       schema: {
         tags: ['Proofs'],
         description: 'Verify a proof submission',
@@ -197,13 +247,55 @@ async function routes(fastify) {
         return reply.status(404).send({ error: 'Proof not found' });
       }
       await repo.deleteProof(req.params.id);
-      await uploadRepo.deleteFile(proof.image_path);
+
+      // Delete legacy image if it exists
+      if (proof.image_path) {
+        await uploadRepo.deleteFile(proof.image_path).catch(() => {});
+      }
+
+      // Delete multiple images if they exist
+      if (proof.images && proof.images.length > 0) {
+        await Promise.all(
+          proof.images.map((imgPath) =>
+            uploadRepo.deleteFile(imgPath).catch(() => {})
+          )
+        );
+      }
 
       req.auditOnResponse = {
         userId: req.user.id,
         action: 'PROOF_DELETED',
         resourceType: 'proof',
         resourceId: req.params.id,
+      };
+
+      return { success: true };
+    }
+  );
+
+  fastify.delete(
+    '/images/:imageId',
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'), sanitize],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Delete a single image from a proof submission',
+      },
+    },
+    async (req, reply) => {
+      const image = await repo.getProofImage(req.params.imageId);
+      if (!image) {
+        return reply.status(404).send({ error: 'Image not found' });
+      }
+
+      await repo.deleteProofImage(req.params.imageId);
+      await uploadRepo.deleteFile(image.image_path).catch(() => {});
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        action: 'PROOF_IMAGE_DELETED',
+        resourceType: 'proof_image',
+        resourceId: req.params.imageId,
       };
 
       return { success: true };

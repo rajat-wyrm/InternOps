@@ -1153,15 +1153,22 @@ export default function Team() {
   }, [members]);
 
   const exportCsv = async () => {
-    const res = await api.get('/team/members/export', { responseType: 'blob' });
-    const url = window.URL.createObjectURL(new Blob([res.data]));
-    const a = document.createElement('a');
+    try {
+      const res = await api.get('/team/members/export', {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
 
-    a.href = url;
-    a.download = 'team-members.csv';
-    a.click();
+      a.href = url;
+      a.download = 'team-members.csv';
+      a.click();
 
-    window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('CSV export failed:', err);
+      alert('Failed to export team members. Please try again.');
+    }
   };
 
   if (isLoading) {

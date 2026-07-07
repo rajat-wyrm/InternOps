@@ -76,6 +76,28 @@ beforeAll(async () => {
   await app.ready();
   await resetSeededAdminPassword();
 
+  // Clean up other users/admins that might be lingering from other tests
+  try {
+    await pool.query("DELETE FROM users WHERE role = 'ADMIN' AND email <> $1", [
+      SEEDED_ADMIN_EMAIL,
+    ]);
+  } catch (err) {
+    await pool.query('DELETE FROM refresh_tokens').catch(() => {});
+    await pool.query('DELETE FROM ratings').catch(() => {});
+    await pool.query('DELETE FROM attendance').catch(() => {});
+    await pool.query('DELETE FROM meetings').catch(() => {});
+    await pool.query('DELETE FROM audit').catch(() => {});
+    await pool.query('DELETE FROM task_assignments').catch(() => {});
+    await pool.query('DELETE FROM proof_submissions').catch(() => {});
+    await pool.query('DELETE FROM social_tasks').catch(() => {});
+  }
+
+  // Suspend any other admins that couldn't be deleted due to FK constraints
+  await pool.query(
+    "UPDATE users SET suspended = TRUE WHERE role = 'ADMIN' AND email <> $1 AND email <> $2",
+    [SEEDED_ADMIN_EMAIL, SECOND_ADMIN_EMAIL]
+  );
+
   // Clean up any leftover fixture users from prior runs
   await pool.query(
     'UPDATE users SET suspended = FALSE WHERE email = ANY($1::text[])',

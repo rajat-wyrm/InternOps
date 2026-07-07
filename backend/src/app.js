@@ -10,6 +10,7 @@ const pool = require('./config/db');
 const metrics = require('./utils/metrics');
 const { initializeWebSocket } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
+const { getRedisStatus } = require('./config/redis');
 
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
@@ -20,158 +21,7 @@ const app = Fastify({
   genReqId: () => uuidv4(),
 });
 
-app.register(require('@fastify/cors'), {
-  origin: config.nodeEnv === 'production' ? config.corsOrigin : true,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
-});
-
-app.register(require('@fastify/helmet'), {
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:'],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      frameAncestors: ["'none'"],
-    },
-  },
-});
-
-//  Register once globally — no Redis dependency
-app.register(require('@fastify/rate-limit'), {
-  global: true,
-  max: config.rateLimit.globalMax,
-  timeWindow: config.rateLimit.timeWindow,
-});
-
-app.register(require('@fastify/cookie'));
-
-const { csrfMiddleware } = require('./middleware/csrf');
-app.addHook('onRequest', csrfMiddleware);
-
-app.register(require('@fastify/multipart'), {
-  limits: {
-    fileSize: config.maxFileSize,
-  },
-});
-
-app.register(require('@fastify/static'), {
-  root: path.join(__dirname, '..', config.uploadDir),
-  prefix: '/uploads/',
-});
-
-if (process.env.NODE_ENV !== 'test') {
-  app.register(require('@fastify/swagger'), {
-    openapi: {
-      info: {
-        title: 'InternOps API',
-        version: '1.0.0',
-      },
-    },
-  });
-
-  app.register(require('@fastify/swagger-ui'), {
-    routePrefix: '/docs',
-  });
-}
-
-app.register(require('./modules/auth/routes'), {
-  prefix: '/api/auth',
-});
-
-app.register(require('./modules/users/routes'), {
-  prefix: '/api/users',
-});
-
-app.register(require('./modules/departments/routes'), {
-  prefix: '/api/departments',
-});
-
-app.register(require('./modules/hierarchy/routes'), {
-  prefix: '/api/hierarchy',
-});
-
-app.register(require('./modules/team/routes'), {
-  prefix: '/api/team',
-});
-
-app.register(require('./modules/attendance/routes'), {
-  prefix: '/api/attendance',
-});
-
-app.register(require('./modules/ratings/routes'), {
-  prefix: '/api/ratings',
-});
-
-app.register(require('./modules/social-tasks/routes'), {
-  prefix: '/api/tasks',
-});
-
-app.register(require('./modules/proof-submissions/routes'), {
-  prefix: '/api/proofs',
-});
-
-app.register(require('./modules/notifications/routes'), {
-  prefix: '/api/notifications',
-});
-
-app.register(require('./modules/audit/routes'), {
-  prefix: '/api/audit',
-});
-
-app.register(require('./modules/uploads/routes'), {
-  prefix: '/api/uploads',
-});
-
-app.register(require('./modules/analytics/routes'), {
-  prefix: '/api/analytics',
-});
-
-app.register(require('./modules/meetings/routes'), {
-  prefix: '/api/meetings',
-});
-
-app.register(require('./modules/sessions/routes'), {
-  prefix: '/api/sessions',
-});
-
-app.register(require('./modules/reports/routes'), {
-  prefix: '/api/reports',
-});
-
-app.register(require('./modules/reports/export'), {
-  prefix: '/api/reports/export',
-});
-
-app.register(require('./modules/ai/routes'), {
-  prefix: '/api/ai',
-});
-
-app.register(require('./modules/uptoskills/routes'), {
-  prefix: '/api/uptoskills',
-});
-
-app.register(noticesRoutes);
-
-app.get('/', async (req, reply) => {
-  reply.redirect('/docs');
-});
-
-app.get('/fallback', async (req, reply) => {
-  reply.type('text/html').send(`
-    <html>
-      <body style="font-family:sans-serif;padding:2em">
-        <h1>InternOps API</h1>
-        <a href="/docs">Swagger Docs</a>
-      </body>
-    </html>
-  `);
-});
-
+// Layer 1: Register monitoring routes BEFORE global middleware to ensure observability
 app.get(
   '/metrics',
   {
@@ -245,7 +95,6 @@ app.get(
       checks.db = true;
     } catch {}
 
-    const { getRedisStatus } = require('./config/redis');
     const redisStatus = getRedisStatus();
 
     checks.redis =
@@ -261,6 +110,87 @@ app.get(
   }
 );
 
+app.register(require('@fastify/cors'), {
+  origin: config.nodeEnv === 'production' ? config.corsOrigin : true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+});
+
+app.register(require('@fastify/helmet'), {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:'],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+});
+
+//  Register once globally — no Redis dependency
+app.register(require('@fastify/rate-limit'), {
+  global: true,
+  max: config.rateLimit.globalMax,
+  timeWindow: config.rateLimit.timeWindow,
+});
+
+app.register(require('@fastify/cookie'));
+
+const { csrfMiddleware } = require('./middleware/csrf');
+const { sanitizationMiddleware } = require('./middleware/sanitize');
+app.addHook('onRequest', csrfMiddleware);
+// Sanitize all string fields in body, query, and params using sanitize-html
+// (allowlist of zero tags) to prevent XSS. Runs after body parsing.
+app.addHook('preHandler', sanitizationMiddleware);
+
+app.register(require('@fastify/multipart'), {
+  limits: {
+    fileSize: config.maxFileSize,
+  },
+});
+
+app.register(require('@fastify/static'), {
+  root: path.join(__dirname, '..', config.uploadDir),
+  prefix: '/uploads/',
+});
+
+if (process.env.NODE_ENV !== 'test') {
+  app.register(require('@fastify/swagger'), {
+    openapi: {
+      info: {
+        title: 'InternOps API',
+        version: '1.0.0',
+      },
+    },
+  });
+
+  app.register(require('@fastify/swagger-ui'), {
+    routePrefix: '/docs',
+  });
+}
+
+// ---- API routes (delegated to dedicated router factory) ----
+app.register(require('./routes'), { prefix: '/api' });
+
+app.get('/', async (req, reply) => {
+  reply.redirect('/docs');
+});
+
+app.get('/fallback', async (req, reply) => {
+  reply.type('text/html').send(`
+    <html>
+      <body style="font-family:sans-serif;padding:2em">
+        <h1>InternOps API</h1>
+        <a href="/docs">Swagger Docs</a>
+      </body>
+    </html>
+  `);
+});
+
 app.addHook('onRequest', metrics.trackActiveRequests);
 
 app.addHook('onRequest', async (request) => {
@@ -275,7 +205,8 @@ app.addHook('onRequest', async (request) => {
 });
 
 app.addHook('onResponse', async (request) => {
-  if (!request.auditOnResponse) return;
+  // Layer 3: Defensive hook - safely check for audit data using optional chaining
+  if (!request?.auditOnResponse) return;
 
   const { createAuditLog } = require('./utils/audit');
   try {

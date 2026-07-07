@@ -69,4 +69,25 @@ function getRedisStatus() {
   return redisConnected ? 'connected' : 'disconnected';
 }
 
-module.exports = { getRedisClient, getRedisStatus };
+async function blacklistAccessToken(jti, ttl) {
+  const client = await getRedisClient();
+  if (!client) return;
+
+  await client.set(`blacklist:${jti}`, '1', {
+    EX: ttl,
+  });
+}
+
+async function isAccessTokenBlacklisted(jti) {
+  const client = await getRedisClient();
+  if (!client) return false;
+
+  return (await client.exists(`blacklist:${jti}`)) === 1;
+}
+
+module.exports = {
+  getRedisClient,
+  getRedisStatus,
+  blacklistAccessToken,
+  isAccessTokenBlacklisted,
+};

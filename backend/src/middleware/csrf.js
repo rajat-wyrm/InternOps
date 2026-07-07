@@ -109,7 +109,10 @@ function getOrCreateToken(request, reply) {
     const sid = newSessionId();
     writeSession(reply, sid, tokenUserId);
     session = { sid, userId: tokenUserId };
-  } else if (tokenUserId && session.userId !== String(tokenUserId)) {
+  } else if (
+    tokenUserId &&
+    String(session.userId || '') !== String(tokenUserId)
+  ) {
     const sid = newSessionId();
     writeSession(reply, sid, tokenUserId);
     session = { sid, userId: tokenUserId };
@@ -129,6 +132,11 @@ const EXEMPT = [
 ];
 
 async function csrfCheck(request, reply) {
+  const session = readSession(request);
+  if (session) {
+    request.session = session;
+  }
+
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
   if (!request.url) return;
 
@@ -138,7 +146,6 @@ async function csrfCheck(request, reply) {
     request.url.split('?')[0].split('#')[0];
   if (EXEMPT.includes(path)) return;
 
-  const session = readSession(request);
   const headerToken = request.headers['x-csrf-token'];
 
   if (!session || !session.sid || !headerToken) {
@@ -150,13 +157,17 @@ async function csrfCheck(request, reply) {
   }
 
   let tokenUserId = null;
-  const authHeader = request.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    try {
-      const { verifyAccessToken } = require('../utils/tokens');
-      const decoded = verifyAccessToken(authHeader.split(' ')[1]);
-      tokenUserId = decoded.id;
-    } catch (err) {}
+  if (request.user && request.user.id) {
+    tokenUserId = request.user.id;
+  } else {
+    const authHeader = request.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const { verifyAccessToken } = require('../utils/tokens');
+        const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+        tokenUserId = decoded.id;
+      } catch (err) {}
+    }
   }
 
   if (tokenUserId) {

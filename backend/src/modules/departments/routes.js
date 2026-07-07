@@ -1,6 +1,8 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
-const { csrfMiddleware } = require('../../middleware/csrf');
 const repo = require('./repository');
 
 async function routes(fastify) {
@@ -8,7 +10,7 @@ async function routes(fastify) {
   fastify.post(
     '/',
     {
-      preHandler: [auth, rbac('ADMIN'), csrfMiddleware],
+      preHandler: [auth, rbac('ADMIN'), sanitize],
       schema: {
         tags: ['Departments'],
         description: 'Create a new department',
@@ -51,7 +53,7 @@ async function routes(fastify) {
   fastify.delete(
     '/:id',
     {
-      preHandler: [auth, rbac('ADMIN'), csrfMiddleware],
+      preHandler: [auth, rbac('ADMIN')],
       schema: {
         tags: ['Departments'],
         description: 'Delete a department',

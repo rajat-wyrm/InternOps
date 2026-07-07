@@ -1,0 +1,121 @@
+config:
+  target: 'http://localhost:5000'
+  phases:
+    - duration: 3
+      arrivalRate: 10
+      name: 'Warm up'
+    - duration: 5
+      arrivalRate: 30
+      rampTo: 100
+      name: 'Ramp to 100'
+    - duration: 10
+      arrivalRate: 100
+      rampTo: 500
+      name: 'Ramp to 500'
+    - duration: 10
+      arrivalRate: 500
+      rampTo: 1000
+      name: 'Ramp to 1000'
+    - duration: 10
+      arrivalRate: 1000
+      rampTo: 2000
+      name: 'Ramp to 2000'
+    - duration: 10
+      arrivalRate: 2000
+      name: 'Sustained 2000 users'
+    - duration: 5
+      arrivalRate: 1000
+      rampTo: 50
+      name: 'Cool down'
+  processor: '../../load-processor.js'
+  variables:
+    email:
+      - 'peak1@test.com'
+      - 'peak2@test.com'
+      - 'peak3@test.com'
+    password: 'LoadTest123!'
+  ensure:
+    p95: 1000
+    p99: 2000
+    maxErrorRate: 5
+  http:
+    timeout: 30
+    maxSockets: 200
+
+scenarios:
+  - name: 'Peak load - lightweight requests'
+    weight: 7
+    flow:
+      - get:
+          url: '/api/auth/csrf-token'
+          capture:
+            - json: $.csrfToken
+              as: csrfToken
+          think: 0.3
+      - post:
+          url: '/api/auth/login'
+          json:
+            email: '{{ email }}'
+            password: '{{ password }}'
+          capture:
+            - json: $.accessToken
+              as: accessToken
+          think: 0.3
+      - get:
+          url: '/api/dashboard/stats'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.5
+      - get:
+          url: '/api/interns?page=1&limit=20'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.3
+      - get:
+          url: '/api/attendance/today'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 0.3
+
+  - name: 'Peak load - heavy requests'
+    weight: 3
+    flow:
+      - get:
+          url: '/api/auth/csrf-token'
+          think: 0.5
+      - post:
+          url: '/api/auth/login'
+          json:
+            email: '{{ email }}'
+            password: '{{ password }}'
+          capture:
+            - json: $.accessToken
+              as: accessToken
+          think: 0.5
+      - get:
+          url: '/api/dashboard/analytics?from=2026-01-01&to=2026-12-31'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+          think: 1
+      - post:
+          url: '/api/interns'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+            X-CSRF-Token: '{{ csrfToken }}'
+          json:
+            firstName: 'Peak'
+            lastName: 'User'
+            email: 'peak_{{ $randomString }}@test.com'
+            department: 'Engineering'
+            role: 'intern'
+          think: 0.5
+      - post:
+          url: '/api/attendance/mark'
+          headers:
+            Authorization: 'Bearer {{ accessToken }}'
+            X-CSRF-Token: '{{ csrfToken }}'
+          json:
+            internId: 'INT{{ $randomNumber }}'
+            status: 'present'
+            date: '2026-07-01'
+          think: 0.5

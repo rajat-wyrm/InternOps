@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
@@ -8,21 +11,33 @@ const { toSchema } = require('../../utils/schemaHelper');
 async function noticesRoutes(fastify) {
   //
   fastify.get(
-    '/api/notices',
+    '/notices',
     {
       schema: { tags: ['Notices'], description: 'Get all notices (admin)' },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
     async (req, reply) => {
-      // You will need a new repository function that fetches all notices, including inactive ones, for admin view
-      const notices = await repo.getAllNotices();
-      return reply.send(notices);
+      try {
+        const notices = await repo.getAllNotices();
+        return reply.send(notices);
+      } catch (err) {
+        // If the notices table does not yet exist (migration pending on production)
+        // return an empty list with 503 rather than crashing with 500.
+        req.log.error({ err }, 'notices table unavailable in GET /notices');
+        if (err.code === '42P01') {
+          return reply.status(503).send({
+            error: 'Notices service temporarily unavailable',
+            notices: [],
+          });
+        }
+        return reply.status(500).send({ error: 'Failed to fetch notices' });
+      }
     }
   );
 
   // PUBLIC — no auth
   fastify.get(
-    '/api/notices/public',
+    '/notices/public',
     {
       schema: { tags: ['Notices'], description: 'Get active notices (public)' },
     },
@@ -44,7 +59,7 @@ async function noticesRoutes(fastify) {
 
   // PROTECTED — admin + senior_tl
   fastify.post(
-    '/api/notices',
+    '/notices',
     {
       schema: {
         tags: ['Notices'],
@@ -57,7 +72,7 @@ async function noticesRoutes(fastify) {
           })
         ),
       },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       const { title, content, category } = req.body;
@@ -86,7 +101,7 @@ async function noticesRoutes(fastify) {
   );
 
   fastify.patch(
-    '/api/notices/:id',
+    '/notices/:id',
     {
       schema: {
         tags: ['Notices'],
@@ -101,7 +116,7 @@ async function noticesRoutes(fastify) {
           })
         ),
       },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
       const { id } = req.params;
@@ -141,7 +156,7 @@ async function noticesRoutes(fastify) {
   );
 
   fastify.delete(
-    '/api/notices/:id',
+    '/notices/:id',
     {
       schema: {
         tags: ['Notices'],

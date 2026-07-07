@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
 const auth = require('../../middleware/auth');
@@ -15,7 +18,7 @@ const chatBodySchema = z.object({
   messages: z
     .array(
       z.object({
-        role: z.enum(['user', 'assistant']),
+        role: z.enum(['user', 'assistant', 'system']),
         content: z.string(),
       })
     )
@@ -32,13 +35,24 @@ async function routes(fastify) {
         description: 'Send chat message to AI',
         body: toSchema(chatBodySchema),
       },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
       bodyLimit: 10485760,
       config: {
         rateLimit: {
           max: AI_CHAT_RATE_LIMIT,
           timeWindow: '1 minute',
-          keyGenerator: (req) => req.user?.id || req.ip,
+          keyGenerator: (req) => {
+            if (req.user?.id) return req.user.id;
+            const authHeader = req.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+              try {
+                const { verifyAccessToken } = require('../../utils/tokens');
+                const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+                return decoded.id;
+              } catch (err) {}
+            }
+            return req.ip;
+          },
         },
       },
     },
@@ -46,7 +60,7 @@ async function routes(fastify) {
       if (req.body && JSON.stringify(req.body).length > 2000000) {
         return reply.status(400).send({ error: 'Payload too large' });
       }
-      const ALLOWED_ROLES = ['user', 'assistant'];
+      const ALLOWED_ROLES = ['user', 'assistant', 'system'];
 
       let finalMessages = [];
       const { messages, prompt } = req.body || {};
@@ -84,16 +98,6 @@ async function routes(fastify) {
           error: 'Prompt or valid messages are required',
         });
       }
-      // if()
-      //   Array.isArray(messages) && messages.length > 0
-      //     ? messages
-      //     : [{ role: 'user', content: prompt }];
-
-      // if (!finalMessages[0]?.content) {
-      //   return reply.status(400).send({
-      //     error: 'Prompt or messages are required',
-      //   });
-      // }
 
       const MAX_MESSAGES = 32;
       const MAX_MESSAGE_CHARS = 4000;
@@ -159,7 +163,7 @@ async function routes(fastify) {
         }
 
         req.log.error(
-          { err: error.message, details: error.details },
+          { err: error.message, code: error.statusCode },
           'AI provider failed'
         );
         return reply.status(503).send({

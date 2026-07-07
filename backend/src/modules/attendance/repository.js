@@ -1,7 +1,14 @@
 const pool = require('../../config/db');
 
-async function markAttendance(userId, markedBy, date, status, remarks) {
-  const res = await pool.query(
+async function markAttendance(
+  userId,
+  markedBy,
+  date,
+  status,
+  remarks,
+  client = pool
+) {
+  const res = await client.query(
     `INSERT INTO attendance (user_id, marked_by, date, status, remarks)
      VALUES ($1,$2,$3,$4,$5)
      ON CONFLICT (user_id, date)
@@ -9,6 +16,7 @@ async function markAttendance(userId, markedBy, date, status, remarks) {
      RETURNING *`,
     [userId, markedBy, date, status, remarks || null]
   );
+
   return res.rows[0];
 }
 
@@ -19,23 +27,28 @@ async function getAttendance(userId, { from, to, page = 1, limit = 30 } = {}) {
 
   const where = ['user_id=$1', 'a.deleted_at IS NULL'];
   const params = [userId];
+
   if (from) {
     params.push(from);
     where.push(`date >= $${params.length}`);
   }
+
   if (to) {
     params.push(to);
     where.push(`date <= $${params.length}`);
   }
+
   const whereClause = where.join(' AND ');
 
   const countRes = await pool.query(
     `SELECT COUNT(*)::int AS total FROM attendance a WHERE ${whereClause}`,
     params
   );
+
   const total = countRes.rows[0].total;
 
   params.push(safeLimit, offset);
+
   const res = await pool.query(
     `SELECT a.*, m.full_name AS marked_by_name
      FROM attendance a
@@ -66,33 +79,27 @@ async function getMonthlyStats(userId, month, year) {
      GROUP BY status`,
     [userId, startDate, endDate]
   );
+
   return res.rows;
 }
 
-async function bulkMark(entries, markedBy) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const out = [];
-    for (const e of entries) {
-      const r = await client.query(
-        `INSERT INTO attendance (user_id, marked_by, date, status, remarks)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (user_id, date)
-         DO UPDATE SET status=$4, marked_by=$2, remarks=$5, updated_at=NOW()
-         RETURNING *`,
-        [e.user_id, markedBy, e.date, e.status, e.remarks || null]
-      );
-      out.push(r.rows[0]);
-    }
-    await client.query('COMMIT');
-    return out;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
+async function bulkMark(entries, markedBy, client = pool) {
+  const out = [];
+
+  for (const e of entries) {
+    const r = await client.query(
+      `INSERT INTO attendance (user_id, marked_by, date, status, remarks)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (user_id, date)
+       DO UPDATE SET status=$4, marked_by=$2, remarks=$5, updated_at=NOW()
+       RETURNING *`,
+      [e.user_id, markedBy, e.date, e.status, e.remarks || null]
+    );
+
+    out.push(r.rows[0]);
   }
+
+  return out;
 }
 
 // Returns the set of target ids that fall inside managerId's transitive

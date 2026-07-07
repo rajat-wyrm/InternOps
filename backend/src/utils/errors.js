@@ -23,4 +23,15 @@ class BadRequestError extends AppError {
   }
 }
 
-module.exports = { AppError, UnauthorizedError, BadRequestError };
+class ConflictError extends AppError {
+  constructor(message = 'Conflict', internalMessage = null) {
+    super(message, 409, internalMessage);
+  }
+}
+
+module.exports = {
+  AppError,
+  UnauthorizedError,
+  BadRequestError,
+  ConflictError,
+};

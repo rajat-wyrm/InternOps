@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from '@tanstack/react-query';
 import {
   Search,
   ChevronLeft,
@@ -117,7 +122,7 @@ export default function AdminDashboard() {
           },
         })
         .then((res) => res.data),
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   });
 
   const invalidateUsers = () =>
@@ -139,8 +144,8 @@ export default function AdminDashboard() {
     onSettled: () => setDeletingUserId(null),
   });
 
-  const rows = data?.data ?? [];
-  const total = data?.total ?? 0;
+  const rows = data?.data ?? data?.users ?? data?.items ?? [];
+  const total = data?.total ?? data?.count ?? rows.length;
   const totalPages = Math.max(Math.ceil(total / limit), 1);
 
   const handleRoleFilterChange = (value) => {

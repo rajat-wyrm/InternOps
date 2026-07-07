@@ -146,6 +146,7 @@ export default function Login() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    disabled={loginMut.isPending}
                     required
                     className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
                   />
@@ -161,6 +162,7 @@ export default function Login() {
                     type={show ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    disabled={loginMut.isPending}
                     required
                     className="w-full pl-12 pr-12 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
                   />
