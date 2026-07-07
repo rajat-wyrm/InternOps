@@ -130,7 +130,9 @@ async function routes(fastify) {
           if (!detectedMime || detectedMime !== data.mimetype) {
             return reply
               .status(400)
-              .send({ error: 'File contents do not match declared image type' });
+              .send({
+                error: 'File contents do not match declared image type',
+              });
           }
 
           const filename = uuidv4() + ext;
@@ -263,14 +265,14 @@ async function routes(fastify) {
 
       // Delete legacy image if it exists
       if (proof.image_path) {
-        await uploadRepo.deleteFile(proof.image_path).catch(() => { });
+        await uploadRepo.deleteFile(proof.image_path).catch(() => {});
       }
 
       // Delete multiple images if they exist
       if (proof.images && proof.images.length > 0) {
         await Promise.all(
           proof.images.map((imgPath) =>
-            uploadRepo.deleteFile(imgPath).catch(() => { })
+            uploadRepo.deleteFile(imgPath).catch(() => {})
           )
         );
       }
@@ -302,7 +304,7 @@ async function routes(fastify) {
       }
 
       await repo.deleteProofImage(req.params.imageId);
-      await uploadRepo.deleteFile(image.image_path).catch(() => { });
+      await uploadRepo.deleteFile(image.image_path).catch(() => {});
 
       req.auditOnResponse = {
         userId: req.user.id,
