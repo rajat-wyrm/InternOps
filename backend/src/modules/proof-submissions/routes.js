@@ -45,6 +45,10 @@ async function routes(fastify) {
     async (req, reply) => {
       const parts = req.parts();
       let task_id = null;
+      let didComment = false;
+      let didRepost = false;
+      let didShare = false;
+
       const filesData = [];
 
       for await (const part of parts) {
@@ -59,14 +63,26 @@ async function routes(fastify) {
             });
           }
         } else {
-          if (part.fieldname === 'task_id') {
-            task_id = part.value;
+          switch (part.fieldname) {
+            case 'task_id':
+              task_id = part.value;
+              break;
+            case 'didComment':
+              didComment = part.value === 'true';
+              break;
+            case 'didRepost':
+              didRepost = part.value === 'true';
+              break;
+            case 'didShare':
+              didShare = part.value === 'true';
+              break;
           }
         }
       }
 
-      if (!task_id)
+      if (!task_id) {
         return reply.status(400).send({ error: 'task_id required' });
+      }
 
       if (filesData.length === 0)
         return reply.status(400).send({ error: 'Image file required' });
@@ -121,11 +137,20 @@ async function routes(fastify) {
         await fs.promises.writeFile(uploadPath, data.buffer);
         dbSavedPaths.push(['uploads', filename].join('/'));
       }
-
+      if (!didComment && !didRepost && !didShare) {
+        return reply.status(400).send({
+          error: 'At least one engagement action must be selected.',
+        });
+      }
       const proof = await repo.submitProofWithImages(
         task_id,
         req.user.id,
-        dbSavedPaths
+        dbSavedPaths,
+        {
+          didComment,
+          didRepost,
+          didShare,
+        }
       );
 
       req.auditOnResponse = {

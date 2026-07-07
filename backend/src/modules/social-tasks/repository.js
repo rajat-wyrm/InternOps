@@ -80,22 +80,49 @@ async function getTasks(filters, userId, userRole) {
   `;
   return (await pool.query(q, params)).rows;
 }
-async function submitProof(taskId, internId, imagePath) {
+async function submitProof(
+  taskId,
+  internId,
+  imagePath,
+  { didComment = false, didRepost = false, didShare = false } = {}
+) {
   const res = await pool.query(
-    'INSERT INTO proof_submissions (task_id, intern_id, image_path) VALUES ($1,$2,$3) RETURNING *',
-    [taskId, internId, imagePath]
+    `INSERT INTO proof_submissions
+      (
+        task_id,
+        intern_id,
+        image_path,
+        did_comment,
+        did_repost,
+        did_share
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *`,
+    [taskId, internId, imagePath, didComment, didRepost, didShare]
   );
+
   return res.rows[0];
 }
 
-async function submitProofWithImages(taskId, internId, imagePaths) {
-  // Insert with null for image_path since it's legacy
-  const proof = await submitProof(taskId, internId, null);
+async function submitProofWithImages(
+  taskId,
+  internId,
+  imagePaths,
+  { didComment = false, didRepost = false, didShare = false } = {}
+) {
+  // Create proof record with engagement actions
+  const proof = await submitProof(taskId, internId, null, {
+    didComment,
+    didRepost,
+    didShare,
+  });
 
   if (imagePaths && imagePaths.length > 0) {
     const values = imagePaths.map((_, i) => `($1, $${i + 2})`).join(',');
+
     await pool.query(
-      `INSERT INTO proof_images (proof_id, image_path) VALUES ${values}`,
+      `INSERT INTO proof_images (proof_id, image_path)
+       VALUES ${values}`,
       [proof.id, ...imagePaths]
     );
   }
@@ -198,7 +225,9 @@ async function getProofImage(imageId) {
 }
 
 async function deleteProofImage(imageId) {
-  await pool.query('DELETE FROM proof_images WHERE id = $1', [imageId]);
+  await pool.query('UPDATE proof_images SET deleted_at = NOW() WHERE id = $1', [
+    imageId,
+  ]);
 }
 
 module.exports = {

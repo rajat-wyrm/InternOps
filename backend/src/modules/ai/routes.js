@@ -18,7 +18,7 @@ const chatBodySchema = z.object({
   messages: z
     .array(
       z.object({
-        role: z.enum(['user', 'assistant']),
+        role: z.enum(['user', 'assistant', 'system']),
         content: z.string(),
       })
     )
@@ -60,7 +60,7 @@ async function routes(fastify) {
       if (req.body && JSON.stringify(req.body).length > 2000000) {
         return reply.status(400).send({ error: 'Payload too large' });
       }
-      const ALLOWED_ROLES = ['user', 'assistant'];
+      const ALLOWED_ROLES = ['user', 'assistant', 'system'];
 
       let finalMessages = [];
       const { messages, prompt } = req.body || {};

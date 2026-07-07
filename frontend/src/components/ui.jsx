@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Eye, EyeOff } from 'lucide-react';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -141,12 +142,33 @@ export function Btn({
   );
 }
 
-export function Input({ className = '', ...props }) {
+export function Input({ className = '', type, value, ...props }) {
+  const [show, setShow] = useState(false);
+  const isPassword = type === 'password';
+  const hasValue = String(value ?? '').length > 0;
+
   return (
-    <input
-      {...props}
-      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-2xl px-4 py-3 w-full focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-400 outline-none transition shadow-sm ${className}`}
-    />
+    <div className="relative">
+      <input
+        {...props}
+        type={isPassword && show ? 'text' : type}
+        value={value}
+        className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-2xl px-4 py-3 w-full focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-400 outline-none transition shadow-sm ${
+          isPassword ? 'pr-11' : ''
+        } ${className}`}
+      />
+      {isPassword && hasValue && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setShow((s) => !s)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+          tabIndex={-1}
+        >
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      )}
+    </div>
   );
 }
 

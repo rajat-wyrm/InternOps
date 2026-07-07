@@ -117,7 +117,7 @@ export default function DashboardLayout() {
   const logout = useAuthStore((s) => s.logout);
 
   const role = user?.role;
-
+  const SIDEBAR_KEY = `sidebar_scroll_${window.location.pathname}`;
   const sidebarNavRef = useRef(null);
 
   const [collapsed, setCollapsed] = useState(
@@ -155,9 +155,7 @@ export default function DashboardLayout() {
   };
 
   useEffect(() => {
-    const savedScroll = Number(
-      sessionStorage.getItem('internopsSidebarScroll') || 0
-    );
+    const savedScroll = Number(sessionStorage.getItem(SIDEBAR_KEY) || 0);
 
     requestAnimationFrame(() => {
       if (sidebarNavRef.current) {
@@ -169,7 +167,7 @@ export default function DashboardLayout() {
   const saveSidebarScroll = () => {
     if (sidebarNavRef.current) {
       sessionStorage.setItem(
-        'internopsSidebarScroll',
+        SIDEBAR_KEY,
         String(sidebarNavRef.current.scrollTop)
       );
     }

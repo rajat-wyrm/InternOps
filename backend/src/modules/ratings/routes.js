@@ -2,7 +2,6 @@ const {
   sanitizationMiddleware: sanitize,
 } = require('../../middleware/sanitize');
 const { notifyUser } = require('../../websocket');
-('use strict');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const ownership = require('../../middleware/ownership');

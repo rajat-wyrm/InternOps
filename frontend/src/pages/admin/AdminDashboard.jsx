@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from '@tanstack/react-query';
 import {
   Search,
   ChevronLeft,
@@ -117,7 +122,7 @@ export default function AdminDashboard() {
           },
         })
         .then((res) => res.data),
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   });
 
   const invalidateUsers = () =>

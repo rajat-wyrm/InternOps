@@ -13,6 +13,7 @@ const {
   send: sendNotification,
   getUnreadCount,
 } = require('../notifications/repository');
+const pool = require('../../config/db');
 const { z } = require('zod');
 
 async function routes(fastify) {
@@ -261,7 +262,6 @@ async function routes(fastify) {
     },
     async (req) => {
       if (req.user.role === 'ADMIN') {
-        const pool = require('../../config/db');
         const all = await pool.query(
           'SELECT id, full_name, email, role FROM users WHERE deleted_at IS NULL'
         );

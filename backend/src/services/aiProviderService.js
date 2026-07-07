@@ -429,9 +429,11 @@ const providerRegistry = {
 async function generateAIResponse({ userId, messages }) {
   const safeMessages = Array.isArray(messages) ? messages : [];
   const sanitizedMessages = safeMessages.slice(-16).map((m) => ({
-    role: m.role === 'assistant' ? 'assistant' : 'user',
+    role: m.role,
     content: String(m.content || '').slice(0, 2000),
   }));
+
+  //console.log('Sanitized messages:',JSON.stringify(sanitizedMessages, null, 2));
 
   const payload = { userId, messages: sanitizedMessages };
   const cached = await getCachedResponse(payload);

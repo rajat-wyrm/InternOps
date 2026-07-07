@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { CalendarCheck } from 'lucide-react'; // Added import here
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
@@ -45,7 +45,7 @@ export default function Attendance() {
         .get(`/attendance/${viewUserId}`, { params: { page, limit } })
         .then((res) => res.data),
     enabled: !!viewUserId,
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   });
 
   const records = data?.records ?? [];
