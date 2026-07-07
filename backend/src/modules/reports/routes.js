@@ -4,6 +4,14 @@ const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 const { z } = require('zod');
 
+// Whitelist of allowed filter keys → qualified column names.
+// Prevents SQL injection if filter keys ever become user-controllable.
+const REPORTS_COLUMN_MAP = {
+  from: 'a.date',
+  to: 'a.date',
+  departmentId: 'd.id',
+};
+
 const dateRangeSchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD'),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
@@ -103,15 +111,15 @@ async function routes(fastify) {
       const params = [];
       if (from) {
         params.push(from);
-        where.push(`a.date >= $${params.length}`);
+        where.push(`${REPORTS_COLUMN_MAP.from} >= $${params.length}`);
       }
       if (to) {
         params.push(to);
-        where.push(`a.date <= $${params.length}`);
+        where.push(`${REPORTS_COLUMN_MAP.to} <= $${params.length}`);
       }
       if (departmentId) {
         params.push(departmentId);
-        where.push(`d.id = $${params.length}`);
+        where.push(`${REPORTS_COLUMN_MAP.departmentId} = $${params.length}`);
       }
 
       return repo.departmentAttendance(where.join(' AND '), params);
