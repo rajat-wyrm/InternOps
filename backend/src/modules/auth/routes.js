@@ -229,6 +229,8 @@ async function routes(fastify) {
       req.auditOnResponse = {
         userId: result.user.id,
         action: 'LOGIN',
+        resourceType: 'auth',
+        resourceId: result.user.id,
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
       };

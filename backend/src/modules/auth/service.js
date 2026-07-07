@@ -104,14 +104,6 @@ async function login(email, password, ip, userAgent) {
 
   await repo.storeRefreshTokenRedis(user.id, hashToken(refresh), expires);
 
-  await createAuditLog({
-    userId: user.id,
-    action: 'LOGIN',
-    resourceType: 'auth',
-    resourceId: user.id,
-    ipAddress: ip,
-    userAgent,
-  });
 
   return {
     accessToken: access,
