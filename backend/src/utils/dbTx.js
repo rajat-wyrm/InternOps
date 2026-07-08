@@ -2,6 +2,7 @@ const pool = require('../config/db');
 
 async function dbTx(fn) {
   const client = await pool.connect();
+  let destroyClient = false;
 
   try {
     await client.query('BEGIN');
@@ -12,21 +13,21 @@ async function dbTx(fn) {
 
     return result;
   } catch (err) {
-  try {
-    await client.query('ROLLBACK');
-  } catch (rollbackErr) {
-    client.release(true);
-    throw err;
-  }
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      destroyClient = true;
+    }
 
-  throw err;
-} finally {
-  client.release();
-}
+    throw err;
+  } finally {
+    client.release(destroyClient);
+  }
 }
 
 async function withHierarchyTx(userIdsToLock, fn) {
   const client = await pool.connect();
+  let destroyClient = false;
 
   try {
     await client.query('BEGIN');
@@ -35,9 +36,10 @@ async function withHierarchyTx(userIdsToLock, fn) {
       // Sort IDs to consistently lock in the same order and prevent deadlocks
       const sortedIds = [...new Set(userIdsToLock)].sort();
 
-      await client.query('SELECT id FROM users WHERE id = ANY($1) FOR UPDATE', [
-        sortedIds,
-      ]);
+      await client.query(
+        'SELECT id FROM users WHERE id = ANY($1) FOR UPDATE',
+        [sortedIds]
+      );
     }
 
     const result = await fn(client);
@@ -45,18 +47,16 @@ async function withHierarchyTx(userIdsToLock, fn) {
     await client.query('COMMIT');
 
     return result;
-  }catch (err) {
-  try {
-    await client.query('ROLLBACK');
-  } catch (rollbackErr) {
-    client.release(true);
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      destroyClient = true;
+    }
+
     throw err;
+  } finally {
+    client.release(destroyClient);
   }
-
-  throw err;
-} finally {
-  client.release();
-}
 }
 
-module.exports = { dbTx, withHierarchyTx };
