@@ -21,8 +21,10 @@ async function dbTx(fn) {
 
     throw err;
   } finally {
+  if (client) {
     client.release(destroyClient);
   }
+}
 }
 
 async function withHierarchyTx(userIdsToLock, fn) {
@@ -55,6 +57,8 @@ async function withHierarchyTx(userIdsToLock, fn) {
 
     throw err;
   } finally {
+  if (client) {
     client.release(destroyClient);
   }
+}
 }

@@ -192,7 +192,7 @@ async function migrate(migrationsDir) {
     log.error({ err: e }, 'Migration error');
     throw e;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 

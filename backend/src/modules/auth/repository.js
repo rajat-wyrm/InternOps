@@ -264,7 +264,7 @@ async function revokeAllUserTokensRedis(userId) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 
   // 2. Redis cleanup (best-effort)
