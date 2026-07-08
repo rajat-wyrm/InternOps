@@ -11,8 +11,10 @@ const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 const { dbTx } = require('../../utils/dbTx');
 const {
   send: sendNotification,
+  bulkSend,
   getUnreadCount,
 } = require('../notifications/repository');
+const pool = require('../../config/db');
 const { z } = require('zod');
 
 async function routes(fastify) {
@@ -156,7 +158,7 @@ async function routes(fastify) {
         }
       }
 
-      const { results, notifications } = await dbTx(async (client) => {
+      const { results } = await dbTx(async (client) => {
         const records = await repo.bulkMark(entries, req.user.id, client);
 
         await createAuditLog(
@@ -170,24 +172,17 @@ async function routes(fastify) {
           client
         );
 
-        const createdNotifications = [];
-
-        for (const e of entries) {
-          const notification = await sendNotification(
-            e.user_id,
-            `Your attendance for ${e.date} has been marked as ${e.status}.`,
-            client,
-            { emit: false }
-          );
-
-          createdNotifications.push(notification);
-        }
-
         return {
           results: records,
-          notifications: createdNotifications,
         };
       });
+
+      const notificationsData = entries.map((e) => ({
+        user_id: e.user_id,
+        message: `Your attendance for ${e.date} has been marked as ${e.status}.`,
+      }));
+
+      const notifications = await bulkSend(notificationsData);
 
       for (const notification of notifications) {
         const unreadCount = await getUnreadCount(notification.user_id);
@@ -261,7 +256,6 @@ async function routes(fastify) {
     },
     async (req) => {
       if (req.user.role === 'ADMIN') {
-        const pool = require('../../config/db');
         const all = await pool.query(
           'SELECT id, full_name, email, role FROM users WHERE deleted_at IS NULL'
         );

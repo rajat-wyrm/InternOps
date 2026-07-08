@@ -68,8 +68,9 @@ function removeLegacyAuthStorage() {
   try {
     if (typeof window === 'undefined') return;
 
-    // Remove access tokens saved by older versions of the app.
-    window.localStorage.removeItem('accessToken');
+    // Remove user metadata cached in localStorage.
+    // Access tokens are memory-only and never stored in localStorage.
+    window.localStorage.removeItem('user');
   } catch {
     /* localStorage may be unavailable — ignore */
   }
@@ -140,7 +141,6 @@ function processQueue(error, token = null) {
 }
 
 function handleLogout() {
-  localStorage.removeItem('accessToken');
   localStorage.removeItem('user');
   clearCsrfToken();
   if (!window.location.pathname.startsWith('/login')) {
@@ -250,39 +250,6 @@ api.interceptors.response.use(
       } finally {
         isRefreshing = false;
       }
-
-      isRefreshing = true;
-
-      return new Promise((resolve, reject) => {
-        api
-          .post('/auth/refresh', {})
-          .then((res) => {
-            const newToken = res.data?.accessToken;
-            if (newToken) {
-              localStorage.setItem('accessToken', newToken);
-              clearCsrfToken();
-              original.headers = original.headers || {};
-              original.headers.Authorization = `Bearer ${newToken}`;
-              processQueue(null, newToken);
-              resolve(api(original));
-            } else {
-              const noTokenErr = new Error(
-                'No access token returned from refresh'
-              );
-              processQueue(noTokenErr, null);
-              handleLogout();
-              reject(err);
-            }
-          })
-          .catch((refreshErr) => {
-            processQueue(refreshErr, null);
-            handleLogout();
-            reject(err);
-          })
-          .finally(() => {
-            isRefreshing = false;
-          });
-      });
     }
 
     return Promise.reject(err);

@@ -7,11 +7,11 @@ function directManagerValidation(field = 'user_id') {
     const {
       rows: [user],
     } = await pool.query(
-      'SELECT id, role, manager_id FROM users WHERE id = $1 FOR UPDATE',
+      'SELECT id, role, manager_id FROM users WHERE id = $1',
       [target]
     );
     if (!user) return reply.status(404).send({ error: 'User not found' });
-    const { isValidStep } = require('../utils/hierarchy');
+
     if (
       user.manager_id !== request.user.id ||
       !isValidStep(request.user.role, user.role)

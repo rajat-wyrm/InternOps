@@ -19,12 +19,18 @@ import {
   Sun,
   Moon,
   Megaphone,
+  Award,
+  Layers,
+  Palette,
+  Sparkles,
+  Zap,
 } from 'lucide-react';
 
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
+import { connectSocket, disconnectSocket } from '../lib/socket';
 import { UserAvatar, ConfirmationModal } from '../components/ui';
 import useAuthStore from '../store/auth';
 import { QUERY_KEYS } from '../constants/queryKeys';
@@ -100,6 +106,36 @@ const adminNav = [
     icon: Bot,
     allowedRoles: ADMIN_ONLY_ROLES,
   },
+  {
+    path: '/quick-generate',
+    label: 'Quick Generate',
+    icon: Zap,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/certificates',
+    label: 'Certificates',
+    icon: Award,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/bulk-generate',
+    label: 'Bulk Generate',
+    icon: Layers,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/canva-templates',
+    label: 'Templates & Canva',
+    icon: Palette,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/ai-certificates',
+    label: 'AI Certificates',
+    icon: Sparkles,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
 ];
 
 const FULL_LOGO_SRC = '/UptoSkills.webp';
@@ -115,9 +151,15 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const accessToken = useAuthStore((s) => s.accessToken);
+
+  useEffect(() => {
+    if (accessToken) connectSocket(accessToken);
+    return () => disconnectSocket();
+  }, [accessToken]);
 
   const role = user?.role;
-
+  const SIDEBAR_KEY = `sidebar_scroll_${window.location.pathname}`;
   const sidebarNavRef = useRef(null);
 
   const [collapsed, setCollapsed] = useState(
@@ -155,9 +197,7 @@ export default function DashboardLayout() {
   };
 
   useEffect(() => {
-    const savedScroll = Number(
-      sessionStorage.getItem('internopsSidebarScroll') || 0
-    );
+    const savedScroll = Number(sessionStorage.getItem(SIDEBAR_KEY) || 0);
 
     requestAnimationFrame(() => {
       if (sidebarNavRef.current) {
@@ -169,7 +209,7 @@ export default function DashboardLayout() {
   const saveSidebarScroll = () => {
     if (sidebarNavRef.current) {
       sessionStorage.setItem(
-        'internopsSidebarScroll',
+        SIDEBAR_KEY,
         String(sidebarNavRef.current.scrollTop)
       );
     }

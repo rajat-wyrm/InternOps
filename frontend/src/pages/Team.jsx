@@ -562,21 +562,26 @@ function MemberDetail({ memberId, onClose }) {
   const { data: member, isLoading } = useQuery({
     queryKey: ['teamMember', memberId],
     queryFn: () => api.get(`/team/members/${memberId}`).then((res) => res.data),
-    onSuccess: (data) => {
-      setForm({
-        full_name: data.full_name || '',
-        phone: data.phone || '',
-        location: data.location || '',
-        college: data.college || '',
-        course: data.course || '',
-        year_of_study: data.year_of_study || '',
-        position: data.position || '',
-        joining_date: data.joining_date ? data.joining_date.slice(0, 10) : '',
-        internship_status: data.internship_status || 'ACTIVE',
-        notes: data.notes || '',
-      });
-    },
   });
+
+  useEffect(() => {
+    if (member) {
+      setForm({
+        full_name: member.full_name || '',
+        phone: member.phone || '',
+        location: member.location || '',
+        college: member.college || '',
+        course: member.course || '',
+        year_of_study: member.year_of_study || '',
+        position: member.position || '',
+        joining_date: member.joining_date
+          ? member.joining_date.slice(0, 10)
+          : '',
+        internship_status: member.internship_status || 'ACTIVE',
+        notes: member.notes || '',
+      });
+    }
+  }, [member]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['teamMember', memberId] });
@@ -1153,15 +1158,22 @@ export default function Team() {
   }, [members]);
 
   const exportCsv = async () => {
-    const res = await api.get('/team/members/export', { responseType: 'blob' });
-    const url = window.URL.createObjectURL(new Blob([res.data]));
-    const a = document.createElement('a');
+    try {
+      const res = await api.get('/team/members/export', {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
 
-    a.href = url;
-    a.download = 'team-members.csv';
-    a.click();
+      a.href = url;
+      a.download = 'team-members.csv';
+      a.click();
 
-    window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('CSV export failed:', err);
+      alert('Failed to export team members. Please try again.');
+    }
   };
 
   if (isLoading) {

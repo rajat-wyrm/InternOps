@@ -311,7 +311,7 @@ async function routes(fastify) {
         tags: ['Meetings'],
         description: 'Add attendee to meeting',
         params: toSchema(z.object({ id: z.string().uuid() })),
-        body: toSchema(z.object({ userId: z.string() })),
+        body: toSchema(z.object({ userId: z.string().uuid() })),
       },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'), sanitize],
     },

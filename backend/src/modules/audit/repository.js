@@ -46,18 +46,7 @@ async function logEvent(data) {
     ]
   );
 }
-
-async function performAdminCleanup() {
-  const notifications = require('../notifications/repository'); // Lazy load
-  if (notifications && typeof notifications.notifyAdmin === 'function') {
-    await notifications.notifyAdmin(
-      'Administrative audit cleanup has been completed.'
-    );
-  }
-}
-
 module.exports = {
   getAuditLogs,
   logEvent,
-  performAdminCleanup,
 };

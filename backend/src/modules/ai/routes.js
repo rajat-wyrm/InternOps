@@ -18,7 +18,7 @@ const chatBodySchema = z.object({
   messages: z
     .array(
       z.object({
-        role: z.enum(['user', 'assistant']),
+        role: z.enum(['user', 'assistant', 'system']),
         content: z.string(),
       })
     )
@@ -36,7 +36,8 @@ async function routes(fastify) {
         body: toSchema(chatBodySchema),
       },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
-      bodyLimit: 10485760,
+      // Keep Fastify's parser limit aligned with the maximum payload we accept.
+      bodyLimit: 2 * 1024 * 1024, // 2 MB
       config: {
         rateLimit: {
           max: AI_CHAT_RATE_LIMIT,
@@ -57,10 +58,9 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      if (req.body && JSON.stringify(req.body).length > 2000000) {
-        return reply.status(400).send({ error: 'Payload too large' });
-      }
-      const ALLOWED_ROLES = ['user', 'assistant'];
+      //Requests larger than 2 MB are rejected by Fastify via `bodyLimit`
+
+      const ALLOWED_ROLES = ['user', 'assistant', 'system'];
 
       let finalMessages = [];
       const { messages, prompt } = req.body || {};

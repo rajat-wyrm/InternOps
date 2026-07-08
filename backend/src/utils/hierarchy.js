@@ -2,7 +2,7 @@ const pool = require('../config/db');
 async function checkHierarchyAccess(requesterId, targetUserId, client = pool) {
   if (requesterId === targetUserId) return true;
 
-  const usersRes = await pool.query(
+  const usersRes = await client.query(
     'SELECT id, role, department_id FROM users WHERE id IN ($1, $2)',
     [requesterId, targetUserId]
   );

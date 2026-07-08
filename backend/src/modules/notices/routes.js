@@ -66,9 +66,11 @@ async function noticesRoutes(fastify) {
         description: 'Create a notice',
         body: toSchema(
           z.object({
-            title: z.string(),
-            content: z.string(),
-            category: z.string().optional(),
+            title: z.string().trim().min(1, 'Title is required'),
+            content: z.string().trim().min(1, 'Content is required'),
+            category: z
+              .enum(['GENERAL', 'REMINDER', 'ALERT', 'NEWS'])
+              .optional(),
           })
         ),
       },
@@ -109,9 +111,15 @@ async function noticesRoutes(fastify) {
         params: toSchema(z.object({ id: z.string() })),
         body: toSchema(
           z.object({
-            title: z.string().optional(),
-            content: z.string().optional(),
-            category: z.string().optional(),
+            title: z.string().trim().min(1, 'Title cannot be empty').optional(),
+            content: z
+              .string()
+              .trim()
+              .min(1, 'Content cannot be empty')
+              .optional(),
+            category: z
+              .enum(['GENERAL', 'REMINDER', 'ALERT', 'NEWS'])
+              .optional(),
             is_active: z.boolean().optional(),
           })
         ),

@@ -1,4 +1,11 @@
 require('dotenv').config();
+const pino = require('pino');
+
+const log = pino(
+  process.env.NODE_ENV === 'development'
+    ? { transport: { target: 'pino-pretty' } }
+    : {}
+);
 
 function buildRedisUrl() {
   const restUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -16,8 +23,8 @@ function resolveRefreshSecret() {
   // validateEnv before we get here; outside production fall back to a derived
   // value so dev/CI keep functioning, with a warning.
   if (process.env.NODE_ENV !== 'test') {
-    console.warn(
-      '⚠️ JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
+    log.warn(
+      'JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
     );
   }
   return process.env.JWT_SECRET
@@ -33,14 +40,11 @@ module.exports = {
   dbPoolMax: parseInt(process.env.DB_POOL_MAX, 10) || 20,
   jwt: {
     secret: process.env.JWT_SECRET,
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     accessSecret: process.env.JWT_SECRET,
-    // Independent refresh secret. Falls back to a derived value only outside
-    // production so local/CI keep working; production must set JWT_REFRESH_SECRET
-    // (enforced by validateEnv).
     refreshSecret: resolveRefreshSecret(),
-    accessExpiry: '15m',
-    refreshExpiry: process.env.JWT_EXPIRES_IN || '7d',
+    accessExpiry: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+    refreshExpiry:
+      process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '7d',
   },
   apiKey: process.env.API_KEY,
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
@@ -70,9 +74,13 @@ module.exports = {
     apiKey: process.env.UPTOSKILLS_API_KEY || '',
   },
   rateLimit: {
-    globalMax: process.env.NODE_ENV === 'test' ? 10000 : 100,
-    authMax: process.env.NODE_ENV === 'test' ? 10000 : 50,
-    timeWindow: '1 minute',
+    globalMax:
+      parseInt(process.env.RATE_LIMIT_GLOBAL_MAX, 10) ||
+      (process.env.NODE_ENV === 'test' ? 10000 : 100),
+    authMax:
+      parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) ||
+      (process.env.NODE_ENV === 'test' ? 10000 : 50),
+    timeWindow: process.env.RATE_LIMIT_TIME_WINDOW || '1 minute',
   },
   email: {
     host: process.env.SMTP_HOST,
