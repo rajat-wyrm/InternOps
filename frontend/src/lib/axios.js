@@ -68,8 +68,9 @@ function removeLegacyAuthStorage() {
   try {
     if (typeof window === 'undefined') return;
 
-    // Remove access tokens saved by older versions of the app.
-    window.localStorage.removeItem('accessToken');
+    // Remove user metadata cached in localStorage.
+    // Access tokens are memory-only and never stored in localStorage.
+    window.localStorage.removeItem('user');
   } catch {
     /* localStorage may be unavailable — ignore */
   }
@@ -140,7 +141,6 @@ function processQueue(error, token = null) {
 }
 
 function handleLogout() {
-  localStorage.removeItem('accessToken');
   localStorage.removeItem('user');
   clearCsrfToken();
   if (!window.location.pathname.startsWith('/login')) {

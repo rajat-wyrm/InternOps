@@ -1,10 +1,22 @@
-﻿const nodemailer = require('nodemailer');
+const nodemailer = require('nodemailer');
 const config = require('../config');
 const path = require('path');
 const fs = require('fs');
 
 const rateLimitMap = new Map();
 const bounceList = new Set();
+
+// Periodic cleanup to prevent memory leaks (#990, #948, #994, #944)
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, timestamps] of rateLimitMap) {
+    const fresh = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+    if (fresh.length === 0) rateLimitMap.delete(email);
+    else rateLimitMap.set(email, fresh);
+  }
+}, CLEANUP_INTERVAL_MS).unref();
 
 const metrics = { sent: 0, failed: 0, bounced: 0, retried: 0 };
 
@@ -176,7 +188,7 @@ class EmailService {
   }
 
   async sendPasswordReset(email, resetToken) {
-    const resetLink = `${process.env.APP_URL || 'http://localhost:5173'}/reset-password#token=${encodeURIComponent(resetToken)}`;
+    const resetLink = `${config.appUrl || 'http://localhost:5173'}/reset-password#token=${encodeURIComponent(resetToken)}`;
     return this.send({
       to: email,
       subject: 'InternOps - Password Reset Request',
@@ -186,7 +198,7 @@ class EmailService {
   }
 
   async sendAccountVerification(email, verificationToken) {
-    const verifyLink = `${process.env.APP_URL || 'http://localhost:5173'}/verify-email?token=${verificationToken}`;
+    const verifyLink = `${config.appUrl || 'http://localhost:5173'}/verify-email?token=${verificationToken}`;
     return this.send({
       to: email,
       subject: 'InternOps - Verify Your Email',

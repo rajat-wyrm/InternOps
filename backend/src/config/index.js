@@ -33,14 +33,11 @@ module.exports = {
   dbPoolMax: parseInt(process.env.DB_POOL_MAX, 10) || 20,
   jwt: {
     secret: process.env.JWT_SECRET,
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     accessSecret: process.env.JWT_SECRET,
-    // Independent refresh secret. Falls back to a derived value only outside
-    // production so local/CI keep working; production must set JWT_REFRESH_SECRET
-    // (enforced by validateEnv).
     refreshSecret: resolveRefreshSecret(),
-    accessExpiry: '15m',
-    refreshExpiry: process.env.JWT_EXPIRES_IN || '7d',
+    accessExpiry: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+    refreshExpiry:
+      process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '7d',
   },
   apiKey: process.env.API_KEY,
   uploadDir: process.env.UPLOAD_DIR || 'uploads',

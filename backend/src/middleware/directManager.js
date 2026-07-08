@@ -11,7 +11,7 @@ function directManagerValidation(field = 'user_id') {
       [target]
     );
     if (!user) return reply.status(404).send({ error: 'User not found' });
-    const { isValidStep } = require('../utils/hierarchy');
+
     if (
       user.manager_id !== request.user.id ||
       !isValidStep(request.user.role, user.role)

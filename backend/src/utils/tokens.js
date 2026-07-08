@@ -27,7 +27,7 @@ function generateAccessToken(user) {
     { id: user.id, role: user.role, typ: 'access', jti: crypto.randomUUID() },
     getAccessSecret(),
     {
-      expiresIn: config.jwt.expiry || '15m',
+      expiresIn: config.jwt.accessExpiry || '15m',
     }
   );
 }
@@ -50,9 +50,11 @@ function verifyAccessToken(t) {
   const decoded = jwt.verify(t, getAccessSecret(), {
     algorithms: ['HS256'],
   });
+
   if (decoded.typ && decoded.typ !== 'access') {
     throw new Error('Token type mismatch: expected access');
   }
+
   return decoded;
 }
 
@@ -60,9 +62,11 @@ function verifyRefreshToken(t) {
   const decoded = jwt.verify(t, getRefreshSecret(), {
     algorithms: ['HS256'],
   });
+
   if (decoded.typ && decoded.typ !== 'refresh') {
     throw new Error('Token type mismatch: expected refresh');
   }
+
   return decoded;
 }
 

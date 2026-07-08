@@ -76,7 +76,7 @@ async function routes(fastify) {
       schema: {
         tags: ['Notifications'],
         description: 'Mark a notification as read',
-        params: toSchema(z.object({ id: z.string() })),
+        params: toSchema(z.object({ id: z.string().uuid() })),
       },
       preHandler: [auth, sanitize],
     },
@@ -93,7 +93,7 @@ async function routes(fastify) {
       schema: {
         tags: ['Notifications'],
         description: 'Delete a notification',
-        params: toSchema(z.object({ id: z.string() })),
+        params: toSchema(z.object({ id: z.string().uuid() })),
       },
       preHandler: [auth],
     },

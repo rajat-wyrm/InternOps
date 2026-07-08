@@ -42,15 +42,28 @@ async function isTaskAssignedToUser(taskId, userId) {
   );
   return res.rowCount > 0;
 }
-async function getAllInternEmails() {
+async function getAllInternEmails(limit = 500, offset = 0) {
   const res = await pool.query(
     `SELECT email
      FROM users
      WHERE role IN ('INTERN', 'CAPTAIN')
-       AND email IS NOT NULL`
+       AND email IS NOT NULL
+     ORDER BY id
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
   );
 
   return res.rows.map((row) => row.email);
+}
+
+async function getInternEmailCount() {
+  const res = await pool.query(
+    `SELECT COUNT(*)::int AS count
+     FROM users
+     WHERE role IN ('INTERN', 'CAPTAIN')
+       AND email IS NOT NULL`
+  );
+  return res.rows[0].count;
 }
 async function getTasks(filters, userId, userRole) {
   const params = [];
@@ -210,6 +223,30 @@ async function getProof(proofId) {
   return res.rows[0] || null;
 }
 
+async function updateTask(
+  taskId,
+  { title, description, targetPlatform, taskLink, deadline }
+) {
+  const res = await pool.query(
+    `UPDATE social_tasks
+     SET title = COALESCE($1, title),
+         description = COALESCE($2, description),
+         target_platform = COALESCE($3, target_platform),
+         task_link = COALESCE($4, task_link),
+         deadline = COALESCE($5, deadline)
+     WHERE id = $6 AND deleted_at IS NULL
+     RETURNING *`,
+    [title, description, targetPlatform, taskLink, deadline, taskId]
+  );
+  return res.rows[0] || null;
+}
+
+async function deleteTask(taskId) {
+  await pool.query('UPDATE social_tasks SET deleted_at = NOW() WHERE id = $1', [
+    taskId,
+  ]);
+}
+
 async function deleteProof(proofId) {
   await pool.query(
     'UPDATE proof_submissions SET deleted_at = NOW() WHERE id = $1',
@@ -232,6 +269,8 @@ async function deleteProofImage(imageId) {
 
 module.exports = {
   createTask,
+  updateTask,
+  deleteTask,
   assignTask,
   getUserEmail,
   isTaskAssignedToUser,
@@ -246,4 +285,5 @@ module.exports = {
   getProofImage,
   deleteProofImage,
   getAllInternEmails,
+  getInternEmailCount,
 };

@@ -12,7 +12,9 @@ async function dbTx(fn) {
 
     return result;
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch((rbErr) => {
+      console.error('[dbTx] ROLLBACK failed:', rbErr.message);
+    });
     throw err;
   } finally {
     client.release();
@@ -40,7 +42,9 @@ async function withHierarchyTx(userIdsToLock, fn) {
 
     return result;
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch((rbErr) => {
+      console.error('[dbTx] ROLLBACK failed:', rbErr.message);
+    });
     throw err;
   } finally {
     client.release();

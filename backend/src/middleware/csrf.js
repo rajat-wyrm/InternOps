@@ -66,7 +66,7 @@ function writeSession(reply, sessionId, userId = null) {
   reply.setCookie(SESSION_COOKIE, signed, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/',
   });
 }
@@ -85,7 +85,7 @@ function rotateAndSetCsrf(request, reply, userId = null) {
   reply.setCookie(TOKEN_COOKIE, csrfToken, {
     httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/',
   });
 
@@ -129,6 +129,8 @@ const EXEMPT = [
   '/api/auth/refresh',
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
+  '/docs',
+  '/docs/json',
 ];
 
 async function csrfCheck(request, reply) {

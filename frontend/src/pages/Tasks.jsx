@@ -14,6 +14,7 @@ import {
   Plus,
   X,
   Trash2,
+  Pencil,
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
@@ -315,6 +316,7 @@ export default function Tasks() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
   const [notification, setNotification] = useState(null);
   const [draftFiles, setDraftFiles] = useState({
     taskId: null,
@@ -323,12 +325,24 @@ export default function Tasks() {
   });
   const [deletingProofId, setDeletingProofId] = useState(null);
 
+  // Cleanup objectURLs to prevent memory leak (#932)
+  useEffect(() => {
+    return () => {
+      draftFiles.previews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [draftFiles.previews]);
+
   const showNotification = (msg) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 5000);
   };
 
+  const [editingTask, setEditingTask] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [deletingTaskId, setDeletingTaskId] = useState(null);
+
   const canCreateTask = ['ADMIN', 'SENIOR_TL'].includes(user?.role);
+  const canManageTask = ['ADMIN', 'SENIOR_TL'].includes(user?.role);
   const canVerify = ['ADMIN', 'CAPTAIN', 'TL', 'SENIOR_TL'].includes(
     user?.role
   );
@@ -396,6 +410,26 @@ export default function Tasks() {
       queryClient.invalidateQueries({ queryKey: ['proofs'] });
       queryClient.invalidateQueries({ queryKey: ['myProofs'] });
     },
+  });
+
+  const updateTaskMutation = useMutation({
+    mutationFn: ({ id, data }) => api.patch(`/tasks/${id}`, data),
+    onSuccess: () => {
+      setEditingTask(null);
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    onError: (err) =>
+      showNotification(err.response?.data?.error || 'Update failed'),
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: (id) => api.delete(`/tasks/${id}`),
+    onSuccess: () => {
+      setDeletingTaskId(null);
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    onError: (err) =>
+      showNotification(err.response?.data?.error || 'Delete failed'),
   });
 
   const deleteImageMutation = useMutation({
@@ -516,19 +550,77 @@ export default function Tasks() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
-                        {t.title}
-                      </h3>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
+                          {t.title}
+                        </h3>
 
-                      {t.target_platform && (
-                        <Badge color="purple">{t.target_platform}</Badge>
-                      )}
+                        {t.target_platform && (
+                          <Badge color="purple">{t.target_platform}</Badge>
+                        )}
 
-                      {t.deadline && (
-                        <Badge color={isOverdue ? 'red' : 'green'}>
-                          {isOverdue ? 'Overdue' : 'Active'}
-                        </Badge>
+                        {t.deadline && (
+                          <Badge color={isOverdue ? 'red' : 'green'}>
+                            {isOverdue ? 'Overdue' : 'Active'}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {canManageTask && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                            title="Edit task"
+                            onClick={() => {
+                              setEditingTask(t.id);
+                              setEditForm({
+                                title: t.title,
+                                description: t.description || '',
+                                targetPlatform: t.target_platform || '',
+                                taskLink: t.task_link || '',
+                                deadline: t.deadline
+                                  ? new Date(t.deadline)
+                                      .toISOString()
+                                      .slice(0, 16)
+                                  : '',
+                              });
+                            }}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          {deletingTaskId === t.id ? (
+                            <div className="flex items-center gap-1 animate-fade-in">
+                              <button
+                                type="button"
+                                className="px-2 py-1 text-xs rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                                onClick={() => setDeletingTaskId(null)}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="px-2 py-1 text-xs rounded-xl bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60"
+                                disabled={deleteTaskMutation.isPending}
+                                onClick={() => deleteTaskMutation.mutate(t.id)}
+                              >
+                                {deleteTaskMutation.isPending
+                                  ? 'Deleting…'
+                                  : 'Confirm'}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="p-1.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition"
+                              title="Delete task"
+                              onClick={() => setDeletingTaskId(t.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
 
@@ -564,6 +656,88 @@ export default function Tasks() {
                     </div>
                   </div>
                 </div>
+
+                {editingTask === t.id && (
+                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3 animate-fade-in">
+                    <p className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Edit Task
+                    </p>
+                    <input
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
+                      placeholder="Title"
+                      value={editForm.title}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, title: e.target.value })
+                      }
+                    />
+                    <textarea
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none resize-none"
+                      placeholder="Description"
+                      rows={2}
+                      value={editForm.description}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          description: e.target.value,
+                        })
+                      }
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <input
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
+                        placeholder="Platform"
+                        value={editForm.targetPlatform}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            targetPlatform: e.target.value,
+                          })
+                        }
+                      />
+                      <input
+                        type="datetime-local"
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
+                        value={editForm.deadline}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, deadline: e.target.value })
+                        }
+                      />
+                    </div>
+                    <input
+                      type="url"
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
+                      placeholder="Task link (https://…)"
+                      value={editForm.taskLink}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, taskLink: e.target.value })
+                      }
+                    />
+                    <div className="flex items-center gap-2">
+                      <Btn
+                        variant="outline"
+                        className="rounded-2xl py-1.5 text-sm"
+                        onClick={() => setEditingTask(null)}
+                      >
+                        Cancel
+                      </Btn>
+                      <Btn
+                        variant="primary"
+                        className="rounded-2xl py-1.5 text-sm"
+                        disabled={updateTaskMutation.isPending}
+                        onClick={() =>
+                          updateTaskMutation.mutate({
+                            id: t.id,
+                            data: editForm,
+                          })
+                        }
+                      >
+                        {updateTaskMutation.isPending
+                          ? 'Saving…'
+                          : 'Save changes'}
+                      </Btn>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex flex-wrap items-center gap-2 mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
                   {canVerify && (

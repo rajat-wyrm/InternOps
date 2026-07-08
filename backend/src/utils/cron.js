@@ -1,4 +1,4 @@
-﻿const cron = require('node-cron');
+const cron = require('node-cron');
 const fs = require('fs').promises;
 const path = require('path');
 const pool = require('../config/db');
@@ -196,6 +196,7 @@ function setupCronJobs() {
               SELECT 1 FROM proof_submissions ps
               WHERE ps.task_id = st.id AND ps.intern_id = u.id AND ps.deleted_at IS NULL
             )
+          LIMIT 100
           `
         );
 

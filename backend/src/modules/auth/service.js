@@ -22,8 +22,15 @@ const DUMMY_USER = {
 };
 
 async function register(data, creator) {
-  if (data.managerId) {
-    const manager = await repo.findByIdRaw(data.managerId);
+  // Default to the creator (admin) as manager if none was explicitly chosen,
+  // so users created via Admin > Users also show up in team/hierarchy views.
+  const managerId =
+    data.role === 'ADMIN'
+      ? data.managerId || null
+      : data.managerId || creator.id;
+
+  if (managerId) {
+    const manager = await repo.findByIdRaw(managerId);
     if (!manager) throw new Error('Manager not found');
     if (!isValidStep(manager.role, data.role)) {
       throw new Error(
@@ -32,7 +39,7 @@ async function register(data, creator) {
     }
   }
 
-  const user = await repo.createUser(data);
+  const user = await repo.createUser({ ...data, managerId });
 
   await createAuditLog({
     userId: creator.id,
@@ -74,6 +81,10 @@ async function login(email, password, ip, userAgent) {
     }
   } catch (err) {
     console.error('Redis Brute Force Check Failed:', err);
+
+    throw new UnauthorizedError(
+      'Login temporarily unavailable. Please try again later.'
+    );
   }
 
   const user = await repo.findByEmail(email);
@@ -103,15 +114,6 @@ async function login(email, password, ip, userAgent) {
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
   await repo.storeRefreshTokenRedis(user.id, hashToken(refresh), expires);
-
-  await createAuditLog({
-    userId: user.id,
-    action: 'LOGIN',
-    resourceType: 'auth',
-    resourceId: user.id,
-    ipAddress: ip,
-    userAgent,
-  });
 
   return {
     accessToken: access,

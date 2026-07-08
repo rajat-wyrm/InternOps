@@ -192,6 +192,9 @@ app.get('/fallback', async (req, reply) => {
 });
 
 app.addHook('onRequest', metrics.trackActiveRequests);
+app.addHook('onRequest', async (request) => {
+  request.startTime = Date.now();
+});
 
 app.addHook('onRequest', async (request) => {
   request.log.info(
@@ -204,7 +207,9 @@ app.addHook('onRequest', async (request) => {
   );
 });
 
-app.addHook('onResponse', async (request) => {
+app.addHook('onResponse', async (request, reply) => {
+  metrics.observeHttpRequest(request, reply, request.startTime);
+
   // Layer 3: Defensive hook - safely check for audit data using optional chaining
   if (!request?.auditOnResponse) return;
 
