@@ -12,11 +12,17 @@ async function dbTx(fn) {
 
     return result;
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+  try {
+    await client.query('ROLLBACK');
+  } catch (rollbackErr) {
+    client.release(true);
     throw err;
-  } finally {
-    client.release();
   }
+
+  throw err;
+} finally {
+  client.release();
+}
 }
 
 async function withHierarchyTx(userIdsToLock, fn) {
@@ -39,12 +45,18 @@ async function withHierarchyTx(userIdsToLock, fn) {
     await client.query('COMMIT');
 
     return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+  }catch (err) {
+  try {
+    await client.query('ROLLBACK');
+  } catch (rollbackErr) {
+    client.release(true);
     throw err;
-  } finally {
-    client.release();
   }
+
+  throw err;
+} finally {
+  client.release();
+}
 }
 
 module.exports = { dbTx, withHierarchyTx };
