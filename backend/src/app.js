@@ -323,9 +323,9 @@ const start = async () => {
       host: config.host,
     });
 
-    initializeWebSocket(app.server);
+    initializeWebSocket(app.server, app.log);
 
-    console.log(`Server listening on port ${config.port}`);
+    app.log.info({ port: config.port }, `Server listening on port ${config.port}`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);
@@ -333,7 +333,7 @@ const start = async () => {
 };
 
 const gracefulShutdown = async (signal) => {
-  console.log(`Received ${signal}, shutting down gracefully...`);
+  app.log.info({ signal }, `Received ${signal}, shutting down gracefully...`);
 
   try {
     // stop accepting new requests + finish in-flight requests
@@ -342,10 +342,10 @@ const gracefulShutdown = async (signal) => {
     // close DB pool connections
     await pool.end();
 
-    console.log('Cleanup completed. Exiting now.');
+    app.log.info('Cleanup completed. Exiting now.');
     process.exit(0);
   } catch (err) {
-    console.error('Error during shutdown:', err);
+    app.log.error({ err }, 'Error during shutdown');
     process.exit(1);
   }
 };

@@ -3,8 +3,10 @@ const config = require('./config');
 const { verifyAccessToken } = require('./utils/tokens');
 
 let io = null;
+let log = null;
 
-function initializeWebSocket(server) {
+function initializeWebSocket(server, logger) {
+  log = logger;
   io = new Server(server, {
     cors: {
       origin: config.corsOrigin,
@@ -31,7 +33,7 @@ function initializeWebSocket(server) {
   io.on('connection', (socket) => {
     socket.join(`user_${socket.userId}`);
     socket.on('disconnect', () => {
-      console.log('Client disconnected:', socket.id);
+      log.info({ socketId: socket.id }, 'Client disconnected');
     });
   });
   return io;

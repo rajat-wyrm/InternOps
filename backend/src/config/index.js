@@ -1,4 +1,11 @@
 require('dotenv').config();
+const pino = require('pino');
+
+const log = pino(
+  process.env.NODE_ENV === 'development'
+    ? { transport: { target: 'pino-pretty' } }
+    : {}
+);
 
 function buildRedisUrl() {
   const restUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -16,8 +23,8 @@ function resolveRefreshSecret() {
   // validateEnv before we get here; outside production fall back to a derived
   // value so dev/CI keep functioning, with a warning.
   if (process.env.NODE_ENV !== 'test') {
-    console.warn(
-      '⚠️ JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
+    log.warn(
+      'JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
     );
   }
   return process.env.JWT_SECRET

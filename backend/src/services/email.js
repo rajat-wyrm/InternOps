@@ -2,6 +2,13 @@ const nodemailer = require('nodemailer');
 const config = require('../config');
 const path = require('path');
 const fs = require('fs');
+const pino = require('pino');
+
+const log = pino(
+  process.env.NODE_ENV === 'development'
+    ? { transport: { target: 'pino-pretty' } }
+    : {}
+);
 
 const rateLimitMap = new Map();
 const bounceList = new Set();
@@ -51,7 +58,7 @@ class EmailService {
       config.email.pass !== 'your-smtp-password' &&
       !config.email.pass.startsWith('your-');
     if (!config.email.host || !hasValidCreds) {
-      console.warn('[Email] SMTP not configured – using console fallback');
+      log.warn('SMTP not configured – using console fallback');
       return null;
     }
     this.transporter = nodemailer.createTransport({
@@ -141,7 +148,7 @@ class EmailService {
 
     const transporter = this.getTransporter();
     if (!transporter) {
-      console.log(`[Email] Placeholder -> To: ${to}, Subject: "${subject}"`);
+      log.info({ to, subject }, 'Email placeholder (no SMTP transporter configured)');
       metrics.sent++;
       return {
         messageId: 'console-' + Date.now(),
@@ -169,8 +176,9 @@ class EmailService {
         return info;
       } catch (err) {
         lastError = err;
-        console.error(
-          `[Email] Attempt ${attempt + 1}/${maxRetries + 1} failed for ${to}: ${err.message}`
+        log.error(
+          { to, attempt: attempt + 1, maxAttempts: maxRetries + 1, err: err.message },
+          'Email send attempt failed'
         );
         if (err.responseCode >= 500 || /55[0135]/.test(err.message)) {
           bounceList.add(to);
@@ -181,9 +189,7 @@ class EmailService {
     }
 
     metrics.failed++;
-    console.error(
-      `[Email] All attempts failed for ${to}: ${lastError?.message}`
-    );
+    log.error({ to, err: lastError?.message }, 'All email send attempts failed');
     throw lastError || new Error(`Failed to send email to ${to}`);
   }
 

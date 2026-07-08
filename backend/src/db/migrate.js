@@ -2,6 +2,13 @@ const pool = require('../config/db');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const pino = require('pino');
+
+const log = pino(
+  process.env.NODE_ENV === 'development'
+    ? { transport: { target: 'pino-pretty' } }
+    : {}
+);
 
 const MIGRATION_REGEX = /^\d{3}_[a-z0-9_]+\.sql$/;
 const MAX_RETRIES = 3;
@@ -114,8 +121,9 @@ async function migrate(migrationsDir) {
     for (const [oldName, newName] of Object.entries(MIGRATION_RENAMES)) {
       if (appliedNames.has(oldName)) {
         if (!appliedNames.has(newName)) {
-          console.log(
-            `Renaming applied migration record in DB: ${oldName} -> ${newName}`
+          log.info(
+            { oldName, newName },
+            'Renaming applied migration record in DB'
           );
           await client.query(
             'UPDATE _migrations SET name = $1 WHERE name = $2',
@@ -156,13 +164,13 @@ async function migrate(migrationsDir) {
             `Migration "${name}" has been modified since it was applied. Expected checksum ${stored.rows[0].sha256}, got ${checksum}.`
           );
         }
-        console.log(`Skipping (already applied): ${name}`);
+        log.info({ migration: name }, 'Skipping (already applied)');
         continue;
       }
 
       try {
         await client.query(sql);
-        console.log(`Migration applied: ${name}`);
+        log.info({ migration: name }, 'Migration applied');
         await client.query('INSERT INTO _migrations (name) VALUES ($1)', [
           name,
         ]);
@@ -178,11 +186,10 @@ async function migrate(migrationsDir) {
     }
 
     await client.query('COMMIT');
-    console.log('All pending migrations applied successfully.');
+    log.info('All pending migrations applied successfully.');
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
-    console.error('Migration error:', e.message);
-    console.error(e.stack);
+    log.error({ err: e }, 'Migration error');
     throw e;
   } finally {
     client.release();
