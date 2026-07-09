@@ -108,3 +108,6 @@ InternOps/
 
 This project was developed for efficient intern operations management.  
 All rights reserved.
+
+
+👉 View our history of updates in the **[CHANGELOG.md](CHANGELOG.md)**.
