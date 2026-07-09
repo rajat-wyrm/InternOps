@@ -69,18 +69,18 @@ export default function Notifications() {
   const items = data?.data || [];
   const unread = items.filter((n) => !n.read).length;
   const handleMarkRead = useCallback(
-  (id) => {
-    markReadMut.mutate(id);
-  },
-  [markReadMut]
-);
+    (id) => {
+      markReadMut.mutate(id);
+    },
+    [markReadMut]
+  );
 
-const handleDelete = useCallback(
-  (id) => {
-    deleteMut.mutate(id);
-  },
-  [deleteMut]
-);
+  const handleDelete = useCallback(
+    (id) => {
+      deleteMut.mutate(id);
+    },
+    [deleteMut]
+  );
 
   return (
     <div className="animate-fade-in-up">
