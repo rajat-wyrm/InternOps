@@ -227,6 +227,7 @@ export default function DashboardLayout() {
     return (
       <Link
         to={n.path}
+        aria-label={n.label}
         title={collapsed ? n.label : undefined}
         onClick={saveSidebarScroll}
         className={`group relative flex items-center gap-3 rounded-2xl text-sm font-bold transition-all duration-200
@@ -340,6 +341,7 @@ export default function DashboardLayout() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setCollapsed((c) => !c)}
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition font-extrabold"
             >
               {collapsed ? '»' : '«'}
@@ -356,6 +358,7 @@ export default function DashboardLayout() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setDark((d) => !d)}
+              aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
               className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition text-slate-600 dark:text-slate-300"
             >
               {dark ? (
@@ -366,6 +369,7 @@ export default function DashboardLayout() {
             </button>
             <Link
               to="/notifications"
+              aria-label="Notifications"
               onClick={saveSidebarScroll}
               className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition"
             >

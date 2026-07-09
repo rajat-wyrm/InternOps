@@ -94,6 +94,7 @@ export default function CreateTaskForm() {
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
             required
+            maxLength={200}
             disabled={createMutation.isPending}
           />
         </div>

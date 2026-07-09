@@ -1,6 +1,6 @@
 const pool = require('../../config/db');
-const fs = require('fs'); // ADD THIS
-const path = require('path'); // ADD THIS
+const fs = require('fs');
+const path = require('path');
 const config = require('../../config');
 async function updateAvatarUrl(userId, avatarUrl) {
   await pool.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [
@@ -16,9 +16,11 @@ async function deleteFile(dbSavedPath) {
     await fs.promises.unlink(absolutePath);
   } catch (err) {
     if (err.code !== 'ENOENT') throw err;
-    console.warn(
-      `[deleteFile] File not found, skipping unlink: ${absolutePath}`
-    );
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[deleteFile] File not found, skipping unlink: ${absolutePath}`
+      );
+    }
   }
 }
 

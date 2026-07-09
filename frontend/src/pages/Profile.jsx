@@ -226,15 +226,46 @@ export default function Profile() {
                   )}
 
                   <label
-                    className="absolute -bottom-2 -right-2 w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center cursor-pointer hover:scale-105 hover:bg-indigo-50 dark:hover:bg-slate-700 transition-all"
-                    title="Change avatar"
+                    className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center transition-all ${
+                      avatarMut.isPending
+                        ? 'bg-slate-200 dark:bg-slate-700 cursor-not-allowed opacity-60'
+                        : 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 cursor-pointer hover:scale-105 hover:bg-indigo-50 dark:hover:bg-slate-700'
+                    }`}
+                    title={
+                      avatarMut.isPending ? 'Uploading...' : 'Change avatar'
+                    }
                   >
-                    <Camera className="w-4 h-4" />
+                    {avatarMut.isPending ? (
+                      <svg
+                        className="animate-spin w-4 h-4 text-indigo-600 dark:text-indigo-300"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                    ) : (
+                      <Camera className="w-4 h-4" />
+                    )}
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
                       className="hidden"
+                      disabled={avatarMut.isPending}
                       onChange={(e) => {
+                        if (avatarMut.isPending) return;
+
                         const file = e.target.files?.[0];
 
                         if (!file) return;
