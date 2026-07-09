@@ -21,6 +21,11 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import Departments from './pages/admin/Departments';
 import AuditLog from './pages/admin/AuditLog';
 import Notices from './pages/admin/Notices';
+import Certificates from './pages/admin/Certificates';
+import BulkGenerate from './pages/admin/BulkGenerate';
+import CanvaTemplates from './pages/admin/CanvaTemplates';
+import AICertificates from './pages/admin/AICertificates';
+import QuickGenerate from './pages/admin/QuickGenerate';
 import useAuthStore from './store/auth';
 import api from './lib/axios';
 import RoleGuard from './components/RoleGuard';
@@ -32,7 +37,30 @@ function Private({ children }) {
   const token = useAuthStore((s) => s.accessToken);
   const hydrated = useAuthStore((s) => s.hydrated);
 
-  if (!hydrated) return null;
+  if (!hydrated)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <div className="flex items-center gap-3 text-slate-500">
+          <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24">
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+              fill="none"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          <span>Loading...</span>
+        </div>
+      </div>
+    );
   if (!token) return <Navigate to="/login" replace />;
   return children;
 }
@@ -185,6 +213,48 @@ export default function App() {
             element={
               <RoleGuard allowedRoles={['ADMIN']}>
                 <AuditLog />
+              </RoleGuard>
+            }
+          />
+
+          {/* Certificate & Canva Routes (Admin only) */}
+          <Route
+            path="quick-generate"
+            element={
+              <RoleGuard allowedRoles={['ADMIN']}>
+                <QuickGenerate />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="certificates"
+            element={
+              <RoleGuard allowedRoles={['ADMIN']}>
+                <Certificates />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="bulk-generate"
+            element={
+              <RoleGuard allowedRoles={['ADMIN']}>
+                <BulkGenerate />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="canva-templates"
+            element={
+              <RoleGuard allowedRoles={['ADMIN']}>
+                <CanvaTemplates />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="ai-certificates"
+            element={
+              <RoleGuard allowedRoles={['ADMIN']}>
+                <AICertificates />
               </RoleGuard>
             }
           />

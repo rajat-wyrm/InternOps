@@ -127,8 +127,33 @@ async function notifyAdmin(message) {
   }
 }
 
+async function bulkSend(notifications, client = pool) {
+  if (!Array.isArray(notifications) || notifications.length === 0) {
+    return [];
+  }
+
+  const values = [];
+  const placeholders = [];
+  let index = 1;
+
+  for (const n of notifications) {
+    placeholders.push(`($${index++}, $${index++})`);
+    values.push(n.user_id, n.message);
+  }
+
+  const query = `
+    INSERT INTO notifications (user_id, message)
+    VALUES ${placeholders.join(', ')}
+    RETURNING *
+  `;
+
+  const res = await client.query(query, values);
+  return res.rows;
+}
+
 module.exports = {
   send,
+  bulkSend,
   notifyAdmin,
   get,
   markRead,

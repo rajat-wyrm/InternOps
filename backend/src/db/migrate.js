@@ -2,6 +2,13 @@ const pool = require('../config/db');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const pino = require('pino');
+
+const log = pino(
+  process.env.NODE_ENV === 'development'
+    ? { transport: { target: 'pino-pretty' } }
+    : {}
+);
 
 const MIGRATION_REGEX = /^\d{3}_[a-z0-9_]+\.sql$/;
 const MAX_RETRIES = 3;
@@ -159,7 +166,7 @@ async function migrate(migrationsDir) {
             `Migration "${name}" has been modified since it was applied. Expected checksum ${stored.rows[0].sha256}, got ${checksum}.`
           );
         }
-        console.log(`Skipping (already applied): ${name}`);
+        log.info({ migration: name }, 'Skipping (already applied)');
         continue;
       }
 
@@ -178,6 +185,36 @@ async function migrate(migrationsDir) {
       console.error(message);
       throw new Error(message);
     } finally {
+      client.release();
+    }
+      try {
+        await client.query(sql);
+        log.info({ migration: name }, 'Migration applied');
+        await client.query('INSERT INTO _migrations (name) VALUES ($1)', [
+          name,
+        ]);
+        await client.query(
+          'INSERT INTO _migration_checksums (name, sha256) VALUES ($1, $2)',
+          [name, checksum]
+        );
+      } catch (execErr) {
+        throw new Error(
+          `Migration failed in file "${name}": ${execErr.message}\nSQL:\n${sql.substring(0, 500)}...`
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    log.info('All pending migrations applied successfully.');
+  } catch (e) {
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+    }
+
+    log.error({ err: e }, 'Migration error');
+    throw e;
+  } finally {
+    if (client) {
       client.release();
     }
   }

@@ -49,4 +49,15 @@ module.exports = async function routes(fastify, opts) {
     prefix: '/uptoskills',
   });
   fastify.register(noticesRoutes);
+  fastify.register(require('./modules/certificates/routes'), {
+    prefix: '/certificates',
+  });
+  fastify.register(require('./modules/canva/routes'), { prefix: '/canva' });
+  fastify.register(require('./modules/ai-certificates/routes'), {
+    prefix: '/ai-certificates',
+  });
+
+  // Public certificate verification (no auth)
+  const { verifyCertificate } = require('./modules/certificates/verify');
+  verifyCertificate(fastify);
 };

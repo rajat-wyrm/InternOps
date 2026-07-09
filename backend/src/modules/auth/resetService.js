@@ -28,7 +28,13 @@ async function forgotPassword(email, requestInfo) {
   }
 
   const token = await repo.createResetToken(user.id);
-  await emailService.sendPasswordReset(email, token);
+
+  try {
+    await emailService.sendPasswordReset(email, token);
+  } catch (err) {
+    // Email failure should not orphan the token or skip rate limiting (#993, #945)
+    console.error('[forgotPassword] Email send failed:', err.message);
+  }
 
   await repo.recordResetAttempt(email);
   await createAuditLog({

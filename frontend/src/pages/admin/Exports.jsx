@@ -77,7 +77,8 @@ export default function Exports() {
 
       a.click();
 
-      window.URL.revokeObjectURL(url);
+      // Delay revoke to allow download to start (#950)
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (err) {
       alert(err.response?.data?.error || 'Download failed');
     } finally {

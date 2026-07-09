@@ -19,6 +19,11 @@ import {
   Sun,
   Moon,
   Megaphone,
+  Award,
+  Layers,
+  Palette,
+  Sparkles,
+  Zap,
 } from 'lucide-react';
 
 import { useState, useEffect, useRef } from 'react';
@@ -99,6 +104,36 @@ const adminNav = [
     path: '/assistant',
     label: 'AI Assistant',
     icon: Bot,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/quick-generate',
+    label: 'Quick Generate',
+    icon: Zap,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/certificates',
+    label: 'Certificates',
+    icon: Award,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/bulk-generate',
+    label: 'Bulk Generate',
+    icon: Layers,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/canva-templates',
+    label: 'Templates & Canva',
+    icon: Palette,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/ai-certificates',
+    label: 'AI Certificates',
+    icon: Sparkles,
     allowedRoles: ADMIN_ONLY_ROLES,
   },
 ];

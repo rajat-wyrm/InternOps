@@ -316,6 +316,7 @@ export default function Tasks() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
   const [notification, setNotification] = useState(null);
   const [draftFiles, setDraftFiles] = useState({
     taskId: null,
@@ -327,6 +328,13 @@ export default function Tasks() {
   });
   const [deletingProofId, setDeletingProofId] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
+
+  // Cleanup objectURLs to prevent memory leak (#932)
+  useEffect(() => {
+    return () => {
+      draftFiles.previews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [draftFiles.previews]);
 
   const showNotification = (msg) => {
     setNotification(msg);

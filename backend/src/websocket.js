@@ -1,10 +1,12 @@
-﻿const { Server } = require('socket.io');
+const { Server } = require('socket.io');
 const config = require('./config');
 const { verifyAccessToken } = require('./utils/tokens');
 
 let io = null;
+let log = null;
 
-function initializeWebSocket(server) {
+function initializeWebSocket(server, logger) {
+  log = logger;
   io = new Server(server, {
     cors: {
       origin: config.corsOrigin,
@@ -15,11 +17,15 @@ function initializeWebSocket(server) {
   io.use((socket, next) => {
     try {
       const token = socket.handshake.auth.token;
-      if (!token) return next(new Error('Authentication error'));
+      if (!token) {
+        socket.disconnect(true);
+        return next(new Error('Authentication error'));
+      }
       const decoded = verifyAccessToken(token);
       socket.userId = decoded.id;
       next();
     } catch {
+      socket.disconnect(true);
       next(new Error('Authentication error'));
     }
   });
@@ -27,7 +33,7 @@ function initializeWebSocket(server) {
   io.on('connection', (socket) => {
     socket.join(`user_${socket.userId}`);
     socket.on('disconnect', () => {
-      console.log('Client disconnected:', socket.id);
+      log.info({ socketId: socket.id }, 'Client disconnected');
     });
   });
   return io;

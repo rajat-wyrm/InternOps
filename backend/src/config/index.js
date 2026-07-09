@@ -1,23 +1,86 @@
 require('dotenv').config();
+const pino = require('pino');
 
-function buildRedisUrl() {
+const log = pino(
+  process.env.NODE_ENV === 'development'
+    ? { transport: { target: 'pino-pretty' } }
+    : {}
+);
+
+function buildRedisConfig() {
   const restUrl = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!restUrl || !token) return null;
-  // Extract host from url (remove https://)
-  const host = restUrl.replace('https://', '').replace(/\/$/, '');
-  return `rediss://default:${token}@${host}:6379`;
+
+  const explicitHost = process.env.REDIS_HOST;
+  const explicitPort = parseInt(process.env.REDIS_PORT, 10) || 6379;
+  const explicitUsername = process.env.REDIS_USERNAME || 'default';
+  const explicitPassword = process.env.REDIS_PASSWORD;
+
+  if (explicitHost && explicitPassword) {
+    return {
+      enabled: true,
+      host: explicitHost,
+      port: explicitPort,
+      username: explicitUsername,
+      password: explicitPassword,
+      tls: process.env.REDIS_TLS !== 'false',
+    };
+  }
+
+  if (!restUrl || !token) {
+    return {
+      enabled: false,
+      host: null,
+      port: 6379,
+      username: 'default',
+      password: null,
+      tls: true,
+    };
+  }
+
+  let host;
+
+  try {
+    host = new URL(restUrl).hostname;
+  } catch {
+    host = restUrl
+      .replace(/^https?:\/\//, '')
+      .replace(/^rediss?:\/\//, '')
+      .replace(/\/$/, '')
+      .split('/')[0]
+      .split('@')
+      .pop()
+      .split(':')[0];
+  }
+
+  if (!host) {
+    return {
+      enabled: false,
+      host: null,
+      port: 6379,
+      username: 'default',
+      password: null,
+      tls: true,
+    };
+  }
+
+  return {
+    enabled: true,
+    host,
+    port: 6379,
+    username: 'default',
+    password: token,
+    tls: true,
+  };
 }
 
 function resolveRefreshSecret() {
   const independent = process.env.JWT_REFRESH_SECRET;
   if (independent && independent.trim() !== '') return independent;
-  // No independent secret configured. In production this is rejected by
-  // validateEnv before we get here; outside production fall back to a derived
-  // value so dev/CI keep functioning, with a warning.
+
   if (process.env.NODE_ENV !== 'test') {
-    console.warn(
-      '⚠️ JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
+    log.warn(
+      'JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
     );
   }
   return process.env.JWT_SECRET
@@ -33,20 +96,17 @@ module.exports = {
   dbPoolMax: parseInt(process.env.DB_POOL_MAX, 10) || 20,
   jwt: {
     secret: process.env.JWT_SECRET,
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     accessSecret: process.env.JWT_SECRET,
-    // Independent refresh secret. Falls back to a derived value only outside
-    // production so local/CI keep working; production must set JWT_REFRESH_SECRET
-    // (enforced by validateEnv).
     refreshSecret: resolveRefreshSecret(),
     accessExpiry: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
-    refreshExpiry: process.env.JWT_EXPIRES_IN || '7d',
+    refreshExpiry:
+      process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '7d',
   },
   apiKey: process.env.API_KEY,
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE, 10) || 5242880,
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-  redisUrl: buildRedisUrl(),
+  redis: buildRedisConfig(),
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,

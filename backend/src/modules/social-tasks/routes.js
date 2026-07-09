@@ -219,6 +219,13 @@ module.exports = async function socialTasksRoutes(fastify) {
           details: parsed.error.issues,
         });
       }
+
+      // Verify task exists before assigning (#988)
+      const task = await repo.getTaskById(req.params.id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
       const { userIds } = parsed.data;
       if (userIds.length > 0) {
         await repo.assignTask(req.params.id, userIds, req.user.id);
