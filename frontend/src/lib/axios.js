@@ -17,6 +17,7 @@ function getBaseUrl() {
 const api = axios.create({
   baseURL: getBaseUrl(),
   withCredentials: true,
+  timeout: 15000,
 });
 
 // The backend's CSRF guard requires the X-CSRF-Token header on mutating
