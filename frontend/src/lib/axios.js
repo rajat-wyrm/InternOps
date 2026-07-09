@@ -202,9 +202,10 @@ api.interceptors.response.use(
         const newToken = refreshRes.data?.accessToken;
 
         if (newToken) {
+          const meRes = await api.get('/users/me');
           // Store refreshed token in memory only.
           if (_authStore) {
-            _authStore.getState().setAuth({ accessToken: newToken });
+            _authStore.getState().setAuth({ accessToken: newToken, user: meRes.data, });
           }
 
           // The server rotated the refresh cookie. The CSRF token may also
