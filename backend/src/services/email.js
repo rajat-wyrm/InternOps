@@ -11,17 +11,24 @@ const log = pino(
 );
 
 const rateLimitMap = new Map();
-const bounceList = new Set();
+const bounceList = new Map();
 
 // Periodic cleanup to prevent memory leaks (#990, #948, #994, #944)
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const BOUNCE_TTL_MS = 24 * 60 * 60 * 1000;
 setInterval(() => {
   const now = Date.now();
   for (const [email, timestamps] of rateLimitMap) {
     const fresh = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
     if (fresh.length === 0) rateLimitMap.delete(email);
     else rateLimitMap.set(email, fresh);
+  }
+
+  for (const [email, timestamp] of bounceList) {
+    if (now - timestamp >= BOUNCE_TTL_MS) {
+      bounceList.delete(email);
+    }
   }
 }, CLEANUP_INTERVAL_MS).unref();
 
@@ -84,9 +91,11 @@ class EmailService {
   }
 
   _checkBounce(to) {
-    if (config.email.bounceCheckEnabled && bounceList.has(to)) {
+    const bouncedAt = bounceList.get(to);
+
+    if (config.email.bounceCheckEnabled && bouncedAt && Date.now() - bouncedAt < BOUNCE_TTL_MS) {
       throw new Error(`Bounced address suppressed: ${to}`);
-    }
+   }
   }
 
   _render(templateName, data) {
@@ -173,7 +182,7 @@ class EmailService {
         const info = await transporter.sendMail(mailOptions);
         metrics.sent++;
         if (info.rejected && info.rejected.length > 0) {
-          info.rejected.forEach((addr) => bounceList.add(addr));
+          info.rejected.forEach((addr) => bounceList.set(addr, Date.now()));
           metrics.bounced += info.rejected.length;
         }
         return info;
@@ -189,7 +198,7 @@ class EmailService {
           'Email send attempt failed'
         );
         if (err.responseCode >= 500 || /55[0135]/.test(err.message)) {
-          bounceList.add(to);
+          bounceList.set(to, Date.now());
           metrics.bounced++;
           break;
         }
@@ -249,7 +258,7 @@ class EmailService {
   }
 
   _trackBounce(address) {
-    bounceList.add(address);
+    bounceList.set(address, Date.now());
   }
 
   _clearBounceList() {
