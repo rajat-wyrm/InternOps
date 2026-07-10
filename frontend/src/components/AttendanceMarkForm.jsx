@@ -19,7 +19,7 @@ export default function AttendanceMarkForm() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
-const { data: departments = [] } = useQuery({
+  const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
   });
@@ -28,7 +28,9 @@ const { data: departments = [] } = useQuery({
     queryKey: ['teamMembers', departmentId],
     queryFn: () =>
       api
-        .get('/team/members', { params: { department_id: departmentId || undefined } })
+        .get('/team/members', {
+          params: { department_id: departmentId || undefined },
+        })
         .then((res) => res.data),
   });
 
@@ -64,7 +66,7 @@ const { data: departments = [] } = useQuery({
       label: `${u.full_name || u.email} (${u.role})`,
     })),
   ];
-  
+
   const departmentOptions = [
     { value: '', label: 'All departments' },
     ...departments.map((d) => ({ value: d.id, label: d.name })),

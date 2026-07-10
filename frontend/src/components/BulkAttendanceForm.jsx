@@ -31,7 +31,9 @@ export default function BulkAttendanceForm() {
     queryKey: ['teamMembers', departmentId],
     queryFn: () =>
       api
-        .get('/team/members', { params: { department_id: departmentId || undefined } })
+        .get('/team/members', {
+          params: { department_id: departmentId || undefined },
+        })
         .then((res) => res.data),
   });
 

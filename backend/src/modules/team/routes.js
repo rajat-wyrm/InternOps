@@ -74,7 +74,7 @@ function toCsv(rows) {
 
 async function routes(fastify) {
   // List everyone in the requester's team, with details + performance summary.
-fastify.get(
+  fastify.get(
     '/members',
     {
       preHandler: [auth, rbac(...MANAGER_ROLES)],
