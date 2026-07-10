@@ -46,7 +46,7 @@ const PERFORMANCE_COLUMNS = `
 `;
 
 // Everyone in the requester's downward hierarchy (direct + indirect reports).
-async function getTeamMembers(managerId) {
+async function getTeamMembers(managerId, departmentId) {
   const query = `
     WITH RECURSIVE team AS (
       SELECT id, manager_id, 1 AS depth
@@ -60,9 +60,10 @@ async function getTeamMembers(managerId) {
     FROM team t
     JOIN users u ON u.id = t.id
     ${PERFORMANCE_JOINS}
+    WHERE ($2::uuid IS NULL OR u.department_id = $2)
     ORDER BY t.depth, u.role, u.full_name
   `;
-  const { rows } = await pool.query(query, [managerId]);
+  const { rows } = await pool.query(query, [managerId, departmentId || null]);
   return rows;
 }
 
