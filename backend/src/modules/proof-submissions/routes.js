@@ -108,34 +108,47 @@ async function routes(fastify) {
       await fs.promises.mkdir(absoluteUploadDir, { recursive: true });
 
       const dbSavedPaths = [];
+      const writtenFiles = [];
 
-      for (const data of filesData) {
-        const ext = path.extname(data.filename).toLowerCase();
-        if (
-          !ALLOWED_MIMES.includes(data.mimetype) ||
-          !ALLOWED_EXTS.includes(ext)
-        ) {
-          return reply
-            .status(400)
-            .send({ error: 'Only JPEG, PNG, GIF images are allowed' });
+      try {
+        for (const data of filesData) {
+          const ext = path.extname(data.filename).toLowerCase();
+          if (
+            !ALLOWED_MIMES.includes(data.mimetype) ||
+            !ALLOWED_EXTS.includes(ext)
+          ) {
+            return reply
+              .status(400)
+              .send({ error: 'Only JPEG, PNG, GIF images are allowed' });
+          }
+          if (data.truncated) {
+            return reply.status(400).send({ error: 'File size exceeds limit' });
+          }
+
+          const firstChunk = data.buffer.subarray(0, 16);
+          const detectedMime = detectMimeFromBuffer(firstChunk);
+          if (!detectedMime || detectedMime !== data.mimetype) {
+            return reply.status(400).send({
+              error: 'File contents do not match declared image type',
+            });
+          }
+
+          const filename = uuidv4() + ext;
+          const uploadPath = path.join(absoluteUploadDir, filename);
+
+          await fs.promises.writeFile(uploadPath, data.buffer);
+          writtenFiles.push(uploadPath);
+          dbSavedPaths.push(['uploads', filename].join('/'));
         }
-        if (data.truncated) {
-          return reply.status(400).send({ error: 'File size exceeds limit' });
+      } catch (error) {
+        for (const file of writtenFiles) {
+          try {
+            await fs.promises.unlink(file);
+          } catch (_) {
+            // Ignore cleanup errors
+          }
         }
-
-        const firstChunk = data.buffer.subarray(0, 16);
-        const detectedMime = detectMimeFromBuffer(firstChunk);
-        if (!detectedMime || detectedMime !== data.mimetype) {
-          return reply
-            .status(400)
-            .send({ error: 'File contents do not match declared image type' });
-        }
-
-        const filename = uuidv4() + ext;
-        const uploadPath = path.join(absoluteUploadDir, filename);
-
-        await fs.promises.writeFile(uploadPath, data.buffer);
-        dbSavedPaths.push(['uploads', filename].join('/'));
+        throw error;
       }
       if (!didComment && !didRepost && !didShare) {
         return reply.status(400).send({

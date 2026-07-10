@@ -35,6 +35,8 @@ export default function ResetPassword() {
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    if (resetMut.isPending) return;
+
     if (!token) {
       setError('Reset token is missing or invalid');
       return;

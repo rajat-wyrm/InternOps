@@ -220,7 +220,7 @@ async function routes(fastify) {
       reply.setCookie('refreshToken', result.refreshToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: 'strict',
+        sameSite: isProduction ? 'strict' : 'lax',
         path: '/api/auth/refresh',
       });
 
@@ -229,6 +229,8 @@ async function routes(fastify) {
       req.auditOnResponse = {
         userId: result.user.id,
         action: 'LOGIN',
+        resourceType: 'auth',
+        resourceId: result.user.id,
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
       };
@@ -266,7 +268,7 @@ async function routes(fastify) {
       reply.setCookie('refreshToken', tokens.refreshToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: 'strict',
+        sameSite: isProduction ? 'strict' : 'lax',
         path: '/api/auth/refresh',
       });
 
@@ -332,7 +334,7 @@ async function routes(fastify) {
       reply.setCookie('csrf-token', csrfToken, {
         httpOnly: false,
         secure: isProduction,
-        sameSite: 'strict',
+        sameSite: isProduction ? 'strict' : 'lax',
         path: '/',
       });
       return { csrfToken };

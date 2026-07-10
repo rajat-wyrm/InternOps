@@ -11,7 +11,14 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import api from '../lib/axios';
-import { Card, Btn, Input, Badge, Spinner } from '../components/ui';
+import {
+  Card,
+  Btn,
+  Input,
+  Badge,
+  Spinner,
+  ApiErrorState,
+} from '../components/ui';
 import useAuthStore from '../store/auth';
 
 const ROLE_COLOR = {
@@ -46,6 +53,14 @@ export default function Profile() {
   const [error, setError] = useState('');
   const [nameError, setNameError] = useState('');
   const { data: profile, isLoading } = useQuery({
+
+  const {
+    data: profile,
+    isLoading,
+    isError,
+    error: profileError,
+    refetch,
+  } = useQuery({
     queryKey: ['myProfile'],
     queryFn: () => api.get('/users/me').then((res) => res.data),
   });
@@ -122,6 +137,34 @@ export default function Profile() {
     return (
       <div className="flex justify-center p-12">
         <Spinner label="Loading profile..." />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-6xl mx-auto animate-fade-in-up">
+        <div className="mb-6 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
+            <User className="w-6 h-6" />
+          </div>
+
+          <div>
+            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              My Profile
+            </h1>
+            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
+              Manage your account details and security
+            </p>
+          </div>
+        </div>
+
+        <ApiErrorState
+          error={profileError}
+          title="Failed to load profile"
+          fallback="Unable to load your profile. Please try again."
+          onRetry={refetch}
+        />
       </div>
     );
   }

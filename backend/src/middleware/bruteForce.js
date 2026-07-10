@@ -8,8 +8,9 @@ async function incrementAttempt(email, ip) {
   if (!redis) return 0;
 
   const key = `brute:${email}:${ip}`;
-  const count = await redis.get(key);
-  return count ? parseInt(count, 10) : 0;
+  const count = await redis.incr(key);
+  await redis.expire(key, LOCKOUT_MINUTES * 60);
+  return count;
 }
 
 async function isAccountLocked(email, ip) {

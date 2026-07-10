@@ -1,7 +1,8 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const config = require('../../config');
 const metrics = require('../../utils/metrics'); // Import your updated tracking module
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(config.ai.geminiKey);
 
 const MAX_REASON_WORDS = 15;
 const MIN_REASON_WORDS = 10;

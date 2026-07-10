@@ -23,16 +23,34 @@ const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
   'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
   'image/gif': [[0x47, 0x49, 0x46, 0x38]],
-  'image/webp': [[0x52, 0x49, 0x46, 0x46]], // RIFF
 };
 
 function detectMimeFromBuffer(buf) {
   if (!buf || buf.length < 4) return null;
+
+  // WebP: RIFF....WEBP
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+
   for (const [mime, signatures] of Object.entries(MAGIC_BYTES)) {
     for (const sig of signatures) {
-      if (sig.every((byte, i) => buf[i] === byte)) return mime;
+      if (sig.every((byte, i) => buf[i] === byte)) {
+        return mime;
+      }
     }
   }
+
   return null;
 }
 
@@ -50,6 +68,12 @@ async function routes(fastify) {
     async (req, reply) => {
       const data = await req.file();
       if (!data) return reply.status(400).send({ error: 'No file uploaded' });
+
+      if (data.file.truncated || data.file.bytesRead > config.maxFileSize) {
+        return reply
+          .status(400)
+          .send({ error: 'File exceeds maximum size of 5MB' });
+      }
 
       const ext = path.extname(data.filename || '').toLowerCase();
       if (!ALLOWED.includes(data.mimetype) || !ALLOWED_EXTS.includes(ext)) {

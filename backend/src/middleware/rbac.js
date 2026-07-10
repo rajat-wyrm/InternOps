@@ -1,5 +1,6 @@
 const PERMISSIONS = {
   ADMIN: ['all'],
+  SENIOR_TL: ['read:team', 'write:team', 'read:attendance', 'read:reports'],
   TL: ['read:team', 'write:team', 'read:attendance'],
   CAPTAIN: ['read:team'],
   INTERN: ['read:own_profile'],

@@ -5,6 +5,13 @@ const { toSchema } = require('../../utils/schemaHelper');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 
+// Whitelist of allowed filter keys → qualified column names.
+// Prevents SQL injection if filter keys ever become user-controllable.
+const AUDIT_COLUMN_MAP = {
+  userId: 'al.user_id',
+  resourceType: 'al.resource_type',
+};
+
 const auditQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -41,16 +48,16 @@ async function routes(fastify) {
       if (req.user.role === 'ADMIN') {
         if (userId) {
           params.push(userId);
-          conditions.push(`al.user_id = $${params.length}`);
+          conditions.push(`${AUDIT_COLUMN_MAP.userId} = $${params.length}`);
         }
       } else {
         params.push(req.user.id);
-        conditions.push(`al.user_id = $${params.length}`);
+        conditions.push(`${AUDIT_COLUMN_MAP.userId} = $${params.length}`);
       }
 
       if (resourceType) {
         params.push(resourceType);
-        conditions.push(`al.resource_type = $${params.length}`);
+        conditions.push(`${AUDIT_COLUMN_MAP.resourceType} = $${params.length}`);
       }
 
       const whereClause = conditions.length
