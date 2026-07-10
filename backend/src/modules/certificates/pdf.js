@@ -179,9 +179,7 @@ function generateCertificatePDF(data, templateData = {}) {
       const barX = 46;
 
       doc.save();
-      doc
-        .rect(barX, footerY, 2.5, 34)
-        .fill(COLORS.innerBorder);
+      doc.rect(barX, footerY, 2.5, 34).fill(COLORS.innerBorder);
       doc
         .font('Helvetica-Bold')
         .fontSize(9)

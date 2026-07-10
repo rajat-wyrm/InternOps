@@ -314,18 +314,18 @@ async function quickGenerate(data, userId) {
     : null;
   const templateData = template ? template.template_data : {};
 
-// 3. Build body text
+  // 3. Build body text
   const startFormatted = formatDate(data.start_date);
   const endFormatted = formatDate(data.end_date);
   const body = `This is to certify that ${data.recipient_name} has successfully completed a ${data.domain} internship from ${startFormatted} to ${endFormatted}. The individual demonstrated excellent performance, dedication, and strong professional skills throughout the duration of the program.`;
 
   // 3b. Split text pieces for the branded PDF layout
-    const roleLine = data.role
-      ? `has successfully completed their internship as ${data.role} of domain`
-      : 'has successfully completed their internship in the domain of';
-    const dateRangeText = `from ${startFormatted} to ${endFormatted}`;
-    const pdfBody =
-      'During this period, the candidate demonstrated exemplary professional standards, technical proficiency, and significant contribution to our organizational goals.';
+  const roleLine = data.role
+    ? `has successfully completed their internship as ${data.role} of domain`
+    : 'has successfully completed their internship in the domain of';
+  const dateRangeText = `from ${startFormatted} to ${endFormatted}`;
+  const pdfBody =
+    'During this period, the candidate demonstrated exemplary professional standards, technical proficiency, and significant contribution to our organizational goals.';
   // 4. Generate PDF
   const pdfBuffer = await generateCertificatePDF(
     {
