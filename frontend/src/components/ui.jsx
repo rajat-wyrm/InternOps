@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, EyeOff, RefreshCw } from 'lucide-react';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
@@ -368,6 +368,20 @@ export function ConfirmationModal({
   loading = false,
   danger = true,
 }) {
+  const modalRef = useRef(null);
+  const previousActiveElementRef = useRef(null);
+
+  const handleClose = () => {
+    if (loading) return;
+    if (onCancel) onCancel();
+    else if (onClose) onClose();
+  };
+
+  const handleCloseRef = useRef(handleClose);
+  useEffect(() => {
+    handleCloseRef.current = handleClose;
+  }, [handleClose]);
+
   // Handle body scroll locking and background blurring
   useEffect(() => {
     const root = document.getElementById('root');
@@ -388,13 +402,67 @@ export function ConfirmationModal({
     };
   }, [open]);
 
-  if (!open) return null;
+  // Focus trap implementation
+  useEffect(() => {
+    if (!open) return;
 
-  const handleClose = () => {
-    if (loading) return;
-    if (onCancel) onCancel();
-    else if (onClose) onClose();
-  };
+    // Save current active element to restore focus when modal closes
+    previousActiveElementRef.current = document.activeElement;
+
+    const modalElement = modalRef.current;
+    const focusableSelectors = 'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex="0"], [contenteditable], [autofocus]';
+
+    if (modalElement) {
+      const focusable = modalElement.querySelectorAll(focusableSelectors);
+      if (focusable.length > 0) {
+        focusable[0].focus();
+      } else {
+        modalElement.focus();
+      }
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        handleCloseRef.current();
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        if (!modalElement) return;
+        const focusable = Array.from(modalElement.querySelectorAll(focusableSelectors));
+        if (focusable.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            last.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === last) {
+            first.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previousActiveElementRef.current && typeof previousActiveElementRef.current.focus === 'function') {
+        previousActiveElementRef.current.focus();
+      }
+    };
+  }, [open]);
+
+  if (!open) return null;
 
   const finalConfirmText = confirmLabel || confirmText;
   const finalCancelText = cancelLabel || cancelText;
@@ -405,7 +473,9 @@ export function ConfirmationModal({
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
+        ref={modalRef}
+        tabIndex={-1}
+        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-slate-200 dark:border-slate-700">
