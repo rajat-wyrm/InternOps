@@ -44,7 +44,7 @@ export default function Profile() {
   const [newPassword, setNewPassword] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-
+  const [nameError, setNameError] = useState('');
   const { data: profile, isLoading } = useQuery({
     queryKey: ['myProfile'],
     queryFn: () => api.get('/users/me').then((res) => res.data),
@@ -59,7 +59,22 @@ export default function Profile() {
     setError('');
     setTimeout(() => setMessage(''), 2500);
   };
+  const validateProfile = () => {
+    const name = fullName.trim();
 
+    if (name.length < 3) {
+        setNameError("Name must be at least 3 characters.");
+        return false;
+    }
+
+    if (name.length > 50) {
+        setNameError("Name must not exceed 50 characters.");
+        return false;
+    }
+
+    setNameError("");
+    return true;
+};
   const updateProfileMut = useMutation({
     mutationFn: (data) => api.patch('/users/me', data),
     onSuccess: (_res, vars) => {
@@ -295,10 +310,21 @@ export default function Profile() {
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Enter your full name"
               />
+              {nameError && (
+                 <p className="text-sm text-red-500 mt-1">
+                     {nameError}
+                 </p>
+                )}
             </div>
 
             <Btn
-              onClick={() => updateProfileMut.mutate({ full_name: fullName })}
+              onClick={() => {
+    if (!validateProfile()) return;
+
+    updateProfileMut.mutate({
+        full_name: fullName.trim(),
+    });
+}}
               disabled={
                 updateProfileMut.isPending || fullName === profile?.full_name
               }
