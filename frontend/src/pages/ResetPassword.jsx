@@ -31,19 +31,34 @@ export default function ResetPassword() {
     onError: (err) => setError(err.response?.data?.error || 'Reset failed'),
   });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+ const handleSubmit = (e) => {
+  e.preventDefault();
 
+<<<<<<< HEAD
     if (resetMut.isPending) return;
 
     if (!token) {
       setError('Reset token is missing or invalid');
       return;
     }
+=======
+  // Prevent double submission
+  if (resetMut.isPending) return;
+>>>>>>> 79a6e48 (fix(frontend): prevent double submission in auth forms)
 
-    resetMut.mutate({ token, newPassword });
-  };
+  if (!token) {
+    setError('Reset token is missing or invalid');
+    return;
+  }
 
+  setError('');
+  setMessage('');
+
+  resetMut.mutate({
+    token,
+    newPassword,
+  });
+};
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-animated-gradient bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 animate-gradient-shift p-4">
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-400/20 rounded-full blur-3xl animate-float-slow" />

@@ -90,12 +90,20 @@ export default function Login() {
 
     if (loginMut.isPending) return;
 
+<<<<<<< HEAD
     if (!email.trim() || !password)
       return setError('Email and password required');
 
     setError('');
     loginMut.mutate({ email, password });
   };
+=======
+    loginMut.mutate({
+        email,
+        password,
+    });
+};
+>>>>>>> 79a6e48 (fix(frontend): prevent double submission in auth forms)
 
   return (
     <div className="relative h-screen w-full overflow-hidden flex flex-col lg:flex-row bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 text-white">
