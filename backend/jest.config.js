@@ -6,6 +6,7 @@ module.exports = {
   detectOpenHandles: true,
   globalSetup: '<rootDir>/tests/globalSetup.js',
   globalTeardown: '<rootDir>/tests/globalTeardown.js',
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   collectCoverage: true,
   coverageDirectory: 'coverage',
   collectCoverageFrom: [

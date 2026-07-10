@@ -92,6 +92,7 @@ export default function CreateTaskForm() {
           <Input
             placeholder="Task title"
             value={form.title}
+            maxLength={30}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
             required
             disabled={createMutation.isPending}

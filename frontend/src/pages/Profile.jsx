@@ -11,7 +11,14 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import api from '../lib/axios';
-import { Card, Btn, Input, Badge, Spinner } from '../components/ui';
+import {
+  Card,
+  Btn,
+  Input,
+  Badge,
+  Spinner,
+  ApiErrorState,
+} from '../components/ui';
 import useAuthStore from '../store/auth';
 
 const ROLE_COLOR = {
@@ -44,7 +51,7 @@ export default function Profile() {
   const [newPassword, setNewPassword] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-
+  const [nameError, setNameError] = useState('');
   const { data: profile, isLoading } = useQuery({
     queryKey: ['myProfile'],
     queryFn: () => api.get('/users/me').then((res) => res.data),
@@ -59,7 +66,22 @@ export default function Profile() {
     setError('');
     setTimeout(() => setMessage(''), 2500);
   };
+  const validateProfile = () => {
+    const name = fullName.trim();
 
+    if (name.length < 3) {
+      setNameError('Name must be at least 3 characters.');
+      return false;
+    }
+
+    if (name.length > 50) {
+      setNameError('Name must not exceed 50 characters.');
+      return false;
+    }
+
+    setNameError('');
+    return true;
+  };
   const updateProfileMut = useMutation({
     mutationFn: (data) => api.patch('/users/me', data),
     onSuccess: (_res, vars) => {
@@ -107,6 +129,34 @@ export default function Profile() {
     return (
       <div className="flex justify-center p-12">
         <Spinner label="Loading profile..." />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-6xl mx-auto animate-fade-in-up">
+        <div className="mb-6 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
+            <User className="w-6 h-6" />
+          </div>
+
+          <div>
+            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              My Profile
+            </h1>
+            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
+              Manage your account details and security
+            </p>
+          </div>
+        </div>
+
+        <ApiErrorState
+          error={profileError}
+          title="Failed to load profile"
+          fallback="Unable to load your profile. Please try again."
+          onRetry={refetch}
+        />
       </div>
     );
   }
@@ -185,15 +235,27 @@ export default function Profile() {
                   )}
 
                   <label
-                    className="absolute -bottom-2 -right-2 w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center cursor-pointer hover:scale-105 hover:bg-indigo-50 dark:hover:bg-slate-700 transition-all"
-                    title="Change avatar"
+                    className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center transition-all ${
+                      avatarMut.isPending
+                        ? 'opacity-60 cursor-not-allowed'
+                        : 'cursor-pointer hover:scale-105 hover:bg-indigo-50 dark:hover:bg-slate-700'
+                    }`}
+                    title={
+                      avatarMut.isPending ? 'Uploading...' : 'Change avatar'
+                    }
                   >
-                    <Camera className="w-4 h-4" />
+                    {avatarMut.isPending ? (
+                      <span className="text-[10px] font-semibold">...</span>
+                    ) : (
+                      <Camera className="w-4 h-4" />
+                    )}
                     <input
+                      disabled={avatarMut.isPending}
                       type="file"
                       accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
                       className="hidden"
                       onChange={(e) => {
+                        if (avatarMut.isPending) return;
                         const file = e.target.files?.[0];
 
                         if (!file) return;
@@ -295,10 +357,19 @@ export default function Profile() {
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Enter your full name"
               />
+              {nameError && (
+                <p className="text-sm text-red-500 mt-1">{nameError}</p>
+              )}
             </div>
 
             <Btn
-              onClick={() => updateProfileMut.mutate({ full_name: fullName })}
+              onClick={() => {
+                if (!validateProfile()) return;
+
+                updateProfileMut.mutate({
+                  full_name: fullName.trim(),
+                });
+              }}
               disabled={
                 updateProfileMut.isPending || fullName === profile?.full_name
               }

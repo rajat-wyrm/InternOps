@@ -17,12 +17,24 @@ export default function BulkAttendanceForm() {
   const [status, setStatus] = useState('PRESENT');
   const [remarks, setRemarks] = useState('');
   const [selectedUsers, setSelectedUsers] = useState([]);
+  const [departmentId, setDepartmentId] = useState('');
+  const [memberSearch, setMemberSearch] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/departments').then((res) => res.data),
+  });
+
   const { data: reports = [], isLoading: loadingReports } = useQuery({
-    queryKey: ['teamMembers'],
-    queryFn: () => api.get('/team/members').then((res) => res.data),
+    queryKey: ['teamMembers', departmentId],
+    queryFn: () =>
+      api
+        .get('/team/members', {
+          params: { department_id: departmentId || undefined },
+        })
+        .then((res) => res.data),
   });
 
   const bulkMutation = useMutation({
@@ -38,7 +50,11 @@ export default function BulkAttendanceForm() {
     onError: (err) => setError(err.response?.data?.error || 'Bulk mark failed'),
   });
 
-  const team = reports ?? [];
+  const team = (reports ?? []).filter((u) =>
+    (u.full_name || u.email)
+      .toLowerCase()
+      .includes(memberSearch.trim().toLowerCase())
+  );
   const atLimit = selectedUsers.length >= BULK_MAX;
   const allSelected = team.length > 0 && selectedUsers.length === team.length;
   const today = new Date().toISOString().slice(0, 10);
@@ -48,6 +64,16 @@ export default function BulkAttendanceForm() {
     { value: 'ABSENT', label: 'Absent' },
     { value: 'HALF_DAY', label: 'Half Day' },
   ];
+
+  const departmentOptions = [
+    { value: '', label: 'All departments' },
+    ...departments.map((d) => ({ value: d.id, label: d.name })),
+  ];
+
+  const handleDepartmentChange = (val) => {
+    setDepartmentId(val);
+    setSelectedUsers([]);
+  };
 
   const toggleAll = () => {
     if (atLimit && !allSelected) return;
@@ -145,6 +171,24 @@ export default function BulkAttendanceForm() {
                 {allSelected ? 'Deselect All' : 'Select All'}
               </button>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <CustomSelect
+              value={departmentId}
+              onChange={handleDepartmentChange}
+              options={departmentOptions}
+              placeholder="All departments"
+              disabled={bulkMutation.isPending}
+              className="w-full"
+            />
+
+            <Input
+              placeholder="Search members..."
+              value={memberSearch}
+              onChange={(e) => setMemberSearch(e.target.value)}
+              disabled={bulkMutation.isPending}
+            />
           </div>
 
           <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-3">

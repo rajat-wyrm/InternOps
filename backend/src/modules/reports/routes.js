@@ -4,20 +4,29 @@ const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 const { z } = require('zod');
 
+// Whitelist of allowed filter keys → qualified column names.
+// Prevents SQL injection if filter keys ever become user-controllable.
+const REPORTS_COLUMN_MAP = {
+  from: 'a.date',
+  to: 'a.date',
+  departmentId: 'd.id',
+};
+
 const dateRangeSchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD'),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
 });
 
-function parseDateRange(query, reply) {
+function parseDateRange(query) {
   const parsed = dateRangeSchema.safeParse(query);
+
   if (!parsed.success) {
-    reply.status(400).send({
-      error: 'from and to are required (YYYY-MM-DD)',
-      details: parsed.error.issues,
-    });
-    return null;
+    const error = new Error('from and to are required (YYYY-MM-DD)');
+    error.statusCode = 400;
+    error.details = parsed.error.issues;
+    throw error;
   }
+
   return parsed.data;
 }
 
@@ -45,8 +54,7 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const range = parseDateRange(req.query, reply);
-      if (!range) return;
+      const range = parseDateRange(req.query);
       return repo.attendanceSummaryByRole(range.from, range.to);
     }
   );
@@ -62,8 +70,7 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const range = parseDateRange(req.query, reply);
-      if (!range) return;
+      const range = parseDateRange(req.query);
       return repo.ratingsSummary(range.from, range.to);
     }
   );
@@ -103,15 +110,15 @@ async function routes(fastify) {
       const params = [];
       if (from) {
         params.push(from);
-        where.push(`a.date >= $${params.length}`);
+        where.push(`${REPORTS_COLUMN_MAP.from} >= $${params.length}`);
       }
       if (to) {
         params.push(to);
-        where.push(`a.date <= $${params.length}`);
+        where.push(`${REPORTS_COLUMN_MAP.to} <= $${params.length}`);
       }
       if (departmentId) {
         params.push(departmentId);
-        where.push(`d.id = $${params.length}`);
+        where.push(`${REPORTS_COLUMN_MAP.departmentId} = $${params.length}`);
       }
 
       return repo.departmentAttendance(where.join(' AND '), params);
@@ -129,8 +136,7 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const range = parseDateRange(req.query, reply);
-      if (!range) return;
+      const range = parseDateRange(req.query);
 
       return repo.customSummary(range.from, range.to);
     }

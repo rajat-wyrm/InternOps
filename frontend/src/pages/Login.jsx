@@ -87,8 +87,12 @@ export default function Login() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (loginMut.isPending) return;
+
     if (!email.trim() || !password)
       return setError('Email and password required');
+
     setError('');
     loginMut.mutate({ email, password });
   };
@@ -177,6 +181,14 @@ export default function Login() {
                       <Eye className="w-5 h-5" />
                     )}
                   </button>
+                </div>
+                <div className="flex justify-end">
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs text-white/45 hover:text-white/70 transition"
+                  >
+                    Forgot Password?
+                  </Link>
                 </div>
               </div>
               <button

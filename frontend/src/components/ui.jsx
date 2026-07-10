@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, RefreshCw } from 'lucide-react';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -78,6 +78,55 @@ export function Card({ children, className = '', hover = false }) {
       } ${className}`}
     >
       {children}
+    </div>
+  );
+}
+
+function getApiErrorMessage(error, fallback) {
+  return (
+    error?.response?.data?.error ||
+    error?.response?.data?.message ||
+    error?.message ||
+    fallback ||
+    'Something went wrong. Please try again.'
+  );
+}
+
+export function ApiErrorState({
+  error,
+  title = 'Failed to load data',
+  fallback,
+  onRetry,
+  className = '',
+}) {
+  return (
+    <div
+      className={`rounded-3xl border border-red-100 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 shadow-sm ${className}`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-2xl bg-white/70 dark:bg-red-950/60 border border-red-100 dark:border-red-900/60 flex items-center justify-center shrink-0">
+          <AlertCircle className="w-5 h-5" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="font-extrabold text-sm">{title}</p>
+
+          <p className="text-sm mt-1 break-words">
+            {getApiErrorMessage(error, fallback)}
+          </p>
+
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-red-600 text-white text-xs font-extrabold hover:bg-red-700 transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -324,16 +373,16 @@ export function ConfirmationModal({
     const root = document.getElementById('root');
 
     if (open) {
-      document.body.style.overflow = 'hidden';
+      document.body.classList.add('modal-open');
       if (root) root.classList.add('blur-sm', 'transition-all', 'duration-300');
     } else {
-      document.body.style.overflow = 'unset';
+      document.body.classList.remove('modal-open');
       if (root)
         root.classList.remove('blur-sm', 'transition-all', 'duration-300');
     }
 
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.classList.remove('modal-open');
       if (root)
         root.classList.remove('blur-sm', 'transition-all', 'duration-300');
     };

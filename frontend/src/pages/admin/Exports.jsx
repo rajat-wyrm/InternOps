@@ -77,7 +77,8 @@ export default function Exports() {
 
       a.click();
 
-      window.URL.revokeObjectURL(url);
+      // Delay revoke to allow download to start (#950)
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (err) {
       setError(err.response?.data?.error || 'Download failed');
     } finally {
@@ -168,6 +169,12 @@ export default function Exports() {
           </div>
         </div>
       </Card>
+
+      {error && (
+        <div className="mb-6 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-600 dark:text-red-300 text-sm rounded-2xl px-4 py-3 animate-fade-in font-medium">
+          {error}
+        </div>
+      )}
 
       {/* Export Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">

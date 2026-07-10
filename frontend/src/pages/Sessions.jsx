@@ -34,6 +34,9 @@ export default function Sessions() {
   const revokeAllMut = useMutation({
     mutationFn: () => api.post('/sessions/me/revoke-all', {}),
     onSuccess: () => {
+      // Clear in-memory auth state before redirect (#941)
+      const store = useAuthStore.getState();
+      store.logout();
       window.location.href = '/login';
     },
   });

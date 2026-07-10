@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Bot,
   Sparkles,
@@ -578,37 +578,38 @@ export default function InternOpsAssistant() {
     ]);
   };
 
-  const handleSend = async (text) => {
-    const msg = text || input.trim();
+  const handleSend = useCallback(
+    async (text) => {
+      const msg = text || input.trim();
 
-    if (!msg) return;
+      if (!msg) return;
 
-    setInput('');
+      setInput('');
 
-    const userMsg = { role: 'user', content: msg, time: now() };
-    setMessages((prev) => [...prev, userMsg]);
-    setHistory((prev) => [...prev, { role: 'user', content: msg }]);
-    setIsTyping(true);
+      const userMsg = { role: 'user', content: msg, time: now() };
+      setMessages((prev) => [...prev, userMsg]);
+      setHistory((prev) => [...prev, { role: 'user', content: msg }]);
+      setIsTyping(true);
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, 450 + Math.random() * 300)
-    );
+      await new Promise((resolve) =>
+        setTimeout(resolve, 450 + Math.random() * 300)
+      );
 
-    const kbAnswer = getKBResponse(msg);
+      const kbAnswer = getKBResponse(msg);
 
-    if (kbAnswer) {
-      setIsTyping(false);
-      addBotMessage(kbAnswer);
-      return;
-    }
+      if (kbAnswer) {
+        setIsTyping(false);
+        addBotMessage(kbAnswer);
+        return;
+      }
 
-    if (
-      msg.toLowerCase().includes('what can i do') ||
-      msg.toLowerCase().includes('my permissions') ||
-      msg.toLowerCase().includes('my role')
-    ) {
-      const perms = ROLE_PERMISSIONS[role];
-      const answer = `**Your role: ${role}**
+      if (
+        msg.toLowerCase().includes('what can i do') ||
+        msg.toLowerCase().includes('my permissions') ||
+        msg.toLowerCase().includes('my role')
+      ) {
+        const perms = ROLE_PERMISSIONS[role];
+        const answer = `**Your role: ${role}**
 
 **✅ You can:**
 ${perms.canDo.map((item) => `- ${item}`).join('\n')}
@@ -616,44 +617,46 @@ ${perms.canDo.map((item) => `- ${item}`).join('\n')}
 **❌ You cannot:**
 ${perms.cannotDo.map((item) => `- ${item}`).join('\n')}`;
 
-      setIsTyping(false);
-      addBotMessage(answer);
-      return;
-    }
+        setIsTyping(false);
+        addBotMessage(answer);
+        return;
+      }
 
-    try {
-      const systemPrompt = `You are the InternOps Assistant. The user's current role is: ${role}. Give concise, role-aware answers about InternOps modules, permissions, ratings, attendance, tasks, reports, sessions, meetings, and audit logs.`;
+      try {
+        const systemPrompt = `You are the InternOps Assistant. The user's current role is: ${role}. Give concise, role-aware answers about InternOps modules, permissions, ratings, attendance, tasks, reports, sessions, meetings, and audit logs.`;
 
-      const response = await api.post('/ai/chat', {
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt,
-          },
-          ...history.slice(-6).map((item) => ({
-            role: item.role === 'bot' ? 'assistant' : item.role,
-            content: item.content,
-          })),
-          {
-            role: 'user',
-            content: msg,
-          },
-        ],
-      });
+        const response = await api.post('/ai/chat', {
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt,
+            },
+            ...history.slice(-6).map((item) => ({
+              role: item.role === 'bot' ? 'assistant' : item.role,
+              content: item.content,
+            })),
+            {
+              role: 'user',
+              content: msg,
+            },
+          ],
+        });
 
-      const answer =
-        response.data?.content ||
-        "Sorry, I couldn't process that. Please try rephrasing.";
+        const answer =
+          response.data?.content ||
+          "Sorry, I couldn't process that. Please try rephrasing.";
 
-      setIsTyping(false);
-      addBotMessage(answer);
-    } catch {
-      setIsTyping(false);
-      addBotMessage(
-        '⚠️ Could not reach the AI service. Please check your connection and try again.'
-      );
-    }
-  };
+        setIsTyping(false);
+        addBotMessage(answer);
+      } catch {
+        setIsTyping(false);
+        addBotMessage(
+          '⚠️ Could not reach the AI service. Please check your connection and try again.'
+        );
+      }
+    },
+    [input, role, history]
+  );
 
   useEffect(() => {
     const welcome = {

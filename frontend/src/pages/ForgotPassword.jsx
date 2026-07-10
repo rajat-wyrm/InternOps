@@ -58,6 +58,9 @@ export default function ForgotPassword() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
+
+              if (forgotMut.isPending) return;
+
               forgotMut.mutate(email);
             }}
             className="space-y-4"
