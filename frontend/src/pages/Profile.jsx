@@ -63,18 +63,18 @@ export default function Profile() {
     const name = fullName.trim();
 
     if (name.length < 3) {
-        setNameError("Name must be at least 3 characters.");
-        return false;
+      setNameError('Name must be at least 3 characters.');
+      return false;
     }
 
     if (name.length > 50) {
-        setNameError("Name must not exceed 50 characters.");
-        return false;
+      setNameError('Name must not exceed 50 characters.');
+      return false;
     }
 
-    setNameError("");
+    setNameError('');
     return true;
-};
+  };
   const updateProfileMut = useMutation({
     mutationFn: (data) => api.patch('/users/me', data),
     onSuccess: (_res, vars) => {
@@ -311,20 +311,18 @@ export default function Profile() {
                 placeholder="Enter your full name"
               />
               {nameError && (
-                 <p className="text-sm text-red-500 mt-1">
-                     {nameError}
-                 </p>
-                )}
+                <p className="text-sm text-red-500 mt-1">{nameError}</p>
+              )}
             </div>
 
             <Btn
               onClick={() => {
-    if (!validateProfile()) return;
+                if (!validateProfile()) return;
 
-    updateProfileMut.mutate({
-        full_name: fullName.trim(),
-    });
-}}
+                updateProfileMut.mutate({
+                  full_name: fullName.trim(),
+                });
+              }}
               disabled={
                 updateProfileMut.isPending || fullName === profile?.full_name
               }
