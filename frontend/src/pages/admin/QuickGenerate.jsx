@@ -41,6 +41,7 @@ export default function QuickGenerate() {
   const [formData, setFormData] = useState({
     template_id: '',
     recipient_name: '',
+    role: '',
     domain: '',
     custom_domain: '',
     start_date: '',
@@ -68,6 +69,7 @@ export default function QuickGenerate() {
       const res = await quickGenerateMutation.mutateAsync({
         template_id: formData.template_id || undefined,
         recipient_name: formData.recipient_name,
+        role: formData.role || undefined,
         domain,
         start_date: formData.start_date,
         end_date: formData.end_date,
@@ -150,6 +152,21 @@ export default function QuickGenerate() {
                     onChange={handleInputChange}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
                     placeholder="e.g. Rahul Sharma"
+                  />
+                </div>
+
+                {/* Role */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                    Role <span className="text-slate-400">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="role"
+                    value={formData.role}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                    placeholder="e.g. Captain, Team Lead, Intern"
                   />
                 </div>
 
