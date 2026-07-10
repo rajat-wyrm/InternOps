@@ -180,7 +180,7 @@ async function csrfCheck(request, reply) {
 }
 
 const csrfProtection = async (fastify) => {
-  fastify.addHook('onRequest', csrfCheck);
+  fastify.addHook('preHandler', csrfCheck);
 };
 
 const csrfMiddleware = csrfCheck;
