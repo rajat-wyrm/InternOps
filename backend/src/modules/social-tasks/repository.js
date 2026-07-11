@@ -42,19 +42,28 @@ async function isTaskAssignedToUser(taskId, userId) {
   );
   return res.rowCount > 0;
 }
+<<<<<<< HEAD
 async function getAllInternEmails(limit = 500, offset = 0) {
+=======
+async function getAllInternEmails() {
+>>>>>>> 6e91c1e06973473608c6f6dff63e5bcf923945fd
   const res = await pool.query(
     `SELECT email
      FROM users
      WHERE role IN ('INTERN', 'CAPTAIN')
+<<<<<<< HEAD
        AND email IS NOT NULL
      ORDER BY id
      LIMIT $1 OFFSET $2`,
     [limit, offset]
+=======
+       AND email IS NOT NULL`
+>>>>>>> 6e91c1e06973473608c6f6dff63e5bcf923945fd
   );
 
   return res.rows.map((row) => row.email);
 }
+<<<<<<< HEAD
 
 async function getInternEmailCount() {
   const res = await pool.query(
@@ -65,6 +74,8 @@ async function getInternEmailCount() {
   );
   return res.rows[0].count;
 }
+=======
+>>>>>>> 6e91c1e06973473608c6f6dff63e5bcf923945fd
 async function getTasks(filters, userId, userRole) {
   const params = [];
   const where = ['st.deleted_at IS NULL'];
@@ -280,10 +291,14 @@ module.exports = {
   verifyProof,
   getProofsByTask,
   getProofsByIntern,
+<<<<<<< HEAD
   getProof,
   deleteProof,
   getProofImage,
   deleteProofImage,
   getAllInternEmails,
   getInternEmailCount,
+=======
+   getAllInternEmails,
+>>>>>>> 6e91c1e06973473608c6f6dff63e5bcf923945fd
 };

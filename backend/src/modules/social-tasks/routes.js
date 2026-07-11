@@ -151,7 +151,25 @@ module.exports = async function socialTasksRoutes(fastify) {
           'Task created but notification email failed'
         );
       }
+<<<<<<< HEAD
       notifyAllInternsAsync(task, req.log);
+=======
+      try {
+  const internEmails = await repo.getAllInternEmails();
+
+  for (const email of internEmails) {
+    await emailService.sendNotification(email, {
+      title: 'New Social Media Task',
+      message: `A new task "${task.title}" has been posted. Please complete it before the deadline.`,
+    });
+  }
+} catch (emailErr) {
+  req.log.warn(
+    { emailErr },
+    'Task created but intern notification emails failed'
+  );
+}
+>>>>>>> 6e91c1e06973473608c6f6dff63e5bcf923945fd
       return task;
     }
   );

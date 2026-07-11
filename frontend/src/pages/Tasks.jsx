@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState,useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Target,
@@ -74,7 +74,7 @@ function TaskCard({
     submitMutation.mutate(
       {
         taskId: task.id,
-        file,
+         files: [file],
         didComment,
         didRepost,
         didShare,
@@ -314,6 +314,8 @@ function TaskCard({
 
 export default function Tasks() {
   const { user } = useAuthStore();
+  const [page, setPage] = useState(1);
+const LIMIT = 10;
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -347,11 +349,16 @@ export default function Tasks() {
     user?.role
   );
 
-  const { data: tasks, isLoading } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => api.get('/tasks').then((res) => res.data),
-  });
+ const { data, isLoading } = useQuery({
+  queryKey: ['tasks', page],
+  queryFn: () =>
+    api
+      .get(`/tasks?page=${page}&limit=${LIMIT}`)
+      .then((res) => res.data),
+});
 
+const tasks = data?.tasks ?? [];
+const totalPages = data?.totalPages ?? 1;
   const { data: proofs, refetch: refetchProofs } = useQuery({
     queryKey: ['proofs', selectedTask],
     queryFn: () =>
@@ -532,9 +539,11 @@ export default function Tasks() {
               : 'New tasks will appear here.'
           }
         />
-      ) : (
+       ) : (
+        <>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
           {tasks.map((t) => {
+            
             const isOverdue = t.deadline && overdue(t.deadline);
 
             return (
@@ -547,8 +556,9 @@ export default function Tasks() {
                     {PLATFORM_ICON[t.target_platform] || (
                       <Target className="w-5 h-5" />
                     )}
+                    
                   </div>
-
+                      
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -925,7 +935,8 @@ export default function Tasks() {
                               <Btn
                                 variant="success"
                                 className="rounded-2xl"
-                                onClick={() => verifyMutation.mutate(p.id)}
+                               onClick={() => deleteMutation.mutate(p.id)
+}
                               >
                                 <span className="flex items-center gap-1">
                                   <CheckCircle className="w-4 h-4" /> Verify
@@ -946,7 +957,12 @@ export default function Tasks() {
                                   <Btn
                                     variant="danger"
                                     className="rounded-2xl py-1 px-3 text-xs bg-red-500 hover:bg-red-600 text-white border-transparent"
-                                    onClick={() => deleteMutation.mutate(p.id)}
+onClick={() =>
+  verifyMutation.mutate({
+    proofId: p.id,
+    taskId: t.id,
+  })
+}
                                     disabled={deleteMutation.isPending}
                                   >
                                     {deleteMutation.isPending
@@ -973,8 +989,31 @@ export default function Tasks() {
                 )}
               </Card>
             );
-          })}
+                  })}
         </div>
+
+        <div className="flex justify-center items-center gap-4 mt-8">
+          <Btn
+            variant="outline"
+            disabled={page === 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            Previous
+          </Btn>
+
+          <span className="text-sm font-medium">
+            Page {page} of {totalPages}
+          </span>
+
+          <Btn
+            variant="outline"
+            disabled={page === totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </Btn>
+        </div>
+      </>
       )}
     </div>
   );
