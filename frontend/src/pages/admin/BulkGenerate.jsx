@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { PageHeader, Card, Badge, Spinner } from '../../components/ui';
+import CustomSelect from '../../components/CustomSelect';
 import {
   useBulkGenerate,
   useTemplates,
@@ -13,6 +14,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 
 const BulkGenerate = () => {
@@ -21,12 +23,59 @@ const BulkGenerate = () => {
   const [recipients, setRecipients] = useState([]);
   const [jobId, setJobId] = useState(null);
   const [csvFileName, setCsvFileName] = useState('');
+  const [validationError, setValidationError] = useState('');
 
   const { data: templatesData, isLoading: templatesLoading } = useTemplates();
   const templates = templatesData?.data || [];
   const bulkGenerateMutation = useBulkGenerate();
-  const { data: jobStatusData } = useBulkJobStatus(jobId);
+
+  const templateOptions = [
+    { value: '', label: 'Select a template...' },
+    ...templates.map((template) => ({
+      value: template.id,
+      label: template.name,
+    })),
+  ];
+
+  const { data: jobStatusData, isFetching: isPolling } =
+    useBulkJobStatus(jobId);
   const jobStatus = jobStatusData?.data || null;
+  const isGenerating = bulkGenerateMutation.isPending;
+
+  const isValidEmail = (email) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+
+  const validateRecipients = () => {
+    if (recipients.length === 0) {
+      return 'Please add at least one recipient.';
+    }
+
+    const missingNameIndex = recipients.findIndex(
+      (recipient) => !recipient.name?.trim()
+    );
+
+    if (missingNameIndex !== -1) {
+      return `Row ${missingNameIndex + 1}: Please enter recipient name.`;
+    }
+
+    const missingEmailIndex = recipients.findIndex(
+      (recipient) => !recipient.email?.trim()
+    );
+
+    if (missingEmailIndex !== -1) {
+      return `Row ${missingEmailIndex + 1}: Please enter recipient email.`;
+    }
+
+    const invalidEmailIndex = recipients.findIndex(
+      (recipient) => !isValidEmail(recipient.email)
+    );
+
+    if (invalidEmailIndex !== -1) {
+      return `Row ${invalidEmailIndex + 1}: Please enter a valid email address.`;
+    }
+
+    return '';
+  };
 
   const parseCsv = useCallback((text) => {
     const lines = text.trim().split('\n');
@@ -36,6 +85,7 @@ const BulkGenerate = () => {
       .toLowerCase()
       .split(',')
       .map((h) => h.trim());
+
     const nameIdx = headers.findIndex((h) => h === 'name');
     const emailIdx = headers.findIndex((h) => h === 'email');
     const titleIdx = headers.findIndex((h) => h === 'title');
@@ -62,18 +112,22 @@ const BulkGenerate = () => {
       const file = e.target.files[0];
       if (!file) return;
 
+      setValidationError('');
       setCsvFileName(file.name);
+
       const reader = new FileReader();
       reader.onload = (event) => {
         const parsed = parseCsv(event.target.result);
         setRecipients(parsed);
       };
       reader.readAsText(file);
+      e.target.value = '';
     },
     [parseCsv]
   );
 
   const addRow = () => {
+    setValidationError('');
     setRecipients([
       ...recipients,
       { name: '', email: '', title: '', achievement: '' },
@@ -81,30 +135,55 @@ const BulkGenerate = () => {
   };
 
   const removeRow = (index) => {
+    setValidationError('');
     setRecipients(recipients.filter((_, i) => i !== index));
   };
 
   const updateRow = (index, field, value) => {
+    setValidationError('');
     const updated = [...recipients];
     updated[index] = { ...updated[index], [field]: value };
     setRecipients(updated);
   };
 
+  const goToPreview = () => {
+    const message = validateRecipients();
+    if (message) {
+      setValidationError(message);
+      return;
+    }
+    setValidationError('');
+    setStep(3);
+  };
+
   const handleGenerate = async () => {
+    const message = validateRecipients();
+    if (message) {
+      setValidationError(message);
+      setStep(2);
+      return;
+    }
+
     try {
+      setValidationError('');
       const result = await bulkGenerateMutation.mutateAsync({
         template_id: selectedTemplate,
         certificates: recipients.map((r) => ({
-          recipient_name: r.name,
-          recipient_email: r.email,
-          title: r.title || 'Certificate of Achievement',
+          recipient_name: r.name.trim(),
+          recipient_email: r.email.trim(),
+          title: r.title?.trim() || 'Certificate of Achievement',
           certificate_type: 'achievement',
         })),
       });
       setJobId(result.data?.job_id || result.job_id);
       setStep(4);
     } catch (error) {
-      console.error('Bulk generation failed:', error);
+      setValidationError(
+        error.response?.data?.error ||
+          error.response?.data?.message ||
+          error.message ||
+          'Bulk generation failed. Please try again.'
+      );
     }
   };
 
@@ -122,7 +201,6 @@ const BulkGenerate = () => {
       />
 
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Step Indicator */}
         <div className="flex items-center justify-center mb-8">
           {[1, 2, 3].map((s) => (
             <div key={s} className="flex items-center">
@@ -146,7 +224,6 @@ const BulkGenerate = () => {
           ))}
         </div>
 
-        {/* Step 1: Select Template */}
         {step === 1 && (
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
@@ -157,25 +234,21 @@ const BulkGenerate = () => {
                 Choose a certificate template
               </label>
               {templatesLoading ? (
-                <div className="flex items-center gap-2">
-                  <Spinner size="sm" />
-                  <span className="text-gray-500">Loading templates...</span>
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Loading templates...</span>
                 </div>
               ) : (
-                <select
+                <CustomSelect
                   value={selectedTemplate}
-                  onChange={(e) => setSelectedTemplate(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Select a template...</option>
-                  {templates?.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedTemplate}
+                  options={templateOptions}
+                  placeholder="Select a template..."
+                  className="w-full"
+                />
               )}
               <button
+                type="button"
                 onClick={() => selectedTemplate && setStep(2)}
                 disabled={!selectedTemplate}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
@@ -186,14 +259,12 @@ const BulkGenerate = () => {
           </Card>
         )}
 
-        {/* Step 2: Add Recipients */}
         {step === 2 && (
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
               Step 2: Add Recipients
             </h2>
 
-            {/* CSV Upload */}
             <div className="mb-6 p-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
               <div className="flex items-center gap-4">
                 <Upload className="h-8 w-8 text-gray-400" />
@@ -231,7 +302,12 @@ const BulkGenerate = () => {
               </span>
             </div>
 
-            {/* Manual Entry Table */}
+            {validationError && (
+              <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm font-semibold text-red-700 dark:text-red-300">
+                {validationError}
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -303,6 +379,7 @@ const BulkGenerate = () => {
                       </td>
                       <td className="px-4 py-2">
                         <button
+                          type="button"
                           onClick={() => removeRow(index)}
                           className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                         >
@@ -317,11 +394,11 @@ const BulkGenerate = () => {
 
             <div className="mt-4 flex items-center gap-4">
               <button
+                type="button"
                 onClick={addRow}
                 className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
-                <Plus className="h-4 w-4" />
-                Add Row
+                <Plus className="h-4 w-4" /> Add Row
               </button>
               <span className="text-sm text-gray-500">
                 {recipients.length} recipient
@@ -331,13 +408,18 @@ const BulkGenerate = () => {
 
             <div className="mt-6 flex gap-4">
               <button
-                onClick={() => setStep(1)}
+                type="button"
+                onClick={() => {
+                  setValidationError('');
+                  setStep(1);
+                }}
                 className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 Back
               </button>
               <button
-                onClick={() => recipients.length > 0 && setStep(3)}
+                type="button"
+                onClick={goToPreview}
                 disabled={recipients.length === 0}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
               >
@@ -347,13 +429,11 @@ const BulkGenerate = () => {
           </Card>
         )}
 
-        {/* Step 3: Preview & Generate */}
         {step === 3 && (
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
               Step 3: Preview & Generate
             </h2>
-
             <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -422,27 +502,33 @@ const BulkGenerate = () => {
               </div>
             </div>
 
+            {validationError && (
+              <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm font-semibold text-red-700 dark:text-red-300">
+                {validationError}
+              </div>
+            )}
+
             <div className="flex gap-4">
               <button
+                type="button"
                 onClick={() => setStep(2)}
                 className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 Back
               </button>
               <button
+                type="button"
                 onClick={handleGenerate}
                 disabled={isGenerating}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 {isGenerating ? (
                   <>
-                    <Spinner size="sm" />
-                    Generating...
+                    <Loader2 className="h-4 w-4 animate-spin" /> Generating...
                   </>
                 ) : (
                   <>
-                    <CheckCircle className="h-4 w-4" />
-                    Generate All
+                    <CheckCircle className="h-4 w-4" /> Generate All
                   </>
                 )}
               </button>
@@ -450,16 +536,13 @@ const BulkGenerate = () => {
           </Card>
         )}
 
-        {/* Step 4: Progress */}
         {step === 4 && (
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
               Generation Progress
             </h2>
-
             {jobStatus ? (
               <div className="space-y-6">
-                {/* Progress Bar */}
                 <div>
                   <div className="flex justify-between mb-2">
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -475,7 +558,6 @@ const BulkGenerate = () => {
                   </div>
                 </div>
 
-                {/* Stats */}
                 <div className="grid grid-cols-3 gap-4">
                   <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
                     <div className="flex items-center gap-2">
@@ -512,28 +594,26 @@ const BulkGenerate = () => {
                   </div>
                 </div>
 
-                {/* Status Badge */}
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-gray-500">Status:</span>
                   <Badge
-                    variant={
+                    color={
                       jobStatus.status === 'completed'
-                        ? 'success'
+                        ? 'green'
                         : jobStatus.status === 'failed'
-                          ? 'error'
-                          : 'info'
+                          ? 'red'
+                          : 'blue'
                     }
                   >
                     {jobStatus.status}
                   </Badge>
                   {isPolling && (
                     <span className="text-sm text-gray-500 flex items-center gap-1">
-                      <Spinner size="sm" /> Polling...
+                      <Loader2 className="h-4 w-4 animate-spin" /> Polling...
                     </span>
                   )}
                 </div>
 
-                {/* Results */}
                 {jobStatus.status === 'completed' && jobStatus.items && (
                   <div className="mt-6">
                     <h3 className="text-lg font-medium mb-3 text-gray-900 dark:text-white">
@@ -565,10 +645,10 @@ const BulkGenerate = () => {
                               </td>
                               <td className="px-4 py-2">
                                 <Badge
-                                  variant={
+                                  color={
                                     item.status === 'generated'
-                                      ? 'success'
-                                      : 'error'
+                                      ? 'green'
+                                      : 'red'
                                   }
                                 >
                                   {item.status}
@@ -585,21 +665,23 @@ const BulkGenerate = () => {
                   </div>
                 )}
 
-                {/* Action Buttons */}
                 <div className="flex gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                   <button
+                    type="button"
                     onClick={() => {
                       setStep(1);
                       setSelectedTemplate('');
                       setRecipients([]);
                       setCsvFileName('');
                       setJobId(null);
+                      setValidationError('');
                     }}
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     Generate More
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       if (jobStatus.items) {
                         const csv = [
@@ -617,6 +699,7 @@ const BulkGenerate = () => {
                         a.href = url;
                         a.download = 'certificates.csv';
                         a.click();
+                        URL.revokeObjectURL(url);
                       }
                     }}
                     className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -627,7 +710,7 @@ const BulkGenerate = () => {
               </div>
             ) : (
               <div className="flex items-center justify-center py-12">
-                <Spinner size="lg" />
+                <Spinner label="Loading job status..." />
               </div>
             )}
           </Card>

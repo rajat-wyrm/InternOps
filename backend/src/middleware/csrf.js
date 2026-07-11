@@ -1,10 +1,11 @@
 const crypto = require('crypto');
-
+const config = require('../config');
+const { verifyAccessToken } = require('../utils/tokens');
 const SESSION_COOKIE = 'csrf-sid';
 const TOKEN_COOKIE = 'csrf-token';
 
 function getSecret() {
-  const secret = require('../config').jwt?.secret;
+  const secret = config.jwt?.secret;
   if (!secret) {
     throw new Error('JWT_SECRET is not configured; cannot sign CSRF session');
   }
@@ -41,6 +42,10 @@ function newSessionId() {
 
 function tokenFor(sessionId) {
   return sign(`csrf:${sessionId}`);
+}
+
+function logCsrfWarn(request, details, message) {
+  request.log?.warn(details, message);
 }
 
 function readSession(request) {
@@ -98,11 +103,23 @@ function getOrCreateToken(request, reply) {
   let tokenUserId = null;
   const authHeader = request.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
+    const authToken = authHeader.split(' ')[1];
     try {
-      const { verifyAccessToken } = require('../utils/tokens');
-      const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+      const decoded = verifyAccessToken(authToken);
       tokenUserId = decoded.id;
-    } catch (err) {}
+    } catch (err) {
+      logCsrfWarn(
+        request,
+        {
+          err,
+          method: request.method,
+          url: request.url,
+          hasAuthHeader: true,
+          tokenLength: authToken ? authToken.length : 0,
+        },
+        'CSRF bearer token verification failed while generating CSRF token'
+      );
+    }
   }
 
   if (!session) {
@@ -121,7 +138,15 @@ function getOrCreateToken(request, reply) {
 }
 
 function generateToken(request, reply) {
-  return getOrCreateToken(request, reply);
+  const token = getOrCreateToken(request, reply);
+  reply.setCookie('csrf-token', token, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    path: '/',
+  });
+
+  return token;
 }
 
 const EXEMPT = [
@@ -164,11 +189,23 @@ async function csrfCheck(request, reply) {
   } else {
     const authHeader = request.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
+      const authToken = authHeader.split(' ')[1];
       try {
-        const { verifyAccessToken } = require('../utils/tokens');
-        const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+        const decoded = verifyAccessToken(authToken);
         tokenUserId = decoded.id;
-      } catch (err) {}
+      } catch (err) {
+        logCsrfWarn(
+          request,
+          {
+            err,
+            method: request.method,
+            url: request.url,
+            hasAuthHeader: true,
+            tokenLength: authToken ? authToken.length : 0,
+          },
+          'CSRF bearer token verification failed during request validation'
+        );
+      }
     }
   }
 

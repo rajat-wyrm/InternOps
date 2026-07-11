@@ -252,21 +252,30 @@ async function revokeRefreshTokenRedis(tokenHash) {
 // can never roll back — or block — the Postgres revocation (#507).
 async function revokeAllUserTokensRedis(userId) {
   // 1. Postgres UPDATE first inside a transaction — must succeed
-  const client = await pool.connect();
+  let client;
+
   try {
+    client = await pool.connect();
+
     await client.query('BEGIN');
+
     await client.query(
       'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
       [userId]
     );
+
     await client.query('COMMIT');
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+    }
+
     throw err;
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
-
   // 2. Redis cleanup (best-effort)
   try {
     const redis = await getRedisClient();

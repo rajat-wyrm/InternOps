@@ -156,7 +156,11 @@ export default function Notices() {
 
   const { data: notices = [], isLoading } = useQuery({
     queryKey: ['notices-admin'],
-    queryFn: () => api.get('/notices').then((r) => r.data),
+    // Defensive: always resolve to an array, even if the backend ever sends
+    // back an error object (e.g. { error, notices: [] }) instead of a bare
+    // array — prevents "notices.map is not a function" crashes.
+    queryFn: () =>
+      api.get('/notices').then((r) => (Array.isArray(r.data) ? r.data : [])),
   });
 
   const createMut = useMutation({

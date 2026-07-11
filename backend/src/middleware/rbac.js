@@ -6,18 +6,18 @@ const PERMISSIONS = {
   INTERN: ['read:own_profile'],
 };
 
-// '...requirements' use karke hum multiple arguments accept kar sakte hain (pehle wale code ki tarah)
+// By using '...requirements', we can accept multiple arguments (like in the previous code)
 function rbac(...requirements) {
   return (req, reply, done) => {
     const userRole = req.user?.role;
     const allowedActions = PERMISSIONS[userRole] || [];
 
-    // Agar user ADMIN hai, toh seedha aage badhne do
+    // If the user is ADMIN, let them proceed directly
     if (allowedActions.includes('all')) {
       return done();
     }
 
-    // Check karo ki paas kiye gaye requirements mein se koi action ya legacy role match hota hai kya
+    // Check if any of the passed requirements matches an allowed action or the user's role
     const hasPermission = requirements.some(
       (reqItem) => allowedActions.includes(reqItem) || reqItem === userRole
     );

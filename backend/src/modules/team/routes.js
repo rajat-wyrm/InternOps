@@ -78,10 +78,19 @@ async function routes(fastify) {
     '/members',
     {
       preHandler: [auth, rbac(...MANAGER_ROLES)],
-      schema: { tags: ['Team'], description: 'List team members' },
+      schema: {
+        tags: ['Team'],
+        description: 'List team members',
+        querystring: {
+          type: 'object',
+          properties: {
+            department_id: { type: 'string', format: 'uuid' },
+          },
+        },
+      },
     },
     async (req) => {
-      return repo.getTeamMembers(req.user.id);
+      return repo.getTeamMembers(req.user.id, req.query?.department_id);
     }
   );
 

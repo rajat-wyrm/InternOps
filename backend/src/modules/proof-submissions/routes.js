@@ -111,6 +111,12 @@ async function routes(fastify) {
       const writtenFiles = [];
 
       try {
+        if (!didComment && !didRepost && !didShare) {
+          return reply.status(400).send({
+            error: 'At least one engagement action must be selected.',
+          });
+        }
+
         for (const data of filesData) {
           const ext = path.extname(data.filename).toLowerCase();
           if (
@@ -149,11 +155,6 @@ async function routes(fastify) {
           }
         }
         throw error;
-      }
-      if (!didComment && !didRepost && !didShare) {
-        return reply.status(400).send({
-          error: 'At least one engagement action must be selected.',
-        });
       }
       const proof = await repo.submitProofWithImages(
         task_id,

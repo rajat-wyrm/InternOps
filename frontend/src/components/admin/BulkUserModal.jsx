@@ -20,6 +20,20 @@ function parseCsv(text) {
     });
 }
 
+function UserRow({ row }) {
+  return (
+    <tr className="hover:bg-slate-50">
+      <td className="px-3 py-2 text-slate-700">{row.fullName || '\u2014'}</td>
+      <td className="px-3 py-2 text-slate-700">{row.email}</td>
+      <td className="px-3 py-2">
+        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium text-[11px]">
+          {row.role}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
 export default function BulkUserModal({ open, onClose }) {
   const queryClient = useQueryClient();
   const fileRef = useRef(null);
@@ -210,18 +224,8 @@ export default function BulkUserModal({ open, onClose }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {rows.map((r, i) => (
-                    <tr key={i} className="hover:bg-slate-50">
-                      <td className="px-3 py-2 text-slate-700">
-                        {r.fullName || '—'}
-                      </td>
-                      <td className="px-3 py-2 text-slate-700">{r.email}</td>
-                      <td className="px-3 py-2">
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium text-[11px]">
-                          {r.role}
-                        </span>
-                      </td>
-                    </tr>
+                  {rows.map((r) => (
+                    <UserRow key={r.email} row={r} />
                   ))}
                 </tbody>
               </table>

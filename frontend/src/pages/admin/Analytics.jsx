@@ -68,6 +68,7 @@ export default function Analytics() {
   const { data: departments = [], isLoading: loadingDepts } = useQuery({
     queryKey: ['departmentsList'],
     queryFn: () => api.get('/departments').then((r) => r.data),
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   const departmentOptions = [
