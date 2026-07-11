@@ -88,8 +88,12 @@ function resolveRefreshSecret() {
     : undefined;
 }
 
+const envSchema = z.object({
+  PORT: z.coerce.number().default(5000),
+});
+const env = envSchema.parse(process.env);
 module.exports = {
-  port: parseInt(process.env.PORT, 10) || 5000,
+  port: env.PORT,
   host: process.env.HOST || '0.0.0.0',
   nodeEnv: process.env.NODE_ENV,
   databaseUrl: process.env.DATABASE_URL,
