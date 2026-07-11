@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
@@ -68,6 +68,19 @@ export default function Notifications() {
 
   const items = data?.data || [];
   const unread = items.filter((n) => !n.read).length;
+  const handleMarkRead = useCallback(
+    (id) => {
+      markReadMut.mutate(id);
+    },
+    [markReadMut]
+  );
+
+  const handleDelete = useCallback(
+    (id) => {
+      deleteMut.mutate(id);
+    },
+    [deleteMut]
+  );
 
   return (
     <div className="animate-fade-in-up">
@@ -191,7 +204,7 @@ export default function Notifications() {
               <div className="flex items-center gap-2 shrink-0 pt-1">
                 {!n.read && (
                   <button
-                    onClick={() => markReadMut.mutate(n.id)}
+                    onClick={() => handleMarkRead(n.id)}
                     disabled={markReadMut.isPending}
                     className="text-indigo-600 dark:text-indigo-300 text-xs font-extrabold hover:text-indigo-800 dark:hover:text-indigo-200 transition-colors flex items-center gap-1 disabled:opacity-60"
                   >
@@ -201,7 +214,7 @@ export default function Notifications() {
                 )}
 
                 <button
-                  onClick={() => deleteMut.mutate(n.id)}
+                  onClick={() => handleDelete(n.id)}
                   disabled={deleteMut.isPending}
                   className="text-slate-400 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-all disabled:opacity-60"
                   title="Delete notification"

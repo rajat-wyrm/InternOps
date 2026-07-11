@@ -11,7 +11,10 @@ const metrics = require('./utils/metrics');
 const { initializeWebSocket } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
 const { getRedisStatus } = require('./config/redis');
-
+const { csrfMiddleware } = require('./middleware/csrf');
+const { sanitizationMiddleware } = require('./middleware/sanitize');
+const { createAuditLog } = require('./utils/audit');
+const { setupCronJobs } = require('./utils/cron');
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
   logger:
@@ -40,7 +43,6 @@ app.get(
     },
   },
   async (req, reply) => {
-    const { getRedisStatus } = require('./config/redis');
     const redisStatus = getRedisStatus();
 
     if (process.env.NODE_ENV === 'test') {
@@ -111,7 +113,10 @@ app.get(
 );
 
 app.register(require('@fastify/cors'), {
-  origin: config.nodeEnv === 'production' ? config.corsOrigin : true,
+  origin:
+    config.nodeEnv === 'production'
+      ? config.corsOrigin
+      : 'http://localhost:5173',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
@@ -140,8 +145,6 @@ app.register(require('@fastify/rate-limit'), {
 
 app.register(require('@fastify/cookie'));
 
-const { csrfMiddleware } = require('./middleware/csrf');
-const { sanitizationMiddleware } = require('./middleware/sanitize');
 app.addHook('onRequest', csrfMiddleware);
 // Sanitize all string fields in body, query, and params using sanitize-html
 // (allowlist of zero tags) to prevent XSS. Runs after body parsing.
@@ -210,10 +213,8 @@ app.addHook('onRequest', async (request) => {
 app.addHook('onResponse', async (request, reply) => {
   metrics.observeHttpRequest(request, reply, request.startTime);
 
-  // Layer 3: Defensive hook - safely check for audit data using optional chaining
   if (!request?.auditOnResponse) return;
 
-  const { createAuditLog } = require('./utils/audit');
   try {
     await createAuditLog(request.auditOnResponse);
   } catch (err) {
@@ -313,7 +314,7 @@ app.setErrorHandler((error, request, reply) => {
 });
 
 if (process.env.NODE_ENV !== 'test') {
-  require('./utils/cron').setupCronJobs();
+  setupCronJobs();
 }
 
 const start = async () => {

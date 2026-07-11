@@ -282,6 +282,7 @@ async function routes(fastify) {
       const {
         template_id,
         recipient_name,
+        role,
         domain,
         start_date,
         end_date,
@@ -299,6 +300,7 @@ async function routes(fastify) {
         {
           template_id,
           recipient_name,
+          role,
           domain,
           start_date,
           end_date,

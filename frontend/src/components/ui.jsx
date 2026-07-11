@@ -373,16 +373,16 @@ export function ConfirmationModal({
     const root = document.getElementById('root');
 
     if (open) {
-      document.body.style.overflow = 'hidden';
+      document.body.classList.add('modal-open');
       if (root) root.classList.add('blur-sm', 'transition-all', 'duration-300');
     } else {
-      document.body.style.overflow = 'unset';
+      document.body.classList.remove('modal-open');
       if (root)
         root.classList.remove('blur-sm', 'transition-all', 'duration-300');
     }
 
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.classList.remove('modal-open');
       if (root)
         root.classList.remove('blur-sm', 'transition-all', 'duration-300');
     };

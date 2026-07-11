@@ -15,16 +15,41 @@ function initializeWebSocket(server, logger) {
   });
 
   io.use((socket, next) => {
+    const rawToken = socket.handshake?.auth?.token;
+    const token = typeof rawToken === 'string' ? rawToken : '';
+    const clientIp =
+      socket.handshake?.headers?.['x-forwarded-for'] ||
+      socket.handshake?.address;
+
     try {
-      const token = socket.handshake.auth.token;
       if (!token) {
+        log?.warn(
+          {
+            clientIp,
+            hasToken: false,
+            tokenLength: 0,
+            tokenSegments: 0,
+          },
+          'WebSocket authentication failed: missing token'
+        );
         socket.disconnect(true);
         return next(new Error('Authentication error'));
       }
+
       const decoded = verifyAccessToken(token);
       socket.userId = decoded.id;
       next();
-    } catch {
+    } catch (err) {
+      log?.warn(
+        {
+          err,
+          clientIp,
+          hasToken: Boolean(token),
+          tokenLength: token.length,
+          tokenSegments: token ? token.split('.').length : 0,
+        },
+        'WebSocket authentication failed during token verification'
+      );
       socket.disconnect(true);
       next(new Error('Authentication error'));
     }

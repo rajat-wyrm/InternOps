@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { PageHeader, Card, Badge } from '../../components/ui';
+import CustomSelect from '../../components/CustomSelect';
+import CustomDatePicker from '../../components/CustomDatePicker';
 import {
   useValidateCertificate,
   useGenerateAchievement,
@@ -30,6 +32,7 @@ const AVAILABLE_TONES = [
   'Motivational',
   'Casual',
 ];
+
 const SUPPORTED_LANGUAGES = [
   'English',
   'Hindi',
@@ -75,9 +78,11 @@ export default function AICertificates() {
     language: 'English',
     use_ai_beautify: true,
   });
+
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [previewHtml, setPreviewHtml] = useState(null);
+  const [previewTemplate, setPreviewTemplate] = useState('Modern Minimal');
 
   const validateMutation = useValidateCertificate();
   const achievementMutation = useGenerateAchievement();
@@ -90,11 +95,83 @@ export default function AICertificates() {
   const previewMutation = useCertificatePreview();
   const { data: templatesData } = useDesignTemplates();
 
+  const certificateTypeOptions = [
+    { value: 'Internship', label: 'Internship' },
+    { value: 'Achievement', label: 'Achievement' },
+    { value: 'Completion', label: 'Completion' },
+    { value: 'Excellence', label: 'Excellence' },
+    { value: 'Participation', label: 'Participation' },
+  ];
+
+  const toneOptions = AVAILABLE_TONES.map((tone) => ({
+    value: tone,
+    label: tone,
+  }));
+
+  const industryOptions = [
+    'Technology',
+    'Business',
+    'Education',
+    'Healthcare',
+    'Creative',
+    'Finance',
+    'Sports',
+    'Science',
+  ].map((industry) => ({
+    value: industry,
+    label: industry,
+  }));
+
+  const styleOptions = [
+    'Modern',
+    'Classic',
+    'Elegant',
+    'Minimalist',
+    'Colorful',
+    'Bold',
+    'Formal',
+  ].map((style) => ({
+    value: style,
+    label: style,
+  }));
+
+  const languageOptions = SUPPORTED_LANGUAGES.map((language) => ({
+    value: language,
+    label: language,
+  }));
+
+  const audienceOptions = [
+    'Professional',
+    'Academic',
+    'Corporate',
+    'Student',
+    'General',
+  ].map((audience) => ({
+    value: audience,
+    label: audience,
+  }));
+
+  const previewTemplateOptions = (templatesData?.data || []).map(
+    (template) => ({
+      value: template.name,
+      label:
+        `${template.emoji || ''} ${template.name} — ${template.style || ''}`.trim(),
+    })
+  );
+
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
+
     setFormData((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
+    }));
+  };
+
+  const updateFormValue = (key, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      [key]: value,
     }));
   };
 
@@ -112,7 +189,7 @@ export default function AICertificates() {
         }),
       });
     } catch (err) {
-      setError(err.message || 'Validation failed');
+      setError(err.response?.data?.error || err.message || 'Validation failed');
     }
   };
 
@@ -129,7 +206,11 @@ export default function AICertificates() {
         }),
       });
     } catch (err) {
-      setError(err.message || 'Achievement generation failed');
+      setError(
+        err.response?.data?.error ||
+          err.message ||
+          'Achievement generation failed'
+      );
     }
   };
 
@@ -145,7 +226,9 @@ export default function AICertificates() {
         }),
       });
     } catch (err) {
-      setError(err.message || 'Content generation failed');
+      setError(
+        err.response?.data?.error || err.message || 'Content generation failed'
+      );
     }
   };
 
@@ -165,7 +248,9 @@ export default function AICertificates() {
         }),
       });
     } catch (err) {
-      setError(err.message || 'Template matching failed');
+      setError(
+        err.response?.data?.error || err.message || 'Template matching failed'
+      );
     }
   };
 
@@ -189,7 +274,9 @@ export default function AICertificates() {
         }),
       });
     } catch (err) {
-      setError(err.message || 'Pipeline execution failed');
+      setError(
+        err.response?.data?.error || err.message || 'Pipeline execution failed'
+      );
     }
   };
 
@@ -207,7 +294,9 @@ export default function AICertificates() {
         }),
       });
     } catch (err) {
-      setError(err.message || 'Tone customization failed');
+      setError(
+        err.response?.data?.error || err.message || 'Tone customization failed'
+      );
     }
   };
 
@@ -225,7 +314,11 @@ export default function AICertificates() {
         }),
       });
     } catch (err) {
-      setError(err.message || 'Multi-language generation failed');
+      setError(
+        err.response?.data?.error ||
+          err.message ||
+          'Multi-language generation failed'
+      );
     }
   };
 
@@ -243,7 +336,9 @@ export default function AICertificates() {
         }),
       });
     } catch (err) {
-      setError(err.message || 'Design suggestion failed');
+      setError(
+        err.response?.data?.error || err.message || 'Design suggestion failed'
+      );
     }
   };
 
@@ -261,7 +356,9 @@ export default function AICertificates() {
       });
       setPreviewHtml(res.data?.html || null);
     } catch (err) {
-      setError(err.message || 'Preview generation failed');
+      setError(
+        err.response?.data?.error || err.message || 'Preview generation failed'
+      );
     }
   };
 
@@ -275,11 +372,9 @@ export default function AICertificates() {
       multilanguage: handleMultilanguage,
       design: handleDesignSuggest,
       template: handleMatchTemplate,
-      preview: () => {
-        const sel = document.getElementById('preview-template');
-        handlePreview(sel?.value || 'Modern Minimal');
-      },
+      preview: () => handlePreview(previewTemplate || 'Modern Minimal'),
     };
+
     map[activeTab]?.();
   };
 
@@ -303,11 +398,11 @@ export default function AICertificates() {
       />
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Tab bar */}
         <div className="flex flex-wrap gap-2 mb-6">
           {TABS.map((tab) => (
             <button
               key={tab.id}
+              type="button"
               onClick={() => {
                 setActiveTab(tab.id);
                 setResult(null);
@@ -327,7 +422,6 @@ export default function AICertificates() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Form — 2 cols */}
           <div className="lg:col-span-2">
             <Card className="p-6">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-5">
@@ -335,7 +429,7 @@ export default function AICertificates() {
               </h3>
 
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Name <span className="text-red-500">*</span>
@@ -349,6 +443,7 @@ export default function AICertificates() {
                       placeholder="Recipient name"
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Company
@@ -378,127 +473,89 @@ export default function AICertificates() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Type
                     </label>
-                    <select
-                      name="certificate_type"
+                    <CustomSelect
                       value={formData.certificate_type}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                    >
-                      <option>Internship</option>
-                      <option>Achievement</option>
-                      <option>Completion</option>
-                      <option>Excellence</option>
-                      <option>Participation</option>
-                    </select>
+                      onChange={(value) =>
+                        updateFormValue('certificate_type', value)
+                      }
+                      options={certificateTypeOptions}
+                      placeholder="Select type"
+                      className="w-full"
+                    />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Tone
                     </label>
-                    <select
-                      name="tone"
+                    <CustomSelect
                       value={formData.tone}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                    >
-                      {AVAILABLE_TONES.map((t) => (
-                        <option key={t}>{t}</option>
-                      ))}
-                    </select>
+                      onChange={(value) => updateFormValue('tone', value)}
+                      options={toneOptions}
+                      placeholder="Select tone"
+                      className="w-full"
+                    />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Industry
                     </label>
-                    <select
-                      name="industry"
+                    <CustomSelect
                       value={formData.industry}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                    >
-                      {[
-                        'Technology',
-                        'Business',
-                        'Education',
-                        'Healthcare',
-                        'Creative',
-                        'Finance',
-                        'Sports',
-                        'Science',
-                      ].map((i) => (
-                        <option key={i}>{i}</option>
-                      ))}
-                    </select>
+                      onChange={(value) => updateFormValue('industry', value)}
+                      options={industryOptions}
+                      placeholder="Select industry"
+                      className="w-full"
+                    />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Style
                     </label>
-                    <select
-                      name="style"
+                    <CustomSelect
                       value={formData.style}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                    >
-                      {[
-                        'Modern',
-                        'Classic',
-                        'Elegant',
-                        'Minimalist',
-                        'Colorful',
-                        'Bold',
-                        'Formal',
-                      ].map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
+                      onChange={(value) => updateFormValue('style', value)}
+                      options={styleOptions}
+                      placeholder="Select style"
+                      className="w-full"
+                    />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Language
                     </label>
-                    <select
-                      name="language"
+                    <CustomSelect
                       value={formData.language}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                    >
-                      {SUPPORTED_LANGUAGES.map((l) => (
-                        <option key={l}>{l}</option>
-                      ))}
-                    </select>
+                      onChange={(value) => updateFormValue('language', value)}
+                      options={languageOptions}
+                      placeholder="Select language"
+                      className="w-full"
+                    />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Audience
                     </label>
-                    <select
-                      name="audience"
+                    <CustomSelect
                       value={formData.audience}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                    >
-                      {[
-                        'Professional',
-                        'Academic',
-                        'Corporate',
-                        'Student',
-                        'General',
-                      ].map((a) => (
-                        <option key={a}>{a}</option>
-                      ))}
-                    </select>
+                      onChange={(value) => updateFormValue('audience', value)}
+                      options={audienceOptions}
+                      placeholder="Select audience"
+                      className="w-full"
+                    />
                   </div>
                 </div>
 
@@ -506,16 +563,15 @@ export default function AICertificates() {
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                     Date
                   </label>
-                  <input
-                    type="date"
-                    name="date"
+                  <CustomDatePicker
                     value={formData.date}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                    onChange={(value) => updateFormValue('date', value)}
+                    placeholder="Select date"
+                    className="w-full"
                   />
                 </div>
 
-                <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     name="use_ai_beautify"
@@ -523,31 +579,29 @@ export default function AICertificates() {
                     onChange={handleInputChange}
                     className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                   />
-                  <label className="text-sm text-slate-700 dark:text-slate-300">
+                  <span className="text-sm text-slate-700 dark:text-slate-300">
                     Use AI beautification
-                  </label>
-                </div>
+                  </span>
+                </label>
 
                 {activeTab === 'preview' && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Template to Preview
                     </label>
-                    <select
-                      id="preview-template"
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                    >
-                      {(templatesData?.data || []).map((t) => (
-                        <option key={t.name} value={t.name}>
-                          {t.emoji} {t.name} — {t.style}
-                        </option>
-                      ))}
-                    </select>
+                    <CustomSelect
+                      value={previewTemplate}
+                      onChange={setPreviewTemplate}
+                      options={previewTemplateOptions}
+                      placeholder="Select template"
+                      className="w-full"
+                    />
                   </div>
                 )}
 
                 <div className="pt-2">
                   <button
+                    type="button"
                     onClick={runCurrentTab}
                     disabled={
                       isLoading || !formData.name || !formData.achievement
@@ -574,7 +628,7 @@ export default function AICertificates() {
                             fill="currentColor"
                             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                           />
-                        </svg>{' '}
+                        </svg>
                         Processing...
                       </>
                     ) : (
@@ -586,7 +640,6 @@ export default function AICertificates() {
             </Card>
           </div>
 
-          {/* Results — 3 cols */}
           <div className="lg:col-span-3">
             <Card className="p-6">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-5">
@@ -619,6 +672,7 @@ export default function AICertificates() {
                     />
                   </div>
                   <button
+                    type="button"
                     onClick={() => setPreviewHtml(null)}
                     className="mt-2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
                   >

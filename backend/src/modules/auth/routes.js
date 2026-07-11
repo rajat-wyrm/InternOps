@@ -313,13 +313,6 @@ async function routes(fastify) {
 
       reply.clearCookie('refreshToken', { path: '/api/auth/refresh' });
 
-      req.auditOnResponse = {
-        userId: req.user.id,
-        action: 'LOGOUT',
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-      };
-
       rotateAndSetCsrf(req, reply, null);
       return { message: 'Logged out' };
     }
@@ -331,12 +324,6 @@ async function routes(fastify) {
     { schema: { tags: ['Authentication'], description: 'Get CSRF token' } },
     async (req, reply) => {
       const csrfToken = generateToken(req, reply);
-      reply.setCookie('csrf-token', csrfToken, {
-        httpOnly: false,
-        secure: isProduction,
-        sameSite: isProduction ? 'strict' : 'lax',
-        path: '/',
-      });
       return { csrfToken };
     }
   );

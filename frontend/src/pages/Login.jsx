@@ -87,8 +87,12 @@ export default function Login() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (loginMut.isPending) return;
+
     if (!email.trim() || !password)
       return setError('Email and password required');
+
     setError('');
     loginMut.mutate({ email, password });
   };

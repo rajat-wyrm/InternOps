@@ -8,6 +8,8 @@ import {
   FileText,
 } from 'lucide-react';
 import { PageHeader, Card, Badge, Spinner } from '../../components/ui';
+import CustomDatePicker from '../../components/CustomDatePicker';
+import CustomSelect from '../../components/CustomSelect';
 import { useTemplates, useQuickGenerate } from '../../hooks/useCertificates';
 
 const DOMAINS = [
@@ -41,6 +43,7 @@ export default function QuickGenerate() {
   const [formData, setFormData] = useState({
     template_id: '',
     recipient_name: '',
+    role: '',
     domain: '',
     custom_domain: '',
     start_date: '',
@@ -53,6 +56,23 @@ export default function QuickGenerate() {
   const { data: templatesData, isLoading: templatesLoading } = useTemplates();
   const templates = templatesData?.data || [];
   const quickGenerateMutation = useQuickGenerate();
+
+  const templateOptions = [
+    { value: '', label: 'Auto-select template' },
+    ...templates.map((t) => ({
+      value: t.id,
+      label: t.name,
+    })),
+  ];
+
+  const domainOptions = [
+    { value: '', label: 'Select domain' },
+    ...DOMAINS.map((d) => ({
+      value: d,
+      label: d,
+    })),
+    { value: 'Other', label: 'Other (type below)' },
+  ];
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -68,6 +88,7 @@ export default function QuickGenerate() {
       const res = await quickGenerateMutation.mutateAsync({
         template_id: formData.template_id || undefined,
         recipient_name: formData.recipient_name,
+        role: formData.role || undefined,
         domain,
         start_date: formData.start_date,
         end_date: formData.end_date,
@@ -121,19 +142,15 @@ export default function QuickGenerate() {
                       <Spinner /> Loading templates...
                     </div>
                   ) : (
-                    <select
-                      name="template_id"
+                    <CustomSelect
                       value={formData.template_id}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                    >
-                      <option value="">Auto-select template</option>
-                      {templates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value) =>
+                        setFormData((prev) => ({ ...prev, template_id: value }))
+                      }
+                      options={templateOptions}
+                      placeholder="Auto-select template"
+                      className="w-full"
+                    />
                   )}
                 </div>
 
@@ -153,25 +170,35 @@ export default function QuickGenerate() {
                   />
                 </div>
 
+                {/* Role */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                    Role <span className="text-slate-400">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="role"
+                    value={formData.role}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                    placeholder="e.g. Captain, Team Lead, Intern"
+                  />
+                </div>
+
                 {/* Domain */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                     Domain / Field <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    name="domain"
+                  <CustomSelect
                     value={formData.domain}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                  >
-                    <option value="">Select domain</option>
-                    {DOMAINS.map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                    <option value="Other">Other (type below)</option>
-                  </select>
+                    onChange={(value) =>
+                      setFormData((prev) => ({ ...prev, domain: value }))
+                    }
+                    options={domainOptions}
+                    placeholder="Select domain"
+                    className="w-full"
+                  />
                   {formData.domain === 'Other' && (
                     <input
                       type="text"
@@ -190,24 +217,26 @@ export default function QuickGenerate() {
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Start Date <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="date"
-                      name="start_date"
+                    <CustomDatePicker
                       value={formData.start_date}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                      onChange={(value) =>
+                        setFormData((prev) => ({ ...prev, start_date: value }))
+                      }
+                      placeholder="Select start date"
+                      className="w-full"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       End Date <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="date"
-                      name="end_date"
+                    <CustomDatePicker
                       value={formData.end_date}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                      onChange={(value) =>
+                        setFormData((prev) => ({ ...prev, end_date: value }))
+                      }
+                      placeholder="Select end date"
+                      className="w-full"
                     />
                   </div>
                 </div>
