@@ -62,7 +62,9 @@ function validateEnv() {
 
   if (!isDbUrlValid) {
     console.error('❌ Invalid environment variable format:');
-    console.error('   • DATABASE_URL must be a valid PostgreSQL connection string starting with postgres:// or postgresql://');
+    console.error(
+      '   • DATABASE_URL must be a valid PostgreSQL connection string starting with postgres:// or postgresql://'
+    );
     process.exit(1);
   }
 }
