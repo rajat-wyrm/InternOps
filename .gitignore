@@ -22,6 +22,8 @@ secrets/
 *.key
 
 .env.*
+!.env.example
+!backend/.env.example
 backend/.env
 backend/.env.*
 
