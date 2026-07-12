@@ -87,6 +87,32 @@ describe('Environment Variable Validation Tests', () => {
     );
   });
 
+  it('should terminate the process if DATABASE_URL is malformed', () => {
+    process.env.JWT_SECRET = 'secret';
+    process.env.DATABASE_URL = 'not-a-valid-url';
+    process.env.NODE_ENV = 'development';
+
+    validateEnv();
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('❌ Invalid environment variable format:')
+    );
+  });
+
+  it('should terminate the process if DATABASE_URL has an invalid protocol', () => {
+    process.env.JWT_SECRET = 'secret';
+    process.env.DATABASE_URL = 'mongodb://localhost:27017/db';
+    process.env.NODE_ENV = 'development';
+
+    validateEnv();
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.stringContaining('❌ Invalid environment variable format:')
+    );
+  });
+
   it('should terminate the process if NODE_ENV is missing', () => {
     process.env.JWT_SECRET = 'secret';
     process.env.DATABASE_URL = 'postgresql://localhost:5432';
