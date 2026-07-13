@@ -68,20 +68,8 @@ export default function ForgotPassword() {
             </div>
           )}
 
-<<<<<<< HEAD
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-
-              if (forgotMut.isPending) return;
-
-              forgotMut.mutate(email);
-            }}
-            className="space-y-4"
-          >
-=======
+         
           <form onSubmit={handleSubmit} className="space-y-4">
->>>>>>> 79a6e48 (fix(frontend): prevent double submission in auth forms)
             <div>
               <label className="block text-xs font-extrabold uppercase tracking-wider text-white/70 mb-2">
                 Email address

@@ -34,22 +34,13 @@ export default function ResetPassword() {
  const handleSubmit = (e) => {
   e.preventDefault();
 
-<<<<<<< HEAD
     if (resetMut.isPending) return;
 
     if (!token) {
       setError('Reset token is missing or invalid');
       return;
     }
-=======
-  // Prevent double submission
-  if (resetMut.isPending) return;
->>>>>>> 79a6e48 (fix(frontend): prevent double submission in auth forms)
 
-  if (!token) {
-    setError('Reset token is missing or invalid');
-    return;
-  }
 
   setError('');
   setMessage('');
