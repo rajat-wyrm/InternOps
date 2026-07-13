@@ -247,11 +247,39 @@ module.exports = async function socialTasksRoutes(fastify) {
   fastify.get(
     '/',
     {
-      schema: { tags: ['Tasks'], description: 'List social tasks' },
+      schema: {
+        tags: ['Tasks'],
+        description: 'List social tasks',
+        querystring: {
+          type: 'object',
+          properties: {
+            page: {
+              type: 'integer',
+              minimum: 1,
+              default: 1,
+            },
+            limit: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 100,
+              default: 50,
+            },
+            deadlineBefore: {
+              type: 'string',
+            },
+          },
+        },
+      },
       preHandler: [auth],
     },
     async (req) => {
-      return repo.getTasks(req.query || {}, req.user.id, req.user.role);
+        return repo.getTasks(
+          req.query || {},
+          req.user.id,
+          req.user.role,
+          req.query.page,
+          req.query.limit
+        );
     }
   );
 

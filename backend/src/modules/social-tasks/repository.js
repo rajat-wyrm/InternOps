@@ -65,8 +65,13 @@ async function getInternEmailCount() {
   );
   return res.rows[0].count;
 }
-async function getTasks(filters, userId, userRole) {
+async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
   const params = [];
+
+  const safeLimit = Math.min(Number(limit) || 50, 100);
+  const safePage = Math.max(Number(page) || 1, 1);
+  const offset = (safePage - 1) * safeLimit;
+
   const where = ['st.deleted_at IS NULL'];
 
   if (!['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(userRole)) {
@@ -86,11 +91,18 @@ async function getTasks(filters, userId, userRole) {
   }
 
   const whereSql = `WHERE ${where.join(' AND ')}`;
+  params.push(safeLimit);
+  params.push(offset);
+
   const q = `
-    SELECT st.* FROM social_tasks st
+    SELECT st.*
+    FROM social_tasks st
     ${whereSql}
     ORDER BY st.created_at DESC
+    LIMIT $${params.length - 1}
+    OFFSET $${params.length}
   `;
+  
   return (await pool.query(q, params)).rows;
 }
 async function submitProof(
