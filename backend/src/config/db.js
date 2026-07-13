@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const config = require('./index');
+const logger = require('../logger');
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
@@ -8,7 +9,7 @@ const pool = new Pool({
 });
 
 pool.on('error', (err) => {
-  console.error('DB pool error:', err);
+  logger.error({ err }, 'Unexpected error on idle database client');
 });
 
 module.exports = pool;
