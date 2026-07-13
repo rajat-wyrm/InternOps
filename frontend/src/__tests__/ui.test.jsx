@@ -10,7 +10,7 @@ import {
   Input,
   EmptyState,
   Spinner,
-  Stars
+  Stars,
 } from '../components/ui';
 
 describe('Shared UI Components Test Suite', () => {
@@ -23,7 +23,9 @@ describe('Shared UI Components Test Suite', () => {
 
   // 2. UserAvatar (with Image src)
   it('renders UserAvatar with image when src is provided', () => {
-    const { container } = render(<UserAvatar name="John Doe" email="john@example.com" src="avatar.jpg" />);
+    const { container } = render(
+      <UserAvatar name="John Doe" email="john@example.com" src="avatar.jpg" />
+    );
     const img = container.querySelector('img');
     expect(img).toBeInTheDocument();
     expect(img).toHaveAttribute('src', 'avatar.jpg');
@@ -43,7 +45,9 @@ describe('Shared UI Components Test Suite', () => {
       </Card>
     );
     expect(screen.getByText('Card Content')).toBeInTheDocument();
-    expect(screen.getByText('Card Content').closest('.relative')).toHaveClass('custom-class');
+    expect(screen.getByText('Card Content').closest('.relative')).toHaveClass(
+      'custom-class'
+    );
   });
 
   // 5. Badge
@@ -60,7 +64,7 @@ describe('Shared UI Components Test Suite', () => {
     render(<Btn onClick={handleClick}>Click Me</Btn>);
     const button = screen.getByRole('button', { name: 'Click Me' });
     expect(button).toBeInTheDocument();
-    
+
     fireEvent.click(button);
     expect(handleClick).toHaveBeenCalledTimes(1);
   });
@@ -68,10 +72,14 @@ describe('Shared UI Components Test Suite', () => {
   // 7. Btn (Disabled State)
   it('does not trigger onClick when Btn is disabled', () => {
     const handleClick = vi.fn();
-    render(<Btn onClick={handleClick} disabled>Disabled Button</Btn>);
+    render(
+      <Btn onClick={handleClick} disabled>
+        Disabled Button
+      </Btn>
+    );
     const button = screen.getByRole('button', { name: 'Disabled Button' });
     expect(button).toBeDisabled();
-    
+
     fireEvent.click(button);
     expect(handleClick).not.toHaveBeenCalled();
   });
@@ -90,7 +98,9 @@ describe('Shared UI Components Test Suite', () => {
 
   // 9. EmptyState
   it('renders EmptyState with custom icon, title, and descriptive text', () => {
-    render(<EmptyState icon="👋" title="Empty Title" text="No data available" />);
+    render(
+      <EmptyState icon="👋" title="Empty Title" text="No data available" />
+    );
     expect(screen.getByText('👋')).toBeInTheDocument();
     expect(screen.getByText('Empty Title')).toBeInTheDocument();
     expect(screen.getByText('No data available')).toBeInTheDocument();
