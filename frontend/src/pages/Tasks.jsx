@@ -316,7 +316,7 @@ export default function Tasks() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [selectedTask, setSelectedTask] = useState(null);
+  const [selectedProofTaskId, setSelectedProofTaskId] = useState(null);
   const [notification, setNotification] = useState(null);
   const [draftFiles, setDraftFiles] = useState({
     taskId: null,
@@ -353,10 +353,10 @@ export default function Tasks() {
   });
 
   const { data: proofs, refetch: refetchProofs } = useQuery({
-    queryKey: ['proofs', selectedTask],
+    queryKey: ['proofs', selectedProofTaskId],
     queryFn: () =>
-      api.get(`/proofs/task/${selectedTask}`).then((res) => res.data),
-    enabled: !!selectedTask,
+      api.get(`/proofs/task/${selectedProofTaskId}`).then((res) => res.data),
+    enabled: !!selectedProofTaskId,
   });
 
   const { data: myProofs } = useQuery({
@@ -752,10 +752,14 @@ export default function Tasks() {
                       variant="outline"
                       className="rounded-2xl"
                       onClick={() =>
-                        setSelectedTask(selectedTask === t.id ? null : t.id)
+                        setSelectedProofTaskId(
+                          selectedProofTaskId === t.id ? null : t.id
+                        )
                       }
                     >
-                      {selectedTask === t.id ? 'Hide proofs' : 'View proofs'}
+                      {selectedProofTaskId === t.id
+                        ? 'Hide proofs'
+                        : 'View proofs'}
                     </Btn>
                   )}
 
@@ -824,7 +828,7 @@ export default function Tasks() {
                     ))}
                 </div>
 
-                {selectedTask === t.id && (
+                {selectedProofTaskId === t.id && (
                   <div className="mt-5 border-t border-slate-200 dark:border-slate-700 pt-5 space-y-3 animate-fade-in">
                     <div className="flex items-center justify-between gap-3">
                       <h4 className="text-sm font-extrabold text-slate-800 dark:text-white">
