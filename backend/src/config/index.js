@@ -1,5 +1,6 @@
 require('dotenv').config();
 const pino = require('pino');
+const { z } = require('zod');
 
 const log = pino(
   process.env.NODE_ENV === 'development'
