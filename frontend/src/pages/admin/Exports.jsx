@@ -88,11 +88,6 @@ export default function Exports() {
 
   return (
     <div className="animate-fade-in-up">
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-300 bg-red-100 px-4 py-3 text-red-700">
-          {error}
-        </div>
-      )}
       {/* Professional Header Block */}
       <div className="mb-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-4">
