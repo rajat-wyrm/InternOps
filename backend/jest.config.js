@@ -15,5 +15,13 @@ module.exports = {
     'src/middleware/**/*.js',
     'src/services/**/*.js',
   ],
+  coverageThreshold: {
+    global: {
+      branches: 33,
+      functions: 40,
+      lines: 41,
+      statements: 40,
+    },
+  },
   testTimeout: 30000,
 };
