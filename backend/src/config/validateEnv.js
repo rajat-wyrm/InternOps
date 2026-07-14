@@ -18,6 +18,14 @@ const envSchema = z.object({
     .string()
     .regex(/^\d+$/, 'AI_TIMEOUT must be a valid integer')
     .optional(),
+  PASSWORD_RESET_COOLDOWN_MS: z
+    .string()
+    .regex(/^\d+$/, 'PASSWORD_RESET_COOLDOWN_MS must be a valid integer')
+    .optional(),
+  PASSWORD_RESET_HOURLY_MAX: z
+    .string()
+    .regex(/^\d+$/, 'PASSWORD_RESET_HOURLY_MAX must be a valid integer')
+    .optional(),
 });
 
 function validateEnv() {

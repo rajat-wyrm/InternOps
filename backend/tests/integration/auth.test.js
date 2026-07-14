@@ -318,6 +318,36 @@ describe('Auth Integration Tests', () => {
       expect(res.statusCode).toBe(200);
     });
 
+    it('should enforce rate limiting per email and return consistent response', async () => {
+      await resetSeededAdminPassword();
+      await clearPasswordResetAttempts();
+      const sendSpy = jest.spyOn(emailService, 'sendPasswordReset');
+      sendSpy.mockClear();
+
+      // First request (should succeed and call email service)
+      const res1 = await inject('POST', '/api/auth/forgot-password', {
+        payload: { email: SEEDED_ADMIN_EMAIL },
+      });
+      expect(res1.statusCode).toBe(200);
+      expect(JSON.parse(res1.body).message).toBe(
+        'If that email exists, a reset link has been sent.'
+      );
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+
+      // Second request (should hit rate limit, return 200, but NOT call email service again)
+      const res2 = await inject('POST', '/api/auth/forgot-password', {
+        payload: { email: SEEDED_ADMIN_EMAIL },
+      });
+      expect(res2.statusCode).toBe(200);
+      expect(JSON.parse(res2.body).message).toBe(
+        'If that email exists, a reset link has been sent.'
+      );
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+
+      await clearPasswordResetAttempts();
+      sendSpy.mockRestore();
+    });
+
     it('should reject reset with invalid token', async () => {
       const res = await inject('POST', '/api/auth/reset-password', {
         payload: { token: 'invalid', newPassword: 'ValidPass123!' },
