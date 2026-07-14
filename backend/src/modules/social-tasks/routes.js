@@ -220,7 +220,7 @@ module.exports = async function socialTasksRoutes(fastify) {
         });
       }
 
-      // Verify task exists before assigning
+      // Verify task exists before assigning (#988)
       const task = await repo.getTaskById(req.params.id);
       if (!task) {
         return reply.status(404).send({ error: 'Task not found' });
@@ -266,7 +266,6 @@ module.exports = async function socialTasksRoutes(fastify) {
       preHandler: [auth, rbac('INTERN'), sanitize],
     },
     async (req, reply) => {
-      // 1. Validate data safely using your validation schema rule configurations
       const parsed = submitProofSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply.status(400).send({
@@ -275,15 +274,8 @@ module.exports = async function socialTasksRoutes(fastify) {
         });
       }
 
-      // 2. Destructure properties according to the structured payload structure
-      const { proofUrl, actions } = parsed.data;
+      const { proofUrl, did_comment, did_repost, did_share } = parsed.data;
 
-      // Extract options safely and fallback to false if properties evaluate to undefined
-      const did_comment = actions?.comment || false;
-      const did_repost = actions?.repost || false;
-      const did_share = actions?.share || false;
-
-      // 3. Fire database repository methods passing the mapped keys explicitly
       const submission = await repo.submitProof({
         taskId: req.params.id,
         internId: req.user.id,
@@ -293,7 +285,6 @@ module.exports = async function socialTasksRoutes(fastify) {
         did_share,
       });
 
-      // 4. Populate transaction history audit items accurately
       req.auditOnResponse = {
         userId: req.user.id,
         action: 'PROOF_SUBMITTED',
