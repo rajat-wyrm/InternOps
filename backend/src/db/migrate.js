@@ -95,7 +95,7 @@ async function migrate(migrationsDir) {
   const dir = migrationsDir || path.resolve(__dirname, '../../migrations');
   const migrations = await loadMigrations(dir);
 
- let client;
+  let client;
   try {
     client = await pool.connect();
 
