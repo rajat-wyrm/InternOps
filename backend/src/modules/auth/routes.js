@@ -364,7 +364,7 @@ async function routes(fastify) {
       },
       config: {
         rateLimit: {
-          max: 1,
+          max: 2,
           timeWindow: '5 minutes',
         },
       },
