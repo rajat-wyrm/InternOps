@@ -158,10 +158,14 @@ export default function Notices() {
   const { data: noticesData, isLoading } = useQuery({
     queryKey: ['notices-admin', page],
     queryFn: () =>
-      api.get(`/notices?page=${page}&limit=10`).then((r) => r.data || { notices: [], count: 0 }),
+      api
+        .get(`/notices?page=${page}&limit=10`)
+        .then((r) => r.data || { notices: [], count: 0 }),
   });
 
-  const notices = Array.isArray(noticesData) ? noticesData : noticesData?.notices || [];
+  const notices = Array.isArray(noticesData)
+    ? noticesData
+    : noticesData?.notices || [];
   // Backend se humein list mil rahi hai, toh array length se total items calculate kar lete hain
   const totalNotices = noticesData?.count || notices.length || 0;
 
@@ -246,7 +250,10 @@ export default function Notices() {
       {isLoading ? (
         <div className="flex flex-col gap-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 bg-slate-100 dark:bg-slate-800 rounded-xl animate-pulse" />
+            <div
+              key={i}
+              className="h-32 bg-slate-100 dark:bg-slate-800 rounded-xl animate-pulse"
+            />
           ))}
         </div>
       ) : notices.length === 0 ? (
@@ -327,31 +334,30 @@ export default function Notices() {
                 </div>
               )}
             </Card>
-        ))}
-        
-        {/* Pagination Buttons */}
-        <div className="flex items-center justify-between pt-4 mt-2 border-t border-slate-200 dark:border-slate-700">
-          <button
-            onClick={() => setPage(p => p - 1)}
-            disabled={page === 1}
-            className="px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Previous
-          </button>
-          <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
-            Page {page} of {Math.max(1, Math.ceil(totalNotices / 10))}
-          </span>
-          <button
-            onClick={() => setPage(p => p + 1)}
-            disabled={notices.length < 10}
-            className="px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Next
-          </button>
-        </div>
+          ))}
 
-      </div>
-    )}
-  </div>
+          {/* Pagination Buttons */}
+          <div className="flex items-center justify-between pt-4 mt-2 border-t border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => setPage((p) => p - 1)}
+              disabled={page === 1}
+              className="px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Previous
+            </button>
+            <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              Page {page} of {Math.max(1, Math.ceil(totalNotices / 10))}
+            </span>
+            <button
+              onClick={() => setPage((p) => p + 1)}
+              disabled={notices.length < 10}
+              className="px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
