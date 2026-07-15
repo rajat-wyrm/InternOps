@@ -71,10 +71,10 @@ function publicUser(user) {
     fullName: user.full_name,
   };
 }
-async function login(email, password, ip, userAgent) {
-  let currentAttempts;
 
-  // Step 1: Increment Redis counter
+async function login(email, password, ip, userAgent) {
+  let currentAttempts = 0;
+
   try {
     currentAttempts = (await incrementAttempt(email, ip)) || 0;
   } catch (err) {
@@ -85,7 +85,6 @@ async function login(email, password, ip, userAgent) {
     );
   }
 
-  // Step 2: If already locked, send notification once
   if (currentAttempts > 5) {
     const redis = await getRedisClient();
     const notifyKey = `lockout-email:${email}`;
@@ -119,10 +118,8 @@ async function login(email, password, ip, userAgent) {
     );
   }
 
-  // Step 3: Find user
   const user = await repo.findByEmail(email);
 
-  // Step 4: Invalid user
   if (!user || user.suspended) {
     const argon2 = require('argon2');
 
@@ -133,7 +130,6 @@ async function login(email, password, ip, userAgent) {
     throw new UnauthorizedError('Invalid credentials');
   }
 
-  // Step 5: Verify password
   const valid = await repo.verifyPassword(user, password);
 
   if (!valid) {
@@ -142,7 +138,6 @@ async function login(email, password, ip, userAgent) {
     throw new UnauthorizedError('Invalid credentials');
   }
 
-  // Step 6: Successful login
   await clearFailedAttempts(email, ip);
   await recordLoginAttempt(email, ip, true);
 
