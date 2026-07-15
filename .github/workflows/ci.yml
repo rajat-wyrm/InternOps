@@ -73,5 +73,8 @@ jobs:
           cd frontend
           npm install --no-audit --no-fund
 
+      - name: Run Frontend Tests
+        run: cd frontend && npm run test
+
       - name: Build frontend
         run: cd frontend && npm run build

@@ -18,17 +18,19 @@ async function noticesRoutes(fastify) {
     },
     async (req, reply) => {
       try {
-        const notices = await repo.getAllNotices();
-        return reply.send(notices);
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const result = await repo.getAllNotices({ page, limit });
+        return reply.send(result);
       } catch (err) {
         // If the notices table does not yet exist (migration pending on production)
         // return an empty list with 503 rather than crashing with 500.
         req.log.error({ err }, 'notices table unavailable in GET /notices');
         if (err.code === '42P01') {
-          return reply.status(503).send({
-            error: 'Notices service temporarily unavailable',
-            notices: [],
-          });
+          // NOTE: send a bare array here (not { error, notices: [] }) so the
+          // response shape always matches the success path — the frontend
+          // expects `data` to be an array it can call .map() on directly.
+          return reply.status(503).send([]);
         }
         return reply.status(500).send({ error: 'Failed to fetch notices' });
       }

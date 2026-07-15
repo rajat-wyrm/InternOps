@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Star } from 'lucide-react';
+import { Star, History } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import RatingForm from '../components/RatingForm';
@@ -48,7 +48,9 @@ export default function Ratings() {
   const isManager = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(
     user?.role
   );
+  const isAdmin = user?.role === 'ADMIN';
 
+  const [viewDepartmentId, setViewDepartmentId] = useState('');
   const [viewUserId, setViewUserId] = useState(user?.id || '');
 
   useEffect(() => {
@@ -58,6 +60,12 @@ export default function Ratings() {
   const { data: team = [] } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
+    enabled: isManager,
+  });
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/departments').then((res) => res.data),
     enabled: isManager,
   });
 
@@ -71,11 +79,28 @@ export default function Ratings() {
     enabled: !!viewUserId,
   });
 
+  const handleViewDepartmentChange = (deptId) => {
+    setViewDepartmentId(deptId);
+    if (deptId) {
+      setViewUserId('');
+    } else {
+      setViewUserId(user?.id || '');
+    }
+  };
+
   const avg = ratings?.length
     ? (ratings.reduce((a, r) => a + Number(r.score || 0), 0) / ratings.length)
         .toFixed(1)
         .replace(/\.0$/, '')
     : null;
+
+  const departmentOptions = [
+    { value: '', label: 'All departments' },
+    ...departments.map((d) => ({
+      value: d.id,
+      label: d.name,
+    })),
+  ];
 
   const ratingUserOptions = [
     {
@@ -83,7 +108,11 @@ export default function Ratings() {
       label: `Me (${user?.email || 'Current user'})`,
     },
     ...team
-      .filter((m) => m.id !== user?.id)
+      .filter(
+        (m) =>
+          m.id !== user?.id &&
+          (!viewDepartmentId || m.department_id === viewDepartmentId)
+      )
       .map((m) => ({
         value: m.id,
         label: `${m.full_name || m.email} (${m.role})`,
@@ -117,38 +146,85 @@ export default function Ratings() {
 
       {canRate && <RatingForm />}
 
-      <div className="bg-white dark:bg-slate-900 p-5 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none mb-6 flex items-center justify-between flex-wrap gap-4">
-        <div className="flex-1 min-w-[220px]">
-          <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-            View ratings of
-          </label>
+      <div className="bg-white dark:bg-slate-900 p-6 md:p-7 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center border border-indigo-100 dark:border-indigo-900/60 shadow-sm shrink-0">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
+                View Ratings History
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                Select a department and member to check their ratings and
+                average score.
+              </p>
+            </div>
+          </div>
 
-          {isManager ? (
-            <CustomSelect
-              value={viewUserId}
-              onChange={setViewUserId}
-              options={ratingUserOptions}
-              placeholder="Select member"
-              className="w-full max-w-sm"
-            />
-          ) : (
-            <p className="text-slate-700 dark:text-slate-200 font-bold bg-slate-50 dark:bg-slate-800 px-4 py-3 rounded-2xl inline-block border border-slate-200 dark:border-slate-700">
-              My ratings
-            </p>
+          {avg && (
+            <div className="bg-amber-50 dark:bg-amber-950/40 px-5 py-3 rounded-2xl border border-amber-100 dark:border-amber-900/60 flex items-center gap-3 self-start sm:self-center">
+              <div className="text-4xl font-extrabold text-amber-600 dark:text-amber-300">
+                {avg}
+              </div>
+              <div className="text-left">
+                <div className="text-[10px] font-extrabold text-amber-700/70 dark:text-amber-300/80 uppercase tracking-wider">
+                  Average Rating
+                </div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
+                  avg of {ratings.length}{' '}
+                  {ratings.length === 1 ? 'rating' : 'ratings'} · out of 10
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
-        {avg && (
-          <div className="text-right bg-amber-50 dark:bg-amber-950/40 px-5 py-4 rounded-3xl border border-amber-100 dark:border-amber-900/60 min-w-[140px]">
-            <div className="text-4xl font-extrabold text-amber-600 dark:text-amber-300">
-              {avg}
-            </div>
+        <div className="space-y-5">
+          {isManager ? (
+            <>
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                  Department
+                </label>
 
-            <div className="text-xs font-bold text-amber-700/70 dark:text-amber-300/80 uppercase tracking-wider mt-1">
-              avg of {ratings.length} · out of 10
+                <CustomSelect
+                  value={viewDepartmentId}
+                  onChange={handleViewDepartmentChange}
+                  options={departmentOptions}
+                  placeholder="All departments"
+                  className="w-full"
+                  searchable={true}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                  Team Member
+                </label>
+
+                <CustomSelect
+                  value={viewUserId}
+                  onChange={setViewUserId}
+                  options={ratingUserOptions}
+                  placeholder="Select member"
+                  className="w-full"
+                  searchable={true}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                Viewing:
+              </span>
+              <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-900/50">
+                My ratings
+              </span>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {isLoading && (
@@ -160,6 +236,15 @@ export default function Ratings() {
       {error && (
         <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 rounded-2xl border border-red-100 dark:border-red-900/60">
           {error.response?.data?.error || 'Failed to load ratings'}
+        </div>
+      )}
+
+      {!viewUserId && !isLoading && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400">
+          <Star className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+          <p className="font-semibold">
+            Select a team member to view their rating history.
+          </p>
         </div>
       )}
 

@@ -55,7 +55,7 @@ beforeAll(async () => {
   cookies = {};
   const csrfRes = await app.inject({
     method: 'GET',
-    url: '/api/auth/csrf-token',
+    url: '/api/v1/auth/csrf-token',
   });
   csrfToken = JSON.parse(csrfRes.body).csrfToken;
   mergeCookies(cookies, parseSetCookie(csrfRes.headers['set-cookie']));
@@ -63,7 +63,7 @@ beforeAll(async () => {
 
   const loginRes = await app.inject({
     method: 'POST',
-    url: '/api/auth/login',
+    url: '/api/v1/auth/login',
     cookies,
     headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
     payload: {
@@ -126,7 +126,7 @@ function inject(method, url, opts = {}) {
 }
 
 async function createUserAsAdmin(user) {
-  const res = await inject('POST', '/api/auth/register', {
+  const res = await inject('POST', '/api/v1/auth/register', {
     payload: user,
   });
   return JSON.parse(res.body);
@@ -149,7 +149,7 @@ async function waitForAuditLog(
 describe('Meetings Integration Tests', () => {
   describe('POST /api/meetings', () => {
     it('should create a new meeting', async () => {
-      const res = await inject('POST', '/api/meetings', {
+      const res = await inject('POST', '/api/v1/meetings', {
         payload: {
           title: MEETING_TITLE,
           description: 'Discussion',
@@ -165,7 +165,7 @@ describe('Meetings Integration Tests', () => {
     });
 
     it('should reject meeting without title', async () => {
-      const res = await inject('POST', '/api/meetings', {
+      const res = await inject('POST', '/api/v1/meetings', {
         payload: { meetingDate: '2026-12-01' },
       });
       expect(res.statusCode).toBe(400);
@@ -209,7 +209,7 @@ describe('Meetings Integration Tests', () => {
       // login as manager
       const loginRes = await app.inject({
         method: 'POST',
-        url: '/api/auth/login',
+        url: '/api/v1/auth/login',
         cookies: {
           'csrf-token': cookies['csrf-token'] || '',
           'csrf-sid': cookies['csrf-sid'] || '',
@@ -231,7 +231,7 @@ describe('Meetings Integration Tests', () => {
       // a fresh token bound to the manager's session.
       const managerCsrfRes = await app.inject({
         method: 'GET',
-        url: '/api/auth/csrf-token',
+        url: '/api/v1/auth/csrf-token',
         cookies: managerCookies,
       });
       const managerCsrfToken = JSON.parse(managerCsrfRes.body).csrfToken;
@@ -245,7 +245,7 @@ describe('Meetings Integration Tests', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/api/meetings',
+        url: '/api/v1/meetings',
         cookies: managerCookies,
         headers: managerHeaders,
         payload: {
@@ -273,7 +273,7 @@ describe('Meetings Integration Tests', () => {
 
   describe('GET /api/meetings', () => {
     it('should list meetings', async () => {
-      const res = await inject('GET', '/api/meetings');
+      const res = await inject('GET', '/api/v1/meetings');
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
       expect(Array.isArray(body.data)).toBe(true);
@@ -284,7 +284,7 @@ describe('Meetings Integration Tests', () => {
 
   describe('GET /api/meetings/:id', () => {
     it('should get meeting by ID', async () => {
-      const res = await inject('GET', `/api/meetings/${meetingId}`);
+      const res = await inject('GET', `/api/v1/meetings/${meetingId}`);
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
       expect(body.id).toBe(meetingId);
@@ -293,7 +293,7 @@ describe('Meetings Integration Tests', () => {
     it('should return 404 for non-existent meeting', async () => {
       const res = await inject(
         'GET',
-        '/api/meetings/00000000-0000-0000-0000-000000000000'
+        '/api/v1/meetings/00000000-0000-0000-0000-000000000000'
       );
       expect(res.statusCode).toBe(404);
     });
@@ -301,7 +301,7 @@ describe('Meetings Integration Tests', () => {
 
   describe('PATCH /api/meetings/:id', () => {
     it('should update meeting title', async () => {
-      const res = await inject('PATCH', `/api/meetings/${meetingId}`, {
+      const res = await inject('PATCH', `/api/v1/meetings/${meetingId}`, {
         payload: { title: 'Updated Meeting' },
       });
       expect(res.statusCode).toBe(200);
@@ -315,9 +315,13 @@ describe('Meetings Integration Tests', () => {
       const userRes = await pool.query('SELECT id FROM users LIMIT 1');
       const userId = userRes.rows[0].id;
 
-      const res = await inject('POST', `/api/meetings/${meetingId}/attendees`, {
-        payload: { userId },
-      });
+      const res = await inject(
+        'POST',
+        `/api/v1/meetings/${meetingId}/attendees`,
+        {
+          payload: { userId },
+        }
+      );
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body).message).toBe('Attendee added');
 
@@ -339,7 +343,7 @@ describe('Meetings Integration Tests', () => {
 
       const res = await inject(
         'DELETE',
-        `/api/meetings/${meetingId}/attendees/${userId}`,
+        `/api/v1/meetings/${meetingId}/attendees/${userId}`,
         { payload: {} }
       );
       expect(res.statusCode).toBe(200);
@@ -358,14 +362,14 @@ describe('Meetings Integration Tests', () => {
 
   describe('DELETE /api/meetings/:id', () => {
     it('should delete meeting', async () => {
-      const res = await inject('DELETE', `/api/meetings/${meetingId}`, {
+      const res = await inject('DELETE', `/api/v1/meetings/${meetingId}`, {
         payload: {},
       });
       expect(res.statusCode).toBe(200);
     });
 
     it('should return 404 for already deleted meeting', async () => {
-      const res = await inject('GET', `/api/meetings/${meetingId}`);
+      const res = await inject('GET', `/api/v1/meetings/${meetingId}`);
       expect(res.statusCode).toBe(404);
     });
   });

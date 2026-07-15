@@ -219,6 +219,13 @@ module.exports = async function socialTasksRoutes(fastify) {
           details: parsed.error.issues,
         });
       }
+
+      // Verify task exists before assigning (#988)
+      const task = await repo.getTaskById(req.params.id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
       const { userIds } = parsed.data;
       if (userIds.length > 0) {
         await repo.assignTask(req.params.id, userIds, req.user.id);
@@ -240,11 +247,39 @@ module.exports = async function socialTasksRoutes(fastify) {
   fastify.get(
     '/',
     {
-      schema: { tags: ['Tasks'], description: 'List social tasks' },
+      schema: {
+        tags: ['Tasks'],
+        description: 'List social tasks',
+        querystring: {
+          type: 'object',
+          properties: {
+            page: {
+              type: 'integer',
+              minimum: 1,
+              default: 1,
+            },
+            limit: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 100,
+              default: 50,
+            },
+            deadlineBefore: {
+              type: 'string',
+            },
+          },
+        },
+      },
       preHandler: [auth],
     },
     async (req) => {
-      return repo.getTasks(req.query || {}, req.user.id, req.user.role);
+      return repo.getTasks(
+        req.query || {},
+        req.user.id,
+        req.user.role,
+        req.query.page,
+        req.query.limit
+      );
     }
   );
 

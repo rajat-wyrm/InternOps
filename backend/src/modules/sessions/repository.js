@@ -73,9 +73,15 @@ async function revokeSession(sessionId, userId) {
           return 0
         end
         local ok, parsed = pcall(cjson.decode, stored)
-        local storedUserId = stored
+        local storedUserId = nil
         if ok and parsed and parsed.userId then
           storedUserId = tostring(parsed.userId)
+        elseif ok and parsed and parsed.user_id then
+          storedUserId = tostring(parsed.user_id)
+        end
+        -- Fallback: plain-text token stored as just the userId
+        if not storedUserId then
+          storedUserId = stored
         end
         if storedUserId ~= userId then
           return 0

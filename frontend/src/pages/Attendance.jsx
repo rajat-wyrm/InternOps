@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { CalendarCheck } from 'lucide-react'; // Added import here
+import { CalendarCheck } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import AttendanceMarkForm from '../components/AttendanceMarkForm';
 import BulkAttendanceForm from '../components/BulkAttendanceForm';
 import CustomSelect from '../components/CustomSelect';
+import { ApiErrorState } from '../components/ui';
 
 const STATUS_BADGE = {
   PRESENT:
@@ -20,6 +21,7 @@ export default function Attendance() {
   const user = useAuthStore((s) => s.user);
   const canMark = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(user?.role);
   const isManager = canMark;
+
   const [viewUserId, setViewUserId] = useState(user?.id || '');
   const [page, setPage] = useState(1);
   const limit = 30;
@@ -31,14 +33,19 @@ export default function Attendance() {
   };
 
   // Managers can pick any team member; everyone can always see their own.
-  const { data: team = [] } = useQuery({
+  const {
+    data: team = [],
+    isError: teamIsError,
+    error: teamError,
+    refetch: refetchTeam,
+  } = useQuery({
     queryKey: ['authorizedMembers'],
     queryFn: () =>
       api.get('/attendance/authorized-members').then((res) => res.data),
     enabled: isManager,
   });
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['attendance', viewUserId, page],
     queryFn: () =>
       api
@@ -110,13 +117,27 @@ export default function Attendance() {
         </label>
 
         {isManager ? (
-          <CustomSelect
-            value={viewUserId}
-            onChange={selectUser}
-            options={attendanceUserOptions}
-            placeholder="Select member"
-            className="w-full max-w-sm"
-          />
+          <>
+            {teamIsError && (
+              <div className="mb-4">
+                <ApiErrorState
+                  error={teamError}
+                  title="Failed to load authorized members"
+                  fallback="Unable to load members you can view. Please try again."
+                  onRetry={refetchTeam}
+                />
+              </div>
+            )}
+
+            <CustomSelect
+              value={viewUserId}
+              onChange={selectUser}
+              options={attendanceUserOptions}
+              placeholder="Select member"
+              className="w-full max-w-sm"
+              disabled={teamIsError}
+            />
+          </>
         ) : (
           <p className="text-slate-700 dark:text-slate-200 font-bold">
             My attendance
@@ -130,14 +151,17 @@ export default function Attendance() {
         </div>
       )}
 
-      {error && (
-        <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 rounded-2xl border border-red-100 dark:border-red-900/60">
-          {error.response?.data?.error || 'Failed to load attendance'}
-        </div>
+      {isError && (
+        <ApiErrorState
+          error={error}
+          title="Failed to load attendance"
+          fallback="Unable to load attendance records. Please try again."
+          onRetry={refetch}
+        />
       )}
 
       {!isLoading &&
-        !error &&
+        !isError &&
         (records.length === 0 ? (
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400">
             <CalendarCheck className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />

@@ -1,62 +1,82 @@
 const redis = require('redis');
 const config = require('./index');
+const logger = require('../logger');
 
 let client = null;
 let clientPromise = null;
 let redisConnected = false;
 
-function getLogger() {
-  try {
-    const app = require('../app');
-    if (app && app.log) return app.log;
-  } catch (e) {}
+function getSafeRedisError(err) {
   return {
-    warn: (...args) => console.warn(...args),
-    info: (...args) => console.info(...args),
-    error: (...args) => console.error(...args),
+    name: err?.name,
+    code: err?.code,
+    message: err?.message,
+  };
+}
+
+function buildRedisClientOptions() {
+  const redisConfig = config.redis;
+
+  if (!redisConfig?.enabled || !redisConfig.host || !redisConfig.password) {
+    return null;
+  }
+
+  return {
+    username: redisConfig.username || 'default',
+    password: redisConfig.password,
+    socket: {
+      host: redisConfig.host,
+      port: redisConfig.port || 6379,
+      tls: redisConfig.tls !== false,
+      connectTimeout: 1000,
+      reconnectStrategy: false,
+    },
   };
 }
 
 async function getRedisClient() {
   if (process.env.NODE_ENV === 'test') return null;
-  if (!config.redisUrl) return null; // No URL -> no Redis
+
+  const redisOptions = buildRedisClientOptions();
+  if (!redisOptions) return null;
+
   if (client) return client;
   if (clientPromise) return clientPromise;
 
   clientPromise = (async () => {
     try {
-      const c = redis.createClient({
-        url: config.redisUrl,
-        socket: { connectTimeout: 1000, reconnectStrategy: false },
-      });
+      const c = redis.createClient(redisOptions);
 
       c.on('error', (err) => {
-        const log = getLogger();
-        log.warn({ err, name: 'redis_error' }, 'Redis connection error');
+        logger.warn(
+          { err: getSafeRedisError(err), name: 'redis_error' },
+          'Redis connection error'
+        );
       });
 
       c.on('disconnect', () => {
         redisConnected = false;
-        const log = getLogger();
-        log.warn('Redis disconnected');
+        logger.warn('Redis disconnected');
       });
 
       c.on('connect', () => {
         redisConnected = true;
-        const log = getLogger();
-        log.info('Redis connected');
+        logger.info('Redis connected');
       });
 
       await c.connect();
       client = c;
       return client;
     } catch (err) {
-      const log = getLogger();
-      log.warn('Redis unavailable – continuing without it');
+      logger.warn(
+        { err: getSafeRedisError(err), name: 'redis_unavailable' },
+        'Redis unavailable - continuing without it'
+      );
+
       client = null;
-      // Do NOT reset clientPromise here — keep the settled-null promise so that
-      // every subsequent call short-circuits at `if (clientPromise) return clientPromise`
-      // and returns null immediately instead of retrying the failing DNS lookup.
+
+      // Do NOT reset clientPromise here. Keep the settled-null promise so each
+      // subsequent call returns null immediately instead of retrying repeatedly.
       return null;
     }
   })();
@@ -65,7 +85,10 @@ async function getRedisClient() {
 }
 
 function getRedisStatus() {
-  if (process.env.NODE_ENV === 'test' || !config.redisUrl) return 'disabled';
+  if (process.env.NODE_ENV === 'test' || !config.redis?.enabled) {
+    return 'disabled';
+  }
+
   return redisConnected ? 'connected' : 'disconnected';
 }
 
@@ -73,9 +96,7 @@ async function blacklistAccessToken(jti, ttl) {
   const client = await getRedisClient();
   if (!client) return;
 
-  await client.set(`blacklist:${jti}`, '1', {
-    EX: ttl,
-  });
+  await client.set(`blacklist:${jti}`, '1', { EX: ttl });
 }
 
 async function isAccessTokenBlacklisted(jti) {

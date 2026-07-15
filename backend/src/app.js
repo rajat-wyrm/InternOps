@@ -8,16 +8,20 @@ const Fastify = require('fastify');
 const config = require('./config');
 const pool = require('./config/db');
 const metrics = require('./utils/metrics');
-const { initializeWebSocket } = require('./websocket');
+const { initializeWebSocket, getIO } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
 const { getRedisStatus } = require('./config/redis');
-
+const { csrfMiddleware } = require('./middleware/csrf');
+const { sanitizationMiddleware } = require('./middleware/sanitize');
+const { createAuditLog } = require('./utils/audit');
+const { setupCronJobs } = require('./utils/cron');
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
   logger:
     config.nodeEnv === 'development'
       ? { transport: { target: 'pino-pretty' } }
       : true,
+  bodyLimit: 1048576,
   genReqId: () => uuidv4(),
 });
 
@@ -40,7 +44,6 @@ app.get(
     },
   },
   async (req, reply) => {
-    const { getRedisStatus } = require('./config/redis');
     const redisStatus = getRedisStatus();
 
     if (process.env.NODE_ENV === 'test') {
@@ -111,7 +114,10 @@ app.get(
 );
 
 app.register(require('@fastify/cors'), {
-  origin: config.nodeEnv === 'production' ? config.corsOrigin : true,
+  origin:
+    config.nodeEnv === 'production'
+      ? config.corsOrigin
+      : 'http://localhost:5173',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
@@ -140,9 +146,7 @@ app.register(require('@fastify/rate-limit'), {
 
 app.register(require('@fastify/cookie'));
 
-const { csrfMiddleware } = require('./middleware/csrf');
-const { sanitizationMiddleware } = require('./middleware/sanitize');
-app.addHook('onRequest', csrfMiddleware);
+app.addHook('preHandler', csrfMiddleware);
 // Sanitize all string fields in body, query, and params using sanitize-html
 // (allowlist of zero tags) to prevent XSS. Runs after body parsing.
 app.addHook('preHandler', sanitizationMiddleware);
@@ -164,7 +168,17 @@ if (process.env.NODE_ENV !== 'test') {
       info: {
         title: 'InternOps API',
         version: '1.0.0',
+        description:
+          'All business routes are versioned under /api/v1/. Future breaking changes will be introduced under /api/v2/ alongside the existing version.',
       },
+      servers: [
+        { url: '/api/v1', description: 'Current stable API (v1)' },
+        {
+          url: '/api/v2',
+          description:
+            'Next API version (v2) — see CONTRIBUTING.md for migration guide',
+        },
+      ],
     },
   });
 
@@ -174,7 +188,12 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 // ---- API routes (delegated to dedicated router factory) ----
-app.register(require('./routes'), { prefix: '/api' });
+// v1 — stable; all existing clients target this prefix.
+app.register(require('./routes'), { prefix: '/api/v1' });
+// v2 — introduced alongside v1 so both are served concurrently.
+// Breaking changes land here; v1 receives Deprecation+Sunset headers
+// via the onSend hook in routes.js once V1_DEPRECATED=true is set.
+app.register(require('./routes.v2'), { prefix: '/api/v2' });
 
 app.get('/', async (req, reply) => {
   reply.redirect('/docs');
@@ -210,10 +229,8 @@ app.addHook('onRequest', async (request) => {
 app.addHook('onResponse', async (request, reply) => {
   metrics.observeHttpRequest(request, reply, request.startTime);
 
-  // Layer 3: Defensive hook - safely check for audit data using optional chaining
   if (!request?.auditOnResponse) return;
 
-  const { createAuditLog } = require('./utils/audit');
   try {
     await createAuditLog(request.auditOnResponse);
   } catch (err) {
@@ -313,7 +330,7 @@ app.setErrorHandler((error, request, reply) => {
 });
 
 if (process.env.NODE_ENV !== 'test') {
-  require('./utils/cron').setupCronJobs();
+  setupCronJobs();
 }
 
 const start = async () => {
@@ -323,9 +340,12 @@ const start = async () => {
       host: config.host,
     });
 
-    initializeWebSocket(app.server);
+    initializeWebSocket(app.server, app.log);
 
-    console.log(`Server listening on port ${config.port}`);
+    app.log.info(
+      { port: config.port },
+      `Server listening on port ${config.port}`
+    );
   } catch (err) {
     app.log.error(err);
     process.exit(1);
@@ -333,20 +353,37 @@ const start = async () => {
 };
 
 const gracefulShutdown = async (signal) => {
-  console.log(`Received ${signal}, shutting down gracefully...`);
+  app.log.info({ signal }, `Received ${signal}, shutting down gracefully...`);
 
   try {
+    // close WebSocket server if initialized
+    try {
+      const io = getIO();
+      if (io) {
+        app.log.info('Closing WebSocket server...');
+        await new Promise((resolve) => io.close(resolve));
+        app.log.info('WebSocket server closed');
+      }
+    } catch (wsErr) {
+      app.log.warn({ err: wsErr }, 'Error closing WebSocket server');
+    }
+
     // stop accepting new requests + finish in-flight requests
     await app.close();
 
     // close DB pool connections
     await pool.end();
 
-    console.log('Cleanup completed. Exiting now.');
-    process.exit(0);
+    app.log.info('Cleanup completed. Exiting now.');
+
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(0);
+    }
   } catch (err) {
-    console.error('Error during shutdown:', err);
-    process.exit(1);
+    app.log.error({ err }, 'Error during shutdown');
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(1);
+    }
   }
 };
 

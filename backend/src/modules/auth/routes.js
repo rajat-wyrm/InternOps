@@ -46,16 +46,7 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const schema = z.object({
-        email: z.string().email(),
-        password: z.string().min(8),
-        role: z.enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
-        managerId: z.string().uuid().optional(),
-        departmentId: z.string().uuid().optional(),
-        fullName: z.string().optional(),
-      });
-      const data = schema.parse(req.body);
-      const user = await service.register(data, req.user);
+      const user = await service.register(req.body, req.user);
       return reply.status(201).send(user);
     }
   );
@@ -124,16 +115,7 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const userSchema = z.object({
-        email: z.string().email(),
-        password: z.string().min(8),
-        role: z.enum(['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
-        managerId: z.string().uuid().optional(),
-        departmentId: z.string().uuid().optional(),
-        fullName: z.string().optional(),
-      });
-      const schema = z.object({ users: z.array(userSchema).min(1).max(100) });
-      const { users } = schema.parse(req.body);
+      const { users } = req.body;
 
       const ROLE_HIERARCHY = ['INTERN', 'CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'];
       const callerLevel = ROLE_HIERARCHY.indexOf(req.user.role);
@@ -212,16 +194,14 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const { email, password } = z
-        .object({ email: z.string().email(), password: z.string() })
-        .parse(req.body);
+      const { email, password } = req.body;
       const userAgent = req.headers['user-agent'];
       const result = await service.login(email, password, req.ip, userAgent);
       reply.setCookie('refreshToken', result.refreshToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: 'strict',
-        path: '/api/auth/refresh',
+        sameSite: isProduction ? 'strict' : 'lax',
+        path: '/api/v1/auth/refresh',
       });
 
       rotateAndSetCsrf(req, reply, result.user.id);
@@ -268,8 +248,8 @@ async function routes(fastify) {
       reply.setCookie('refreshToken', tokens.refreshToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: 'strict',
-        path: '/api/auth/refresh',
+        sameSite: isProduction ? 'strict' : 'lax',
+        path: '/api/v1/auth/refresh',
       });
 
       return {
@@ -311,14 +291,7 @@ async function routes(fastify) {
         req.headers['user-agent']
       );
 
-      reply.clearCookie('refreshToken', { path: '/api/auth/refresh' });
-
-      req.auditOnResponse = {
-        userId: req.user.id,
-        action: 'LOGOUT',
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-      };
+      reply.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
 
       rotateAndSetCsrf(req, reply, null);
       return { message: 'Logged out' };
@@ -331,12 +304,6 @@ async function routes(fastify) {
     { schema: { tags: ['Authentication'], description: 'Get CSRF token' } },
     async (req, reply) => {
       const csrfToken = generateToken(req, reply);
-      reply.setCookie('csrf-token', csrfToken, {
-        httpOnly: false,
-        secure: isProduction,
-        sameSite: 'strict',
-        path: '/',
-      });
       return { csrfToken };
     }
   );
@@ -395,6 +362,12 @@ async function routes(fastify) {
           properties: { email: { type: 'string', format: 'email' } },
         },
       },
+      config: {
+        rateLimit: {
+          max: 2,
+          timeWindow: '5 minutes',
+        },
+      },
     },
     async (req, reply) => {
       const { email } = z.object({ email: z.string().email() }).parse(req.body);
@@ -418,6 +391,12 @@ async function routes(fastify) {
             token: { type: 'string' },
             newPassword: { type: 'string', minLength: 8 },
           },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
         },
       },
     },

@@ -1,12 +1,71 @@
-﻿const nodemailer = require('nodemailer');
+const nodemailer = require('nodemailer');
 const config = require('../config');
 const path = require('path');
 const fs = require('fs');
+const pino = require('pino');
+const { getRedisClient } = require('../config/redis');
+const pool = require('../config/db');
 
-const rateLimitMap = new Map();
-const bounceList = new Set();
+const log = pino(
+  process.env.NODE_ENV === 'development'
+    ? { transport: { target: 'pino-pretty' } }
+    : {}
+);
+
+// In-memory fallbacks — used only when Redis / DB are unavailable
+const _fallbackRateLimitMap = new Map();
+const _fallbackBounceList = new Map();
+
+// Periodic cleanup of the in-memory fallback structures (#990, #948, #994, #944)
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const BOUNCE_TTL_MS = 24 * 60 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, timestamps] of _fallbackRateLimitMap) {
+    const fresh = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+    if (fresh.length === 0) _fallbackRateLimitMap.delete(email);
+    else _fallbackRateLimitMap.set(email, fresh);
+  }
+
+  for (const [email, timestamp] of _fallbackBounceList) {
+    if (now - timestamp >= BOUNCE_TTL_MS) {
+      _fallbackBounceList.delete(email);
+    }
+  }
+}, CLEANUP_INTERVAL_MS).unref();
 
 const metrics = { sent: 0, failed: 0, bounced: 0, retried: 0 };
+
+// --- Email delivery queue (in-memory) ---
+const emailQueue = [];
+let queueProcessing = false;
+const queueMetrics = { queued: 0, processed: 0 };
+
+function enqueueEmailJob(jobFn) {
+  return new Promise((resolve, reject) => {
+    emailQueue.push({ jobFn, resolve, reject });
+    queueMetrics.queued++;
+    processQueue();
+  });
+}
+
+async function processQueue() {
+  if (queueProcessing) return; // already running, new job will be picked up in the loop
+  queueProcessing = true;
+  while (emailQueue.length > 0) {
+    const { jobFn, resolve, reject } = emailQueue.shift();
+    try {
+      const result = await jobFn();
+      queueMetrics.processed++;
+      resolve(result);
+    } catch (err) {
+      queueMetrics.processed++;
+      reject(err);
+    }
+  }
+  queueProcessing = false;
+}
 
 class EmailService {
   constructor() {
@@ -39,7 +98,7 @@ class EmailService {
       config.email.pass !== 'your-smtp-password' &&
       !config.email.pass.startsWith('your-');
     if (!config.email.host || !hasValidCreds) {
-      console.warn('[Email] SMTP not configured – using console fallback');
+      log.warn('SMTP not configured – using console fallback');
       return null;
     }
     this.transporter = nodemailer.createTransport({
@@ -51,21 +110,72 @@ class EmailService {
     return this.transporter;
   }
 
-  _checkRateLimit(to) {
-    const now = Date.now();
+  async _checkRateLimit(to) {
     const windowMs = config.email.rateLimitWindowMs || 60000;
     const max = config.email.rateLimitPerRecipient || 5;
-    if (!rateLimitMap.has(to)) rateLimitMap.set(to, []);
-    const timestamps = rateLimitMap.get(to).filter((t) => now - t < windowMs);
+    const windowSec = Math.ceil(windowMs / 1000);
+    const key = `email_rl:${to}`;
+
+    try {
+      const redis = await getRedisClient();
+      if (redis) {
+        // Redis-backed: atomic increment + sliding window via TTL
+        const count = await redis.incr(key);
+        if (count === 1) await redis.expire(key, windowSec);
+        if (count > max) {
+          throw new Error(`Rate limit exceeded for ${to}`);
+        }
+        return;
+      }
+    } catch (err) {
+      if (err.message.startsWith('Rate limit exceeded')) throw err;
+      log.warn(
+        { err: err.message },
+        'Redis rate-limit check failed; falling back to in-memory'
+      );
+    }
+
+    // In-memory fallback (single-instance only)
+    const now = Date.now();
+    if (!_fallbackRateLimitMap.has(to)) _fallbackRateLimitMap.set(to, []);
+    const timestamps = _fallbackRateLimitMap
+      .get(to)
+      .filter((t) => now - t < windowMs);
     if (timestamps.length >= max) {
       throw new Error(`Rate limit exceeded for ${to}`);
     }
     timestamps.push(now);
-    rateLimitMap.set(to, timestamps);
+    _fallbackRateLimitMap.set(to, timestamps);
   }
 
-  _checkBounce(to) {
-    if (config.email.bounceCheckEnabled && bounceList.has(to)) {
+  async _checkBounce(to) {
+    if (!config.email.bounceCheckEnabled) return;
+
+    if (process.env.NODE_ENV !== 'test') {
+      try {
+        const { rows } = await pool.query(
+          `SELECT bounced_at FROM bounced_emails WHERE email = $1`,
+          [to]
+        );
+        if (rows.length > 0) {
+          const age = Date.now() - new Date(rows[0].bounced_at).getTime();
+          if (age < BOUNCE_TTL_MS) {
+            throw new Error(`Bounced address suppressed: ${to}`);
+          }
+        }
+        return;
+      } catch (err) {
+        if (err.message.startsWith('Bounced address suppressed')) throw err;
+        log.warn(
+          { err: err.message },
+          'DB bounce check failed; falling back to in-memory'
+        );
+      }
+    }
+
+    // In-memory fallback (always used in test, fallback in production when DB is unavailable)
+    const bouncedAt = _fallbackBounceList.get(to);
+    if (bouncedAt && Date.now() - bouncedAt < BOUNCE_TTL_MS) {
       throw new Error(`Bounced address suppressed: ${to}`);
     }
   }
@@ -103,9 +213,24 @@ class EmailService {
   async send({ to, subject, template, data, html, text }) {
     if (!to || !subject)
       throw new Error('Missing required fields: to, subject');
-    this._checkBounce(to);
-    this._checkRateLimit(to);
+    await this._checkBounce(to);
+    await this._checkRateLimit(to);
+    enqueueEmailJob(() =>
+      this._deliver({ to, subject, template, data, html, text })
+    ).catch((err) => {
+      log.error(
+        { to, subject, err: err.message },
+        'Queued email ultimately failed after retries'
+      );
+    });
+    return {
+      queued: true,
+      to,
+      subject,
+    };
+  }
 
+  async _deliver({ to, subject, template, data, html, text }) {
     let htmlContent = html;
     let textContent = text;
 
@@ -129,7 +254,10 @@ class EmailService {
 
     const transporter = this.getTransporter();
     if (!transporter) {
-      console.log(`[Email] Placeholder -> To: ${to}, Subject: "${subject}"`);
+      log.info(
+        { to, subject },
+        'Email placeholder (no SMTP transporter configured)'
+      );
       metrics.sent++;
       return {
         messageId: 'console-' + Date.now(),
@@ -151,17 +279,23 @@ class EmailService {
         const info = await transporter.sendMail(mailOptions);
         metrics.sent++;
         if (info.rejected && info.rejected.length > 0) {
-          info.rejected.forEach((addr) => bounceList.add(addr));
+          await this._recordBounces(info.rejected);
           metrics.bounced += info.rejected.length;
         }
         return info;
       } catch (err) {
         lastError = err;
-        console.error(
-          `[Email] Attempt ${attempt + 1}/${maxRetries + 1} failed for ${to}: ${err.message}`
+        log.error(
+          {
+            to,
+            attempt: attempt + 1,
+            maxAttempts: maxRetries + 1,
+            err: err.message,
+          },
+          'Email send attempt failed'
         );
         if (err.responseCode >= 500 || /55[0135]/.test(err.message)) {
-          bounceList.add(to);
+          await this._recordBounces([to], err.message);
           metrics.bounced++;
           break;
         }
@@ -169,14 +303,15 @@ class EmailService {
     }
 
     metrics.failed++;
-    console.error(
-      `[Email] All attempts failed for ${to}: ${lastError?.message}`
+    log.error(
+      { to, err: lastError?.message },
+      'All email send attempts failed'
     );
     throw lastError || new Error(`Failed to send email to ${to}`);
   }
 
   async sendPasswordReset(email, resetToken) {
-    const resetLink = `${process.env.APP_URL || 'http://localhost:5173'}/reset-password#token=${encodeURIComponent(resetToken)}`;
+    const resetLink = `${config.appUrl || 'http://localhost:5173'}/reset-password?token=${encodeURIComponent(resetToken)}`;
     return this.send({
       to: email,
       subject: 'InternOps - Password Reset Request',
@@ -186,7 +321,7 @@ class EmailService {
   }
 
   async sendAccountVerification(email, verificationToken) {
-    const verifyLink = `${process.env.APP_URL || 'http://localhost:5173'}/verify-email?token=${verificationToken}`;
+    const verifyLink = `${config.appUrl || 'http://localhost:5173'}/verify-email?token=${verificationToken}`;
     return this.send({
       to: email,
       subject: 'InternOps - Verify Your Email',
@@ -204,8 +339,15 @@ class EmailService {
     });
   }
 
+  async _flushQueue() {
+    // waits until the queue has fully drained (test helper)
+    while (queueProcessing || emailQueue.length > 0) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+
   getMetrics() {
-    return { ...metrics };
+    return { ...metrics, ...queueMetrics, queueLength: emailQueue.length };
   }
 
   resetMetrics() {
@@ -216,15 +358,51 @@ class EmailService {
   }
 
   _clearRateLimits() {
-    rateLimitMap.clear();
+    _fallbackRateLimitMap.clear();
+  }
+
+  async _recordBounces(addresses, reason) {
+    if (process.env.NODE_ENV === 'test') {
+      for (const addr of addresses) {
+        _fallbackBounceList.set(addr, Date.now());
+      }
+      return;
+    }
+
+    try {
+      for (const addr of addresses) {
+        await pool.query(
+          `INSERT INTO bounced_emails (email, bounced_at, reason)
+           VALUES ($1, NOW(), $2)
+           ON CONFLICT (email) DO UPDATE
+             SET bounced_at = NOW(), reason = EXCLUDED.reason`,
+          [addr, reason || null]
+        );
+      }
+    } catch (err) {
+      log.warn(
+        { err: err.message },
+        'Failed to persist bounce to DB; using in-memory fallback'
+      );
+      for (const addr of addresses) {
+        _fallbackBounceList.set(addr, Date.now());
+      }
+    }
   }
 
   _trackBounce(address) {
-    bounceList.add(address);
+    // Kept for backward-compat with tests; delegates to the persistent path
+    return this._recordBounces([address]);
   }
 
-  _clearBounceList() {
-    bounceList.clear();
+  async _clearBounceList() {
+    _fallbackBounceList.clear();
+    if (process.env.NODE_ENV === 'test') return;
+    try {
+      await pool.query('DELETE FROM bounced_emails');
+    } catch (err) {
+      log.warn({ err: err.message }, 'Failed to clear bounced_emails table');
+    }
   }
 }
 

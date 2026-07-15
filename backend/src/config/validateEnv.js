@@ -86,6 +86,26 @@ function validateEnv() {
 
     process.exit(1);
   }
+
+  // Validate DATABASE_URL format
+  const dbUrl = process.env.DATABASE_URL;
+  let isDbUrlValid = false;
+  try {
+    const parsed = new URL(dbUrl);
+    if (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') {
+      isDbUrlValid = true;
+    }
+  } catch (err) {
+    // URL parsing failed
+  }
+
+  if (!isDbUrlValid) {
+    console.error('❌ Invalid environment variable format:');
+    console.error(
+      '   • DATABASE_URL must be a valid PostgreSQL connection string starting with postgres:// or postgresql://'
+    );
+    process.exit(1);
+  }
 }
 
 module.exports = validateEnv;

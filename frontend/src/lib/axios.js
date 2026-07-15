@@ -2,7 +2,7 @@ import axios from 'axios';
 
 function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
-  if (!raw) return '/api';
+  if (!raw) return '/api/v1';
   let url = raw.trim();
   if (!/^https?:\/\//i.test(url)) {
     console.warn(
@@ -12,11 +12,19 @@ function getBaseUrl() {
   }
   url = url.replace(/\/+$/, '');
 
+  // Append /api/v1 if the URL is an origin-only value (no path component yet).
+  // This keeps all API calls working correctly when VITE_API_URL is set to
+  // just "http://localhost:5000" rather than "http://localhost:5000/api/v1".
+  if (!/\/api\/v\d+/.test(url)) {
+    url = `${url}/api/v1`;
+  }
+
   return url;
 }
 const api = axios.create({
   baseURL: getBaseUrl(),
   withCredentials: true,
+  timeout: 15000,
 });
 
 // The backend's CSRF guard requires the X-CSRF-Token header on mutating
@@ -68,8 +76,9 @@ function removeLegacyAuthStorage() {
   try {
     if (typeof window === 'undefined') return;
 
-    // Remove access tokens saved by older versions of the app.
-    window.localStorage.removeItem('accessToken');
+    // Remove user metadata cached in localStorage.
+    // Access tokens are memory-only and never stored in localStorage.
+    window.localStorage.removeItem('user');
   } catch {
     /* localStorage may be unavailable — ignore */
   }
@@ -140,11 +149,24 @@ function processQueue(error, token = null) {
 }
 
 function handleLogout() {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('user');
-  clearCsrfToken();
-  if (!window.location.pathname.startsWith('/login')) {
-    window.location.href = '/login';
+  try {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('user');
+      } catch {
+        /* ignore localStorage unavailability */
+      }
+
+      clearCsrfToken();
+
+      if (_authStore) {
+        _authStore.getState().logout();
+      }
+    } else {
+      clearCsrfToken();
+    }
+  } catch {
+    clearCsrfToken();
   }
 }
 
@@ -202,9 +224,12 @@ api.interceptors.response.use(
         const newToken = refreshRes.data?.accessToken;
 
         if (newToken) {
+          const meRes = await api.get('/users/me');
           // Store refreshed token in memory only.
           if (_authStore) {
-            _authStore.getState().setAuth({ accessToken: newToken });
+            _authStore
+              .getState()
+              .setAuth({ accessToken: newToken, user: meRes.data });
           }
 
           // The server rotated the refresh cookie. The CSRF token may also
@@ -237,13 +262,6 @@ api.interceptors.response.use(
           } catch {
             /* ignore */
           }
-        }
-
-        if (
-          typeof window !== 'undefined' &&
-          !window.location.pathname.startsWith('/login')
-        ) {
-          window.location.href = '/login';
         }
 
         return Promise.reject(refreshErr);

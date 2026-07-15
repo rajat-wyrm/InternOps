@@ -9,8 +9,10 @@ export default function CustomSelect({
   placeholder = 'Select...',
   className = '',
   disabled = false,
+  searchable = false,
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [position, setPosition] = useState({
     top: 0,
     left: 0,
@@ -22,8 +24,18 @@ export default function CustomSelect({
 
   const selected = options.find((option) => option.value === value);
 
+  const filteredOptions =
+    searchable && search.trim()
+      ? options.filter((option) =>
+          option.label.toLowerCase().includes(search.trim().toLowerCase())
+        )
+      : options;
+
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      setSearch('');
+      return undefined;
+    }
 
     const updatePosition = () => {
       if (!triggerRef.current) return;
@@ -94,45 +106,62 @@ export default function CustomSelect({
         }}
       >
         <div className="p-1.5 max-h-72 overflow-y-auto">
-          {options.map((option) => {
-            const active = option.value === value;
+          {searchable && (
+            <input
+              autoFocus
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="w-full mb-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-400"
+            />
+          )}
 
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-                className={`group relative w-full flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-left transition-all duration-150 overflow-hidden ${
-                  active
-                    ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300'
-                    : 'text-slate-700 dark:text-slate-200 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-blue-50 dark:hover:from-indigo-950/45 dark:hover:to-slate-800 hover:text-indigo-700 dark:hover:text-indigo-300 hover:translate-x-0.5'
-                }`}
-              >
-                <span
-                  className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full transition-all duration-150 ${
+          {filteredOptions.length === 0 ? (
+            <p className="text-sm text-slate-400 dark:text-slate-500 px-3 py-3">
+              No matches
+            </p>
+          ) : (
+            filteredOptions.map((option) => {
+              const active = option.value === value;
+
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                  className={`group relative w-full flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-left transition-all duration-150 overflow-hidden ${
                     active
-                      ? 'bg-indigo-600 dark:bg-indigo-400 opacity-100'
-                      : 'bg-indigo-500 dark:bg-indigo-400 opacity-0 group-hover:opacity-100'
+                      ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300'
+                      : 'text-slate-700 dark:text-slate-200 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-blue-50 dark:hover:from-indigo-950/45 dark:hover:to-slate-800 hover:text-indigo-700 dark:hover:text-indigo-300 hover:translate-x-0.5'
                   }`}
-                />
+                >
+                  <span
+                    className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full transition-all duration-150 ${
+                      active
+                        ? 'bg-indigo-600 dark:bg-indigo-400 opacity-100'
+                        : 'bg-indigo-500 dark:bg-indigo-400 opacity-0 group-hover:opacity-100'
+                    }`}
+                  />
 
-                <span className="relative z-10 truncate pl-1">
-                  {option.label}
-                </span>
+                  <span className="relative z-10 truncate pl-1">
+                    {option.label}
+                  </span>
 
-                <span className="relative z-10 flex items-center justify-center shrink-0">
-                  {active ? (
-                    <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
-                  ) : (
-                    <span className="w-4 h-4 rounded-full border border-transparent group-hover:border-indigo-300 dark:group-hover:border-indigo-700 transition" />
-                  )}
-                </span>
-              </button>
-            );
-          })}
+                  <span className="relative z-10 flex items-center justify-center shrink-0">
+                    {active ? (
+                      <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
+                    ) : (
+                      <span className="w-4 h-4 rounded-full border border-transparent group-hover:border-indigo-300 dark:group-hover:border-indigo-700 transition" />
+                    )}
+                  </span>
+                </button>
+              );
+            })
+          )}
         </div>
       </div>,
       document.body

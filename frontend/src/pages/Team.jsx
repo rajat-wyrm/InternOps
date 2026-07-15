@@ -6,6 +6,7 @@ import useAuthStore from '../store/auth';
 import { Users } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
+import { ApiErrorState } from '../components/ui';
 
 const ROLE_LABEL = {
   SENIOR_TL: 'Senior TL',
@@ -196,21 +197,21 @@ function AddMemberModal({ onClose }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    document.body.classList.add('modal-open');
 
     return () => {
-      document.body.style.overflow = originalOverflow;
+      document.body.classList.remove('modal-open');
     };
   }, []);
 
-  const { data: departments = [] } = useQuery({
+  const {
+    data: departments = [],
+    isError: departmentsIsError,
+    error: departmentsError,
+    refetch: refetchDepartments,
+  } = useQuery({
     queryKey: ['departments'],
-    queryFn: () =>
-      api
-        .get('/departments')
-        .then((r) => r.data)
-        .catch(() => []),
+    queryFn: () => api.get('/departments').then((r) => r.data),
   });
 
   const createMut = useMutation({
@@ -284,6 +285,17 @@ function AddMemberModal({ onClose }) {
               <p className="text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/60 px-4 py-3 rounded-2xl text-sm font-medium mb-5">
                 {error}
               </p>
+            )}
+
+            {departmentsIsError && (
+              <div className="mb-5">
+                <ApiErrorState
+                  error={departmentsError}
+                  title="Failed to load departments"
+                  fallback="Unable to load department options. You can retry or continue without selecting a department."
+                  onRetry={refetchDepartments}
+                />
+              </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -438,7 +450,7 @@ function AddMemberModal({ onClose }) {
 }
 
 function HistorySection({ memberId }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['memberHistory', memberId],
     queryFn: () =>
       api.get(`/team/members/${memberId}/history`).then((r) => r.data),
@@ -449,6 +461,17 @@ function HistorySection({ memberId }) {
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Loading history...
       </p>
+    );
+  }
+
+  if (isError) {
+    return (
+      <ApiErrorState
+        error={error}
+        title="Failed to load history"
+        fallback="Unable to load member history. Please try again."
+        onRetry={refetch}
+      />
     );
   }
 
@@ -554,12 +577,23 @@ function MemberDetail({ memberId, onClose }) {
   const [newRole, setNewRole] = useState('');
   const [newManager, setNewManager] = useState('');
 
-  const { data: teamMembers = [] } = useQuery({
+  const {
+    data: teamMembers = [],
+    isError: teamMembersIsError,
+    error: teamMembersError,
+    refetch: refetchTeamMembers,
+  } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
 
-  const { data: member, isLoading } = useQuery({
+  const {
+    data: member,
+    isLoading,
+    isError: memberIsError,
+    error: memberError,
+    refetch: refetchMember,
+  } = useQuery({
     queryKey: ['teamMember', memberId],
     queryFn: () => api.get(`/team/members/${memberId}`).then((res) => res.data),
   });
@@ -671,7 +705,16 @@ function MemberDetail({ memberId, onClose }) {
         className="w-full max-w-md bg-slate-50 dark:bg-slate-950 h-full overflow-auto shadow-2xl border-l border-slate-200 dark:border-slate-700"
         onClick={(e) => e.stopPropagation()}
       >
-        {isLoading || !form ? (
+        {memberIsError ? (
+          <div className="p-6">
+            <ApiErrorState
+              error={memberError}
+              title="Failed to load member"
+              fallback="Unable to load member details. Please try again."
+              onRetry={refetchMember}
+            />
+          </div>
+        ) : isLoading || !form ? (
           <div className="p-6 text-slate-600 dark:text-slate-300">
             Loading member...
           </div>
@@ -914,6 +957,15 @@ function MemberDetail({ memberId, onClose }) {
                     Manage
                   </h4>
 
+                  {teamMembersIsError && (
+                    <ApiErrorState
+                      error={teamMembersError}
+                      title="Failed to load manager options"
+                      fallback="Unable to load team members for reassignment."
+                      onRetry={refetchTeamMembers}
+                    />
+                  )}
+
                   <Field label="Role">
                     <div className="flex gap-2">
                       <CustomSelect
@@ -992,7 +1044,13 @@ function PendingProofsPanel({ onMember }) {
   const [open, setOpen] = useState(true);
   const [error, setError] = useState('');
 
-  const { data: proofs = [], isLoading } = useQuery({
+  const {
+    data: proofs = [],
+    isLoading,
+    isError,
+    error: proofsError,
+    refetch,
+  } = useQuery({
     queryKey: ['teamPendingProofs'],
     queryFn: () => api.get('/team/pending-proofs').then((r) => r.data),
   });
@@ -1008,7 +1066,7 @@ function PendingProofsPanel({ onMember }) {
       setError(err.response?.data?.error || 'Failed to verify proof'),
   });
 
-  if (!isLoading && proofs.length === 0) return null;
+  if (!isLoading && !isError && proofs.length === 0) return null;
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-amber-100 dark:border-amber-900/60 mb-5">
@@ -1038,7 +1096,16 @@ function PendingProofsPanel({ onMember }) {
             </p>
           )}
 
-          {isLoading ? (
+          {isError && (
+            <ApiErrorState
+              error={proofsError}
+              title="Failed to load pending proofs"
+              fallback="Unable to load proofs awaiting verification."
+              onRetry={refetch}
+            />
+          )}
+
+          {isError ? null : isLoading ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">
               Loading...
             </p>
@@ -1093,7 +1160,9 @@ export default function Team() {
   const {
     data: members = [],
     isLoading,
+    isError,
     error,
+    refetch,
   } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
@@ -1182,11 +1251,14 @@ export default function Team() {
     );
   }
 
-  if (error) {
+  if (isError) {
     return (
-      <p className="text-red-600 dark:text-red-300">
-        {error.response?.data?.error || 'Failed to load team'}
-      </p>
+      <ApiErrorState
+        error={error}
+        title="Failed to load team"
+        fallback="Unable to load team members. Please try again."
+        onRetry={refetch}
+      />
     );
   }
 
