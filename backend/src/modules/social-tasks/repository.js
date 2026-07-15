@@ -1,4 +1,5 @@
 const pool = require('../../config/db');
+
 async function createTask({
   title,
   description,
@@ -24,12 +25,14 @@ async function assignTask(taskId, userIds, assignedBy) {
     [taskId, ...userIds, assignedBy]
   );
 }
+
 async function getUserEmail(userId) {
   const res = await pool.query('SELECT email FROM users WHERE id = $1', [
     userId,
   ]);
   return res.rows[0]?.email || null;
 }
+
 async function isTaskAssignedToUser(taskId, userId) {
   const res = await pool.query(
     `SELECT 1 FROM social_tasks st
@@ -42,6 +45,7 @@ async function isTaskAssignedToUser(taskId, userId) {
   );
   return res.rowCount > 0;
 }
+
 async function getAllInternEmails(limit = 500, offset = 0) {
   const res = await pool.query(
     `SELECT email
@@ -65,6 +69,7 @@ async function getInternEmailCount() {
   );
   return res.rows[0].count;
 }
+
 async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
   const params = [];
 
@@ -105,6 +110,7 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
 
   return (await pool.query(q, params)).rows;
 }
+
 async function submitProof(
   taskId,
   internId,
@@ -135,7 +141,6 @@ async function submitProofWithImages(
   imagePaths,
   { didComment = false, didRepost = false, didShare = false } = {}
 ) {
-  // Create proof record with engagement actions
   const proof = await submitProof(taskId, internId, null, {
     didComment,
     didRepost,
@@ -154,6 +159,7 @@ async function submitProofWithImages(
 
   return proof;
 }
+
 async function verifyProof(proofId, verifierId, verifierRole) {
   const proofRes = await pool.query(
     'SELECT intern_id FROM proof_submissions WHERE id = $1',
@@ -168,7 +174,6 @@ async function verifyProof(proofId, verifierId, verifierRole) {
     throw new Error('Forbidden: you cannot verify your own proof submission');
   }
 
-  // Admin can verify anyone; everyone else must be in the intern's hierarchy
   if (verifierRole !== 'ADMIN') {
     const { checkHierarchyAccess } = require('../../utils/hierarchy');
     const allowed = await checkHierarchyAccess(
@@ -192,6 +197,7 @@ async function verifyProof(proofId, verifierId, verifierRole) {
 
   return res.rows[0];
 }
+
 async function getProofsByTask(taskId) {
   return (
     await pool.query(
@@ -207,6 +213,7 @@ async function getProofsByTask(taskId) {
     )
   ).rows;
 }
+
 async function getProofsByIntern(internId) {
   return (
     await pool.query(
