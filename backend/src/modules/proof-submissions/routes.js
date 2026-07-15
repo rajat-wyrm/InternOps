@@ -189,8 +189,6 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      // Repository enforces hierarchy check; the route only validates
-      // existence and delegates authorization to the data layer.
       try {
         const verified = await repo.verifyProof(
           req.params.id,
@@ -219,6 +217,7 @@ async function routes(fastify) {
     }
   );
 
+  // Get proofs by task (Admin/Reviewer side)
   fastify.get(
     '/task/:taskId',
     {
@@ -230,7 +229,14 @@ async function routes(fastify) {
       },
     },
     async (req) => {
-      return repo.getProofsByTask(req.params.taskId);
+      const proofs = await repo.getProofsByTask(req.params.taskId);
+      // Ensures the array map handles older entries gracefully if fields aren't caught by a SELECT * query
+      return Array.isArray(proofs) ? proofs.map(p => ({
+        ...p,
+        didComment: p.did_comment ?? p.didComment ?? false,
+        didRepost: p.did_repost ?? p.didRepost ?? false,
+        didShare: p.did_share ?? p.didShare ?? false
+      })) : [];
     }
   );
 
@@ -262,12 +268,10 @@ async function routes(fastify) {
       }
       await repo.deleteProof(req.params.id);
 
-      // Delete legacy image if it exists
       if (proof.image_path) {
         await uploadRepo.deleteFile(proof.image_path).catch(() => {});
       }
 
-      // Delete multiple images if they exist
       if (proof.images && proof.images.length > 0) {
         await Promise.all(
           proof.images.map((imgPath) =>
@@ -280,38 +284,8 @@ async function routes(fastify) {
         userId: req.user.id,
         action: 'PROOF_DELETED',
         resourceType: 'proof',
-        resourceId: req.params.id,
+        resourceId: req.params.id
       };
-
-      return { success: true };
-    }
-  );
-
-  fastify.delete(
-    '/images/:imageId',
-    {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'), sanitize],
-      schema: {
-        tags: ['Proofs'],
-        description: 'Delete a single image from a proof submission',
-      },
-    },
-    async (req, reply) => {
-      const image = await repo.getProofImage(req.params.imageId);
-      if (!image) {
-        return reply.status(404).send({ error: 'Image not found' });
-      }
-
-      await repo.deleteProofImage(req.params.imageId);
-      await uploadRepo.deleteFile(image.image_path).catch(() => {});
-
-      req.auditOnResponse = {
-        userId: req.user.id,
-        action: 'PROOF_IMAGE_DELETED',
-        resourceType: 'proof_image',
-        resourceId: req.params.imageId,
-      };
-
       return { success: true };
     }
   );
