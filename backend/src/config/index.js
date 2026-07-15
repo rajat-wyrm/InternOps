@@ -111,6 +111,7 @@ module.exports = {
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE, 10) || 5242880,
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  appUrl: process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
   redis: buildRedisConfig(),
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,
