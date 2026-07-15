@@ -362,6 +362,12 @@ async function routes(fastify) {
           properties: { email: { type: 'string', format: 'email' } },
         },
       },
+      config: {
+        rateLimit: {
+          max: 1,
+          timeWindow: '5 minutes',
+        },
+      },
     },
     async (req, reply) => {
       const { email } = z.object({ email: z.string().email() }).parse(req.body);
@@ -385,6 +391,12 @@ async function routes(fastify) {
             token: { type: 'string' },
             newPassword: { type: 'string', minLength: 8 },
           },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
         },
       },
     },
