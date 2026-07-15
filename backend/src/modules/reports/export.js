@@ -1,4 +1,5 @@
 ﻿const auth = require('../../middleware/auth');
+const { toSchema } = require('../../utils/schemaHelper');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 const { z } = require('zod');
@@ -8,15 +9,16 @@ const dateRangeSchema = z.object({
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
 });
 
-function parseDateRange(query, reply) {
+function parseDateRange(query) {
   const parsed = dateRangeSchema.safeParse(query);
+
   if (!parsed.success) {
-    reply.status(400).send({
-      error: 'from and to are required (YYYY-MM-DD)',
-      details: parsed.error.issues,
-    });
-    return null;
+    const error = new Error('from and to are required (YYYY-MM-DD)');
+    error.statusCode = 400;
+    error.details = parsed.error.issues;
+    throw error;
   }
+
   return parsed.data;
 }
 
@@ -36,10 +38,16 @@ function csvCell(value) {
 async function routes(fastify) {
   fastify.get(
     '/attendance-csv',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Export attendance as CSV',
+        querystring: toSchema(dateRangeSchema),
+      },
+    },
     async (req, reply) => {
-      const range = parseDateRange(req.query, reply);
-      if (!range) return;
+      const range = parseDateRange(req.query);
       const data = await repo.attendanceSummaryByRole(range.from, range.to);
       const csv = ['Role,Status,Count']
         .concat(
@@ -55,10 +63,16 @@ async function routes(fastify) {
 
   fastify.get(
     '/ratings-csv',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Export ratings as CSV',
+        querystring: toSchema(dateRangeSchema),
+      },
+    },
     async (req, reply) => {
-      const range = parseDateRange(req.query, reply);
-      if (!range) return;
+      const range = parseDateRange(req.query);
       const data = await repo.ratingsSummary(range.from, range.to);
       const csv = ['Role,Average Score,Total Ratings']
         .concat(
@@ -79,7 +93,13 @@ async function routes(fastify) {
 
   fastify.get(
     '/tasks-csv',
-    { preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')] },
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Export task completion as CSV',
+      },
+    },
     async (req, reply) => {
       const data = await repo.taskCompletionStats();
       const csv = ['Task Title,Verified,Pending']

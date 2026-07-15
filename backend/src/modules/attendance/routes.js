@@ -1,12 +1,20 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const { notifyUser } = require('../../websocket');
 const auth = require('../../middleware/auth');
-const direct = require('../../middleware/directManager');
 const ownership = require('../../middleware/ownership');
 const rbac = require('../../middleware/rbac');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const repo = require('./repository');
-const { extractRequestInfo } = require('../../utils/audit');
-const { send: sendNotification } = require('../notifications/repository');
+const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
+const { dbTx } = require('../../utils/dbTx');
+const {
+  send: sendNotification,
+  bulkSend,
+  getUnreadCount,
+} = require('../notifications/repository');
+const pool = require('../../config/db');
 const { z } = require('zod');
 
 async function routes(fastify) {
@@ -15,7 +23,7 @@ async function routes(fastify) {
     '/mark',
     {
       schema: { tags: ['Attendance'], description: 'Mark single attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
     },
     async (req, reply) => {
       const schema = z.object({
@@ -43,33 +51,61 @@ async function routes(fastify) {
 
       if (req.user.role !== 'ADMIN') {
         const ok = await checkHierarchyAccess(req.user.id, user_id);
-        if (!ok)
+
+        if (!ok) {
           return reply
             .status(403)
             .send({ error: 'This member is not in your team' });
+        }
       }
-      const att = await repo.markAttendance(
-        user_id,
-        req.user.id,
-        date,
-        status,
-        remarks
-      );
-      req.auditOnResponse = {
-        userId: req.user.id,
-        ...extractRequestInfo(req),
-        action: 'ATTENDANCE_MARKED',
-        resourceType: 'attendance',
-        resourceId: att.id,
-        details: { target: user_id, date, status, remarks },
-      };
-      await sendNotification(
-        user_id,
-        `Your attendance for ${date} has been marked as ${status}.`
-      );
-      await notifyUser(att.user_id, 'attendance-marked', { attendance: att });
 
-      return reply.status(201).send(att);
+      const { attendance, notification } = await dbTx(async (client) => {
+        const att = await repo.markAttendance(
+          user_id,
+          req.user.id,
+          date,
+          status,
+          remarks,
+          client
+        );
+
+        await createAuditLog(
+          {
+            userId: req.user.id,
+            ...extractRequestInfo(req),
+            action: 'ATTENDANCE_MARKED',
+            resourceType: 'attendance',
+            resourceId: att.id,
+            details: { target: user_id, date, status, remarks },
+          },
+          client
+        );
+
+        const createdNotification = await sendNotification(
+          user_id,
+          `Your attendance for ${date} has been marked as ${status}.`,
+          client,
+          { emit: false }
+        );
+
+        return {
+          attendance: att,
+          notification: createdNotification,
+        };
+      });
+
+      const unreadCount = await getUnreadCount(user_id);
+
+      await notifyUser(user_id, 'notification-received', {
+        notification,
+        unreadCount,
+      });
+
+      await notifyUser(attendance.user_id, 'attendance-marked', {
+        attendance,
+      });
+
+      return reply.status(201).send(attendance);
     }
   );
 
@@ -78,7 +114,7 @@ async function routes(fastify) {
     '/bulk',
     {
       schema: { tags: ['Attendance'], description: 'Bulk mark attendance' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
     },
     async (req, reply) => {
       const entrySchema = z.object({
@@ -122,20 +158,52 @@ async function routes(fastify) {
         }
       }
 
-      const results = await repo.bulkMark(entries, req.user.id);
-      req.auditOnResponse = {
-        userId: req.user.id,
-        ...extractRequestInfo(req),
-        action: 'ATTENDANCE_BULK_MARKED',
-        resourceType: 'attendance',
-        details: { count: results.length, date: entries[0]?.date },
-      };
-      for (const e of entries)
-        await sendNotification(
-          e.user_id,
-          `Your attendance for ${e.date} has been marked as ${e.status}.`
+      const { results } = await dbTx(async (client) => {
+        const records = await repo.bulkMark(entries, req.user.id, client);
+
+        await createAuditLog(
+          {
+            userId: req.user.id,
+            ...extractRequestInfo(req),
+            action: 'ATTENDANCE_BULK_MARKED',
+            resourceType: 'attendance',
+            details: { count: records.length, date: entries[0]?.date },
+          },
+          client
         );
-      return { success: true, count: results.length, records: results };
+
+        return {
+          results: records,
+        };
+      });
+
+      const notificationsData = entries.map((e) => ({
+        user_id: e.user_id,
+        message: `Your attendance for ${e.date} has been marked as ${e.status}.`,
+      }));
+
+      const notifications = await bulkSend(notificationsData);
+
+      for (const notification of notifications) {
+        const unreadCount = await getUnreadCount(notification.user_id);
+
+        await notifyUser(notification.user_id, 'notification-received', {
+          notification,
+          unreadCount,
+        });
+      }
+
+      for (const attendance of results) {
+        await notifyUser(attendance.user_id, 'attendance-marked', {
+          attendance,
+        });
+      }
+
+      return {
+        success: true,
+        count: results.length,
+        records: results,
+      };
     }
   );
 
@@ -179,7 +247,7 @@ async function routes(fastify) {
     }
   );
 
-  //Authorized members
+  // Authorized members
   fastify.get(
     '/authorized-members',
     {
@@ -188,9 +256,8 @@ async function routes(fastify) {
     },
     async (req) => {
       if (req.user.role === 'ADMIN') {
-        const pool = require('../../config/db');
         const all = await pool.query(
-          'SELECT id, full_name, role FROM users WHERE deleted_at IS NULL'
+          'SELECT id, full_name, email, role FROM users WHERE deleted_at IS NULL'
         );
         return all.rows;
       }

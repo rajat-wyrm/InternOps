@@ -3,12 +3,22 @@ const { getRedisClient } = require('../config/redis');
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 
+async function incrementAttempt(email, ip) {
+  const redis = await getRedisClient();
+  if (!redis) return 0;
+
+  const key = `brute:${email}:${ip}`;
+  const count = await redis.incr(key);
+  await redis.expire(key, LOCKOUT_MINUTES * 60);
+  return count;
+}
+
 async function isAccountLocked(email, ip) {
   const windowStart = new Date(Date.now() - LOCKOUT_MINUTES * 60 * 1000);
   const emailRes = await pool.query(
     `SELECT COUNT(*) AS failed FROM login_attempts
-     WHERE email = $1 AND success = false AND attempted_at > $2`,
-    [email, windowStart]
+     WHERE email = $1 AND ip_address = $2 AND success = false AND attempted_at > $3`,
+    [email, ip, windowStart]
   );
   const ipRes = await pool.query(
     `SELECT COUNT(*) AS failed FROM login_attempts
@@ -96,4 +106,5 @@ module.exports = {
   recordLoginAttempt,
   clearFailedAttempts,
   bruteForceCheck,
+  incrementAttempt,
 };

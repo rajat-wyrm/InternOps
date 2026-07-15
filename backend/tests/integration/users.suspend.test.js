@@ -60,7 +60,7 @@ function inject(method, url, opts = {}) {
 async function refreshCsrfToken() {
   const csrfRes = await app.inject({
     method: 'GET',
-    url: '/api/auth/csrf-token',
+    url: '/api/v1/auth/csrf-token',
     cookies,
   });
   csrfToken = JSON.parse(csrfRes.body).csrfToken;
@@ -75,6 +75,28 @@ async function refreshCsrfToken() {
 beforeAll(async () => {
   await app.ready();
   await resetSeededAdminPassword();
+
+  // Clean up other users/admins that might be lingering from other tests
+  try {
+    await pool.query("DELETE FROM users WHERE role = 'ADMIN' AND email <> $1", [
+      SEEDED_ADMIN_EMAIL,
+    ]);
+  } catch (err) {
+    await pool.query('DELETE FROM refresh_tokens').catch(() => {});
+    await pool.query('DELETE FROM ratings').catch(() => {});
+    await pool.query('DELETE FROM attendance').catch(() => {});
+    await pool.query('DELETE FROM meetings').catch(() => {});
+    await pool.query('DELETE FROM audit').catch(() => {});
+    await pool.query('DELETE FROM task_assignments').catch(() => {});
+    await pool.query('DELETE FROM proof_submissions').catch(() => {});
+    await pool.query('DELETE FROM social_tasks').catch(() => {});
+  }
+
+  // Suspend any other admins that couldn't be deleted due to FK constraints
+  await pool.query(
+    "UPDATE users SET suspended = TRUE WHERE role = 'ADMIN' AND email <> $1 AND email <> $2",
+    [SEEDED_ADMIN_EMAIL, SECOND_ADMIN_EMAIL]
+  );
 
   // Clean up any leftover fixture users from prior runs
   await pool.query(
@@ -92,7 +114,7 @@ beforeAll(async () => {
   // Login as the seeded admin
   const loginRes = await app.inject({
     method: 'POST',
-    url: '/api/auth/login',
+    url: '/api/v1/auth/login',
     cookies,
     headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
     payload: { email: SEEDED_ADMIN_EMAIL, password: SEEDED_ADMIN_PASSWORD },
@@ -122,7 +144,7 @@ beforeAll(async () => {
   }
 
   // Create a second admin via the register endpoint (admin-only)
-  const reg2 = await inject('POST', '/api/auth/register', {
+  const reg2 = await inject('POST', '/api/v1/auth/register', {
     payload: {
       email: SECOND_ADMIN_EMAIL,
       password: 'SecondAdmin@123',
@@ -141,7 +163,7 @@ beforeAll(async () => {
   }
 
   // Create an intern
-  const regIntern = await inject('POST', '/api/auth/register', {
+  const regIntern = await inject('POST', '/api/v1/auth/register', {
     payload: {
       email: INTERN_EMAIL,
       password: 'Intern@123',
@@ -188,9 +210,13 @@ afterAll(async () => {
 describe('PATCH /api/users/:id/suspend — Issue #468', () => {
   // ── Test 1 ────────────────────────────────────────────────────────────────
   it('should return 400 when an admin tries to suspend themselves', async () => {
-    const res = await inject('PATCH', `/api/users/${seededAdminId}/suspend`, {
-      payload: {},
-    });
+    const res = await inject(
+      'PATCH',
+      `/api/v1/users/${seededAdminId}/suspend`,
+      {
+        payload: {},
+      }
+    );
 
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body);
@@ -209,9 +235,13 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
     // Attempting to suspend them from the seeded admin's token must be blocked.
     // (The seeded admin's JWT is still valid even though they are now suspended
     // because the route only checks RBAC role, not the suspended flag.)
-    const res = await inject('PATCH', `/api/users/${secondAdminId}/suspend`, {
-      payload: {},
-    });
+    const res = await inject(
+      'PATCH',
+      `/api/v1/users/${secondAdminId}/suspend`,
+      {
+        payload: {},
+      }
+    );
 
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body);
@@ -226,23 +256,27 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
   // ── Test 3 ────────────────────────────────────────────────────────────────
   it('should return 200 when suspending an admin while multiple active admins exist', async () => {
     // Both admins are currently active
-    const res = await inject('PATCH', `/api/users/${secondAdminId}/suspend`, {
-      payload: {},
-    });
+    const res = await inject(
+      'PATCH',
+      `/api/v1/users/${secondAdminId}/suspend`,
+      {
+        payload: {},
+      }
+    );
 
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.message).toBe('Suspended');
 
     // Restore for later tests
-    await inject('PATCH', `/api/users/${secondAdminId}/activate`, {
+    await inject('PATCH', `/api/v1/users/${secondAdminId}/activate`, {
       payload: {},
     });
   });
 
   // ── Test 4 ────────────────────────────────────────────────────────────────
   it('should return 200 when suspending an intern', async () => {
-    const res = await inject('PATCH', `/api/users/${internId}/suspend`, {
+    const res = await inject('PATCH', `/api/v1/users/${internId}/suspend`, {
       payload: {},
     });
 
@@ -254,7 +288,7 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
   // ── Test 5 ────────────────────────────────────────────────────────────────
   it('should return 200 when unsuspending (activating) a user', async () => {
     // The intern was suspended in test 4
-    const res = await inject('PATCH', `/api/users/${internId}/activate`, {
+    const res = await inject('PATCH', `/api/v1/users/${internId}/activate`, {
       payload: {},
     });
 
@@ -266,7 +300,7 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
   // ── Test 6 ────────────────────────────────────────────────────────────────
   it('should throw a DB exception when directly updating the last active admin via SQL', async () => {
     // Suspend the second admin so only the seeded admin is active
-    await inject('PATCH', `/api/users/${secondAdminId}/suspend`, {
+    await inject('PATCH', `/api/v1/users/${secondAdminId}/suspend`, {
       payload: {},
     });
 
@@ -278,7 +312,7 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
     ).rejects.toThrow('Cannot suspend the last active admin');
 
     // Restore the second admin
-    await inject('PATCH', `/api/users/${secondAdminId}/activate`, {
+    await inject('PATCH', `/api/v1/users/${secondAdminId}/activate`, {
       payload: {},
     });
   });

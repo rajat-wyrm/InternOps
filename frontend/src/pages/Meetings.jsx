@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Video, X, Plus, Calendar, Clock, Trash2 } from 'lucide-react';
+import {
+  Video,
+  X,
+  Plus,
+  Calendar,
+  Clock,
+  Trash2,
+  ExternalLink,
+} from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import {
@@ -11,33 +19,66 @@ import {
   EmptyState,
   Spinner,
   Badge,
+  ApiErrorState,
 } from '../components/ui';
 import CustomDatePicker from '../components/CustomDatePicker';
 import CustomTimePicker from '../components/CustomTimePicker';
 
 export default function Meetings() {
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
+
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     title: '',
     description: '',
     meetingDate: '',
+    meetingUrl: '',
     startTime: '',
     endTime: '',
+    departmentId: '',
   });
   const [attendees, setAttendees] = useState([]);
+  const [filterDepartmentId, setFilterDepartmentId] = useState('');
 
   const canCreate = ['ADMIN', 'SENIOR_TL', 'TL'].includes(user?.role);
 
-  const { data: meetings, isLoading } = useQuery({
-    queryKey: ['meetings'],
-    queryFn: () => api.get('/meetings').then((res) => res.data),
+  const {
+    data: rawMeetings,
+    isLoading,
+    isError: meetingsIsError,
+    error: meetingsError,
+    refetch: refetchMeetings,
+  } = useQuery({
+    queryKey: ['meetings', filterDepartmentId],
+    queryFn: () =>
+      api
+        .get('/meetings', {
+          params: {
+            departmentId: filterDepartmentId || undefined,
+          },
+        })
+        .then((res) => res.data),
   });
 
-  const { data: team = [] } = useQuery({
+  const meetings = Array.isArray(rawMeetings)
+    ? rawMeetings
+    : rawMeetings?.data || [];
+
+  const {
+    data: team = [],
+    isError: teamIsError,
+    error: teamError,
+    refetch: refetchTeam,
+  } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
+    enabled: canCreate,
+  });
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/departments').then((res) => res.data),
     enabled: canCreate,
   });
 
@@ -50,8 +91,10 @@ export default function Meetings() {
         title: '',
         description: '',
         meetingDate: '',
+        meetingUrl: '',
         startTime: '',
         endTime: '',
+        departmentId: '',
       });
       setAttendees([]);
     },
@@ -145,6 +188,48 @@ export default function Meetings() {
               />
             </div>
 
+            <div>
+              <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                Meeting Link
+              </label>
+
+              <Input
+                type="url"
+                placeholder="https://meet.google.com/..."
+                value={form.meetingUrl}
+                onChange={(e) =>
+                  setForm({ ...form, meetingUrl: e.target.value })
+                }
+                disabled={createMutation.isPending}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                Department
+                <span className="normal-case font-medium text-slate-400">
+                  {' '}
+                  (optional)
+                </span>
+              </label>
+
+              <select
+                value={form.departmentId}
+                onChange={(e) =>
+                  setForm({ ...form, departmentId: e.target.value })
+                }
+                disabled={createMutation.isPending}
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm"
+              >
+                <option value="">No specific department</option>
+
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
@@ -189,7 +274,16 @@ export default function Meetings() {
               </div>
             </div>
 
-            {team.length > 0 && (
+            {canCreate && teamIsError && (
+              <ApiErrorState
+                error={teamError}
+                title="Failed to load attendees"
+                fallback="Unable to load team members for attendee selection."
+                onRetry={refetchTeam}
+              />
+            )}
+
+            {team.length > 0 && !teamIsError && (
               <div className="pt-1">
                 <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
                   Attendees ({attendees.length} selected)
@@ -214,6 +308,14 @@ export default function Meetings() {
               </div>
             )}
 
+            {createMutation.isError && (
+              <ApiErrorState
+                error={createMutation.error}
+                title="Failed to create meeting"
+                fallback="Unable to create meeting. Please check the details and try again."
+              />
+            )}
+
             <div className="pt-1">
               <Btn
                 variant="success"
@@ -228,7 +330,14 @@ export default function Meetings() {
         </Card>
       )}
 
-      {isLoading ? (
+      {meetingsIsError ? (
+        <ApiErrorState
+          error={meetingsError}
+          title="Failed to load meetings"
+          fallback="Unable to load meetings. Please try again."
+          onRetry={refetchMeetings}
+        />
+      ) : isLoading ? (
         <div className="flex justify-center p-8">
           <Spinner />
         </div>
@@ -278,7 +387,8 @@ export default function Meetings() {
                 {m.created_by === user?.id && (
                   <button
                     onClick={() => deleteMutation.mutate(m.id)}
-                    className="text-slate-300 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100"
+                    disabled={deleteMutation.isPending}
+                    className="text-slate-300 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
                     title="Delete meeting"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -286,10 +396,34 @@ export default function Meetings() {
                 )}
               </div>
 
+              {deleteMutation.isError && (
+                <div className="mt-4">
+                  <ApiErrorState
+                    error={deleteMutation.error}
+                    title="Failed to delete meeting"
+                    fallback="Unable to delete meeting. Please try again."
+                  />
+                </div>
+              )}
+
               {m.description && (
                 <p className="text-sm text-slate-600 dark:text-slate-300 mt-4 leading-relaxed bg-slate-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
                   {m.description}
                 </p>
+              )}
+
+              {m.meetingUrl && (
+                <div className="mt-4">
+                  <a
+                    href={m.meetingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 underline"
+                  >
+                    <ExternalLink className="w-4 h-4"></ExternalLink>
+                    Join Meeting
+                  </a>
+                </div>
               )}
 
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">

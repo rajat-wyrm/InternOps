@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from '@tanstack/react-query';
 import {
   Search,
   ChevronLeft,
@@ -13,6 +18,7 @@ import { Card, Spinner, EmptyState } from '../../components/ui';
 import UserActionMenu from '../../components/UserActionMenu';
 import CreateUserModal from '../../components/admin/CreateUserModal';
 import CustomSelect from '../../components/CustomSelect';
+import BulkUserModal from '../../components/admin/BulkUserModal';
 
 const ROLE_COLOR = {
   ADMIN:
@@ -75,6 +81,7 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState('');
   const [deletingUserId, setDeletingUserId] = useState(null);
   const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [bulkUserOpen, setBulkUserOpen] = useState(false);
 
   const limit = 10;
 
@@ -115,7 +122,7 @@ export default function AdminDashboard() {
           },
         })
         .then((res) => res.data),
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   });
 
   const invalidateUsers = () =>
@@ -137,8 +144,8 @@ export default function AdminDashboard() {
     onSettled: () => setDeletingUserId(null),
   });
 
-  const rows = data?.data ?? [];
-  const total = data?.total ?? 0;
+  const rows = data?.data ?? data?.users ?? data?.items ?? [];
+  const total = data?.total ?? data?.count ?? rows.length;
   const totalPages = Math.max(Math.ceil(total / limit), 1);
 
   const handleRoleFilterChange = (value) => {
@@ -186,12 +193,20 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <button
-          onClick={() => setCreateUserOpen(true)}
-          className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-extrabold rounded-2xl transition-all text-sm shadow-lg shadow-indigo-200/60 dark:shadow-none hover:-translate-y-0.5 active:scale-95 w-full sm:w-auto"
-        >
-          <span>+ Add User</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setBulkUserOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
+          >
+            <span>+ Bulk Add</span>
+          </button>
+          <button
+            onClick={() => setCreateUserOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
+          >
+            <span>+ Add User</span>
+          </button>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -398,6 +413,11 @@ export default function AdminDashboard() {
       <CreateUserModal
         open={createUserOpen}
         onClose={() => setCreateUserOpen(false)}
+      />
+
+      <BulkUserModal
+        open={bulkUserOpen}
+        onClose={() => setBulkUserOpen(false)}
       />
     </div>
   );

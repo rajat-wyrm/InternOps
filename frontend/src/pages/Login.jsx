@@ -50,7 +50,7 @@ function NoticeList() {
   }
 
   return (
-    <div className="space-y-4 divide-y divide-white/10">
+    <div className="notice-scrollbar max-h-[500px] overflow-y-auto pr-2 space-y-4 divide-y divide-white/10">
       {notices.map((notice) => (
         <div key={notice.id} className="pt-4 first:pt-0">
           <p
@@ -87,10 +87,18 @@ export default function Login() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (loginMut.isPending) return;
+
     if (!email.trim() || !password)
       return setError('Email and password required');
+
     setError('');
-    loginMut.mutate({ email, password });
+
+    loginMut.mutate({
+      email,
+      password,
+    });
   };
 
   return (
@@ -130,7 +138,10 @@ export default function Login() {
               Welcome back
             </h2>
             {error && (
-              <div className="bg-red-500/15 border border-red-300/25 text-red-100 text-sm rounded-2xl px-4 py-3 mb-4">
+              <div
+                id="login-error"
+                className="bg-red-500/15 border border-red-300/25 text-red-100 text-sm rounded-2xl px-4 py-3 mb-4"
+              >
                 {error}
               </div>
             )}
@@ -146,7 +157,10 @@ export default function Login() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    disabled={loginMut.isPending}
                     required
+                    aria-describedby={error ? 'login-error' : undefined}
+                    aria-invalid={!!error}
                     className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
                   />
                 </div>
@@ -161,7 +175,10 @@ export default function Login() {
                     type={show ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    disabled={loginMut.isPending}
                     required
+                    aria-describedby={error ? 'login-error' : undefined}
+                    aria-invalid={!!error}
                     className="w-full pl-12 pr-12 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
                   />
                   <button
@@ -175,6 +192,14 @@ export default function Login() {
                       <Eye className="w-5 h-5" />
                     )}
                   </button>
+                </div>
+                <div className="flex justify-end">
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs text-white/45 hover:text-white/70 transition"
+                  >
+                    Forgot Password?
+                  </Link>
                 </div>
               </div>
               <button

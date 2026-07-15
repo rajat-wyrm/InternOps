@@ -15,20 +15,20 @@ const MAX_RESPONSE_BYTES = Number(
   process.env.AI_MAX_RESPONSE_BYTES || 2 * 1024 * 1024 // 2MB default cap
 );
 
-const caches = new Map(); // userId -> LRUCache
+const USER_CACHE_MAX = Number(process.env.AI_USER_CACHE_MAX || 1000);
+const caches = new LRUCache({ max: USER_CACHE_MAX }); // userId -> LRUCache, evicts oldest when full
 function getCache(userId) {
   const key = userId || 'global';
-  if (!caches.has(key)) {
-    caches.set(
-      key,
-      new LRUCache({
-        max: CACHE_MAX_ENTRIES,
-        ttl: CACHE_TTL_MS,
-        ttlAutopurge: true,
-      })
-    );
+  let cache = caches.get(key);
+  if (!cache) {
+    cache = new LRUCache({
+      max: CACHE_MAX_ENTRIES,
+      ttl: CACHE_TTL_MS,
+      ttlAutopurge: true,
+    });
+    caches.set(key, cache);
   }
-  return caches.get(key);
+  return cache;
 }
 
 const MAX_AI_RESPONSE_BYTES = Number(
@@ -429,9 +429,11 @@ const providerRegistry = {
 async function generateAIResponse({ userId, messages }) {
   const safeMessages = Array.isArray(messages) ? messages : [];
   const sanitizedMessages = safeMessages.slice(-16).map((m) => ({
-    role: m.role === 'assistant' ? 'assistant' : 'user',
+    role: m.role,
     content: String(m.content || '').slice(0, 2000),
   }));
+
+  //console.log('Sanitized messages:',JSON.stringify(sanitizedMessages, null, 2));
 
   const payload = { userId, messages: sanitizedMessages };
   const cached = await getCachedResponse(payload);

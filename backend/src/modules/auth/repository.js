@@ -1,3 +1,4 @@
+const { ConflictError } = require('../../utils/errors');
 const pool = require('../../config/db');
 const argon2 = require('argon2');
 
@@ -18,20 +19,30 @@ async function listUsersByRole(role) {
 
 async function createUser(data) {
   const passwordHash = await argon2.hash(data.password);
-  const res = await pool.query(
-    `INSERT INTO users (email, password_hash, role, manager_id, department_id, full_name)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, email, role, full_name, manager_id, department_id, created_at`,
-    [
-      data.email.trim().toLowerCase(),
-      passwordHash,
-      data.role,
-      data.managerId || null,
-      data.departmentId || null,
-      data.fullName || null,
-    ]
-  );
-  return res.rows[0];
+
+  try {
+    const res = await pool.query(
+      `INSERT INTO users (email, password_hash, role, manager_id, department_id, full_name)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, email, role, full_name, manager_id, department_id, created_at`,
+      [
+        data.email.trim().toLowerCase(),
+        passwordHash,
+        data.role,
+        data.managerId || null,
+        data.departmentId || null,
+        data.fullName || null,
+      ]
+    );
+
+    return res.rows[0];
+  } catch (err) {
+    if (err.code === '23505' && err.constraint === 'users_email_active_key') {
+      throw new ConflictError('A user with this email already exists');
+    }
+
+    throw err;
+  }
 }
 
 async function findByEmail(email) {
@@ -192,6 +203,13 @@ async function claimRefreshToken(tokenHash) {
       arguments: [],
     });
     if (!raw) return null;
+    // Also revoke in Postgres so token can't be replayed after Redis restart
+    await pool
+      .query(
+        'UPDATE refresh_tokens SET revoked = TRUE WHERE token_hash = $1 AND revoked = FALSE',
+        [tokenHash]
+      )
+      .catch(() => {});
     try {
       return JSON.parse(raw).userId;
     } catch {
@@ -228,18 +246,38 @@ async function revokeRefreshTokenRedis(tokenHash) {
   await revokeRefreshToken(tokenHash);
 }
 
+// WHY: Postgres is the source of truth and must always be revoked, even if
+// Redis is unreachable. Redis cleanup is deliberately kept OUTSIDE the
+// Postgres write path and wrapped in its own try/catch so a Redis failure
+// can never roll back — or block — the Postgres revocation (#507).
 async function revokeAllUserTokensRedis(userId) {
-  const client = await pool.connect();
+  // 1. Postgres UPDATE first inside a transaction — must succeed
+  let client;
+
   try {
+    client = await pool.connect();
+
     await client.query('BEGIN');
 
-    // Revoke all refresh tokens for the user in Postgres
     await client.query(
       'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
       [userId]
     );
 
-    // Revoke from Redis atomically
+    await client.query('COMMIT');
+  } catch (err) {
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+    }
+
+    throw err;
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+  // 2. Redis cleanup (best-effort)
+  try {
     const redis = await getRedisClient();
     if (redis) {
       const tokens = await redis.sMembers(`user_tokens:${userId}`);
@@ -252,13 +290,11 @@ async function revokeAllUserTokensRedis(userId) {
         await multi.exec();
       }
     }
-
-    await client.query('COMMIT');
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
+    console.error(
+      `Failed to clean up Redis sessions for user ${userId} in revokeAllUserTokensRedis:`,
+      err
+    );
   }
 }
 

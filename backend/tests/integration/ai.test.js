@@ -38,13 +38,16 @@ describe('AI Chat Integration Tests (#498)', () => {
     });
   }
 
-  async function login() {
+  async function login(
+    email = SEEDED_ADMIN_EMAIL,
+    password = SEEDED_ADMIN_PASSWORD
+  ) {
     const res = await app.inject({
       method: 'POST',
-      url: '/api/auth/login',
+      url: '/api/v1/auth/login',
       cookies,
       headers: authHeaders(),
-      payload: { email: SEEDED_ADMIN_EMAIL, password: SEEDED_ADMIN_PASSWORD },
+      payload: { email, password },
     });
     mergeCookies(cookies, parseSetCookie(res.headers['set-cookie']));
     mergeCookies(cookies, res.cookies);
@@ -87,11 +90,13 @@ describe('AI Chat Integration Tests (#498)', () => {
       app = require('../../src/app');
       await app.ready();
       await resetSeededAdminPassword();
+      const pool = require('../../src/config/db');
+      await pool.query('DELETE FROM ai_usage');
 
       cookies = {};
       const csrfRes = await app.inject({
         method: 'GET',
-        url: '/api/auth/csrf-token',
+        url: '/api/v1/auth/csrf-token',
       });
       csrfToken = JSON.parse(csrfRes.body).csrfToken;
       mergeCookies(cookies, parseSetCookie(csrfRes.headers['set-cookie']));
@@ -112,7 +117,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       const testPrompt = 'Draft a performance review';
 
       // First request - hits provider
-      const res1 = await inject('POST', '/api/ai/chat', {
+      const res1 = await inject('POST', '/api/v1/ai/chat', {
         payload: { prompt: testPrompt },
       });
       expect(res1.statusCode).toBe(200);
@@ -120,7 +125,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       expect(body1.content).toBeDefined();
 
       // Second request - should be cached
-      const res2 = await inject('POST', '/api/ai/chat', {
+      const res2 = await inject('POST', '/api/v1/ai/chat', {
         payload: { prompt: testPrompt },
       });
       expect(res2.statusCode).toBe(200);
@@ -143,11 +148,13 @@ describe('AI Chat Integration Tests (#498)', () => {
       app = require('../../src/app');
       await app.ready();
       await resetSeededAdminPassword();
+      const pool = require('../../src/config/db');
+      await pool.query('DELETE FROM ai_usage');
 
       cookies = {};
       const csrfRes = await app.inject({
         method: 'GET',
-        url: '/api/auth/csrf-token',
+        url: '/api/v1/auth/csrf-token',
       });
       csrfToken = JSON.parse(csrfRes.body).csrfToken;
       mergeCookies(cookies, parseSetCookie(csrfRes.headers['set-cookie']));
@@ -169,7 +176,7 @@ describe('AI Chat Integration Tests (#498)', () => {
 
       // Send 5 prompts with cache max = 3
       for (let i = 0; i < 5; i++) {
-        const res = await inject('POST', '/api/ai/chat', {
+        const res = await inject('POST', '/api/v1/ai/chat', {
           payload: { prompt: `prompt-${i}` },
         });
         responses.push(res.statusCode);
@@ -184,7 +191,7 @@ describe('AI Chat Integration Tests (#498)', () => {
 
       // Fill cache with 3 entries
       for (let i = 0; i < 3; i++) {
-        const res = await inject('POST', '/api/ai/chat', {
+        const res = await inject('POST', '/api/v1/ai/chat', {
           payload: { prompt: `cache-test-${i}` },
         });
         expect(res.statusCode).toBe(200);
@@ -192,21 +199,21 @@ describe('AI Chat Integration Tests (#498)', () => {
       expect(getCallCount()).toBe(3);
 
       // Access first entry again (keeps it in cache)
-      const resHit = await inject('POST', '/api/ai/chat', {
+      const resHit = await inject('POST', '/api/v1/ai/chat', {
         payload: { prompt: 'cache-test-0' },
       });
       expect(JSON.parse(resHit.body).cached).toBe(true);
       expect(getCallCount()).toBe(3); // No new provider call
 
       // Add a 4th entry (should evict LRU, likely cache-test-1)
-      const res4 = await inject('POST', '/api/ai/chat', {
+      const res4 = await inject('POST', '/api/v1/ai/chat', {
         payload: { prompt: 'cache-test-new' },
       });
       expect(res4.statusCode).toBe(200);
       expect(getCallCount()).toBe(4);
 
       // cache-test-0 should still be cached
-      const resCheck = await inject('POST', '/api/ai/chat', {
+      const resCheck = await inject('POST', '/api/v1/ai/chat', {
         payload: { prompt: 'cache-test-0' },
       });
       expect(JSON.parse(resCheck.body).cached).toBe(true);
@@ -226,17 +233,43 @@ describe('AI Chat Integration Tests (#498)', () => {
       app = require('../../src/app');
       await app.ready();
       await resetSeededAdminPassword();
+      const pool = require('../../src/config/db');
+      await pool.query('DELETE FROM ai_usage');
 
       cookies = {};
       const csrfRes = await app.inject({
         method: 'GET',
-        url: '/api/auth/csrf-token',
+        url: '/api/v1/auth/csrf-token',
       });
       csrfToken = JSON.parse(csrfRes.body).csrfToken;
       mergeCookies(cookies, parseSetCookie(csrfRes.headers['set-cookie']));
       mergeCookies(cookies, csrfRes.cookies);
 
       await login();
+      const uniqueEmail = `tl-rate-${Date.now()}@example.com`;
+      const regRes = await inject('POST', '/api/v1/auth/register', {
+        payload: {
+          email: uniqueEmail,
+          password: 'TLPassword123!',
+          role: 'TL',
+          fullName: 'TL Rate Limit Test',
+        },
+      });
+      expect(regRes.statusCode).toBe(201);
+      await pool.query(
+        'UPDATE users SET email_verified = TRUE WHERE email = $1',
+        [uniqueEmail]
+      );
+
+      cookies = {};
+      const csrfRes2 = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/csrf-token',
+      });
+      csrfToken = JSON.parse(csrfRes2.body).csrfToken;
+      mergeCookies(cookies, parseSetCookie(csrfRes2.headers['set-cookie']));
+      mergeCookies(cookies, csrfRes2.cookies);
+      await login(uniqueEmail, 'TLPassword123!');
     });
 
     afterAll(async () => {
@@ -252,7 +285,7 @@ describe('AI Chat Integration Tests (#498)', () => {
 
       // AI_CHAT_RATE_LIMIT_PER_MIN = 3
       for (let i = 0; i < 3; i++) {
-        const res = await inject('POST', '/api/ai/chat', {
+        const res = await inject('POST', '/api/v1/ai/chat', {
           payload: { prompt: `rate-test-${i}` },
         });
         responses.push(res.statusCode);
@@ -268,7 +301,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       // Try 4 requests with limit of 3
       const responses = [];
       for (let i = 0; i < 4; i++) {
-        const res = await inject('POST', '/api/ai/chat', {
+        const res = await inject('POST', '/api/v1/ai/chat', {
           payload: { prompt: `rate-exceed-${i}` },
         });
         responses.push(res.statusCode);
@@ -292,17 +325,43 @@ describe('AI Chat Integration Tests (#498)', () => {
       app = require('../../src/app');
       await app.ready();
       await resetSeededAdminPassword();
+      const pool = require('../../src/config/db');
+      await pool.query('DELETE FROM ai_usage');
 
       cookies = {};
       const csrfRes = await app.inject({
         method: 'GET',
-        url: '/api/auth/csrf-token',
+        url: '/api/v1/auth/csrf-token',
       });
       csrfToken = JSON.parse(csrfRes.body).csrfToken;
       mergeCookies(cookies, parseSetCookie(csrfRes.headers['set-cookie']));
       mergeCookies(cookies, csrfRes.cookies);
 
       await login();
+      const uniqueEmail = `tl-size-${Date.now()}@example.com`;
+      const regRes = await inject('POST', '/api/v1/auth/register', {
+        payload: {
+          email: uniqueEmail,
+          password: 'TLPassword123!',
+          role: 'TL',
+          fullName: 'TL Size Limit Test',
+        },
+      });
+      expect(regRes.statusCode).toBe(201);
+      await pool.query(
+        'UPDATE users SET email_verified = TRUE WHERE email = $1',
+        [uniqueEmail]
+      );
+
+      cookies = {};
+      const csrfRes2 = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/csrf-token',
+      });
+      csrfToken = JSON.parse(csrfRes2.body).csrfToken;
+      mergeCookies(cookies, parseSetCookie(csrfRes2.headers['set-cookie']));
+      mergeCookies(cookies, csrfRes2.cookies);
+      await login(uniqueEmail, 'TLPassword123!');
     });
 
     afterAll(async () => {
@@ -330,7 +389,7 @@ describe('AI Chat Integration Tests (#498)', () => {
         };
       });
 
-      const res = await inject('POST', '/api/ai/chat', {
+      const res = await inject('POST', '/api/v1/ai/chat', {
         payload: { prompt: 'test oversized response' },
       });
 

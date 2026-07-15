@@ -1,16 +1,10 @@
+import { ROLE_LABEL } from '../constants/roles';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
-import { Card, StatCard } from '../components/ui';
-
-const ROLE_LABEL = {
-  ADMIN: 'Admin',
-  SENIOR_TL: 'Senior TL',
-  TL: 'TL',
-  CAPTAIN: 'Captain',
-  INTERN: 'Intern',
-};
+import { QUERY_KEYS } from '../constants/queryKeys';
+import { Card, StatCard, ApiErrorState } from '../components/ui';
 
 function attendancePct(m) {
   const total = Number(m.attendance_total) || 0;
@@ -47,8 +41,10 @@ function ManagerHome({ user }) {
     data: team = [],
     isLoading,
     isError,
+    error,
+    refetch,
   } = useQuery({
-    queryKey: ['teamMembers'],
+    queryKey: QUERY_KEYS.TEAM_MEMBERS,
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
 
@@ -60,9 +56,12 @@ function ManagerHome({ user }) {
 
   if (isError) {
     return (
-      <p className="text-red-500 dark:text-red-400">
-        Failed to load dashboard data.
-      </p>
+      <ApiErrorState
+        error={error}
+        title="Failed to load dashboard data"
+        fallback="Unable to load your team dashboard. Please try again."
+        onRetry={refetch}
+      />
     );
   }
 
@@ -134,7 +133,7 @@ function ManagerHome({ user }) {
         <StatCard
           label="Avg rating"
           value={avgRating}
-          sub="out of 5"
+          sub="out of 10"
           icon="⭐"
           gradient="from-amber-400 to-orange-500"
         />
@@ -249,6 +248,8 @@ function InternHome({ user }) {
     data: stats,
     isLoading,
     isError,
+    error,
+    refetch,
   } = useQuery({
     queryKey: ['internHome', user?.id],
     queryFn: async () => {
@@ -276,10 +277,12 @@ function InternHome({ user }) {
 
   if (isError) {
     return (
-      <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-200 p-4 rounded-2xl border border-red-200 dark:border-red-900/60">
-        Failed to load your dashboard data. Please refresh or contact your
-        manager.
-      </div>
+      <ApiErrorState
+        error={error}
+        title="Failed to load dashboard data"
+        fallback="Unable to load your dashboard. Please try again."
+        onRetry={refetch}
+      />
     );
   }
 
@@ -323,7 +326,7 @@ function InternHome({ user }) {
         <StatCard
           label="My avg rating"
           value={avg}
-          sub="out of 5"
+          sub="out of 10"
           icon="⭐"
           gradient="from-amber-400 to-orange-500"
         />
@@ -341,7 +344,7 @@ function InternHome({ user }) {
         <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
           <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
             <h3 className="font-extrabold text-xl text-slate-900 dark:text-white flex items-center gap-2">
-              📅 This month&apos;s attendance
+              📅 This month's attendance
             </h3>
 
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -431,12 +434,35 @@ function InternHome({ user }) {
 }
 
 export default function Home() {
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
 
-  const { data: me } = useQuery({
-    queryKey: ['myProfile'],
+  const {
+    data: me,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
   });
+
+  if (isLoading) {
+    return (
+      <p className="text-slate-600 dark:text-slate-300">Loading profile...</p>
+    );
+  }
+
+  if (isError) {
+    return (
+      <ApiErrorState
+        error={error}
+        title="Failed to load profile"
+        fallback="Unable to load your profile. Please try again."
+        onRetry={refetch}
+      />
+    );
+  }
 
   const u = { ...user, fullName: me?.full_name || user?.fullName };
 

@@ -4,18 +4,20 @@ async function createMeeting({
   title,
   description,
   meetingDate,
+  meetingUrl,
   startTime,
   endTime,
   createdBy,
   departmentId,
 }) {
   const res = await pool.query(
-    `INSERT INTO meetings (title, description, meeting_date, start_time, end_time, created_by, department_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    `INSERT INTO meetings (title, description, meeting_date, meeting_url, start_time, end_time, created_by, department_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [
       title,
       description,
       meetingDate,
+      meetingUrl,
       startTime,
       endTime,
       createdBy,
@@ -42,6 +44,7 @@ async function removeAttendee(meetingId, userId) {
 async function listMeetings({
   userId,
   departmentId,
+  requestedDepartmentId,
   fromDate,
   toDate,
   page = 1,
@@ -59,6 +62,9 @@ async function listMeetings({
   `;
   const params = [];
   let condIdx = 1;
+
+  const selectedDepartmentId = requestedDepartmentId || departmentId;
+
   // Access control:
   // creator OR attendee OR department meeting
   if (userId) {
@@ -68,11 +74,13 @@ async function listMeetings({
     `;
     params.push(userId);
     condIdx++;
-    if (departmentId) {
+
+    if (selectedDepartmentId) {
       query += ` OR m.department_id = $${condIdx}`;
-      params.push(departmentId);
+      params.push(selectedDepartmentId);
       condIdx++;
     }
+
     query += `)`;
   }
   if (fromDate) {
@@ -122,6 +130,7 @@ async function updateMeeting(meetingId, fields) {
         'title',
         'description',
         'meeting_date',
+        'meeting_url',
         'start_time',
         'end_time',
       ].includes(key)

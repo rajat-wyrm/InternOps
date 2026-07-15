@@ -6,6 +6,7 @@ module.exports = {
   detectOpenHandles: true,
   globalSetup: '<rootDir>/tests/globalSetup.js',
   globalTeardown: '<rootDir>/tests/globalTeardown.js',
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   collectCoverage: true,
   coverageDirectory: 'coverage',
   collectCoverageFrom: [
@@ -14,5 +15,13 @@ module.exports = {
     'src/middleware/**/*.js',
     'src/services/**/*.js',
   ],
+  coverageThreshold: {
+    global: {
+      branches: 33,
+      functions: 40,
+      lines: 41,
+      statements: 40,
+    },
+  },
   testTimeout: 30000,
 };

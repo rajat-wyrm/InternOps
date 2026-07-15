@@ -49,6 +49,53 @@ InternOps is an enterprise-grade workforce management platform designed to strea
 
 ## ⚡ Quick Start
 
+## Local Development Setup
+
+1. Clone the repository.
+
+```bash
+git clone <repository-url>
+cd InternOps
+```
+
+2. Configure the backend.
+
+```bash
+cd backend
+npm install
+cp .env.example .env
+```
+
+3. Edit the `.env` file and provide all required credentials.
+
+4. Run database migration and seed the database.
+
+```bash
+npm run migrate
+npm run seed
+```
+
+5. Start the backend server.
+
+```bash
+npm run dev
+```
+
+6. Start the frontend.
+
+```bash
+cd ../frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+7. Open the application in your browser.
+
+```
+http://localhost:5173
+```
+
 ### 1. Clone the Repository
 
 ```bash
@@ -57,6 +104,40 @@ cd InternOps
 ```
 
 ---
+
+## Environment Variables
+
+| Variable           | Description                           | Example                                             |
+| ------------------ | ------------------------------------- | --------------------------------------------------- |
+| PORT               | Backend server port                   | 5001                                                |
+| NODE_ENV           | Application environment               | development                                         |
+| DATABASE_URL       | PostgreSQL database connection string | postgresql://user:password@localhost:5432/internops |
+| JWT_SECRET         | Secret key for JWT access tokens      | your-jwt-secret                                     |
+| JWT_REFRESH_SECRET | Secret key for JWT refresh tokens     | your-refresh-secret                                 |
+
+### Complete Environment Variables
+
+All backend environment variables are available in:
+
+```text
+backend/.env.example
+```
+
+The file is organized into the following sections:
+
+- Core App Config
+- Seed Admin Credentials
+- Authentication
+- Database (PostgreSQL)
+- Google OAuth
+- Fast2SMS
+- AI Services
+- Email (SMTP)
+- Redis (Upstash)
+- AI Cache
+- AI Chat Daily Limit
+
+Copy `backend/.env.example` to `.env` and replace the example values with your own credentials before starting the application.
 
 ### 2. Setup Backend
 
@@ -104,7 +185,65 @@ InternOps/
 
 ---
 
+## Available npm Scripts
+
+### Backend
+
+| Command | Description |
+
+|---------|-------------|
+
+| `npm run dev` | Start the backend development server |
+
+| `npm run migrate` | Run database migrations |
+
+| `npm run seed` | Seed the database with initial data |
+
+### Frontend
+
+| Command | Description |
+
+|---------|-------------|
+
+| `npm run dev` | Start the Vite development server |
+
+| `npm run build` | Build the production application |
+
+| `npm run preview` | Preview the production build |
+
+---
+
+## Troubleshooting
+
+### Backend does not start
+
+- Make sure all required environment variables are configured in `backend/.env`.
+- Run `npm install` to install all dependencies.
+- Verify that the configured port is not already in use.
+
+### Frontend cannot connect to backend
+
+- Ensure the backend server is running.
+- Verify the API base URL in `frontend/.env`.
+- Confirm the backend and frontend ports match the README instructions.
+
+### Database connection issues
+
+- Verify the `DATABASE_URL` is correct.
+- Ensure PostgreSQL is running.
+- Run database migrations before starting the application.
+
+### Login issues
+
+- Run the seed command to create the default admin account.
+- Check that the backend server is running successfully.
+- Verify the credentials configured in the environment variables.
+
+---
+
 ## 📌 About
 
 This project was developed for efficient intern operations management.  
 All rights reserved.
+
+👉 View our history of updates in the **[CHANGELOG.md](CHANGELOG.md)**.

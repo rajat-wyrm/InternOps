@@ -1,10 +1,11 @@
 const crypto = require('crypto');
-
+const config = require('../config');
+const { verifyAccessToken } = require('../utils/tokens');
 const SESSION_COOKIE = 'csrf-sid';
 const TOKEN_COOKIE = 'csrf-token';
 
 function getSecret() {
-  const secret = require('../config').jwt?.secret;
+  const secret = config.jwt?.secret;
   if (!secret) {
     throw new Error('JWT_SECRET is not configured; cannot sign CSRF session');
   }
@@ -43,6 +44,10 @@ function tokenFor(sessionId) {
   return sign(`csrf:${sessionId}`);
 }
 
+function logCsrfWarn(request, details, message) {
+  request.log?.warn(details, message);
+}
+
 function readSession(request) {
   const cookies = parseCookies(request.headers.cookie);
   const raw = cookies[SESSION_COOKIE];
@@ -66,7 +71,7 @@ function writeSession(reply, sessionId, userId = null) {
   reply.setCookie(SESSION_COOKIE, signed, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/',
   });
 }
@@ -85,7 +90,7 @@ function rotateAndSetCsrf(request, reply, userId = null) {
   reply.setCookie(TOKEN_COOKIE, csrfToken, {
     httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/',
   });
 
@@ -98,18 +103,33 @@ function getOrCreateToken(request, reply) {
   let tokenUserId = null;
   const authHeader = request.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
+    const authToken = authHeader.split(' ')[1];
     try {
-      const { verifyAccessToken } = require('../utils/tokens');
-      const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+      const decoded = verifyAccessToken(authToken);
       tokenUserId = decoded.id;
-    } catch (err) {}
+    } catch (err) {
+      logCsrfWarn(
+        request,
+        {
+          err,
+          method: request.method,
+          url: request.url,
+          hasAuthHeader: true,
+          tokenLength: authToken ? authToken.length : 0,
+        },
+        'CSRF bearer token verification failed while generating CSRF token'
+      );
+    }
   }
 
   if (!session) {
     const sid = newSessionId();
     writeSession(reply, sid, tokenUserId);
     session = { sid, userId: tokenUserId };
-  } else if (tokenUserId && session.userId !== String(tokenUserId)) {
+  } else if (
+    tokenUserId &&
+    String(session.userId || '') !== String(tokenUserId)
+  ) {
     const sid = newSessionId();
     writeSession(reply, sid, tokenUserId);
     session = { sid, userId: tokenUserId };
@@ -118,17 +138,32 @@ function getOrCreateToken(request, reply) {
 }
 
 function generateToken(request, reply) {
-  return getOrCreateToken(request, reply);
+  const token = getOrCreateToken(request, reply);
+  reply.setCookie('csrf-token', token, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    path: '/',
+  });
+
+  return token;
 }
 
 const EXEMPT = [
-  '/api/auth/login',
-  '/api/auth/refresh',
-  '/api/auth/forgot-password',
-  '/api/auth/reset-password',
+  '/api/v1/auth/login',
+  '/api/v1/auth/refresh',
+  '/api/v1/auth/forgot-password',
+  '/api/v1/auth/reset-password',
+  '/docs',
+  '/docs/json',
 ];
 
 async function csrfCheck(request, reply) {
+  const session = readSession(request);
+  if (session) {
+    request.session = session;
+  }
+
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
   if (!request.url) return;
 
@@ -138,7 +173,6 @@ async function csrfCheck(request, reply) {
     request.url.split('?')[0].split('#')[0];
   if (EXEMPT.includes(path)) return;
 
-  const session = readSession(request);
   const headerToken = request.headers['x-csrf-token'];
 
   if (!session || !session.sid || !headerToken) {
@@ -150,13 +184,29 @@ async function csrfCheck(request, reply) {
   }
 
   let tokenUserId = null;
-  const authHeader = request.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    try {
-      const { verifyAccessToken } = require('../utils/tokens');
-      const decoded = verifyAccessToken(authHeader.split(' ')[1]);
-      tokenUserId = decoded.id;
-    } catch (err) {}
+  if (request.user && request.user.id) {
+    tokenUserId = request.user.id;
+  } else {
+    const authHeader = request.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const authToken = authHeader.split(' ')[1];
+      try {
+        const decoded = verifyAccessToken(authToken);
+        tokenUserId = decoded.id;
+      } catch (err) {
+        logCsrfWarn(
+          request,
+          {
+            err,
+            method: request.method,
+            url: request.url,
+            hasAuthHeader: true,
+            tokenLength: authToken ? authToken.length : 0,
+          },
+          'CSRF bearer token verification failed during request validation'
+        );
+      }
+    }
   }
 
   if (tokenUserId) {
@@ -167,7 +217,7 @@ async function csrfCheck(request, reply) {
 }
 
 const csrfProtection = async (fastify) => {
-  fastify.addHook('onRequest', csrfCheck);
+  fastify.addHook('preHandler', csrfCheck);
 };
 
 const csrfMiddleware = csrfCheck;
