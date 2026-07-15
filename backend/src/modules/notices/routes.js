@@ -18,8 +18,10 @@ async function noticesRoutes(fastify) {
     },
     async (req, reply) => {
       try {
-        const notices = await repo.getAllNotices();
-        return reply.send(notices);
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const result = await repo.getAllNotices({ page, limit });
+        return reply.send(result);
       } catch (err) {
         // If the notices table does not yet exist (migration pending on production)
         // return an empty list with 503 rather than crashing with 500.
