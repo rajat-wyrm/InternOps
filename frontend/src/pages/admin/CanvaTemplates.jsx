@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ExternalLink,
   Download,
@@ -27,6 +28,22 @@ export default function CanvaTemplates() {
     description: '',
     colorScheme: ['#3B82F6', '#10B981', '#F59E0B'],
   });
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    const handleKey = (e) => e.key === 'Escape' && setShowCreateModal(false);
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [showCreateModal]);
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [showCreateModal]);
 
   const { data: canvaStatusResp, isLoading: statusLoading } = useCanvaStatus();
   const canvaStatus = canvaStatusResp?.data || {};
@@ -349,8 +366,8 @@ export default function CanvaTemplates() {
       </div>
 
       {/* Create Template Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+      {showCreateModal && createPortal(
+        <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="modal-title">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
             <div
               className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"
@@ -359,7 +376,7 @@ export default function CanvaTemplates() {
 
             <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-bottom transition-all transform bg-white dark:bg-gray-800 shadow-xl rounded-2xl sm:my-8 sm:align-middle sm:max-w-lg">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h3 id="modal-title" className="text-lg font-semibold text-gray-900 dark:text-white">
                   Create New Template
                 </h3>
                 <button
@@ -475,7 +492,8 @@ export default function CanvaTemplates() {
               </form>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
