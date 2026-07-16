@@ -8,6 +8,7 @@ import {
   CalendarClock,
 } from 'lucide-react';
 import api from '../lib/axios';
+import useAuthStore from '../store/auth';
 import { PageHeader, Card, Btn, EmptyState, Spinner } from '../components/ui';
 
 export default function Sessions() {
