@@ -19,6 +19,7 @@ export default function BulkAttendanceForm() {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [departmentId, setDepartmentId] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
+  const [fillMissing, setFillMissing] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
@@ -39,12 +40,13 @@ export default function BulkAttendanceForm() {
 
   const bulkMutation = useMutation({
     mutationFn: (data) => api.post('/attendance/bulk', data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
       setError('');
-      setMsg(`✓ Marked ${selectedUsers.length} members`);
+      setMsg(`✓ Marked ${variables.entries.length} members`);
       setSelectedUsers([]);
       setRemarks('');
+      setFillMissing(false);
       setTimeout(() => setMsg(''), 2500);
     },
     onError: (err) => setError(err.response?.data?.error || 'Bulk mark failed'),
@@ -112,14 +114,33 @@ export default function BulkAttendanceForm() {
       return setError('Future dates cannot be selected for bulk operations');
     }
 
-    bulkMutation.mutate({
-      entries: selectedUsers.map((uid) => ({
-        user_id: uid,
-        date,
-        status,
-        remarks,
-      })),
-    });
+    const entries = selectedUsers.map((uid) => ({
+      user_id: uid,
+      date,
+      status,
+      remarks,
+    }));
+
+    if (fillMissing) {
+      const others = team.filter((u) => !selectedUsers.includes(u.id));
+
+      if (entries.length + others.length > BULK_MAX) {
+        return setError(
+          `Total entries (${entries.length + others.length}) exceeds the ${BULK_MAX} limit. Deselect some members or disable auto-fill.`
+        );
+      }
+
+      for (const u of others) {
+        entries.push({
+          user_id: u.id,
+          date,
+          status: 'PRESENT',
+          remarks: '',
+        });
+      }
+    }
+
+    bulkMutation.mutate({ entries });
   };
 
   return (
@@ -273,6 +294,19 @@ export default function BulkAttendanceForm() {
             />
           </div>
         </div>
+
+        {selectedUsers.length > 0 && (
+          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none pt-1">
+            <input
+              type="checkbox"
+              checked={fillMissing}
+              onChange={(e) => setFillMissing(e.target.checked)}
+              className="accent-indigo-600 w-3.5 h-3.5"
+            />
+            Auto-mark remaining {team.length - selectedUsers.length} members
+            as Present
+          </label>
+        )}
 
         <div className="flex items-center justify-between gap-3 pt-1">
           <p className="text-xs text-slate-500 dark:text-slate-400">
