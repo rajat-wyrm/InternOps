@@ -3,6 +3,7 @@ const { z } = require('zod');
 const templateCreateSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
+  colorScheme: z.array(z.string()).optional().default([]),
   template_data: z
     .object({
       background: z.string().optional(),
