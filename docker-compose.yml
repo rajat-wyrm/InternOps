@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:14
     environment:
-      POSTGRES_USER: internops
-      POSTGRES_PASSWORD: internops123
-      POSTGRES_DB: internops
+      POSTGRES_USER: ${DB_USER:-internops}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-internops123}
+      POSTGRES_DB: ${DB_NAME:-internops}
     ports:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U internops']
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-internops}']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,7 +25,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5000
-      DATABASE_URL: postgresql://internops:internops123@postgres:5432/internops
+      DATABASE_URL: postgresql://${DB_USER:-internops}:${DB_PASSWORD:-internops123}@postgres:5432/${DB_NAME:-internops}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set in your .env file}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
     volumes:
