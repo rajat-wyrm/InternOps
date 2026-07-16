@@ -48,6 +48,12 @@ jobs:
       - name: Install backend dependencies
         run: cd backend && npm ci
 
+      - name: Run Backend Lint and Format Checks
+        run: |
+          cd backend
+          npm run lint:db
+          npx prettier --check "src/**/*.js"
+
       - name: Wait for PostgreSQL
         run: |
           until pg_isready -h localhost -p 5432 -U postgres; do
@@ -66,6 +72,14 @@ jobs:
 
       - name: Install frontend dependencies
         run: cd frontend && npm ci
+
+      - name: Run Frontend Format Checks
+        run: |
+          cd frontend
+          npx prettier --check "src/**/*.{js,jsx,css}"
+
+      - name: Run Frontend Tests
+        run: cd frontend && npm run test
 
       - name: Build frontend
         run: cd frontend && npm run build
