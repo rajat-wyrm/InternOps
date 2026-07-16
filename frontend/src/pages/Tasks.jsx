@@ -127,22 +127,74 @@ export default function Tasks() {
       showNotification(errorMsg);
     },
   });
+
   const verifyMutation = useMutation({
-    mutationFn: ({ proofId }) => api.patch(`/proofs/${proofId}/verify`),
+    mutationFn: ({ proofId }) => {
+      if (!proofId) {
+        throw new Error('Cannot verify proof: proof ID is missing');
+      }
+
+      return api.patch(`/proofs/${proofId}/verify`);
+    },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['proofs', variables.taskId] });
+      showNotification('Proof verified successfully');
+
+      queryClient.invalidateQueries({
+        queryKey: ['proofs', variables.taskId],
+      });
+      queryClient.invalidateQueries({ queryKey: ['proofs'] });
+    },
+    onError: (error) => {
+      const errorMsg =
+        error.response?.data?.error ||
+        error.message ||
+        'Could not verify proof. Please try again.';
+
+      showNotification(errorMsg);
     },
   });
-  const deleteMutation = useMutation({
-    mutationFn: ({ proofId }) => api.delete(`/proofs/${proofId}`),
-    onSuccess: (_, variables) => {
-      setDeletingProofId(null);
-      showNotification('Proof deleted successfully');
-      refetchProofs();
 
-      queryClient.invalidateQueries({ queryKey: ['proofs', variables.taskId] });
+  const deleteMutation = useMutation({
+    mutationFn: ({ proofId }) => {
+      if (!proofId) {
+        throw new Error('Cannot delete proof: proof ID is missing');
+      }
+
+      return api.delete(`/proofs/${proofId}`);
+    },
+    onSuccess: (_, variables) => {
+      showNotification('Proof deleted successfully');
+
+      queryClient.setQueryData(
+        ['proofs', variables.taskId],
+        (currentProofs) => {
+          if (!Array.isArray(currentProofs)) {
+            return currentProofs;
+          }
+
+          return currentProofs.filter(
+            (proof) => proof.id !== variables.proofId
+          );
+        }
+      );
+
+      queryClient.invalidateQueries({
+        queryKey: ['proofs', variables.taskId],
+      });
       queryClient.invalidateQueries({ queryKey: ['proofs'] });
       queryClient.invalidateQueries({ queryKey: ['myProofs'] });
+    },
+    onError: (error) => {
+      const errorMsg =
+        error.response?.data?.error ||
+        error.message ||
+        'Could not delete proof. Please try again.';
+
+      showNotification(errorMsg);
+    },
+    onSettled: () => {
+      // Always restore the Delete button after success or failure.
+      setDeletingProofId(null);
     },
   });
 
@@ -732,10 +784,19 @@ export default function Tasks() {
                               <Btn
                                 variant="success"
                                 className="rounded-2xl"
-                                onClick={() => verifyMutation.mutate(p.id)}
+                                onClick={() =>
+                                  verifyMutation.mutate({
+                                    proofId: p.id,
+                                    taskId: t.id,
+                                  })
+                                }
+                                disabled={verifyMutation.isPending}
                               >
                                 <span className="flex items-center gap-1">
-                                  <CheckCircle className="w-4 h-4" /> Verify
+                                  <CheckCircle className="w-4 h-4" />
+                                  {verifyMutation.isPending
+                                    ? 'Verifying...'
+                                    : 'Verify'}
                                 </span>
                               </Btn>
                             )}
@@ -753,7 +814,12 @@ export default function Tasks() {
                                   <Btn
                                     variant="danger"
                                     className="rounded-2xl py-1 px-3 text-xs bg-red-500 hover:bg-red-600 text-white border-transparent"
-                                    onClick={() => deleteMutation.mutate(p.id)}
+                                    onClick={() =>
+                                      deleteMutation.mutate({
+                                        proofId: p.id,
+                                        taskId: t.id,
+                                      })
+                                    }
                                     disabled={deleteMutation.isPending}
                                   >
                                     {deleteMutation.isPending

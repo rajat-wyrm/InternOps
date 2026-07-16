@@ -201,7 +201,7 @@ async function routes(fastify) {
         httpOnly: true,
         secure: isProduction,
         sameSite: isProduction ? 'strict' : 'lax',
-        path: '/api/auth/refresh',
+        path: '/api/v1/auth/refresh',
       });
 
       rotateAndSetCsrf(req, reply, result.user.id);
@@ -249,7 +249,7 @@ async function routes(fastify) {
         httpOnly: true,
         secure: isProduction,
         sameSite: isProduction ? 'strict' : 'lax',
-        path: '/api/auth/refresh',
+        path: '/api/v1/auth/refresh',
       });
 
       return {
@@ -291,7 +291,7 @@ async function routes(fastify) {
         req.headers['user-agent']
       );
 
-      reply.clearCookie('refreshToken', { path: '/api/auth/refresh' });
+      reply.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
 
       rotateAndSetCsrf(req, reply, null);
       return { message: 'Logged out' };
@@ -362,6 +362,12 @@ async function routes(fastify) {
           properties: { email: { type: 'string', format: 'email' } },
         },
       },
+      config: {
+        rateLimit: {
+          max: 2,
+          timeWindow: '5 minutes',
+        },
+      },
     },
     async (req, reply) => {
       const { email } = z.object({ email: z.string().email() }).parse(req.body);
@@ -385,6 +391,12 @@ async function routes(fastify) {
             token: { type: 'string' },
             newPassword: { type: 'string', minLength: 8 },
           },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
         },
       },
     },

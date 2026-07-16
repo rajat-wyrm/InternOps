@@ -17,6 +17,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: internops_test
+          POSTGRES_INITDB_ARGS: "--username=postgres"
         ports:
           - 5432:5432
         options: >-
@@ -29,6 +30,8 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
       JWT_SECRET: ci-test-secret-do-not-use-in-prod
+      JWT_REFRESH_SECRET: ci-test-refresh-secret
+      JWT_REFRESH_EXPIRES_IN: 7d
       PORT: 5000
       CORS_ORIGIN: http://localhost:5173
       SEED_ADMIN_EMAIL: admin@internops.com
@@ -43,13 +46,11 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install backend dependencies
+      - name: Install all dependencies
         shell: bash
-        run: |
-          cd backend
-          npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Wait for PostgreSQL
         run: |
@@ -59,6 +60,8 @@ jobs:
           done
 
       - name: Run migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
         run: cd backend && npm run migrate
 
       - name: Seed test data
@@ -67,11 +70,10 @@ jobs:
       - name: Run Jest tests
         run: cd backend && npm test -- --forceExit --detectOpenHandles --runInBand
 
-      - name: Install frontend dependencies
-        shell: bash
-        run: |
-          cd frontend
-          npm install --no-audit --no-fund
+
+
+      - name: Run Frontend Tests
+        run: cd frontend && npm run test
 
       - name: Build frontend
         run: cd frontend && npm run build

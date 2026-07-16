@@ -98,6 +98,7 @@ export default function BulkAttendanceForm() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setError('');
 
     if (selectedUsers.length === 0) {
       return setError('Select at least one member');

@@ -74,7 +74,10 @@ export default function Profile() {
   };
   const validateProfile = () => {
     const name = fullName.trim();
-
+    if (!/^[A-Za-z ]+$/.test(name)) {
+      setNameError('Name can only contain letters and spaces.');
+      return false;
+    }
     if (name.length < 3) {
       setNameError('Name must be at least 3 characters.');
       return false;

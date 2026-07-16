@@ -12,6 +12,7 @@ module.exports = {
   collectCoverageFrom: [
     'src/modules/auth/**/*.js',
     'src/modules/meetings/**/*.js',
+    'src/modules/feature-flags/**/*.js',
     'src/middleware/**/*.js',
     'src/services/**/*.js',
   ],

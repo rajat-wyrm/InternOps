@@ -50,15 +50,12 @@ export default function Exports() {
   const [to, setTo] = useState('');
   const [downloading, setDownloading] = useState(null);
   const [error, setError] = useState('');
-
   const download = async (endpoint, requiresDates) => {
     setError('');
-
     if (requiresDates && (!from || !to)) {
       setError('Please select both a From and To date before downloading.');
       return;
     }
-
     try {
       setDownloading(endpoint);
 

@@ -8,7 +8,7 @@ const Fastify = require('fastify');
 const config = require('./config');
 const pool = require('./config/db');
 const metrics = require('./utils/metrics');
-const { initializeWebSocket } = require('./websocket');
+const { initializeWebSocket, getIO } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
 const { getRedisStatus } = require('./config/redis');
 const { csrfMiddleware } = require('./middleware/csrf');
@@ -21,6 +21,7 @@ const app = Fastify({
     config.nodeEnv === 'development'
       ? { transport: { target: 'pino-pretty' } }
       : true,
+  bodyLimit: 1048576,
   genReqId: () => uuidv4(),
 });
 
@@ -167,7 +168,17 @@ if (process.env.NODE_ENV !== 'test') {
       info: {
         title: 'InternOps API',
         version: '1.0.0',
+        description:
+          'All business routes are versioned under /api/v1/. Future breaking changes will be introduced under /api/v2/ alongside the existing version.',
       },
+      servers: [
+        { url: '/api/v1', description: 'Current stable API (v1)' },
+        {
+          url: '/api/v2',
+          description:
+            'Next API version (v2) — see CONTRIBUTING.md for migration guide',
+        },
+      ],
     },
   });
 
@@ -177,7 +188,12 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 // ---- API routes (delegated to dedicated router factory) ----
-app.register(require('./routes'), { prefix: '/api' });
+// v1 — stable; all existing clients target this prefix.
+app.register(require('./routes'), { prefix: '/api/v1' });
+// v2 — introduced alongside v1 so both are served concurrently.
+// Breaking changes land here; v1 receives Deprecation+Sunset headers
+// via the onSend hook in routes.js once V1_DEPRECATED=true is set.
+app.register(require('./routes.v2'), { prefix: '/api/v2' });
 
 app.get('/', async (req, reply) => {
   reply.redirect('/docs');
@@ -340,6 +356,18 @@ const gracefulShutdown = async (signal) => {
   app.log.info({ signal }, `Received ${signal}, shutting down gracefully...`);
 
   try {
+    // close WebSocket server if initialized
+    try {
+      const io = getIO();
+      if (io) {
+        app.log.info('Closing WebSocket server...');
+        await new Promise((resolve) => io.close(resolve));
+        app.log.info('WebSocket server closed');
+      }
+    } catch (wsErr) {
+      app.log.warn({ err: wsErr }, 'Error closing WebSocket server');
+    }
+
     // stop accepting new requests + finish in-flight requests
     await app.close();
 
@@ -347,10 +375,15 @@ const gracefulShutdown = async (signal) => {
     await pool.end();
 
     app.log.info('Cleanup completed. Exiting now.');
-    process.exit(0);
+
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(0);
+    }
   } catch (err) {
     app.log.error({ err }, 'Error during shutdown');
-    process.exit(1);
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(1);
+    }
   }
 };
 

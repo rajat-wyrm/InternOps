@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -78,7 +78,7 @@ export default function Certificates() {
 
   const handleDownload = (cert) => {
     window.open(
-      cert.download_url || `/api/certificates/${cert.id}/download`,
+      cert.download_url || `/api/v1/certificates/${cert.id}/download`,
       '_blank'
     );
   };
@@ -273,6 +273,25 @@ function GenerateCertificateModal({
     certificate_type: 'completion',
     template_id: '',
   });
+  useEffect(() => {
+    const root = document.getElementById('root');
+
+    if (isOpen) {
+      document.body.classList.add('modal-open');
+
+      if (root) {
+        root.classList.add('blur-sm', 'transition-all', 'duration-300');
+      }
+    }
+
+    return () => {
+      document.body.classList.remove('modal-open');
+
+      if (root) {
+        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
+      }
+    };
+  }, [isOpen]);
 
   const templateOptions = [
     {
@@ -318,7 +337,7 @@ function GenerateCertificateModal({
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="w-full max-w-lg max-h-[90vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
         <div className="shrink-0 p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
           <div className="flex items-center justify-between gap-4">
@@ -326,7 +345,6 @@ function GenerateCertificateModal({
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white shadow-lg">
                 <Award className="w-5 h-5" />
               </div>
-
               <div>
                 <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
                   Generate Certificate

@@ -2,7 +2,7 @@ import axios from 'axios';
 
 function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
-  if (!raw) return '/api';
+  if (!raw) return '/api/v1';
   let url = raw.trim();
   if (!/^https?:\/\//i.test(url)) {
     console.warn(
@@ -11,6 +11,13 @@ function getBaseUrl() {
     url = `http://${url}`;
   }
   url = url.replace(/\/+$/, '');
+
+  // Append /api/v1 if the URL is an origin-only value (no path component yet).
+  // This keeps all API calls working correctly when VITE_API_URL is set to
+  // just "http://localhost:5000" rather than "http://localhost:5000/api/v1".
+  if (!/\/api\/v\d+/.test(url)) {
+    url = `${url}/api/v1`;
+  }
 
   return url;
 }
@@ -152,19 +159,13 @@ function handleLogout() {
 
       clearCsrfToken();
 
-      try {
-        if (!window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login';
-        }
-      } catch {
-        /* ignore location assignment errors */
+      if (_authStore) {
+        _authStore.getState().logout();
       }
     } else {
-      // If there's no window (SSR), still clear tokens in memory
       clearCsrfToken();
     }
   } catch {
-    /* defensive: ensure logout doesn't throw */
     clearCsrfToken();
   }
 }
@@ -261,13 +262,6 @@ api.interceptors.response.use(
           } catch {
             /* ignore */
           }
-        }
-
-        if (
-          typeof window !== 'undefined' &&
-          !window.location.pathname.startsWith('/login')
-        ) {
-          window.location.href = '/login';
         }
 
         return Promise.reject(refreshErr);

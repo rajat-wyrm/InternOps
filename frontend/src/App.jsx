@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
 import DashboardLayout from './layouts/DashboardLayout';
 import useAuthStore from './store/auth';
+import useFeatureFlagsStore from './store/featureFlags';
 import api from './lib/axios';
 import RoleGuard from './components/RoleGuard';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -34,6 +35,7 @@ const BulkGenerate = lazy(() => import('./pages/admin/BulkGenerate'));
 const CanvaTemplates = lazy(() => import('./pages/admin/CanvaTemplates'));
 const AICertificates = lazy(() => import('./pages/admin/AICertificates'));
 const QuickGenerate = lazy(() => import('./pages/admin/QuickGenerate'));
+const FeatureFlags = lazy(() => import('./pages/admin/FeatureFlags'));
 
 function PageLoader() {
   return (
@@ -64,6 +66,8 @@ export default function App() {
   const setSystemError = useAuthStore((s) => s.setSystemError);
   const systemError = useAuthStore((s) => s.systemError);
   const hydrated = useAuthStore((s) => s.hydrated);
+  const fetchFlags = useFeatureFlagsStore((s) => s.fetchFlags);
+  const resetFlags = useFeatureFlagsStore((s) => s.reset);
 
   useEffect(() => {
     if (!bootRefreshPromise) {
@@ -76,12 +80,18 @@ export default function App() {
           accessToken: res.data.accessToken,
           user: res.data.user,
         });
+        // Fetch feature flags right after a successful auth refresh so they
+        // are available before any page component renders.
+        fetchFlags();
       })
       .catch((err) => {
         const status = err.response?.status;
         if (status === 400 || status === 401 || status === 403) {
           const currentToken = useAuthStore.getState().accessToken;
-          if (!currentToken) logout();
+          if (!currentToken) {
+            logout();
+            resetFlags();
+          }
         } else {
           setSystemError(
             'Service temporarily unavailable. Please try again later.'
@@ -91,7 +101,7 @@ export default function App() {
       .finally(() => {
         setHydrated();
       });
-  }, [logout, setAuth, setHydrated, setSystemError]);
+  }, [logout, setAuth, setHydrated, setSystemError, fetchFlags, resetFlags]);
 
   if (systemError) {
     return (
@@ -309,6 +319,14 @@ export default function App() {
               element={
                 <RoleGuard allowedRoles={['ADMIN']}>
                   <AICertificates />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="feature-flags"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <FeatureFlags />
                 </RoleGuard>
               }
             />

@@ -151,6 +151,7 @@ cp .env.example .env
 Set the API base URL to match the backend server:
 
 ```env
+VITE_API_URL=http://localhost:5000/api/v1
 VITE_API_BASE_URL=http://localhost:5000
 ```
 
@@ -403,6 +404,57 @@ Open a **Feature Request** issue and describe:
 4. **Additional context**: Mockups, references to similar implementations, or links to relevant documentation.
 
 Feature requests are not guaranteed to be implemented, but all thoughtful proposals will be considered and discussed.
+
+---
+
+---
+
+## API Versioning Policy
+
+All business API routes are served under the `/api/v1/` namespace:
+
+```
+GET  /api/v1/auth/login
+GET  /api/v1/users/me
+GET  /api/v1/attendance/today
+…
+```
+
+Infrastructure endpoints (`/health`, `/metrics`, `/docs`) are **not** versioned.
+
+### Rules for contributors
+
+| Scenario                                        | Action                                                                            |
+| ----------------------------------------------- | --------------------------------------------------------------------------------- |
+| New optional field, new endpoint                | Add to current `/v1/` — no new version needed                                     |
+| Rename a field / change a type / remove a field | Introduce `/api/v2/` alongside `/v1/`; deprecate `/v1/`                           |
+| Removing a version                              | Minimum **90-day** sunset window after `Deprecation` + `Sunset` headers are added |
+
+### Deprecation headers
+
+When a version is being phased out, every response from that version's routes must include:
+
+```
+Deprecation: Sat, 01 Jan 2028 00:00:00 GMT
+Sunset: Mon, 01 Apr 2028 00:00:00 GMT
+Link: </api/v2/...>; rel="successor-version"
+```
+
+Add these headers inside the version-specific Fastify plugin in `src/routes.js` using an `onSend` hook.
+
+### Introducing `/v2/`
+
+When a breaking change is needed:
+
+1. Create `src/routes.v2.js` that registers only the changed modules.
+2. Register it in `app.js`:
+   ```js
+   app.register(require('./routes'), { prefix: '/api/v1' });
+   app.register(require('./routes.v2'), { prefix: '/api/v2' });
+   ```
+3. Add `Deprecation` / `Sunset` headers to all `/v1/` responses.
+4. Update the Swagger `servers` block to list both versions.
+5. Document the migration in `CHANGELOG.md`.
 
 ---
 

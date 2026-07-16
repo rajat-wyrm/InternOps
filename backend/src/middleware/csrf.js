@@ -150,10 +150,10 @@ function generateToken(request, reply) {
 }
 
 const EXEMPT = [
-  '/api/auth/login',
-  '/api/auth/refresh',
-  '/api/auth/forgot-password',
-  '/api/auth/reset-password',
+  '/api/v1/auth/login',
+  '/api/v1/auth/refresh',
+  '/api/v1/auth/forgot-password',
+  '/api/v1/auth/reset-password',
   '/docs',
   '/docs/json',
 ];

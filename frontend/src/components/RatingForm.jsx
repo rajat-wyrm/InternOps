@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
@@ -42,6 +43,25 @@ export default function RatingForm() {
       setScore(Math.round(suggestion.recommendation.suggestedScore));
     }
   }, [suggestion]);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') setIsModalOpen(false);
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [isModalOpen]);
+
+  // Layer 3: Background scroll lock
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [isModalOpen]);
 
   const handleDepartmentChange = (deptId) => {
     setDepartmentId(deptId);
@@ -100,6 +120,70 @@ export default function RatingForm() {
     setIsModalOpen(false);
     rateMutation.mutate({ rated_user_id: userId, score, remarks });
   };
+
+  const handleBackdropClick = (e) => {
+    if (e.target === e.currentTarget) {
+      setIsModalOpen(false);
+    }
+  };
+
+  const confirmModal =
+    isModalOpen &&
+    createPortal(
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+        onClick={handleBackdropClick}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rating-confirm-title"
+          className="w-full max-w-md transform overflow-hidden rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl transition-all border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-100 dark:border-amber-900/40 text-lg">
+              ⚠️
+            </div>
+            <h3
+              id="rating-confirm-title"
+              className="text-lg font-extrabold text-slate-900 dark:text-white"
+            >
+              Confirm Rating Submission
+            </h3>
+          </div>
+
+          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-6">
+            Are you sure you want to submit a score of{' '}
+            <strong className="text-indigo-600 dark:text-indigo-400">
+              {score}/10
+            </strong>{' '}
+            for <strong>{selectedUserLabel}</strong>? Ratings are permanent and
+            immutable.
+          </p>
+
+          <div className="flex items-center justify-end gap-3">
+            <Btn
+              type="button"
+              variant="ghost"
+              onClick={() => setIsModalOpen(false)}
+              className="rounded-2xl px-4 py-2 text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </Btn>
+
+            <Btn
+              type="button"
+              variant="success"
+              onClick={handleConfirmSubmit}
+              className="rounded-2xl px-5 py-2 text-sm font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white"
+            >
+              Confirm Submit
+            </Btn>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
 
   return (
     <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
@@ -244,50 +328,7 @@ export default function RatingForm() {
         </Btn>
       </form>
 
-      {/* Embedded Confirmation Modal matching criteria explicitly */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-md transform overflow-hidden rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl transition-all border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-100 dark:border-amber-900/40 text-lg">
-                ⚠️
-              </div>
-              <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                Confirm Rating Submission
-              </h3>
-            </div>
-
-            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-6">
-              Are you sure you want to submit a score of{' '}
-              <strong className="text-indigo-600 dark:text-indigo-400">
-                {score}/10
-              </strong>{' '}
-              for <strong>{selectedUserLabel}</strong>? Ratings are permanent
-              and immutable.
-            </p>
-
-            <div className="flex items-center justify-end gap-3">
-              <Btn
-                type="button"
-                variant="ghost"
-                onClick={() => setIsModalOpen(false)}
-                className="rounded-2xl px-4 py-2 text-sm font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                Cancel
-              </Btn>
-
-              <Btn
-                type="button"
-                variant="success"
-                onClick={handleConfirmSubmit}
-                className="rounded-2xl px-5 py-2 text-sm font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white"
-              >
-                Confirm Submit
-              </Btn>
-            </div>
-          </div>
-        </div>
-      )}
+      {confirmModal}
     </Card>
   );
 }

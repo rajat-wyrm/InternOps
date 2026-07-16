@@ -57,7 +57,7 @@ async function hardDelete(emails) {
 async function refreshCsrfToken() {
   const csrfRes = await app.inject({
     method: 'GET',
-    url: '/api/auth/csrf-token',
+    url: '/api/v1/auth/csrf-token',
     cookies,
   });
   csrfToken = JSON.parse(csrfRes.body).csrfToken;
@@ -101,7 +101,7 @@ beforeAll(async () => {
   // Login as the seeded admin
   const loginRes = await app.inject({
     method: 'POST',
-    url: '/api/auth/login',
+    url: '/api/v1/auth/login',
     cookies,
     headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
     payload: { email: SEEDED_ADMIN_EMAIL, password: SEEDED_ADMIN_PASSWORD },
@@ -127,7 +127,7 @@ beforeAll(async () => {
     throw new Error('Failed to resolve seeded admin ID');
   }
   // Create a second admin
-  const reg2 = await inject('POST', '/api/auth/register', {
+  const reg2 = await inject('POST', '/api/v1/auth/register', {
     payload: {
       email: SECOND_ADMIN_EMAIL,
       password: 'SecondAdmin@123',
@@ -145,7 +145,7 @@ beforeAll(async () => {
     throw new Error(`Register response missing id: ${reg2.body}`);
   }
   // Create an intern
-  const regIntern = await inject('POST', '/api/auth/register', {
+  const regIntern = await inject('POST', '/api/v1/auth/register', {
     payload: {
       email: INTERN_EMAIL,
       password: 'Intern@123',
@@ -189,7 +189,7 @@ afterAll(async () => {
 describe('DELETE /api/users/:id — last-active-admin delete guard', () => {
   // ── Test 1 ────────────────────────────────────────────────────────────────
   it('should return 400 when an admin tries to delete themselves', async () => {
-    const res = await inject('DELETE', `/api/users/${seededAdminId}`, {
+    const res = await inject('DELETE', `/api/v1/users/${seededAdminId}`, {
       payload: {},
     });
     expect(res.statusCode).toBe(400);
@@ -205,7 +205,7 @@ describe('DELETE /api/users/:id — last-active-admin delete guard', () => {
     await pool.query('UPDATE users SET deleted_at = NOW() WHERE email = $1', [
       SEEDED_ADMIN_EMAIL,
     ]);
-    const res = await inject('DELETE', `/api/users/${secondAdminId}`, {
+    const res = await inject('DELETE', `/api/v1/users/${secondAdminId}`, {
       payload: {},
     });
     expect(res.statusCode).toBe(400);
@@ -220,7 +220,7 @@ describe('DELETE /api/users/:id — last-active-admin delete guard', () => {
   // ── Test 3 ────────────────────────────────────────────────────────────────
   it('should return 200 when deleting an admin while multiple active admins exist', async () => {
     // Both admins are currently active — deleting the second one must succeed
-    const res = await inject('DELETE', `/api/users/${secondAdminId}`, {
+    const res = await inject('DELETE', `/api/v1/users/${secondAdminId}`, {
       payload: {},
     });
     expect(res.statusCode).toBe(200);
@@ -232,7 +232,7 @@ describe('DELETE /api/users/:id — last-active-admin delete guard', () => {
   });
   // ── Test 4 ────────────────────────────────────────────────────────────────
   it('should return 200 when deleting an intern', async () => {
-    const res = await inject('DELETE', `/api/users/${internId}`, {
+    const res = await inject('DELETE', `/api/v1/users/${internId}`, {
       payload: {},
     });
     expect(res.statusCode).toBe(200);

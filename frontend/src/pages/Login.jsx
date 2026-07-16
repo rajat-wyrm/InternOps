@@ -138,7 +138,10 @@ export default function Login() {
               Welcome back
             </h2>
             {error && (
-              <div className="bg-red-500/15 border border-red-300/25 text-red-100 text-sm rounded-2xl px-4 py-3 mb-4">
+              <div
+                id="login-error"
+                className="bg-red-500/15 border border-red-300/25 text-red-100 text-sm rounded-2xl px-4 py-3 mb-4"
+              >
                 {error}
               </div>
             )}
@@ -156,6 +159,8 @@ export default function Login() {
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={loginMut.isPending}
                     required
+                    aria-describedby={error ? 'login-error' : undefined}
+                    aria-invalid={!!error}
                     className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
                   />
                 </div>
@@ -172,6 +177,8 @@ export default function Login() {
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={loginMut.isPending}
                     required
+                    aria-describedby={error ? 'login-error' : undefined}
+                    aria-invalid={!!error}
                     className="w-full pl-12 pr-12 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
                   />
                   <button

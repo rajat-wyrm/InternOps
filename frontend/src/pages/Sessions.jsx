@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import useAuthStore from '../store/auth';
 import {
   Shield,
   Monitor,
@@ -12,6 +14,7 @@ import { PageHeader, Card, Btn, EmptyState, Spinner } from '../components/ui';
 
 export default function Sessions() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: sessions, isLoading } = useQuery({
     queryKey: ['sessions'],
@@ -37,7 +40,7 @@ export default function Sessions() {
       // Clear in-memory auth state before redirect (#941)
       const store = useAuthStore.getState();
       store.logout();
-      window.location.href = '/login';
+      navigate('/login', { replace: true });
     },
   });
 

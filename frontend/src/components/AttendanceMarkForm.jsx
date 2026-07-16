@@ -116,6 +116,7 @@ export default function AttendanceMarkForm() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          setError('');
 
           markMutation.mutate({
             user_id: form.userId,

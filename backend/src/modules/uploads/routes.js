@@ -78,7 +78,7 @@ async function routes(fastify) {
 
       if (data.file.truncated) {
         return reply
-          .status(400)
+          .status(413)
           .send({ error: 'File exceeds maximum size of 5MB' });
       }
 
