@@ -69,11 +69,12 @@ function writeSession(reply, sessionId, userId = null) {
   const payload = userId ? `${sessionId}:${userId}` : `${sessionId}:`;
   const signed = `${payload}.${sign(payload)}`;
   reply.setCookie(SESSION_COOKIE, signed, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    path: '/',
-  });
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  path: '/',
+  maxAge: 24 * 60 * 60 * 1000,
+});
 }
 
 function rotateSession(reply) {
@@ -87,12 +88,13 @@ function rotateAndSetCsrf(request, reply, userId = null) {
   writeSession(reply, newSid, userId);
   const csrfToken = tokenFor(newSid);
 
-  reply.setCookie(TOKEN_COOKIE, csrfToken, {
-    httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    path: '/',
-  });
+  reply.setCookie(SESSION_COOKIE, signed, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  path: '/',
+  maxAge: 24 * 60 * 60 * 1000,
+});
 
   return csrfToken;
 }
