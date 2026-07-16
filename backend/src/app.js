@@ -2,7 +2,11 @@ require('dotenv').config();
 const validateEnv = require('./config/validateEnv');
 validateEnv();
 
-const { initSentry, captureException: sentryCaptureException, flushSentry } = require('./config/sentry');
+const {
+  initSentry,
+  captureException: sentryCaptureException,
+  flushSentry,
+} = require('./config/sentry');
 initSentry();
 
 const path = require('path');
@@ -110,15 +114,13 @@ app.get(
 
     const healthy = checks.db && checks.redis;
 
-    reply
-      .status(healthy ? 200 : 503)
-      .send({
-        status: healthy ? 'healthy' : 'degraded',
-        checks,
-        uptime: Math.floor(process.uptime()),
-        version: require('../package.json').version,
-        timestamp: new Date().toISOString(),
-      });
+    reply.status(healthy ? 200 : 503).send({
+      status: healthy ? 'healthy' : 'degraded',
+      checks,
+      uptime: Math.floor(process.uptime()),
+      version: require('../package.json').version,
+      timestamp: new Date().toISOString(),
+    });
   }
 );
 
@@ -414,9 +416,12 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // capture unhandled promise rejections and uncaught exceptions
 process.on('unhandledRejection', (reason) => {
   app.log.error({ err: reason }, 'Unhandled promise rejection');
-  sentryCaptureException(reason instanceof Error ? reason : new Error(String(reason)), {
-    extra: { type: 'unhandledRejection' },
-  });
+  sentryCaptureException(
+    reason instanceof Error ? reason : new Error(String(reason)),
+    {
+      extra: { type: 'unhandledRejection' },
+    }
+  );
 });
 
 process.on('uncaughtException', (error) => {
