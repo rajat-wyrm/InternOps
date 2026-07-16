@@ -20,6 +20,8 @@ const DUMMY_USER = {
   password_hash:
     '$argon2id$v=19$m=65536,t=3,p=4$8/VvKJehP9DGKtV1NP5p8g$z0S2q7BsbH2YY16pI0/jXvgI4ElwnccjvW3NNcCSsQk',
 };
+const { getRedisClient } = require('../../config/redis');
+const emailService = require('../../services/email');
 
 async function register(data, creator) {
   // Default to the creator (admin) as manager if none was explicitly chosen,
@@ -69,16 +71,12 @@ function publicUser(user) {
     fullName: user.full_name,
   };
 }
-
 async function login(email, password, ip, userAgent) {
-  try {
-    const currentAttempts = (await incrementAttempt(email, ip)) || 0;
+  let currentAttempts;
 
-    if (currentAttempts > 5) {
-      throw new UnauthorizedError(
-        'Account temporarily locked. Please try again later.'
-      );
-    }
+  // Step 1: Increment Redis counter
+  try {
+    currentAttempts = (await incrementAttempt(email, ip)) || 0;
   } catch (err) {
     console.error('Redis Brute Force Check Failed:', err);
 
@@ -87,25 +85,64 @@ async function login(email, password, ip, userAgent) {
     );
   }
 
+  // Step 2: If already locked, send notification once
+  if (currentAttempts > 5) {
+    const redis = await getRedisClient();
+    const notifyKey = `lockout-email:${email}`;
+
+    let alreadySent = null;
+
+    if (redis) {
+      alreadySent = await redis.get(notifyKey);
+    }
+
+    if (!alreadySent) {
+      const user = await repo.findByEmail(email);
+
+      if (user) {
+        await emailService.sendAccountLockoutNotification(email, {
+          ipAddress: ip,
+          timestamp: new Date().toISOString(),
+          failedAttempts: currentAttempts,
+        });
+      }
+
+      if (redis) {
+        await redis.set(notifyKey, '1', {
+          EX: 15 * 60,
+        });
+      }
+    }
+
+    throw new UnauthorizedError(
+      'Account temporarily locked. Please try again later.'
+    );
+  }
+
+  // Step 3: Find user
   const user = await repo.findByEmail(email);
 
+  // Step 4: Invalid user
   if (!user || user.suspended) {
-    // Always run argon2.verify even when user not found to flatten timing
     const argon2 = require('argon2');
+
     await argon2.verify(DUMMY_HASH, password).catch(() => {});
+
     await recordLoginAttempt(email, ip, false).catch(() => {});
+
     throw new UnauthorizedError('Invalid credentials');
   }
 
+  // Step 5: Verify password
   const valid = await repo.verifyPassword(user, password);
 
   if (!valid) {
     await recordLoginAttempt(email, ip, false).catch(() => {});
+
     throw new UnauthorizedError('Invalid credentials');
   }
 
-  // Clear all prior failed attempts so attacker-seeded failures don't
-  // trigger a lockout for the legitimate user after a successful login.
+  // Step 6: Successful login
   await clearFailedAttempts(email, ip);
   await recordLoginAttempt(email, ip, true);
 
