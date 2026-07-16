@@ -306,7 +306,8 @@ export default function BulkAttendanceForm() {
               onChange={(e) => setFillMissing(e.target.checked)}
               className="accent-indigo-600 w-3.5 h-3.5"
             />
-            Auto-mark remaining {remainingCount} member{remainingCount === 1 ? '' : 's'}
+            Auto-mark remaining {remainingCount} member
+            {remainingCount === 1 ? '' : 's'}
             as {fillStatus === 'ABSENT' ? 'Absent' : 'Present'}
           </label>
         )}
