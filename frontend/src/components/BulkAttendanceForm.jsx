@@ -61,6 +61,9 @@ export default function BulkAttendanceForm() {
   const allSelected = team.length > 0 && selectedUsers.length === team.length;
   const today = new Date().toISOString().slice(0, 10);
 
+  const fillStatus = status === 'PRESENT' ? 'ABSENT' : 'PRESENT';
+  const remainingCount = team.length - selectedUsers.length;
+
   const statusOptions = [
     { value: 'PRESENT', label: 'Present' },
     { value: 'ABSENT', label: 'Absent' },
@@ -134,7 +137,7 @@ export default function BulkAttendanceForm() {
         entries.push({
           user_id: u.id,
           date,
-          status: 'PRESENT',
+          status: fillStatus,
           remarks: '',
         });
       }
@@ -295,7 +298,7 @@ export default function BulkAttendanceForm() {
           </div>
         </div>
 
-        {selectedUsers.length > 0 && (
+        {selectedUsers.length > 0 && remainingCount > 0 && (
           <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none pt-1">
             <input
               type="checkbox"
@@ -303,8 +306,8 @@ export default function BulkAttendanceForm() {
               onChange={(e) => setFillMissing(e.target.checked)}
               className="accent-indigo-600 w-3.5 h-3.5"
             />
-            Auto-mark remaining {team.length - selectedUsers.length} members as
-            Present
+            Auto-mark remaining {remainingCount} member{remainingCount === 1 ? '' : 's'}
+            as {fillStatus === 'ABSENT' ? 'Absent' : 'Present'}
           </label>
         )}
 
