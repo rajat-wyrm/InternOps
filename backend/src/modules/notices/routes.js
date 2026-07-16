@@ -13,12 +13,35 @@ async function noticesRoutes(fastify) {
   fastify.get(
     '/notices',
     {
-      schema: { tags: ['Notices'], description: 'Get all notices (admin)' },
+      schema: {
+        tags: ['Notices'],
+        description: 'Get all notices (admin)',
+
+        querystring: {
+          type: 'object',
+          properties: {
+            page: {
+              type: 'integer',
+              minimum: 1,
+              default: 1,
+            },
+            limit: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 100,
+              default: 50,
+            },
+          },
+        },
+      },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
     async (req, reply) => {
       try {
-        const notices = await repo.getAllNotices();
+        const notices = await repo.getAllNotices({
+          page: req.query.page,
+          limit: req.query.limit,
+        });
         return reply.send(notices);
       } catch (err) {
         // If the notices table does not yet exist (migration pending on production)
