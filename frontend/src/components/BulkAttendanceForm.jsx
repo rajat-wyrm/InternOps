@@ -303,8 +303,8 @@ export default function BulkAttendanceForm() {
               onChange={(e) => setFillMissing(e.target.checked)}
               className="accent-indigo-600 w-3.5 h-3.5"
             />
-            Auto-mark remaining {team.length - selectedUsers.length} members
-            as Present
+            Auto-mark remaining {team.length - selectedUsers.length} members as
+            Present
           </label>
         )}
 
