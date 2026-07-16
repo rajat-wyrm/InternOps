@@ -51,9 +51,7 @@ app.get(
     }
 
     if (redisStatus === 'disconnected') {
-      return reply
-       .status(503)
-       .send({ status: 'degraded'});
+      return reply.status(503).send({ status: 'degraded' });
     }
 
     return reply.send({ status: 'ok' });
