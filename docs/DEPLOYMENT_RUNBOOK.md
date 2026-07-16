@@ -9,13 +9,15 @@ This document outlines the automated CI/CD pipeline, manual deployment processes
 Our CD pipeline is configured via GitHub Actions in [.github/workflows/cd.yml](file:///.github/workflows/cd.yml).
 
 ### Automated CD Trigger
-* On every merge or push to the `master` branch, the CD pipeline starts automatically.
-* It logs into the **GitHub Container Registry (GHCR)**, builds the production-ready Docker image, and tags it as `latest` and with the current commit SHA.
+
+- On every merge or push to the `master` branch, the CD pipeline starts automatically.
+- It logs into the **GitHub Container Registry (GHCR)**, builds the production-ready Docker image, and tags it as `latest` and with the current commit SHA.
 
 ### Manual CD Trigger (Single Action)
-* Open the repository on GitHub.
-* Navigate to **Actions** -> **InternOps CD**.
-* Click the **Run workflow** dropdown and click **Run workflow** on the `master` branch.
+
+- Open the repository on GitHub.
+- Navigate to **Actions** -> **InternOps CD**.
+- Click the **Run workflow** dropdown and click **Run workflow** on the `master` branch.
 
 ---
 
@@ -50,6 +52,7 @@ To deploy the latest built image on the target production server:
 If the production deployment is unstable or failing health checks, perform a rollback to a stable state:
 
 ### Option A: Quick Rollback to Previous Commit SHA Tag
+
 If the failure is in the backend application code, roll back directly to the previous known stable commit tag:
 
 1. **Locate the previous stable commit SHA** in the GitHub Actions history.
@@ -62,6 +65,7 @@ If the failure is in the backend application code, roll back directly to the pre
    ```
 
 ### Option B: Local Rollback / Revert Commit
+
 If you need to make changes to configuration or revert a PR:
 
 1. **Revert the breaking PR** on GitHub or locally:
