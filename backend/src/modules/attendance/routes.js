@@ -126,7 +126,7 @@ async function routes(fastify) {
         remarks: z.string().max(500).optional(),
       });
       const bodySchema = z.object({
-        entries: z.array(entrySchema).min(1).max(500),
+        entries: z.array(entrySchema).min(1),
       });
       const parsed = bodySchema.safeParse(req.body);
       if (!parsed.success) {

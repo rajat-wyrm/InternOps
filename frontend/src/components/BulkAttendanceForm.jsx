@@ -5,12 +5,6 @@ import { Card, Btn, Input } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDatePicker from './CustomDatePicker';
 
-// Client-side cap that matches the backend zod limit in
-// backend/src/modules/attendance/routes.js. We refuse to even render the
-// toggle-on button past this number, so a manager can never submit a
-// request that the backend will reject.
-const BULK_MAX = 500;
-
 export default function BulkAttendanceForm() {
   const queryClient = useQueryClient();
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -57,7 +51,6 @@ export default function BulkAttendanceForm() {
       .toLowerCase()
       .includes(memberSearch.trim().toLowerCase())
   );
-  const atLimit = selectedUsers.length >= BULK_MAX;
   const allSelected = team.length > 0 && selectedUsers.length === team.length;
   const today = new Date().toISOString().slice(0, 10);
 
@@ -81,24 +74,13 @@ export default function BulkAttendanceForm() {
   };
 
   const toggleAll = () => {
-    if (atLimit && !allSelected) return;
-
-    setSelectedUsers(
-      allSelected ? [] : team.slice(0, BULK_MAX).map((u) => u.id)
-    );
+    setSelectedUsers(allSelected ? [] : team.map((u) => u.id));
   };
 
   const toggleUser = (id) =>
     setSelectedUsers((p) => {
-      if (p.includes(id)) return p.filter((x) => x !== id);
-
-      if (p.length >= BULK_MAX) {
-        setError(`Cannot select more than ${BULK_MAX} members at once`);
-        return p;
-      }
-
       setError('');
-      return [...p, id];
+      return p.includes(id) ? p.filter((x) => x !== id) : [...p, id];
     });
 
   const handleSubmit = (e) => {
@@ -107,10 +89,6 @@ export default function BulkAttendanceForm() {
 
     if (selectedUsers.length === 0) {
       return setError('Select at least one member');
-    }
-
-    if (selectedUsers.length > BULK_MAX) {
-      return setError(`Cannot bulk-mark more than ${BULK_MAX} members at once`);
     }
 
     if (date > today) {
@@ -126,12 +104,6 @@ export default function BulkAttendanceForm() {
 
     if (fillMissing) {
       const others = team.filter((u) => !selectedUsers.includes(u.id));
-
-      if (entries.length + others.length > BULK_MAX) {
-        return setError(
-          `Total entries (${entries.length + others.length}) exceeds the ${BULK_MAX} limit. Deselect some members or disable auto-fill.`
-        );
-      }
 
       for (const u of others) {
         entries.push({
@@ -184,13 +156,12 @@ export default function BulkAttendanceForm() {
 
             <div className="flex items-center gap-3">
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/60">
-                {selectedUsers.length}/{BULK_MAX}
+                {selectedUsers.length}
               </span>
 
               <button
                 type="button"
                 onClick={toggleAll}
-                disabled={atLimit && !allSelected}
                 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {allSelected ? 'Deselect All' : 'Select All'}
