@@ -180,6 +180,19 @@ module.exports = async function socialTasksRoutes(fastify) {
         resourceId: task.id,
         details: parsed.data,
       };
+      if (task.source === 'github' && task.github_issue_number) {
+        setImmediate(async () => {
+          try {
+            const githubSync = require('../github-sync/service');
+            await githubSync.syncTaskToGithub(task.id, req.user.id);
+          } catch (syncErr) {
+            req.log.warn(
+              { taskId: task.id, err: syncErr.message },
+              'Two-way GitHub sync failed'
+            );
+          }
+        });
+      }
       return task;
     }
   );
@@ -192,6 +205,7 @@ module.exports = async function socialTasksRoutes(fastify) {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
     async (req, reply) => {
+      const task = await repo.getTaskById(req.params.id);
       await repo.deleteTask(req.params.id);
       req.auditOnResponse = {
         userId: req.user.id,
@@ -201,6 +215,19 @@ module.exports = async function socialTasksRoutes(fastify) {
         resourceId: req.params.id,
         details: {},
       };
+      if (task && task.source === 'github' && task.github_issue_number) {
+        setImmediate(async () => {
+          try {
+            const githubSync = require('../github-sync/service');
+            await githubSync.closeGithubIssueFromTask(task.id, req.user.id);
+          } catch (syncErr) {
+            req.log.warn(
+              { taskId: task.id, err: syncErr.message },
+              'GitHub issue close on delete failed'
+            );
+          }
+        });
+      }
       return { success: true };
     }
   );
@@ -243,7 +270,8 @@ module.exports = async function socialTasksRoutes(fastify) {
     }
   );
 
-  // List social tasks (any authenticated user). Optional ?deadlineBefore=ISO date.
+  // List social tasks (any authenticated user).
+  // Optional query params: ?deadlineBefore=ISO date, ?source=github|manual
   fastify.get(
     '/',
     {
@@ -266,6 +294,10 @@ module.exports = async function socialTasksRoutes(fastify) {
             },
             deadlineBefore: {
               type: 'string',
+            },
+            source: {
+              type: 'string',
+              enum: ['manual', 'github'],
             },
           },
         },

@@ -15,6 +15,7 @@ const { csrfMiddleware } = require('./middleware/csrf');
 const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
 const { setupCronJobs } = require('./utils/cron');
+const githubSyncOrchestrator = require('./modules/github-sync/orchestrator');
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
   logger:
@@ -331,7 +332,12 @@ app.setErrorHandler((error, request, reply) => {
 
 if (process.env.NODE_ENV !== 'test') {
   setupCronJobs();
+  githubSyncOrchestrator.initialize();
 }
+
+process.on('SIGTERM', () => {
+  githubSyncOrchestrator.shutdown();
+});
 
 const start = async () => {
   try {
