@@ -88,8 +88,6 @@ function rotateAndSetCsrf(request, reply, userId = null) {
   writeSession(reply, newSid, userId);
   const csrfToken = tokenFor(newSid);
 
-  
-
   return csrfToken;
 }
 
