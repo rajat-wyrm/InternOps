@@ -260,27 +260,7 @@ export function StatCard({
             {value}
           </p>
 
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">
-            {label}
-          </p>
-
-          {sub && (
-            <p className="text-xs text-slate-500 dark:text-slate-500">{sub}</p>
-          )}
-        </div>
-
-        {icon && (
-          <div
-            className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${gradient} text-white flex items-center justify-center text-2xl shadow-lg shadow-slate-300/40 dark:shadow-none`}
-          >
-            {icon}
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-}
-
+      
 export function EmptyState({ icon = '📭', title = 'Nothing here yet', text }) {
   return (
     <Card className="p-12 text-center bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
