@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@sentry/react": "^10.65.0",
     "@tanstack/react-query": "^5.51.0",
     "axios": "^1.7.2",
     "jwt-decode": "^4.0.0",

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { captureException } from './sentry';
 
 function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
@@ -192,6 +193,19 @@ api.interceptors.response.use(
       err.response?.data || err.message,
       err.config?.url
     );
+
+    // report server errors to sentry
+    const errStatus = err.response?.status;
+    if (errStatus && errStatus >= 500) {
+      captureException(err, {
+        tags: {
+          source: 'api',
+          statusCode: String(errStatus),
+          route: err.config?.url,
+        },
+        extra: { responseData: err.response?.data },
+      });
+    }
 
     const original = err.config || {};
     const status = err.response?.status;

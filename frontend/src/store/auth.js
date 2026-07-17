@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { clearCsrfToken, registerAuthStore } from '../lib/axios';
+import { setSentryUser, clearSentryUser } from '../lib/sentry';
 
 // Hydrate from localStorage so a refresh keeps the session.
 // We defer the read so it always runs inside a browser context and
@@ -122,8 +123,10 @@ const useAuthStore = create((set) => ({
       if (user !== undefined) {
         if (user === null) {
           safeSet('user', null);
+          clearSentryUser();
         } else {
           safeSet('user', JSON.stringify(user));
+          setSentryUser(user);
         }
       }
 
@@ -143,6 +146,7 @@ const useAuthStore = create((set) => ({
     safeRemove('accessToken');
     safeSet('user', null);
     clearCsrfToken();
+    clearSentryUser();
     set({ accessToken: null, user: null, storageError: hasStorageError });
   },
 }));
