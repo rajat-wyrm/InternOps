@@ -297,14 +297,37 @@ export function EmptyState({ icon = '📭', title = 'Nothing here yet', text }) 
   );
 }
 
-export function Spinner({ label = 'Loading...' }) {
+import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+
+// Size configuration mappings for the multi-layered spinner
+const sizeMap = {
+  sm: {
+    outer: 'w-4 h-4 border-[2px]',
+    inner: 'inset-0.5'
+  },
+  md: {
+    outer: 'w-8 h-8 border-[3px]',
+    inner: 'inset-1'
+  },
+  lg: {
+    outer: 'w-12 h-12 border-[4px]',
+    inner: 'inset-1.5'
+  }
+};
+
+export function Spinner({ label = 'Loading...', size = 'md' }) {
+  // Gracefully fallback to 'md' configs if an invalid size value is supplied
+  const chosenSize = sizeMap[size] || sizeMap.md;
+
   return (
     <div className="flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400 py-8">
       <span className="relative inline-flex">
-        <span className="w-8 h-8 rounded-full border-[3px] border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin" />
-        <span className="absolute inset-1 rounded-full border border-indigo-100 dark:border-indigo-900/60" />
+        {/* Animated Spin Circle */}
+        <span className={`${chosenSize.outer} rounded-full border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin`} />
+        {/* Static Inner Accent Circle */}
+        <span className={`absolute ${chosenSize.inner} rounded-full border border-indigo-100 dark:border-indigo-900/60`} />
       </span>
-
       {label && (
         <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
           {label}
@@ -318,9 +341,7 @@ export function Stars({ value }) {
   if (value == null) {
     return <span className="text-slate-300 dark:text-slate-600">—</span>;
   }
-
   const full = Math.round(value);
-
   return (
     <span className="text-amber-500" title={value}>
       {'★'.repeat(full)}
@@ -340,12 +361,11 @@ export function Table({ head, children }) {
           <tr>
             {head.map((h, i) => (
               <th key={i} className="p-3 font-bold whitespace-nowrap">
-                {h}
-              </th>
+                {h
+              }</th>
             ))}
           </tr>
         </thead>
-
         <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
           {children}
         </tbody>
@@ -378,6 +398,7 @@ export function ConfirmationModal({
   };
 
   const handleCloseRef = useRef(handleClose);
+
   useEffect(() => {
     handleCloseRef.current = handleClose;
   }, [handleClose]);
@@ -385,20 +406,16 @@ export function ConfirmationModal({
   // Handle body scroll locking and background blurring
   useEffect(() => {
     const root = document.getElementById('root');
-
     if (open) {
       document.body.classList.add('modal-open');
       if (root) root.classList.add('blur-sm', 'transition-all', 'duration-300');
     } else {
       document.body.classList.remove('modal-open');
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
+      if (root) root.classList.remove('blur-sm', 'transition-all', 'duration-300');
     }
-
     return () => {
       document.body.classList.remove('modal-open');
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
+      if (root) root.classList.remove('blur-sm', 'transition-all', 'duration-300');
     };
   }, [open]);
 
@@ -430,9 +447,8 @@ export function ConfirmationModal({
 
       if (e.key === 'Tab') {
         if (!modalElement) return;
-        const focusable = Array.from(
-          modalElement.querySelectorAll(focusableSelectors)
-        );
+
+        const focusable = Array.from(modalElement.querySelectorAll(focusableSelectors));
         if (focusable.length === 0) {
           e.preventDefault();
           return;
@@ -456,7 +472,6 @@ export function ConfirmationModal({
     };
 
     document.addEventListener('keydown', handleKeyDown);
-
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       if (
@@ -492,7 +507,6 @@ export function ConfirmationModal({
             {message}
           </p>
         </div>
-
         <div className="flex justify-end gap-3 p-5 bg-white dark:bg-slate-900">
           <button
             type="button"
@@ -502,7 +516,6 @@ export function ConfirmationModal({
           >
             {finalCancelText}
           </button>
-
           <button
             type="button"
             onClick={onConfirm}
