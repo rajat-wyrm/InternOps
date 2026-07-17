@@ -574,12 +574,10 @@ module.exports = async function githubSyncRoutes(fastify) {
           .status(400)
           .send({ error: 'Validation failed', details: parsed.error.issues });
       }
-      reply
-        .status(202)
-        .send({
-          message: `Batch sync started for ${parsed.data.taskIds.length} tasks`,
-          status: 'in_progress',
-        });
+      reply.status(202).send({
+        message: `Batch sync started for ${parsed.data.taskIds.length} tasks`,
+        status: 'in_progress',
+      });
       service.updateGithubIssueStatusBatch(parsed.data.taskIds, req.user.id);
     }
   );
