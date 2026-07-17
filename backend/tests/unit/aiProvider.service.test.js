@@ -35,7 +35,9 @@ class MockLRUCache {
 }
 
 jest.mock('lru-cache', () => ({
-  LRUCache: jest.fn().mockImplementation((options) => new MockLRUCache(options)),
+  LRUCache: jest
+    .fn()
+    .mockImplementation((options) => new MockLRUCache(options)),
 }));
 
 jest.mock('../../src/config', () => mockConfig);
@@ -136,16 +138,23 @@ describe('AI Provider Service', () => {
 
   it('should use the Redis cache on a repeated request and avoid a second provider call', async () => {
     const redis = {
-      get: jest.fn()
+      get: jest
+        .fn()
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(
-          JSON.stringify({ provider: 'groq', content: 'Cached answer', cached: false })
+          JSON.stringify({
+            provider: 'groq',
+            content: 'Cached answer',
+            cached: false,
+          })
         ),
       set: jest.fn().mockResolvedValue('OK'),
     };
     mockGetRedisClient.mockResolvedValue(redis);
     mockFetch.mockResolvedValueOnce(
-      createJsonResponse({ choices: [{ message: { content: 'Fresh answer' } }] })
+      createJsonResponse({
+        choices: [{ message: { content: 'Fresh answer' } }],
+      })
     );
 
     const first = await aiService.generateAIResponse({
@@ -157,8 +166,16 @@ describe('AI Provider Service', () => {
       messages: [{ role: 'user', content: 'Hello' }],
     });
 
-    expect(first).toEqual({ provider: 'groq', content: 'Fresh answer', cached: false });
-    expect(second).toEqual({ provider: 'groq', content: 'Cached answer', cached: true });
+    expect(first).toEqual({
+      provider: 'groq',
+      content: 'Fresh answer',
+      cached: false,
+    });
+    expect(second).toEqual({
+      provider: 'groq',
+      content: 'Cached answer',
+      cached: true,
+    });
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(redis.get).toHaveBeenCalledTimes(2);
   });
@@ -168,7 +185,9 @@ describe('AI Provider Service', () => {
     mockFetch
       .mockRejectedValueOnce(new Error('groq down'))
       .mockResolvedValueOnce(
-        createJsonResponse({ choices: [{ message: { content: 'Backup answer' } }] })
+        createJsonResponse({
+          choices: [{ message: { content: 'Backup answer' } }],
+        })
       );
 
     const result = await aiService.generateAIResponse({
@@ -176,9 +195,15 @@ describe('AI Provider Service', () => {
       messages: [{ role: 'user', content: 'Fallback please' }],
     });
 
-    expect(result).toEqual({ provider: 'openai', content: 'Backup answer', cached: false });
+    expect(result).toEqual({
+      provider: 'openai',
+      content: 'Backup answer',
+      cached: false,
+    });
     expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(mockFetch.mock.calls[1][0]).toBe('https://api.openai.com/v1/chat/completions');
+    expect(mockFetch.mock.calls[1][0]).toBe(
+      'https://api.openai.com/v1/chat/completions'
+    );
   });
 
   it('should open the circuit breaker after repeated provider failures', async () => {
@@ -231,7 +256,10 @@ describe('AI Provider Service', () => {
     const hugeMessage = { role: 'user', content: 'x'.repeat(40000) };
 
     await expect(
-      aiService.generateAIResponse({ userId: 'user-4', messages: [hugeMessage] })
+      aiService.generateAIResponse({
+        userId: 'user-4',
+        messages: [hugeMessage],
+      })
     ).rejects.toThrow('All AI providers unavailable');
   });
 });

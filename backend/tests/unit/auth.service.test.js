@@ -71,7 +71,9 @@ const {
   incrementAttempt,
 } = require('../../src/middleware/bruteForce');
 const { isValidStep } = require('../../src/utils/hierarchy');
-const { sendVerificationEmail } = require('../../src/modules/auth/verificationService');
+const {
+  sendVerificationEmail,
+} = require('../../src/modules/auth/verificationService');
 const { blacklistAccessToken } = require('../../src/config/redis');
 const argon2 = require('argon2');
 const service = require('../../src/modules/auth/service');
@@ -106,7 +108,10 @@ describe('Auth Service', () => {
 
       expect(repo.findByIdRaw).toHaveBeenCalledWith('manager-1');
       expect(isValidStep).toHaveBeenCalledWith(manager.role, data.role);
-      expect(repo.createUser).toHaveBeenCalledWith({ ...data, managerId: 'manager-1' });
+      expect(repo.createUser).toHaveBeenCalledWith({
+        ...data,
+        managerId: 'manager-1',
+      });
       expect(createAuditLog).toHaveBeenCalledWith({
         userId: creator.id,
         action: 'USER_CREATED',
@@ -114,7 +119,10 @@ describe('Auth Service', () => {
         resourceId: newUser.id,
         details: { email: newUser.email, role: newUser.role },
       });
-      expect(sendVerificationEmail).toHaveBeenCalledWith(newUser.id, newUser.email);
+      expect(sendVerificationEmail).toHaveBeenCalledWith(
+        newUser.id,
+        newUser.email
+      );
       expect(result).toEqual(newUser);
     });
 
@@ -136,7 +144,9 @@ describe('Auth Service', () => {
 
       repo.findByIdRaw.mockResolvedValue(null);
 
-      await expect(service.register(data, creator)).rejects.toThrow('Manager not found');
+      await expect(service.register(data, creator)).rejects.toThrow(
+        'Manager not found'
+      );
       expect(repo.createUser).not.toHaveBeenCalled();
     });
   });
@@ -188,9 +198,9 @@ describe('Auth Service', () => {
       repo.findByEmail.mockResolvedValue(null);
       argon2.verify.mockResolvedValue(true);
 
-      await expect(service.login(email, password, ip, userAgent)).rejects.toThrow(
-        'Invalid credentials'
-      );
+      await expect(
+        service.login(email, password, ip, userAgent)
+      ).rejects.toThrow('Invalid credentials');
       expect(argon2.verify).toHaveBeenCalledWith(expect.any(String), password);
       expect(recordLoginAttempt).toHaveBeenCalledWith(email, ip, false);
       expect(repo.verifyPassword).not.toHaveBeenCalled();
@@ -209,9 +219,9 @@ describe('Auth Service', () => {
       repo.findByEmail.mockResolvedValue(suspendedUser);
       argon2.verify.mockResolvedValue(true);
 
-      await expect(service.login(email, password, ip, userAgent)).rejects.toThrow(
-        'Invalid credentials'
-      );
+      await expect(
+        service.login(email, password, ip, userAgent)
+      ).rejects.toThrow('Invalid credentials');
       expect(argon2.verify).toHaveBeenCalledWith(expect.any(String), password);
       expect(recordLoginAttempt).toHaveBeenCalledWith(email, ip, false);
       expect(repo.verifyPassword).not.toHaveBeenCalled();
@@ -220,9 +230,9 @@ describe('Auth Service', () => {
     it('login() account locked', async () => {
       incrementAttempt.mockResolvedValue(6);
 
-      await expect(service.login(email, password, ip, userAgent)).rejects.toThrow(
-        'Account temporarily locked. Please try again later.'
-      );
+      await expect(
+        service.login(email, password, ip, userAgent)
+      ).rejects.toThrow('Account temporarily locked. Please try again later.');
       expect(repo.findByEmail).not.toHaveBeenCalled();
       expect(recordLoginAttempt).not.toHaveBeenCalled();
     });
@@ -230,7 +240,9 @@ describe('Auth Service', () => {
     it('login() Redis/brute-force failure', async () => {
       incrementAttempt.mockRejectedValue(new Error('Redis failure'));
 
-      await expect(service.login(email, password, ip, userAgent)).rejects.toThrow(
+      await expect(
+        service.login(email, password, ip, userAgent)
+      ).rejects.toThrow(
         'Login temporarily unavailable. Please try again later.'
       );
       expect(repo.findByEmail).not.toHaveBeenCalled();
@@ -257,7 +269,9 @@ describe('Auth Service', () => {
 
       expect(verifyRefreshToken).toHaveBeenCalledWith('valid-refresh');
       expect(hashToken).toHaveBeenCalledWith('valid-refresh');
-      expect(repo.claimRefreshToken).toHaveBeenCalledWith('mocked-hash:valid-refresh');
+      expect(repo.claimRefreshToken).toHaveBeenCalledWith(
+        'mocked-hash:valid-refresh'
+      );
       expect(repo.findById).toHaveBeenCalledWith(user.id);
       expect(repo.storeRefreshTokenRedis).toHaveBeenCalledWith(
         user.id,
@@ -291,9 +305,9 @@ describe('Auth Service', () => {
       verifyRefreshToken.mockReturnValue({ id: 'user-1' });
       repo.claimRefreshToken.mockResolvedValue(null);
 
-      await expect(service.refreshTokens('revoked-refresh', ip)).rejects.toThrow(
-        'Token revoked/expired'
-      );
+      await expect(
+        service.refreshTokens('revoked-refresh', ip)
+      ).rejects.toThrow('Token revoked/expired');
       expect(repo.findById).not.toHaveBeenCalled();
     });
 
@@ -307,9 +321,9 @@ describe('Auth Service', () => {
       repo.claimRefreshToken.mockResolvedValue(suspendedUser.id);
       repo.findById.mockResolvedValue(suspendedUser);
 
-      await expect(service.refreshTokens('suspended-refresh', ip)).rejects.toThrow(
-        'User not found/suspended'
-      );
+      await expect(
+        service.refreshTokens('suspended-refresh', ip)
+      ).rejects.toThrow('User not found/suspended');
       expect(repo.storeRefreshTokenRedis).not.toHaveBeenCalled();
     });
   });
@@ -322,11 +336,23 @@ describe('Auth Service', () => {
 
       const accessExp = Math.floor(Date.now() / 1000) + 60;
 
-      await service.logout('valid-refresh', 'user-1', 'access-jti', accessExp, ip, userAgent);
+      await service.logout(
+        'valid-refresh',
+        'user-1',
+        'access-jti',
+        accessExp,
+        ip,
+        userAgent
+      );
 
       expect(verifyRefreshToken).toHaveBeenCalledWith('valid-refresh');
-      expect(repo.revokeRefreshTokenRedis).toHaveBeenCalledWith('mocked-hash:valid-refresh');
-      expect(blacklistAccessToken).toHaveBeenCalledWith('access-jti', expect.any(Number));
+      expect(repo.revokeRefreshTokenRedis).toHaveBeenCalledWith(
+        'mocked-hash:valid-refresh'
+      );
+      expect(blacklistAccessToken).toHaveBeenCalledWith(
+        'access-jti',
+        expect.any(Number)
+      );
       expect(createAuditLog).toHaveBeenCalledWith({
         userId: 'user-1',
         action: 'LOGOUT',
@@ -343,7 +369,14 @@ describe('Auth Service', () => {
       });
 
       await expect(
-        service.logout('invalid-refresh', 'user-1', 'access-jti', 12345, ip, userAgent)
+        service.logout(
+          'invalid-refresh',
+          'user-1',
+          'access-jti',
+          12345,
+          ip,
+          userAgent
+        )
       ).rejects.toThrow('Invalid refresh token');
       expect(repo.revokeRefreshTokenRedis).not.toHaveBeenCalled();
       expect(blacklistAccessToken).not.toHaveBeenCalled();
@@ -353,7 +386,14 @@ describe('Auth Service', () => {
       verifyRefreshToken.mockReturnValue({ id: 'other-user' });
 
       await expect(
-        service.logout('valid-refresh', 'user-1', 'access-jti', 12345, ip, userAgent)
+        service.logout(
+          'valid-refresh',
+          'user-1',
+          'access-jti',
+          12345,
+          ip,
+          userAgent
+        )
       ).rejects.toThrow('Token does not belong to authenticated user');
       expect(repo.revokeRefreshTokenRedis).not.toHaveBeenCalled();
       expect(blacklistAccessToken).not.toHaveBeenCalled();

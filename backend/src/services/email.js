@@ -239,7 +239,9 @@ class EmailService {
 
   async _recordBounces(addresses) {
     try {
-      await pool.query('INSERT INTO bounced_emails (email) VALUES ($1)', [addresses]);
+      await pool.query('INSERT INTO bounced_emails (email) VALUES ($1)', [
+        addresses,
+      ]);
     } catch {
       // fallback to in-memory bounce list when DB is unavailable
     }

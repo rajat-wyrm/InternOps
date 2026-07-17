@@ -1,8 +1,10 @@
-jest.mock('pino', () => jest.fn(() => ({
-  warn: jest.fn(),
-  info: jest.fn(),
-  error: jest.fn(),
-})));
+jest.mock('pino', () =>
+  jest.fn(() => ({
+    warn: jest.fn(),
+    info: jest.fn(),
+    error: jest.fn(),
+  }))
+);
 
 jest.mock('nodemailer', () => ({
   createTransport: jest.fn(),
@@ -106,15 +108,17 @@ describe('Email Service', () => {
 
   it('should fail when the email provider rejects the message', async () => {
     const transporter = {
-      sendMail: jest.fn().mockRejectedValue(Object.assign(new Error('550 mailbox unavailable'), {
-        responseCode: 550,
-      })),
+      sendMail: jest.fn().mockRejectedValue(
+        Object.assign(new Error('550 mailbox unavailable'), {
+          responseCode: 550,
+        })
+      ),
     };
     emailService.transporter = transporter;
 
-    await expect(
-      emailService._deliver({ to, subject, text })
-    ).rejects.toThrow('550 mailbox unavailable');
+    await expect(emailService._deliver({ to, subject, text })).rejects.toThrow(
+      '550 mailbox unavailable'
+    );
 
     expect(emailService.getMetrics().failed).toBe(1);
     expect(emailService.getMetrics().bounced).toBe(1);
