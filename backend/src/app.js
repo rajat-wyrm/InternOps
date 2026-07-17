@@ -138,6 +138,11 @@ app.register(require('@fastify/helmet'), {
   },
 });
 
+app.register(require('@fastify/compress'), {
+  global: true,
+  encodings: ['gzip', 'deflate', 'br'],
+});
+
 //  Register once globally — no Redis dependency
 app.register(require('@fastify/rate-limit'), {
   global: true,
@@ -180,11 +185,79 @@ if (process.env.NODE_ENV !== 'test') {
             'Next API version (v2) — see CONTRIBUTING.md for migration guide',
         },
       ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+        },
+      },
+      security: [
+        {
+          bearerAuth: [],
+        },
+      ],
     },
   });
 
+  const authMiddleware = require('./middleware/auth');
+  const rbac = require('./middleware/rbac');
+
   app.register(require('@fastify/swagger-ui'), {
-    routePrefix: '/docs',
+    routePrefix: '/api-docs',
+    uiHooks: {
+      onRequest: function (request, reply, next) {
+        authMiddleware(request, reply)
+          .then(() => {
+            if (!reply.sent) {
+              rbac('ADMIN')(request, reply, next);
+            }
+          })
+          .catch(next);
+      },
+    },
+  });
+
+  // Dynamically ensure all routes have complete schema definitions (including response schemas)
+  app.addHook('onRoute', (routeOptions) => {
+    // Only apply to our business API routes
+    if (!routeOptions.url.startsWith('/api/')) return;
+
+    routeOptions.schema = routeOptions.schema || {};
+
+    if (!routeOptions.schema.response) {
+      routeOptions.schema.response = {
+        200: {
+          description: 'Successful response',
+        },
+        400: {
+          description: 'Validation error',
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            details: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: true,
+              },
+            },
+          },
+        },
+        401: {
+          description: 'Unauthorized',
+          type: 'object',
+          properties: { error: { type: 'string' } },
+        },
+        500: {
+          description: 'Internal Server Error',
+          type: 'object',
+          properties: { error: { type: 'string' } },
+        },
+      };
+    }
   });
 }
 
@@ -197,7 +270,7 @@ app.register(require('./routes'), { prefix: '/api/v1' });
 app.register(require('./routes.v2'), { prefix: '/api/v2' });
 
 app.get('/', async (req, reply) => {
-  reply.redirect('/docs');
+  reply.redirect('/api-docs');
 });
 
 app.get('/fallback', async (req, reply) => {
@@ -205,7 +278,7 @@ app.get('/fallback', async (req, reply) => {
     <html>
       <body style="font-family:sans-serif;padding:2em">
         <h1>InternOps API</h1>
-        <a href="/docs">Swagger Docs</a>
+        <a href="/api-docs">Swagger Docs</a>
       </body>
     </html>
   `);
