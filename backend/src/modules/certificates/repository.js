@@ -5,6 +5,10 @@ const pool = require('../../config/db');
 // ============================================================
 
 async function createTemplate(data, userId) {
+  const templateData = { ...(data.template_data || {}) };
+  if (data.colorScheme) {
+    templateData.colorScheme = data.colorScheme;
+  }
   const res = await pool.query(
     `INSERT INTO certificate_templates (name, description, template_data, thumbnail_url, canva_design_id, created_by)
      VALUES ($1, $2, $3, $4, $5, $6)
@@ -12,7 +16,7 @@ async function createTemplate(data, userId) {
     [
       data.name,
       data.description || null,
-      JSON.stringify(data.template_data || {}),
+      JSON.stringify(templateData),
       data.thumbnail_url || null,
       data.canva_design_id || null,
       userId,

@@ -16,6 +16,7 @@ const templateCreateSchema = z.object({
       height: z.number().optional(),
     })
     .default({}),
+  colorScheme: z.array(z.string()).optional(),
   thumbnail_url: z.string().url().optional(),
   canva_design_id: z.string().optional(),
 });
