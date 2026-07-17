@@ -88,13 +88,7 @@ function rotateAndSetCsrf(request, reply, userId = null) {
   writeSession(reply, newSid, userId);
   const csrfToken = tokenFor(newSid);
 
-  reply.setCookie(SESSION_COOKIE, signed, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/',
-    maxAge: 24 * 60 * 60 * 1000,
-  });
+  
 
   return csrfToken;
 }
