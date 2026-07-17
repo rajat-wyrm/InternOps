@@ -260,19 +260,15 @@ export function StatCard({
             {value}
           </p>
 
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">
-            {label}
-          </p>
-
-          {sub && (
-            <p className="text-xs text-slate-500 dark:text-slate-500">{sub}</p>
+            {sub && (
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              {sub}
+            </p>
           )}
         </div>
 
         {icon && (
-          <div
-            className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${gradient} text-white flex items-center justify-center text-2xl shadow-lg shadow-slate-300/40 dark:shadow-none`}
-          >
+          <div className="text-3xl opacity-60">
             {icon}
           </div>
         )}
