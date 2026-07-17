@@ -225,36 +225,10 @@ export function Textarea({ className = '', ...props }) {
   return (
     <textarea
       {...props}
-      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-2xl px-4 py-3 w-full focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-400 outline-none transition shadow-sm ${className}`}
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-2xl px-4`}
     />
-  );
-}
-
-export function Select({ className = '', children, ...props }) {
-  return (
-    <select
-      {...props}
-      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-3 w-full focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-400 outline-none transition shadow-sm ${className}`}
-    >
-      {children}
-    </select>
-  );
-}
-
-export function StatCard({
-  label,
-  value,
-  sub,
-  icon,
-  gradient = 'from-indigo-500 to-blue-600',
-}) {
-  return (
-    <Card className="p-6 card-hover relative min-h-[150px] bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
-      <div
-        className={`absolute -right-8 -top-8 w-28 h-28 rounded-full bg-gradient-to-br ${gradient} opacity-15 dark:opacity-20`}
-      />
-
-      <div className="relative z-10 flex items-start justify-between gap-4">
+    
+  <div className="relative z-10 flex items-start justify-between gap-4">
         <div className="pt-6">
           <p className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             {value}
