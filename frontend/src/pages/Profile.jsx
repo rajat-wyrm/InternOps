@@ -94,7 +94,7 @@ export default function Profile() {
       flash('Profile updated successfully');
 
       if (vars?.full_name && user) {
-        setAuth({ user: { ...user, fullName: vars.full_name } });
+        setAuth({ user: { ...user, full_Name: vars.full_name } });
       }
 
       queryClient.invalidateQueries({ queryKey: ['myProfile'] });
