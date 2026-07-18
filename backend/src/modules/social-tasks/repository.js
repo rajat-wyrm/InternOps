@@ -108,11 +108,7 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
   const safePage = Math.max(Number(page) || 1, 1);
   const offset = (safePage - 1) * safeLimit;
 
-  const { whereSql, params } = buildTaskFilterClause(
-    filters,
-    userId,
-    userRole
-  );
+  const { whereSql, params } = buildTaskFilterClause(filters, userId, userRole);
 
   params.push(safeLimit);
   params.push(offset);
@@ -130,11 +126,7 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
 }
 
 async function getTasksCount(filters, userId, userRole) {
-  const { whereSql, params } = buildTaskFilterClause(
-    filters,
-    userId,
-    userRole
-  );
+  const { whereSql, params } = buildTaskFilterClause(filters, userId, userRole);
 
   const q = `
     SELECT COUNT(*)::int AS count
