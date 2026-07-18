@@ -17,6 +17,7 @@ const repo = require('./repository');
 const { forgotPassword, resetPassword } = require('./resetService');
 const { toSchema } = require('../../utils/schemaHelper');
 const isProduction = process.env.NODE_ENV === 'production';
+const isTestEnv = process.env.NODE_ENV === 'test';
 const pLimit = require('p-limit');
 
 async function routes(fastify) {
@@ -363,7 +364,7 @@ async function routes(fastify) {
         },
       },
       config: {
-        rateLimit: {
+        rateLimit: isTestEnv ? false : {
           max: 2,
           timeWindow: '5 minutes',
         },
