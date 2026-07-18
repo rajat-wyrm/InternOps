@@ -43,14 +43,14 @@ describe('Email Service', () => {
       });
 
       expect(result).toEqual({
-        queued: true,
-        to: 'test@example.com',
-        subject: 'Test Subject',
+        accepted: ['test@example.com'],
+        messageId: expect.any(String),
+        rejected: [],
       });
 
-      await freshEmailService._flushQueue();
+      // No queue – metrics updated immediately
       const metrics = freshEmailService.getMetrics();
-      expect(metrics.sent).toBeGreaterThan(0);
+      expect(metrics.sent).toBe(1);
 
       process.env.SMTP_HOST = originalHost;
       process.env.SMTP_USER = originalUser;
@@ -87,12 +87,10 @@ describe('Email Service', () => {
         'token123'
       );
       expect(result).toEqual({
-        queued: true,
-        to: 'user@example.com',
-        subject: 'InternOps - Password Reset Request',
+        accepted: ['user@example.com'],
+        messageId: expect.any(String),
+        rejected: [],
       });
-
-      await emailService._flushQueue();
     });
 
     it('should render account-verification template', async () => {
@@ -182,7 +180,6 @@ describe('Email Service', () => {
         subject: 'Test',
         text: 'ok',
       });
-      await emailService._flushQueue();
       const m = emailService.getMetrics();
       expect(m.sent).toBe(1);
     });
@@ -198,7 +195,6 @@ describe('Email Service', () => {
         subject: 'Test',
         text: 'ok',
       });
-      await emailService._flushQueue();
       emailService.resetMetrics();
       const m = emailService.getMetrics();
       expect(m.sent).toBe(0);

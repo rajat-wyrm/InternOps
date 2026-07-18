@@ -5,12 +5,6 @@ import { Card, Btn, Input } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDatePicker from './CustomDatePicker';
 
-// Client-side cap that matches the backend zod limit in
-// backend/src/modules/attendance/routes.js. We refuse to even render the
-// toggle-on button past this number, so a manager can never submit a
-// request that the backend will reject.
-const BULK_MAX = 500;
-
 export default function BulkAttendanceForm() {
   const queryClient = useQueryClient();
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -19,6 +13,7 @@ export default function BulkAttendanceForm() {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [departmentId, setDepartmentId] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
+  const [fillMissing, setFillMissing] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
@@ -39,12 +34,13 @@ export default function BulkAttendanceForm() {
 
   const bulkMutation = useMutation({
     mutationFn: (data) => api.post('/attendance/bulk', data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
       setError('');
-      setMsg(`✓ Marked ${selectedUsers.length} members`);
+      setMsg(`✓ Marked ${variables.entries.length} members`);
       setSelectedUsers([]);
       setRemarks('');
+      setFillMissing(false);
       setTimeout(() => setMsg(''), 2500);
     },
     onError: (err) => setError(err.response?.data?.error || 'Bulk mark failed'),
@@ -55,9 +51,11 @@ export default function BulkAttendanceForm() {
       .toLowerCase()
       .includes(memberSearch.trim().toLowerCase())
   );
-  const atLimit = selectedUsers.length >= BULK_MAX;
   const allSelected = team.length > 0 && selectedUsers.length === team.length;
   const today = new Date().toISOString().slice(0, 10);
+
+  const fillStatus = status === 'PRESENT' ? 'ABSENT' : 'PRESENT';
+  const remainingCount = team.length - selectedUsers.length;
 
   const statusOptions = [
     { value: 'PRESENT', label: 'Present' },
@@ -76,24 +74,13 @@ export default function BulkAttendanceForm() {
   };
 
   const toggleAll = () => {
-    if (atLimit && !allSelected) return;
-
-    setSelectedUsers(
-      allSelected ? [] : team.slice(0, BULK_MAX).map((u) => u.id)
-    );
+    setSelectedUsers(allSelected ? [] : team.map((u) => u.id));
   };
 
   const toggleUser = (id) =>
     setSelectedUsers((p) => {
-      if (p.includes(id)) return p.filter((x) => x !== id);
-
-      if (p.length >= BULK_MAX) {
-        setError(`Cannot select more than ${BULK_MAX} members at once`);
-        return p;
-      }
-
       setError('');
-      return [...p, id];
+      return p.includes(id) ? p.filter((x) => x !== id) : [...p, id];
     });
 
   const handleSubmit = (e) => {
@@ -104,22 +91,31 @@ export default function BulkAttendanceForm() {
       return setError('Select at least one member');
     }
 
-    if (selectedUsers.length > BULK_MAX) {
-      return setError(`Cannot bulk-mark more than ${BULK_MAX} members at once`);
-    }
-
     if (date > today) {
       return setError('Future dates cannot be selected for bulk operations');
     }
 
-    bulkMutation.mutate({
-      entries: selectedUsers.map((uid) => ({
-        user_id: uid,
-        date,
-        status,
-        remarks,
-      })),
-    });
+    const entries = selectedUsers.map((uid) => ({
+      user_id: uid,
+      date,
+      status,
+      remarks,
+    }));
+
+    if (fillMissing) {
+      const others = team.filter((u) => !selectedUsers.includes(u.id));
+
+      for (const u of others) {
+        entries.push({
+          user_id: u.id,
+          date,
+          status: fillStatus,
+          remarks: '',
+        });
+      }
+    }
+
+    bulkMutation.mutate({ entries });
   };
 
   return (
@@ -160,13 +156,12 @@ export default function BulkAttendanceForm() {
 
             <div className="flex items-center gap-3">
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/60">
-                {selectedUsers.length}/{BULK_MAX}
+                {selectedUsers.length}
               </span>
 
               <button
                 type="button"
                 onClick={toggleAll}
-                disabled={atLimit && !allSelected}
                 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {allSelected ? 'Deselect All' : 'Select All'}
@@ -273,6 +268,20 @@ export default function BulkAttendanceForm() {
             />
           </div>
         </div>
+
+        {selectedUsers.length > 0 && remainingCount > 0 && (
+          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none pt-1">
+            <input
+              type="checkbox"
+              checked={fillMissing}
+              onChange={(e) => setFillMissing(e.target.checked)}
+              className="accent-indigo-600 w-3.5 h-3.5"
+            />
+            Auto-mark remaining {remainingCount} member
+            {remainingCount === 1 ? '' : 's'}
+            as {fillStatus === 'ABSENT' ? 'Absent' : 'Present'}
+          </label>
+        )}
 
         <div className="flex items-center justify-between gap-3 pt-1">
           <p className="text-xs text-slate-500 dark:text-slate-400">

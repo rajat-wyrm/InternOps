@@ -3,8 +3,8 @@ const config = require('./index');
 const logger = require('../logger');
 
 const pool = new Pool({
-  connectionString: config.databaseUrl,
-  max: config.dbPoolMax,
+  connectionString: config.databaseUrl || process.env.DATABASE_URL,
+  max: config.dbPoolMax || 20,
   idleTimeoutMillis: 30000,
 });
 

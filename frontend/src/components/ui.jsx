@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import useBodyScrollLock from '../hooks/useBodyScrollLock';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -370,6 +371,7 @@ export function ConfirmationModal({
 }) {
   const modalRef = useRef(null);
   const previousActiveElementRef = useRef(null);
+  useBodyScrollLock(open, { blurBackground: true });
 
   const handleClose = () => {
     if (loading) return;
@@ -381,26 +383,6 @@ export function ConfirmationModal({
   useEffect(() => {
     handleCloseRef.current = handleClose;
   }, [handleClose]);
-
-  // Handle body scroll locking and background blurring
-  useEffect(() => {
-    const root = document.getElementById('root');
-
-    if (open) {
-      document.body.classList.add('modal-open');
-      if (root) root.classList.add('blur-sm', 'transition-all', 'duration-300');
-    } else {
-      document.body.classList.remove('modal-open');
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-    }
-
-    return () => {
-      document.body.classList.remove('modal-open');
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-    };
-  }, [open]);
 
   // Focus trap implementation
   useEffect(() => {

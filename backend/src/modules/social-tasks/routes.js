@@ -151,7 +151,22 @@ module.exports = async function socialTasksRoutes(fastify) {
           'Task created but notification email failed'
         );
       }
-      notifyAllInternsAsync(task, req.log);
+
+      try {
+        const internEmails = await repo.getAllInternEmails();
+
+        for (const email of internEmails) {
+          await emailService.sendNotification(email, {
+            title: 'New Social Media Task',
+            message: `A new task "${task.title}" has been posted. Please complete it before the deadline.`,
+          });
+        }
+      } catch (emailErr) {
+        req.log.warn(
+          { emailErr },
+          'Task created but intern notification emails failed'
+        );
+      }
       return task;
     }
   );
@@ -273,13 +288,21 @@ module.exports = async function socialTasksRoutes(fastify) {
       preHandler: [auth],
     },
     async (req) => {
-      return repo.getTasks(
-        req.query || {},
-        req.user.id,
-        req.user.role,
-        req.query.page,
-        req.query.limit
-      );
+      const page = req.query.page || 1;
+      const limit = req.query.limit || 50;
+
+      const [tasks, total] = await Promise.all([
+        repo.getTasks(req.query || {}, req.user.id, req.user.role, page, limit),
+        repo.getTasksCount(req.query || {}, req.user.id, req.user.role),
+      ]);
+
+      return {
+        tasks,
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+      };
     }
   );
 

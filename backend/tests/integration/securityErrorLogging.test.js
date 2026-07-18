@@ -16,6 +16,7 @@ describe('Security Error Logging (#1012)', () => {
     }));
     jest.doMock('socket.io', () => ({
       Server: jest.fn().mockImplementation(() => ({
+        engine: { on: jest.fn() },
         use,
         on,
       })),
@@ -53,6 +54,140 @@ describe('Security Error Logging (#1012)', () => {
     expect(socket.disconnect).toHaveBeenCalledWith(true);
     expect(next).toHaveBeenCalledWith(expect.any(Error));
     expect(next.mock.calls[0][0].message).toBe('Authentication error');
+  });
+
+  it('disconnects unauthenticated WebSocket connections after auth timeout', () => {
+    jest.resetModules();
+    jest.useFakeTimers();
+
+    const use = jest.fn();
+    const on = jest.fn();
+    const engineOn = jest.fn();
+
+    jest.doMock('socket.io', () => ({
+      Server: jest.fn().mockImplementation(() => ({
+        engine: {
+          on: engineOn,
+        },
+        use,
+        on,
+      })),
+    }));
+
+    const { initializeWebSocket } = require('../../src/websocket');
+    const logger = {
+      warn: jest.fn(),
+      info: jest.fn(),
+    };
+    initializeWebSocket({}, logger);
+
+    expect(engineOn).toHaveBeenCalledWith('connection', expect.any(Function));
+    const engineConnectionHandler = engineOn.mock.calls[0][1];
+
+    let registeredClose;
+    const engineSocket = {
+      id: 'engine-socket-1',
+      request: {
+        headers: { 'x-forwarded-for': '203.0.113.20' },
+        socket: { remoteAddress: '10.0.0.51' },
+      },
+      on: jest.fn((event, listener) => {
+        if (event === 'close') registeredClose = listener;
+      }),
+      close: jest.fn(),
+    };
+
+    engineConnectionHandler(engineSocket);
+
+    expect(engineSocket.close).not.toHaveBeenCalled();
+    jest.runOnlyPendingTimers();
+
+    expect(engineSocket.close).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        clientIp: '203.0.113.20',
+        socketId: 'engine-socket-1',
+      },
+      'WebSocket unauthenticated connection timed out'
+    );
+
+    if (engineSocket.authTimeout) {
+      clearTimeout(engineSocket.authTimeout);
+    }
+    jest.useRealTimers();
+  });
+
+  it('rejects new unauthenticated WebSocket connections when max pending connections is exceeded', () => {
+    jest.resetModules();
+
+    const use = jest.fn();
+    const on = jest.fn();
+    const engineOn = jest.fn();
+
+    jest.doMock('socket.io', () => ({
+      Server: jest.fn().mockImplementation(() => ({
+        engine: {
+          on: engineOn,
+        },
+        use,
+        on,
+      })),
+    }));
+
+    const { initializeWebSocket } = require('../../src/websocket');
+    const logger = {
+      warn: jest.fn(),
+      info: jest.fn(),
+    };
+    initializeWebSocket({}, logger);
+
+    expect(engineOn).toHaveBeenCalledWith('connection', expect.any(Function));
+    const engineConnectionHandler = engineOn.mock.calls[0][1];
+
+    const maxConnections =
+      require('../../src/config').websocket.maxUnauthenticatedConnections;
+
+    const sockets = Array.from({ length: maxConnections }, (_, index) => ({
+      id: `engine-socket-${index}`,
+      request: {
+        headers: { 'x-forwarded-for': `203.0.113.${index}` },
+        socket: { remoteAddress: `10.0.0.${index}` },
+      },
+      on: jest.fn(),
+      close: jest.fn(),
+    }));
+
+    sockets.forEach((socket) => engineConnectionHandler(socket));
+
+    // Clear the timer handles created for pending connections so Jest can exit cleanly.
+    sockets.forEach((socket) => {
+      if (socket.authTimeout) {
+        clearTimeout(socket.authTimeout);
+      }
+    });
+
+    const extraSocket = {
+      id: 'engine-socket-extra',
+      request: {
+        headers: { 'x-forwarded-for': '203.0.113.99' },
+        socket: { remoteAddress: '10.0.0.99' },
+      },
+      on: jest.fn(),
+      close: jest.fn(),
+    };
+
+    engineConnectionHandler(extraSocket);
+
+    expect(extraSocket.close).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        clientIp: '203.0.113.99',
+        socketId: 'engine-socket-extra',
+        pendingConnections: maxConnections,
+        maxUnauthenticatedConnections: maxConnections,
+      },
+      'WebSocket connection rejected: maximum unauthenticated connections reached'
+    );
   });
 
   it('logs warning on CSRF token generation when bearer verification throws', () => {

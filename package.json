@@ -1,0 +1,49 @@
+{
+  "name": "internops",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "description": "InternOps is an enterprise-grade workforce management platform designed to streamline intern operations, attendance tracking, and performance monitoring within structured team hierarchies.",
+  "main": "load-processor.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "npm run test --workspace=backend",
+    "dev": "concurrently \"npm run dev --workspace=frontend\" \"npm run dev --workspace=backend\"",
+    "lint": "npm run lint --workspaces --if-present",
+    "format": "prettier --write .",
+    "clean": "rimraf node_modules && npm run clean --workspaces --if-present",
+    "reinstall": "npm run clean && npm install",
+    "prepare": "husky"
+  },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rajat-wyrm/InternOps.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/rajat-wyrm/InternOps/issues"
+  },
+  "homepage": "https://github.com/rajat-wyrm/InternOps#readme",
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.9.5",
+    "rimraf": "^6.1.3"
+  },
+  "lint-staged": {
+    "*": "prettier --write --ignore-unknown"
+  }
+}

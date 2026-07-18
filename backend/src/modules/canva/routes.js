@@ -1,5 +1,6 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
+const featureFlagMiddleware = require('../../middleware/featureFlag');
 const audit = require('../../utils/audit');
 const service = require('./service');
 const repo = require('../certificates/repository');
@@ -8,6 +9,8 @@ async function routes(fastify) {
   // All routes require authentication + admin role
   fastify.addHook('onRequest', auth);
   fastify.addHook('onRequest', rbac('ADMIN'));
+  // Gate entire module behind CANVA_INTEGRATION flag
+  fastify.addHook('preHandler', featureFlagMiddleware('CANVA_INTEGRATION'));
 
   // Get Canva OAuth URL
   fastify.get(

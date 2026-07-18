@@ -17,6 +17,7 @@ const repo = require('./repository');
 const { forgotPassword, resetPassword } = require('./resetService');
 const { toSchema } = require('../../utils/schemaHelper');
 const isProduction = process.env.NODE_ENV === 'production';
+const isTestEnv = process.env.NODE_ENV === 'test';
 const pLimit = require('p-limit');
 
 async function routes(fastify) {
@@ -40,7 +41,7 @@ async function routes(fastify) {
             },
             managerId: { type: 'string', format: 'uuid' },
             departmentId: { type: 'string', format: 'uuid' },
-            fullName: { type: 'string' },
+            full_name: { type: 'string' },
           },
         },
       },
@@ -71,7 +72,7 @@ async function routes(fastify) {
                 type: 'object',
                 required: ['email', 'password', 'role'],
                 properties: {
-                  fullName: { type: 'string' },
+                  full_name: { type: 'string' },
                   email: { type: 'string', format: 'email' },
                   password: { type: 'string', minLength: 8 },
                   role: {
@@ -362,6 +363,14 @@ async function routes(fastify) {
           properties: { email: { type: 'string', format: 'email' } },
         },
       },
+      config: {
+        rateLimit: isTestEnv
+          ? false
+          : {
+              max: 2,
+              timeWindow: '5 minutes',
+            },
+      },
     },
     async (req, reply) => {
       const { email } = z.object({ email: z.string().email() }).parse(req.body);
@@ -385,6 +394,12 @@ async function routes(fastify) {
             token: { type: 'string' },
             newPassword: { type: 'string', minLength: 8 },
           },
+        },
+      },
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
         },
       },
     },

@@ -98,8 +98,18 @@ async function routes(fastify) {
         '..',
         config.uploadDir
       );
+
+      // Calculate the absolute path of the target file
+      const targetFilePath = path.resolve(uploadPath, fileName);
+      const absoluteUploadPath = path.resolve(uploadPath);
+
+      // Security Check: Path Traversal Protection
+      if (!targetFilePath.startsWith(absoluteUploadPath)) {
+        return reply.status(400).send({ error: 'Invalid file path' });
+      }
+
       fs.mkdirSync(uploadPath, { recursive: true });
-      fs.writeFileSync(path.join(uploadPath, fileName), buffer);
+      fs.writeFileSync(targetFilePath, buffer);
 
       const url = `/uploads/${fileName}`;
       await repo.updateAvatarUrl(req.user.id, url);

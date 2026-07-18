@@ -79,17 +79,30 @@ async function routes(fastify) {
         tags: ['Meetings'],
         description: 'List meetings',
         querystring: toSchema(
-          z.object({ from: z.string().optional(), to: z.string().optional() })
+          z.object({
+            from: z.string().optional(),
+            to: z.string().optional(),
+            departmentId: z.string().uuid().optional(),
+          })
         ),
       },
       preHandler: [auth],
     },
     async (req) => {
-      const { from, to } = req.query;
-      const departmentId = await repo.getUserDepartmentId(req.user.id);
+      const { from, to, departmentId: requestedDeptId } = req.query;
+      const ownDepartmentId = await repo.getUserDepartmentId(req.user.id);
+
+      const effectiveDepartmentId =
+        req.user.role === 'ADMIN' && requestedDeptId
+          ? requestedDeptId
+          : req.user.role !== 'INTERN'
+            ? ownDepartmentId
+            : null;
+
       const result = await repo.listMeetings({
         userId: req.user.id,
-        departmentId: req.user.role !== 'INTERN' ? departmentId : null,
+        departmentId: effectiveDepartmentId,
+        requestedDepartmentId: requestedDeptId,
         fromDate: from,
         toDate: to,
       });

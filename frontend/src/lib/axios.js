@@ -12,10 +12,11 @@ function getBaseUrl() {
   }
   url = url.replace(/\/+$/, '');
 
-  // Append /api/v1 if the URL is an origin-only value (no path component yet).
-  // This keeps all API calls working correctly when VITE_API_URL is set to
-  // just "http://localhost:5000" rather than "http://localhost:5000/api/v1".
-  if (!/\/api\/v\d+/.test(url)) {
+  // Normalize common API URL values so the app does not accidentally
+  // create /api/api/v1 when VITE_API_URL already includes /api.
+  if (url.endsWith('/api')) {
+    url = `${url}/v1`;
+  } else if (!/\/api\/v\d+/.test(url)) {
     url = `${url}/api/v1`;
   }
 
@@ -159,19 +160,13 @@ function handleLogout() {
 
       clearCsrfToken();
 
-      try {
-        if (!window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login';
-        }
-      } catch {
-        /* ignore location assignment errors */
+      if (_authStore) {
+        _authStore.getState().logout();
       }
     } else {
-      // If there's no window (SSR), still clear tokens in memory
       clearCsrfToken();
     }
   } catch {
-    /* defensive: ensure logout doesn't throw */
     clearCsrfToken();
   }
 }
@@ -268,13 +263,6 @@ api.interceptors.response.use(
           } catch {
             /* ignore */
           }
-        }
-
-        if (
-          typeof window !== 'undefined' &&
-          !window.location.pathname.startsWith('/login')
-        ) {
-          window.location.href = '/login';
         }
 
         return Promise.reject(refreshErr);

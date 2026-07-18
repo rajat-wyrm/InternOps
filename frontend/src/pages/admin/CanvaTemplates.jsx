@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ExternalLink,
   Download,
@@ -18,7 +19,9 @@ import {
   useTemplates,
   useCreateTemplate,
   useDeleteTemplate,
+  useSeedTemplates,
 } from '../../hooks/useCertificates';
+import useBodyScrollLock from '../../hooks/useBodyScrollLock';
 
 export default function CanvaTemplates() {
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -27,6 +30,15 @@ export default function CanvaTemplates() {
     description: '',
     colorScheme: ['#3B82F6', '#10B981', '#F59E0B'],
   });
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    const handleKey = (e) => e.key === 'Escape' && setShowCreateModal(false);
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [showCreateModal]);
+
+  useBodyScrollLock(showCreateModal);
 
   const { data: canvaStatusResp, isLoading: statusLoading } = useCanvaStatus();
   const canvaStatus = canvaStatusResp?.data || {};
@@ -47,6 +59,7 @@ export default function CanvaTemplates() {
   const importMutation = useCanvaImport();
   const createMutation = useCreateTemplate();
   const deleteMutation = useDeleteTemplate();
+  const seedMutation = useSeedTemplates();
 
   const isConnected = canvaStatus?.connected;
 
@@ -68,7 +81,19 @@ export default function CanvaTemplates() {
   const handleCreateTemplate = async (e) => {
     e.preventDefault();
     try {
-      await createMutation.mutateAsync(newTemplate);
+      const payload = {
+        name: newTemplate.name,
+        description: newTemplate.description,
+        template_data: {
+          background: newTemplate.colorScheme[0] || '#3B82F6',
+          accent: newTemplate.colorScheme[1] || '#10B981',
+          text: newTemplate.colorScheme[2] || '#F59E0B',
+          // If you want to keep the full array for other uses, add:
+          // colors: newTemplate.colorScheme
+        },
+        // thumbnail_url and canva_design_id are not used for manual creation
+      };
+      await createMutation.mutateAsync(payload);
       setShowCreateModal(false);
       setNewTemplate({
         name: '',
@@ -94,7 +119,7 @@ export default function CanvaTemplates() {
 
   const handleSeedDefaults = async () => {
     try {
-      await createMutation.mutateAsync({ seed: true });
+      await seedMutation.mutateAsync();
       refetchTemplates();
     } catch (error) {
       console.error('Failed to seed templates:', error);
@@ -147,7 +172,7 @@ export default function CanvaTemplates() {
               {statusLoading ? (
                 <Spinner size="sm" />
               ) : (
-                <Badge variant={isConnected ? 'success' : 'danger'}>
+                <Badge color={isConnected ? 'green' : 'red'}>
                   {isConnected ? (
                     <span className="flex items-center gap-1">
                       <Check className="w-3 h-3" />
@@ -266,11 +291,17 @@ export default function CanvaTemplates() {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleSeedDefaults}
-                disabled={createMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                disabled={seedMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Palette className="w-4 h-4" />
-                Seed Default Templates
+                {seedMutation.isPending ? (
+                  <Spinner size="sm" />
+                ) : (
+                  <Palette className="w-4 h-4" />
+                )}
+                {seedMutation.isPending
+                  ? 'Seeding Templates...'
+                  : 'Seed Default Templates'}
               </button>
               <button
                 onClick={() => setShowCreateModal(true)}
@@ -320,13 +351,25 @@ export default function CanvaTemplates() {
 
                     {/* Color Scheme Preview */}
                     <div className="flex items-center gap-1">
-                      {template.colorScheme?.slice(0, 5).map((color, index) => (
-                        <div
-                          key={index}
-                          className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
-                          style={{ backgroundColor: color }}
-                        />
-                      ))}
+                      {(() => {
+                        const colors = template.template_data
+                          ? [
+                              template.template_data.background,
+                              template.template_data.accent,
+                              template.template_data.text,
+                            ].filter(Boolean)
+                          : [];
+                        if (colors.length === 0) return null;
+                        return colors
+                          .slice(0, 5)
+                          .map((color, index) => (
+                            <div
+                              key={index}
+                              className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
+                              style={{ backgroundColor: color }}
+                            />
+                          ));
+                      })()}
                       {template.colorScheme?.length > 5 && (
                         <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
                           +{template.colorScheme.length - 5}
@@ -349,134 +392,144 @@ export default function CanvaTemplates() {
       </div>
 
       {/* Create Template Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div
-              className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"
-              onClick={() => setShowCreateModal(false)}
-            />
+      {showCreateModal &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-50 overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-title"
+          >
+            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+              <div
+                className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"
+                onClick={() => setShowCreateModal(false)}
+              />
 
-            <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-bottom transition-all transform bg-white dark:bg-gray-800 shadow-xl rounded-2xl sm:my-8 sm:align-middle sm:max-w-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Create New Template
-                </h3>
-                <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateTemplate} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Template Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newTemplate.name}
-                    onChange={(e) =>
-                      setNewTemplate((prev) => ({
-                        ...prev,
-                        name: e.target.value,
-                      }))
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="Enter template name"
-                    required
-                  />
+              <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-bottom transition-all transform bg-white dark:bg-gray-800 shadow-xl rounded-2xl sm:my-8 sm:align-middle sm:max-w-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <h3
+                    id="modal-title"
+                    className="text-lg font-semibold text-gray-900 dark:text-white"
+                  >
+                    Create New Template
+                  </h3>
+                  <button
+                    onClick={() => setShowCreateModal(false)}
+                    className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={newTemplate.description}
-                    onChange={(e) =>
-                      setNewTemplate((prev) => ({
-                        ...prev,
-                        description: e.target.value,
-                      }))
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="Enter template description"
-                    rows={3}
-                  />
-                </div>
+                <form onSubmit={handleCreateTemplate} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Template Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newTemplate.name}
+                      onChange={(e) =>
+                        setNewTemplate((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Enter template name"
+                      required
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Color Scheme
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {newTemplate.colorScheme.map((color, index) => (
-                      <div key={index} className="relative group">
-                        <input
-                          type="color"
-                          value={color}
-                          onChange={(e) => {
-                            const newColors = [...newTemplate.colorScheme];
-                            newColors[index] = e.target.value;
-                            setNewTemplate((prev) => ({
-                              ...prev,
-                              colorScheme: newColors,
-                            }));
-                          }}
-                          className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200 dark:border-gray-600"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeColorFromScheme(index)}
-                          className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Description
+                    </label>
+                    <textarea
+                      value={newTemplate.description}
+                      onChange={(e) =>
+                        setNewTemplate((prev) => ({
+                          ...prev,
+                          description: e.target.value,
+                        }))
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Enter template description"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Color Scheme
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {newTemplate.colorScheme.map((color, index) => (
+                        <div key={index} className="relative group">
+                          <input
+                            type="color"
+                            value={color}
+                            onChange={(e) => {
+                              const newColors = [...newTemplate.colorScheme];
+                              newColors[index] = e.target.value;
+                              setNewTemplate((prev) => ({
+                                ...prev,
+                                colorScheme: newColors,
+                              }));
+                            }}
+                            className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200 dark:border-gray-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeColorFromScheme(index)}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={addColorToScheme}
+                        className="w-10 h-10 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center text-gray-400 hover:border-blue-500 hover:text-blue-500 transition-colors"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 mt-6">
                     <button
                       type="button"
-                      onClick={addColorToScheme}
-                      className="w-10 h-10 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center text-gray-400 hover:border-blue-500 hover:text-blue-500 transition-colors"
+                      onClick={() => setShowCreateModal(false)}
+                      className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                     >
-                      +
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        createMutation.isPending || !newTemplate.name.trim()
+                      }
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {createMutation.isPending ? (
+                        <Spinner size="sm" />
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          Create Template
+                        </>
+                      )}
                     </button>
                   </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={
-                      createMutation.isPending || !newTemplate.name.trim()
-                    }
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {createMutation.isPending ? (
-                      <Spinner size="sm" />
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" />
-                        Create Template
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+                </form>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

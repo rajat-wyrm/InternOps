@@ -13,6 +13,7 @@ const log = pino(
 const MIGRATION_REGEX = /^\d{3}_[a-z0-9_]+\.sql$/;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 100;
+const MIGRATION_LOCK_ID = 727100;
 
 const MIGRATION_RENAMES = {
   '003_password_reset.sql': '004_password_reset.sql',
@@ -37,6 +38,7 @@ const MIGRATION_RENAMES = {
   '019_proof_images.sql': '022_proof_images.sql',
   '020_social_tasks_reminder_sent_at.sql':
     '023_social_tasks_reminder_sent_at.sql',
+  '026_feature_flags.sql': '027_feature_flags.sql',
 };
 
 const fsPromises = fs.promises;
@@ -97,6 +99,11 @@ async function migrate(migrationsDir) {
   let client;
   try {
     client = await pool.connect();
+
+    log.info('Waiting for migration lock...');
+    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_ID]);
+    log.info('Migration lock acquired');
+
     await client.query('BEGIN');
 
     await client.query(`
@@ -197,6 +204,9 @@ async function migrate(migrationsDir) {
     throw e;
   } finally {
     if (client) {
+      await client
+        .query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_ID])
+        .catch(() => {});
       client.release();
     }
   }

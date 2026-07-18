@@ -89,6 +89,9 @@ module.exports = async function routes(fastify, opts) {
   fastify.register(require('./modules/ai-certificates/routes'), {
     prefix: '/ai-certificates',
   });
+  fastify.register(require('./modules/feature-flags/routes'), {
+    prefix: '/feature-flags',
+  });
 
   // Public certificate verification (no auth)
   const { verifyCertificate } = require('./modules/certificates/verify');

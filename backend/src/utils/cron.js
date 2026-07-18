@@ -226,7 +226,7 @@ function setupCronJobs() {
           deadlineHourMap.get(key).interns.push({
             id: row.intern_id,
             email: row.email,
-            fullName: row.full_name,
+            full_name: row.full_name,
           });
         }
 
@@ -247,7 +247,7 @@ function setupCronJobs() {
             try {
               await emailService.sendNotification(intern.email, {
                 title: 'Deadline Reminder',
-                message: `Hi ${intern.fullName || 'there'}, the task "${task.taskTitle}" has a deadline ${deadlineText}. Please submit your proof before the deadline passes to ensure your work is counted.`,
+                message: `Hi ${intern.full_name || 'there'}, the task "${task.taskTitle}" has a deadline ${deadlineText}. Please submit your proof before the deadline passes to ensure your work is counted.`,
                 actionUrl: `${appUrl}/tasks`,
                 actionText: 'Submit Proof',
               });

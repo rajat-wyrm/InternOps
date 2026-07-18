@@ -3,8 +3,7 @@ const repo = require('./resetRepository');
 const userRepo = require('./repository');
 const emailService = require('../../services/email');
 const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
-const RESET_COOLDOWN_MS = 60 * 1000; // 1 minute between reset requests per email
-const RESET_HOURLY_LIMIT = 5; // per email
+const config = require('../../config');
 
 async function forgotPassword(email, requestInfo) {
   const user = await userRepo.findByEmail(email);
@@ -19,11 +18,12 @@ async function forgotPassword(email, requestInfo) {
   const state = await repo.getResetAttemptState(email);
   if (
     state.lastAttempt &&
-    Date.now() - new Date(state.lastAttempt).getTime() < RESET_COOLDOWN_MS
+    Date.now() - new Date(state.lastAttempt).getTime() <
+      config.rateLimit.passwordResetCooldownMs
   ) {
     return;
   }
-  if (state.hourlyCount >= RESET_HOURLY_LIMIT) {
+  if (state.hourlyCount >= config.rateLimit.passwordResetHourlyMax) {
     return;
   }
 

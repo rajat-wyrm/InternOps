@@ -79,6 +79,7 @@ function inject(method, url, opts = {}) {
   return app.inject({
     method,
     url,
+    remoteAddress: opts.remoteAddress,
     cookies: { ...cookies, ...(opts.cookies || {}) },
     headers: authHeaders(opts.headers),
     payload: opts.payload,
@@ -311,11 +312,48 @@ describe('Auth Integration Tests', () => {
       .toString(36)
       .slice(2, 8)}@example.com`;
 
+    function resetRouteIp(suffix) {
+      return `10.250.${runId % 250}.${suffix}`;
+    }
+
     it('should accept forgot-password request for unknown email without leaking', async () => {
       const res = await inject('POST', '/api/v1/auth/forgot-password', {
         payload: { email: resetEmail },
+        remoteAddress: resetRouteIp(11),
       });
       expect(res.statusCode).toBe(200);
+    });
+
+    it('should enforce rate limiting per email and return consistent response', async () => {
+      await resetSeededAdminPassword();
+      await clearPasswordResetAttempts();
+      const sendSpy = jest.spyOn(emailService, 'sendPasswordReset');
+      sendSpy.mockClear();
+
+      // First request (should succeed and call email service)
+      const res1 = await inject('POST', '/api/v1/auth/forgot-password', {
+        payload: { email: SEEDED_ADMIN_EMAIL },
+        remoteAddress: resetRouteIp(12),
+      });
+      expect(res1.statusCode).toBe(200);
+      expect(JSON.parse(res1.body).message).toBe(
+        'If that email exists, a reset link has been sent.'
+      );
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+
+      // Second request (should hit rate limit, return 200, but NOT call email service again)
+      const res2 = await inject('POST', '/api/v1/auth/forgot-password', {
+        payload: { email: SEEDED_ADMIN_EMAIL },
+        remoteAddress: resetRouteIp(12),
+      });
+      expect(res2.statusCode).toBe(200);
+      expect(JSON.parse(res2.body).message).toBe(
+        'If that email exists, a reset link has been sent.'
+      );
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+
+      await clearPasswordResetAttempts();
+      sendSpy.mockRestore();
     });
 
     it('should reject reset with invalid token', async () => {
@@ -337,6 +375,7 @@ describe('Auth Integration Tests', () => {
 
         const forgotRes = await inject('POST', '/api/v1/auth/forgot-password', {
           payload: { email: SEEDED_ADMIN_EMAIL },
+          remoteAddress: resetRouteIp(13),
         });
         expect(forgotRes.statusCode).toBe(200);
 

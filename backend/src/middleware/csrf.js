@@ -152,6 +152,7 @@ function generateToken(request, reply) {
 const EXEMPT = [
   '/api/v1/auth/login',
   '/api/v1/auth/refresh',
+  '/api/v1/auth/logout',
   '/api/v1/auth/forgot-password',
   '/api/v1/auth/reset-password',
   '/docs',
@@ -179,9 +180,20 @@ async function csrfCheck(request, reply) {
     return reply.status(403).send({ error: 'CSRF validation failed' });
   }
 
-  if (headerToken !== tokenFor(session.sid)) {
+  // --- Secure Timing-Safe Comparison Fix ---
+  const expectedToken = tokenFor(session.sid);
+
+  if (expectedToken.length !== headerToken.length) {
     return reply.status(403).send({ error: 'CSRF validation failed' });
   }
+
+  const expectedBuffer = Buffer.from(expectedToken);
+  const headerBuffer = Buffer.from(headerToken);
+
+  if (!crypto.timingSafeEqual(expectedBuffer, headerBuffer)) {
+    return reply.status(403).send({ error: 'CSRF validation failed' });
+  }
+  // -----------------------------------------
 
   let tokenUserId = null;
   if (request.user && request.user.id) {

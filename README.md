@@ -245,5 +245,10 @@ InternOps/
 
 This project was developed for efficient intern operations management.  
 All rights reserved.
+---
+
+## Security
+
+Please refer to [SECURITY.md](SECURITY.md) for information about reporting security vulnerabilities.
 
 👉 View our history of updates in the **[CHANGELOG.md](CHANGELOG.md)**.

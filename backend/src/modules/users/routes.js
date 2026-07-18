@@ -21,6 +21,24 @@ const listUsersQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+const allowedAvatarExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+
+const isValidAvatarUrl = (val) => {
+  if (typeof val !== 'string') return false;
+  if (val.startsWith('/uploads/')) return true;
+
+  try {
+    const url = new URL(val);
+
+    if (!['http:', 'https:'].includes(url.protocol)) return false;
+
+    const pathname = url.pathname.toLowerCase();
+    return allowedAvatarExtensions.some((ext) => pathname.endsWith(ext));
+  } catch {
+    return false;
+  }
+};
+
 const changePasswordSchema = z.object({
   oldPassword: z.string(),
   newPassword: z.string().min(8),
@@ -39,18 +57,9 @@ const updateProfileSchema = z.object({
   notes: z.string().optional(),
   avatar_url: z
     .string()
-    .refine(
-      (val) => {
-        if (val.startsWith('/uploads/')) return true;
-        try {
-          const url = new URL(val);
-          return url.protocol === 'https:';
-        } catch {
-          return false;
-        }
-      },
-      { message: 'Must be a valid HTTPS URL or an internal upload path' }
-    )
+    .refine((val) => isValidAvatarUrl(val), {
+      message: 'Must be a valid image URL or an internal upload path',
+    })
     .optional(),
 });
 
@@ -321,18 +330,9 @@ async function routes(fastify) {
         notes: z.string().optional(),
         avatar_url: z
           .string()
-          .refine(
-            (val) => {
-              if (val.startsWith('/uploads/')) return true;
-              try {
-                const url = new URL(val);
-                return url.protocol === 'https:';
-              } catch {
-                return false;
-              }
-            },
-            { message: 'Must be a valid HTTPS URL or an internal upload path' }
-          )
+          .refine((val) => isValidAvatarUrl(val), {
+            message: 'Must be a valid image URL or an internal upload path',
+          })
           .optional(),
       });
 

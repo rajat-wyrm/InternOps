@@ -188,7 +188,7 @@ describe('Meetings Integration Tests', () => {
         password: 'Manager@123',
         role: 'TL',
         departmentId: dept1Id,
-        fullName: 'Team Lead',
+        full_name: 'Team Lead',
       });
       const subordinate = await createUserAsAdmin({
         email: TEST_USERS[1],
@@ -196,14 +196,14 @@ describe('Meetings Integration Tests', () => {
         role: 'CAPTAIN',
         managerId: manager.id,
         departmentId: dept1Id,
-        fullName: 'Captain User',
+        full_name: 'Captain User',
       });
       const outsider = await createUserAsAdmin({
         email: TEST_USERS[2],
         password: 'Outsider@123',
         role: 'CAPTAIN',
         departmentId: dept2Id,
-        fullName: 'Outside User',
+        full_name: 'Outside User',
       });
 
       // login as manager

@@ -23,7 +23,7 @@ const ROLE_OPTIONS = [
 ];
 
 const LABELS = {
-  fullName: 'Full Name',
+  full_name: 'Full Name',
   emailAddress: 'Email Address',
   temporaryPassword: 'Temporary Password',
   userRole: 'User Role',
@@ -33,7 +33,7 @@ const LABELS = {
 
 export default function CreateUserModal({ open, onClose }) {
   const queryClient = useQueryClient();
-  const [fullName, setFullName] = useState('');
+  const [full_name, setfull_name] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -124,7 +124,7 @@ export default function CreateUserModal({ open, onClose }) {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
 
       // Reset form
-      setFullName('');
+      setfull_name('');
       setEmail('');
       setPassword('');
       setRole('');
@@ -152,7 +152,7 @@ export default function CreateUserModal({ open, onClose }) {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (!fullName.trim()) return setError('Full Name is required');
+    if (!full_name.trim()) return setError('Full Name is required');
     if (!email.trim()) return setError('Email is required');
     if (!password) return setError('Temporary Password is required');
     if (password.length < 8)
@@ -160,7 +160,7 @@ export default function CreateUserModal({ open, onClose }) {
     if (!role) return setError('Role is required');
 
     const payload = {
-      fullName,
+      full_name,
       email,
       password,
       role,
@@ -233,15 +233,15 @@ export default function CreateUserModal({ open, onClose }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Full Name */}
               <div>
-                <label className={labelClass}>{LABELS.fullName}</label>
+                <label className={labelClass}>{LABELS.full_name}</label>
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
                     type="text"
                     required
                     placeholder="John Doe"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    value={full_name}
+                    onChange={(e) => setfull_name(e.target.value)}
                     className={inputClass}
                   />
                 </div>

@@ -1,11 +1,14 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
+const featureFlagMiddleware = require('../../middleware/featureFlag');
 const service = require('./service');
 
 async function routes(fastify) {
   // All routes require authentication + admin role
   fastify.addHook('onRequest', auth);
   fastify.addHook('onRequest', rbac('ADMIN'));
+  // Gate entire module behind AI_CERT_GENERATOR flag
+  fastify.addHook('preHandler', featureFlagMiddleware('AI_CERT_GENERATOR'));
 
   // ============================================================
   // Validation (Group 3 functionality)

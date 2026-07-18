@@ -2,8 +2,14 @@ const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
+const featureFlagMiddleware = require('../../middleware/featureFlag');
 const repo = require('./repository');
+
 async function routes(fastify) {
+  // Gate entire analytics module behind ADVANCED_ANALYTICS flag.
+  // When the flag is OFF this whole plugin returns 404, letting
+  // the admin gradually roll out analytics to specific users/roles.
+  fastify.addHook('preHandler', featureFlagMiddleware('ADVANCED_ANALYTICS'));
   fastify.get(
     '/overview',
     {

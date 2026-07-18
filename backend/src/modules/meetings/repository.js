@@ -44,6 +44,7 @@ async function removeAttendee(meetingId, userId) {
 async function listMeetings({
   userId,
   departmentId,
+  requestedDepartmentId,
   fromDate,
   toDate,
   page = 1,
@@ -61,6 +62,9 @@ async function listMeetings({
   `;
   const params = [];
   let condIdx = 1;
+
+  const selectedDepartmentId = requestedDepartmentId || departmentId;
+
   // Access control:
   // creator OR attendee OR department meeting
   if (userId) {
@@ -70,11 +74,13 @@ async function listMeetings({
     `;
     params.push(userId);
     condIdx++;
-    if (departmentId) {
+
+    if (selectedDepartmentId) {
       query += ` OR m.department_id = $${condIdx}`;
-      params.push(departmentId);
+      params.push(selectedDepartmentId);
       condIdx++;
     }
+
     query += `)`;
   }
   if (fromDate) {
