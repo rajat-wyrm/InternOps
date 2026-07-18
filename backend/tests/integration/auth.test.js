@@ -325,7 +325,7 @@ describe('Auth Integration Tests', () => {
       sendSpy.mockClear();
 
       // First request (should succeed and call email service)
-      const res1 = await inject('POST', '/api/auth/forgot-password', {
+      const res1 = await inject('POST', '/api/v1/auth/forgot-password', {
         payload: { email: SEEDED_ADMIN_EMAIL },
       });
       expect(res1.statusCode).toBe(200);
@@ -335,7 +335,7 @@ describe('Auth Integration Tests', () => {
       expect(sendSpy).toHaveBeenCalledTimes(1);
 
       // Second request (should hit rate limit, return 200, but NOT call email service again)
-      const res2 = await inject('POST', '/api/auth/forgot-password', {
+      const res2 = await inject('POST', '/api/v1/auth/forgot-password', {
         payload: { email: SEEDED_ADMIN_EMAIL },
       });
       expect(res2.statusCode).toBe(200);
