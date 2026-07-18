@@ -364,10 +364,12 @@ async function routes(fastify) {
         },
       },
       config: {
-        rateLimit: isTestEnv ? false : {
-          max: 2,
-          timeWindow: '5 minutes',
-        },
+        rateLimit: isTestEnv
+          ? false
+          : {
+              max: 2,
+              timeWindow: '5 minutes',
+            },
       },
     },
     async (req, reply) => {
