@@ -49,14 +49,15 @@ app.get(
     const redisStatus = getRedisStatus();
 
     if (process.env.NODE_ENV === 'test') {
-      return reply.send({ status: 'ok', });
+      return reply.send({ status: 'ok' });
     }
     if (redisStatus === 'disconnected') {
       return reply.status(503).send({ status: 'degraded' });
     }
 
-    return reply.send({ status: 'ok', });
-  });
+    return reply.send({ status: 'ok' });
+  }
+);
 app.get(
   '/health/db',
   {
@@ -105,7 +106,7 @@ app.get(
     const healthy = checks.db && checks.redis;
     reply
       .status(healthy ? 200 : 503)
-      .send({ status: healthy ? 'healthy' : 'degraded', checks, });
+      .send({ status: healthy ? 'healthy' : 'degraded', checks });
   }
 );
 app.get(
@@ -133,11 +134,9 @@ app.get(
 
     const healthy = checks.db && checks.redis;
 
-    return reply
-      .status(healthy ? 200 : 503)
-      .send({
-        status: healthy ? 'healthy' : 'degraded',
-      });
+    return reply.status(healthy ? 200 : 503).send({
+      status: healthy ? 'healthy' : 'degraded',
+    });
   }
 );
 app.register(require('@fastify/cors'), {
