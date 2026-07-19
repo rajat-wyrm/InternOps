@@ -16,13 +16,19 @@ export default function AuditLog() {
   const [page, setPage] = useState(1);
   const limit = 50;
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['auditLogs', page],
-    queryFn: () =>
-      api.get(`/audit?page=${page}&limit=${limit}`).then((res) => res.data),
-    refetchInterval: 60000,
-    refetchIntervalInBackground: false,
-  });
+ const {
+  data,
+  isLoading,
+  isError,
+  error,
+  refetch,
+} = useQuery({
+  queryKey: ['auditLogs', page],
+  queryFn: () =>
+    api.get(`/audit?page=${page}&limit=${limit}`).then((res) => res.data),
+  refetchInterval: 60000,
+  refetchIntervalInBackground: false,
+});
 
   const logs = data?.data || [];
   const total = data?.total || 0;

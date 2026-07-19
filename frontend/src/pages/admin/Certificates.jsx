@@ -54,7 +54,15 @@ export default function Certificates() {
   const [showModal, setShowModal] = useState(false);
   const [certToDelete, setCertToDelete] = useState(null);
 
-  const { data: certsData, isLoading } = useCertificates({ search });
+  const {
+  data: certsData,
+  isLoading,
+  isError,
+  error,
+  refetch,
+} = useCertificates({
+  search,
+});
   const certificates = certsData?.data || [];
   const { data: templatesData, isLoading: templatesLoading } = useTemplates();
   const templates = templatesData?.data || [];
@@ -143,9 +151,28 @@ export default function Certificates() {
       </Card>
 
       {/* Certificates Table */}
-      {isLoading ? (
-        <Spinner label="Loading certificates..." />
-      ) : filteredCertificates.length === 0 ? (
+    {isError ? (
+  <Card className="p-6">
+    <div className="text-center">
+      <h3 className="text-lg font-semibold text-red-600">
+        Failed to load certificates
+      </h3>
+
+      <p className="mt-2 text-sm text-red-500">
+        {error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          error?.message ||
+          'Something went wrong while fetching certificates.'}
+      </p>
+
+      <Btn className="mt-4" onClick={() => refetch()}>
+        Retry
+      </Btn>
+    </div>
+  </Card>
+) : isLoading ? (
+  <Spinner label="Loading certificates..." />
+) : filteredCertificates.length === 0 ? (
         <EmptyState
           icon="📜"
           title="No certificates found"
@@ -316,23 +343,33 @@ function GenerateCertificateModal({
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    generateMutation.mutate(formData, {
-      onSuccess: () => {
-        onClose();
-        setFormData({
-          recipient_name: '',
-          recipient_email: '',
-          title: '',
-          body: '',
-          issuer: '',
-          certificate_type: 'completion',
-          template_id: '',
-        });
-      },
+  generateMutation.mutate(formData, {
+  onSuccess: () => {
+    onClose();
+
+    setFormData({
+      recipient_name: '',
+      recipient_email: '',
+      title: '',
+      body: '',
+      issuer: '',
+      certificate_type: 'completion',
+      template_id: '',
     });
-  };
+  },
+
+    onError: (err) => {
+      alert(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          'Failed to generate certificate.'
+      );
+    },
+  });
+};
 
   if (!isOpen) return null;
 
@@ -505,4 +542,6 @@ function GenerateCertificateModal({
     </div>,
     document.body
   );
+
 }
+
