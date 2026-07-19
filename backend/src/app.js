@@ -11,6 +11,8 @@ const metrics = require('./utils/metrics');
 const { initializeWebSocket, getIO } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
 const { getRedisStatus } = require('./config/redis');
+const authenticate = require('./middleware/auth');
+const rbac = require('./middleware/rbac');
 const { csrfMiddleware } = require('./middleware/csrf');
 const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
@@ -47,19 +49,16 @@ app.get(
     const redisStatus = getRedisStatus();
 
     if (process.env.NODE_ENV === 'test') {
-      return reply.send({ status: 'ok' });
+      return reply.send({ status: 'ok', });
     }
-
     if (redisStatus === 'disconnected') {
       return reply
        .status(503)
        .send({ status: 'degraded'});
     }
 
-    return reply.send({ status: 'ok' });
-  }
-);
-
+    return reply.send({ status: 'ok', });
+  });
 app.get(
   '/health/db',
   {
@@ -72,10 +71,12 @@ app.get(
       await pool.query('SELECT 1');
       reply.send({
         status: 'ok',
+        db: 'connected',
       });
     } catch {
       reply.status(503).send({
         status: 'error',
+        db: 'disconnected',
       });
     }
   }
@@ -104,13 +105,43 @@ app.get(
       redisStatus === 'disabled';
 
     const healthy = checks.db && checks.redis;
-
     reply
       .status(healthy ? 200 : 503)
-      .send({ status: healthy ? 'healthy' : 'degraded' });
+      .send({ status: healthy ? 'healthy' : 'degraded', checks, });
   }
 );
+app.get(
+  '/health/detailed',
+  {
+    config: {
+      rateLimit: false,
+    },
+    preHandler: [authenticate, rbac('ADMIN')],
+  },
+  async (req, reply) => {
+    const checks = { db: false, redis: false };
 
+    try {
+      await pool.query('SELECT 1');
+      checks.db = true;
+    } catch {}
+
+    const redisStatus = getRedisStatus();
+
+    checks.redis =
+      process.env.NODE_ENV === 'test' ||
+      redisStatus === 'connected' ||
+      redisStatus === 'disabled';
+
+    const healthy = checks.db && checks.redis;
+
+    return reply
+      .status(healthy ? 200 : 503)
+      .send({
+        status: healthy ? 'healthy' : 'degraded',
+      });
+  }
+);
 app.register(require('@fastify/cors'), {
   origin:
     config.nodeEnv === 'production'
