@@ -11,15 +11,15 @@ export default function Departments() {
   const [deletingId, setDeletingId] = useState(null);
 
   const {
-  data: departments = [],
-  isLoading,
-  isError,
-  error: queryError,
-  refetch,
-} = useQuery({
-  queryKey: ['departments'],
-  queryFn: () => api.get('/departments').then((r) => r.data),
-});
+    data: departments = [],
+    isLoading,
+    isError,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/departments').then((r) => r.data),
+  });
 
   const inv = () =>
     queryClient.invalidateQueries({ queryKey: ['departments'] });
@@ -133,35 +133,35 @@ export default function Departments() {
       </Card>
 
       {isError ? (
-  <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-    <h3 className="text-lg font-semibold text-red-700">
-      Failed to load departments
-    </h3>
-<p className="mt-2 text-sm text-red-600">
-  {queryError?.response?.data?.error ||
-    queryError?.response?.data?.message ||
-    queryError?.message ||
-    'Something went wrong while fetching departments.'}
-</p>
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+          <h3 className="text-lg font-semibold text-red-700">
+            Failed to load departments
+          </h3>
+          <p className="mt-2 text-sm text-red-600">
+            {queryError?.response?.data?.error ||
+              queryError?.response?.data?.message ||
+              queryError?.message ||
+              'Something went wrong while fetching departments.'}
+          </p>
 
-    <Btn className="mt-4" onClick={() => refetch()}>
-      Retry
-    </Btn>
-  </div>
-) : isLoading ? (
-  <div className="flex justify-center p-8">
-    <Spinner />
-  </div>
-) : departments.length === 0 ? (
-  <EmptyState
-    icon={
-      <Building2 className="w-12 h-12 text-slate-300 dark:text-slate-600" />
-    }
-    title="No departments yet"
-    text="Create your first department above to get started."
-  />
-) : (
-  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+          <Btn className="mt-4" onClick={() => refetch()}>
+            Retry
+          </Btn>
+        </div>
+      ) : isLoading ? (
+        <div className="flex justify-center p-8">
+          <Spinner />
+        </div>
+      ) : departments.length === 0 ? (
+        <EmptyState
+          icon={
+            <Building2 className="w-12 h-12 text-slate-300 dark:text-slate-600" />
+          }
+          title="No departments yet"
+          text="Create your first department above to get started."
+        />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
           {departments.map((d, i) => (
             <Card
               key={d.id}
