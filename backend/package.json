@@ -7,7 +7,9 @@
     "start": "cross-env NODE_ENV=production node src/app.js",
     "migrate": "node src/db/migrate.js",
     "seed": "node seeds/seed.js",
-    "test": "cross-env NODE_ENV=test jest --config jest.config.js --runInBand --detectOpenHandles --testTimeout=15000",
+    "test": "cross-env NODE_ENV=test jest --config jest.config.js --testTimeout=15000",
+    "test:debug": "cross-env NODE_ENV=test jest --config jest.config.js --runInBand --detectOpenHandles --testTimeout=15000",
+    "test:coverage": "cross-env NODE_ENV=test jest --config jest.config.js --coverage --testTimeout=15000",
     "format": "prettier --write .",
     "lint": "eslint .",
     "lint:db": "node scripts/lint-db.js"

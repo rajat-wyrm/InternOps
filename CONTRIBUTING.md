@@ -197,8 +197,14 @@ All test commands are run from the `backend/` directory:
 ```bash
 cd backend
 
-# Run all integration tests (includes migrate + seed automatically via globalSetup)
+# Run all integration tests (parallel execution)
 npm test
+
+# Run tests in debug mode (serial execution with open handles detection)
+npm run test:debug
+
+# Run tests with coverage report and threshold checks
+npm run test:coverage
 
 # Run a single test file
 npm test -- tests/integration/auth.test.js
@@ -207,16 +213,16 @@ npm test -- tests/integration/auth.test.js
 npm test -- --watch
 ```
 
-The Jest configuration (`jest.config.js`) runs tests **serially** (`--runInBand`) to avoid database race conditions. Do not remove this flag.
+Tests run in parallel by default (`npm test`). For serial execution and open handle debugging, use `npm run test:debug`.
 
 ---
 
 ### Coverage Report
 
-Coverage is collected automatically on every `npm test` run and written to `backend/coverage/`. To view the HTML report:
+Coverage threshold criteria (70% statements/functions/lines, 60% branches) are configured in `backend/jest.config.js`. Coverage reports are generated on `npm run test:coverage` and written to `backend/coverage/`. To view the HTML report:
 
 ```bash
-# After running npm test
+# After running npm run test:coverage
 open backend/coverage/lcov-report/index.html   # macOS/Linux
 # Windows:
 start backend/coverage/lcov-report/index.html

@@ -3,7 +3,6 @@ module.exports = {
   testMatch: ['**/tests/**/*.test.js'],
   verbose: true,
   forceExit: true,
-  detectOpenHandles: true,
   globalSetup: '<rootDir>/tests/globalSetup.js',
   globalTeardown: '<rootDir>/tests/globalTeardown.js',
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
@@ -18,10 +17,10 @@ module.exports = {
   ],
   coverageThreshold: {
     global: {
-      branches: 33,
-      functions: 40,
-      lines: 41,
-      statements: 40,
+      branches: 60,
+      functions: 70,
+      lines: 70,
+      statements: 70,
     },
   },
   testTimeout: 30000,
