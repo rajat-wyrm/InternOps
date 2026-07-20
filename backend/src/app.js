@@ -49,9 +49,7 @@ app.get(
       return reply.send({ status: 'ok' });
     }
     if (redisStatus === 'disconnected') {
-      return reply
-        .status(503)
-        .send({ status: 'degraded', redis: 'disconnected' });
+      return reply.status(503).send({ status: 'degraded' });
     }
     return reply.send({ status: 'ok' });
   }
