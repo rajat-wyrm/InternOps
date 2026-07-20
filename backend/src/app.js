@@ -29,6 +29,7 @@ const app = Fastify({
 app.get(
   '/metrics',
   {
+    preHandler: [auth, rbac('ADMIN')],
     config: {
       rateLimit: false,
     },
