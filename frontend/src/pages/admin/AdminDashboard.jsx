@@ -276,7 +276,6 @@ export default function AdminDashboard() {
                 error?.message ||
                 'Something went wrong while fetching users.'}
             </p>
-            ca
           </div>
 
           <button
@@ -292,20 +291,18 @@ export default function AdminDashboard() {
         {isLoading ? (
           <Spinner />
         ) : rows.length === 0 ? (
-          isError ? null : (
-            <EmptyState
-              title={
-                search || roleFilter || statusFilter
-                  ? 'No users found'
-                  : 'No users yet'
-              }
-              text={
-                search || roleFilter || statusFilter
-                  ? 'No users were found matching those criteria.'
-                  : 'New users will appear here.'
-              }
-            />
-          )
+          <EmptyState
+            title={
+              search || roleFilter || statusFilter
+                ? 'No users found'
+                : 'No users yet'
+            }
+            text={
+              search || roleFilter || statusFilter
+                ? 'No users were found matching those criteria.'
+                : 'New users will appear here.'
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
