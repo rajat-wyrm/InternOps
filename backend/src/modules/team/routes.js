@@ -306,12 +306,12 @@ async function routes(fastify) {
     '/members/:id/role',
     {
       preHandler: [
-  auth,
-  rbac(...MANAGER_ROLES),
-  requireFreshRole,
-  ownership('id'),
-  sanitize,
-],
+        auth,
+        rbac(...MANAGER_ROLES),
+        requireFreshRole,
+        ownership('id'),
+        sanitize,
+      ],
       schema: {
         tags: ['Team'],
         description: 'Change member role',
@@ -386,12 +386,12 @@ async function routes(fastify) {
     '/members/:id/manager',
     {
       preHandler: [
-  auth,
-  rbac(...MANAGER_ROLES),
-  requireFreshRole,
-  ownership('id'),
-  sanitize,
-],
+        auth,
+        rbac(...MANAGER_ROLES),
+        requireFreshRole,
+        ownership('id'),
+        sanitize,
+      ],
       schema: {
         tags: ['Team'],
         description: 'Change member manager',
