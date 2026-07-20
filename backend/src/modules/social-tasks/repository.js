@@ -51,24 +51,52 @@ async function isTaskAssignedToUser(taskId, userId) {
     `SELECT 1 FROM social_tasks st
      WHERE st.id = $1 AND st.deleted_at IS NULL
        AND (
-         NOT EXISTS (SELECT 1 FROM task_assignments WHERE task_id = st.id AND deleted_at IS NULL)
-         OR EXISTS (SELECT 1 FROM task_assignments WHERE task_id = st.id AND user_id = $2 AND deleted_at IS NULL)
+         NOT EXISTS (
+           SELECT 1 FROM task_assignments
+           WHERE task_id = st.id AND deleted_at IS NULL
+         )
+         OR EXISTS (
+           SELECT 1 FROM task_assignments
+           WHERE task_id = st.id
+             AND user_id = $2
+             AND deleted_at IS NULL
+         )
        )`,
     [taskId, userId]
   );
+
   return res.rowCount > 0;
 }
-async function getAllInternEmails() {
+
+async function getAllInternEmails(limit = 500, offset = 0) {
   const res = await pool.query(
     `SELECT email
+     FROM users
+     WHERE role IN ('INTERN', 'CAPTAIN')
+       AND email IS NOT NULL
+     ORDER BY id
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+
+  return res.rows.map((row) => row.email);
+}
+
+async function getInternEmailCount() {
+  const res = await pool.query(
+    `SELECT COUNT(*)::int AS count
      FROM users
      WHERE role IN ('INTERN', 'CAPTAIN')
        AND email IS NOT NULL`
   );
 
-  return res.rows.map((row) => row.email);
+  return res.rows[0].count;
 }
-async function getTasks(filters, userId, userRole) {
+
+// Shared WHERE-clause builder so getTasks and getTasksCount can never
+// drift out of sync with each other (same filters, same params order
+// up to the point pagination params are appended).
+function buildTaskFilterClause(filters, userId, userRole) {
   const params = [];
   const where = ['st.deleted_at IS NULL'];
 
@@ -88,30 +116,87 @@ async function getTasks(filters, userId, userRole) {
     where.push(`st.deadline <= $${params.length}`);
   }
 
-  const whereSql = `WHERE ${where.join(' AND ')}`;
+  return { whereSql: `WHERE ${where.join(' AND ')}`, params };
+}
+
+async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
+  const safeLimit = Math.min(Number(limit) || 50, 100);
+  const safePage = Math.max(Number(page) || 1, 1);
+  const offset = (safePage - 1) * safeLimit;
+
+  const { whereSql, params } = buildTaskFilterClause(filters, userId, userRole);
+
+  params.push(safeLimit);
+  params.push(offset);
+
   const q = `
-    SELECT st.* FROM social_tasks st
+    SELECT st.*
+    FROM social_tasks st
     ${whereSql}
     ORDER BY st.created_at DESC
+    LIMIT $${params.length - 1}
+    OFFSET $${params.length}
   `;
+
   return (await pool.query(q, params)).rows;
 }
-async function submitProof(taskId, internId, imagePath) {
+
+async function getTasksCount(filters, userId, userRole) {
+  const { whereSql, params } = buildTaskFilterClause(filters, userId, userRole);
+
+  const q = `
+    SELECT COUNT(*)::int AS count
+    FROM social_tasks st
+    ${whereSql}
+  `;
+
+  const res = await pool.query(q, params);
+  return res.rows[0].count;
+}
+
+async function submitProof(
+  taskId,
+  internId,
+  imagePath,
+  { didComment = false, didRepost = false, didShare = false } = {}
+) {
   const res = await pool.query(
-    'INSERT INTO proof_submissions (task_id, intern_id, image_path) VALUES ($1,$2,$3) RETURNING *',
-    [taskId, internId, imagePath]
+    `INSERT INTO proof_submissions
+      (
+        task_id,
+        intern_id,
+        image_path,
+        did_comment,
+        did_repost,
+        did_share
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *`,
+    [taskId, internId, imagePath, didComment, didRepost, didShare]
   );
+
   return res.rows[0];
 }
 
-async function submitProofWithImages(taskId, internId, imagePaths) {
-  // Insert with null for image_path since it's legacy
-  const proof = await submitProof(taskId, internId, null);
+async function submitProofWithImages(
+  taskId,
+  internId,
+  imagePaths,
+  { didComment = false, didRepost = false, didShare = false } = {}
+) {
+  // Create proof record with engagement actions
+  const proof = await submitProof(taskId, internId, null, {
+    didComment,
+    didRepost,
+    didShare,
+  });
 
   if (imagePaths && imagePaths.length > 0) {
     const values = imagePaths.map((_, i) => `($1, $${i + 2})`).join(',');
+
     await pool.query(
-      `INSERT INTO proof_images (proof_id, image_path) VALUES ${values}`,
+      `INSERT INTO proof_images (proof_id, image_path)
+       VALUES ${values}`,
       [proof.id, ...imagePaths]
     );
   }
@@ -199,6 +284,30 @@ async function getProof(proofId) {
   return res.rows[0] || null;
 }
 
+async function updateTask(
+  taskId,
+  { title, description, targetPlatform, taskLink, deadline }
+) {
+  const res = await pool.query(
+    `UPDATE social_tasks
+     SET title = COALESCE($1, title),
+         description = COALESCE($2, description),
+         target_platform = COALESCE($3, target_platform),
+         task_link = COALESCE($4, task_link),
+         deadline = COALESCE($5, deadline)
+     WHERE id = $6 AND deleted_at IS NULL
+     RETURNING *`,
+    [title, description, targetPlatform, taskLink, deadline, taskId]
+  );
+  return res.rows[0] || null;
+}
+
+async function deleteTask(taskId) {
+  await pool.query('UPDATE social_tasks SET deleted_at = NOW() WHERE id = $1', [
+    taskId,
+  ]);
+}
+
 async function deleteProof(proofId) {
   await pool.query(
     'UPDATE proof_submissions SET deleted_at = NOW() WHERE id = $1',
@@ -214,23 +323,30 @@ async function getProofImage(imageId) {
 }
 
 async function deleteProofImage(imageId) {
-  await pool.query('DELETE FROM proof_images WHERE id = $1', [imageId]);
+  await pool.query('UPDATE proof_images SET deleted_at = NOW() WHERE id = $1', [
+    imageId,
+  ]);
 }
 
 module.exports = {
   createTask,
+  updateTask,
+  deleteTask,
   assignTask,
   getUserEmail,
   isTaskAssignedToUser,
   getTasks,
+  getTasksCount,
   submitProof,
   submitProofWithImages,
   verifyProof,
   getProofsByTask,
   getProofsByIntern,
+
   getProof,
   deleteProof,
   getProofImage,
   deleteProofImage,
   getAllInternEmails,
+  getInternEmailCount,
 };

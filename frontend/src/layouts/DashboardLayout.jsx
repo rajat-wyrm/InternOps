@@ -19,14 +19,22 @@ import {
   Sun,
   Moon,
   Megaphone,
+  Award,
+  Layers,
+  Palette,
+  Sparkles,
+  Zap,
+  ToggleRight,
 } from 'lucide-react';
 
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
+import { connectSocket, disconnectSocket } from '../lib/socket';
 import { UserAvatar, ConfirmationModal } from '../components/ui';
 import useAuthStore from '../store/auth';
+import useFeatureFlagsStore from '../store/featureFlags';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { ROLE_LABEL } from '../constants/roles';
 
@@ -60,6 +68,7 @@ const nav = [
     label: 'Analytics',
     icon: BarChart2,
     allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
+    featureFlag: 'ADVANCED_ANALYTICS',
   },
   {
     path: '/exports',
@@ -100,14 +109,57 @@ const adminNav = [
     icon: Bot,
     allowedRoles: ADMIN_ONLY_ROLES,
   },
+  {
+    path: '/quick-generate',
+    label: 'Quick Generate',
+    icon: Zap,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/certificates',
+    label: 'Certificates',
+    icon: Award,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/bulk-generate',
+    label: 'Bulk Generate',
+    icon: Layers,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/canva-templates',
+    label: 'Templates & Canva',
+    icon: Palette,
+    allowedRoles: ADMIN_ONLY_ROLES,
+    featureFlag: 'CANVA_INTEGRATION',
+  },
+  {
+    path: '/ai-certificates',
+    label: 'AI Certificates',
+    icon: Sparkles,
+    allowedRoles: ADMIN_ONLY_ROLES,
+    featureFlag: 'AI_CERT_GENERATOR',
+  },
+  {
+    path: '/feature-flags',
+    label: 'Feature Flags',
+    icon: ToggleRight,
+    allowedRoles: ADMIN_ONLY_ROLES,
+  },
 ];
 
 const FULL_LOGO_SRC = '/UptoSkills.webp';
 const MINI_LOGO_SRC = '/Uptoskills_log_fevicon.png';
 
-function canShowNavItem(item, role) {
-  if (!item.allowedRoles) return true;
-  return item.allowedRoles.includes(role);
+function canShowNavItem(item, role, flags) {
+  if (!item.allowedRoles) {
+    if (item.featureFlag) return flags[item.featureFlag] === true;
+    return true;
+  }
+  if (!item.allowedRoles.includes(role)) return false;
+  if (item.featureFlag) return flags[item.featureFlag] === true;
+  return true;
 }
 
 export default function DashboardLayout() {
@@ -115,9 +167,16 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const accessToken = useAuthStore((s) => s.accessToken);
+
+  useEffect(() => {
+    if (accessToken) connectSocket(accessToken);
+    return () => disconnectSocket();
+  }, [accessToken]);
 
   const role = user?.role;
-
+  const flags = useFeatureFlagsStore((s) => s.flags);
+  const SIDEBAR_KEY = 'sidebar_scroll';
   const sidebarNavRef = useRef(null);
 
   const [collapsed, setCollapsed] = useState(
@@ -133,7 +192,7 @@ export default function DashboardLayout() {
     queryFn: () => api.get('/users/me').then((r) => r.data),
   });
 
-  const displayName = me?.full_name || user?.fullName || user?.email;
+  const displayName = me?.full_name || user?.full_name || user?.email;
   const avatarUrl = me?.avatar_url || null;
 
   useEffect(() => {
@@ -145,8 +204,10 @@ export default function DashboardLayout() {
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }, [dark]);
 
-  const visibleNav = nav.filter((item) => canShowNavItem(item, role));
-  const visibleAdminNav = adminNav.filter((item) => canShowNavItem(item, role));
+  const visibleNav = nav.filter((item) => canShowNavItem(item, role, flags));
+  const visibleAdminNav = adminNav.filter((item) =>
+    canShowNavItem(item, role, flags)
+  );
 
   const allItems = [...visibleNav, ...visibleAdminNav];
 
@@ -155,9 +216,7 @@ export default function DashboardLayout() {
   };
 
   useEffect(() => {
-    const savedScroll = Number(
-      sessionStorage.getItem('internopsSidebarScroll') || 0
-    );
+    const savedScroll = Number(sessionStorage.getItem(SIDEBAR_KEY) || 0);
 
     requestAnimationFrame(() => {
       if (sidebarNavRef.current) {
@@ -169,7 +228,7 @@ export default function DashboardLayout() {
   const saveSidebarScroll = () => {
     if (sidebarNavRef.current) {
       sessionStorage.setItem(
-        'internopsSidebarScroll',
+        SIDEBAR_KEY,
         String(sidebarNavRef.current.scrollTop)
       );
     }
@@ -188,6 +247,7 @@ export default function DashboardLayout() {
       <Link
         to={n.path}
         title={collapsed ? n.label : undefined}
+        aria-label={n.label}
         onClick={saveSidebarScroll}
         className={`group relative flex items-center gap-3 rounded-2xl text-sm font-bold transition-all duration-200
           ${collapsed ? 'justify-center px-0 py-3' : 'px-3 py-2.5'}

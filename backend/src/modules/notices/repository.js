@@ -16,11 +16,24 @@ async function getActiveNotices() {
   return rows;
 }
 
-async function getAllNotices() {
+async function getAllNotices({ page = 1, limit = 50 } = {}) {
+  const safeLimit = Math.min(Number(limit) || 50, 100);
+  const safePage = Math.max(Number(page) || 1, 1);
+  const offset = (safePage - 1) * safeLimit;
+
   const { rows } = await pool.query(
-    'SELECT * FROM notices WHERE deleted_at IS NULL ORDER BY created_at DESC'
+    'SELECT * FROM notices WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+    [safelimit, offset]
   );
-  return rows;
+  const { rows: countRows } = await pool.query(
+    'SELECT COUNT(*) FROM notices WHERE deleted_at IS NULL'
+  );
+  return {
+    data: rows,
+    total: parseInt(countRows[0].count, 10),
+    page: safePage,
+    limit: safeLimit,
+  };
 }
 
 async function createNotice({

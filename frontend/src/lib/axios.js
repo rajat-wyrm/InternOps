@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { toast } from 'sonner';
 
 function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
-  if (!raw) return '/api';
+  if (!raw) return '/api/v1';
   let url = raw.trim();
   if (!/^https?:\/\//i.test(url)) {
     console.warn(
@@ -12,12 +13,97 @@ function getBaseUrl() {
   }
   url = url.replace(/\/+$/, '');
 
+  // Normalize bare API URLs to the versioned backend path.
+  // This keeps API calls working correctly when VITE_API_URL is set to
+  // "http://localhost:5000", "http://localhost:5000/api", or "http://localhost:5000/api/v1".
+  const hasApiVersionPath = /\/api\/v\d+(?:\/|$)/i.test(url);
+  const hasApiOnlyPath = /\/api$/i.test(url);
+
+  if (!hasApiVersionPath) {
+    if (hasApiOnlyPath) {
+      url = url.replace(/\/api$/i, '/api/v1');
+    } else {
+      url = `${url}/api/v1`;
+    }
+  }
+
   return url;
 }
 const api = axios.create({
   baseURL: getBaseUrl(),
   withCredentials: true,
+  timeout: 15000,
 });
+
+function getApiErrorMessage(responseData) {
+  if (!responseData) return null;
+  if (typeof responseData === 'string') return responseData;
+  if (typeof responseData.error === 'string' && responseData.error.trim()) {
+    return responseData.error.trim();
+  }
+  if (typeof responseData.message === 'string' && responseData.message.trim()) {
+    return responseData.message.trim();
+  }
+  if (typeof responseData.detail === 'string' && responseData.detail.trim()) {
+    return responseData.detail.trim();
+  }
+  if (
+    typeof responseData.description === 'string' &&
+    responseData.description.trim()
+  ) {
+    return responseData.description.trim();
+  }
+  if (Array.isArray(responseData.errors) && responseData.errors.length) {
+    const firstError = responseData.errors[0];
+    if (typeof firstError === 'string') return firstError;
+    if (typeof firstError?.message === 'string' && firstError.message.trim()) {
+      return firstError.message.trim();
+    }
+  }
+  return null;
+}
+
+function shouldShowGlobalToast(err) {
+  const original = err.config || {};
+  const isAuthRoute =
+    original.url &&
+    (original.url.includes('/auth/login') ||
+      original.url.includes('/auth/refresh') ||
+      original.url.includes('/auth/register'));
+
+  return !(
+    original._retry ||
+    original._suppressGlobalError ||
+    isAuthRoute ||
+    original.url?.includes('/auth/refresh')
+  );
+}
+
+function notifyGlobalApiError(err) {
+  if (!shouldShowGlobalToast(err)) {
+    return;
+  }
+
+  if (!err.response) {
+    const networkMessage =
+      err.code === 'ECONNABORTED'
+        ? 'The request timed out. Please check your connection and try again.'
+        : 'Unable to connect to the server. Check your internet connection and try again.';
+
+    toast.error(networkMessage);
+    return;
+  }
+
+  const status = err.response.status;
+  const serverMessage = getApiErrorMessage(err.response.data);
+  const message =
+    status >= 500
+      ? 'Something went wrong on our side. Please try again later.'
+      : serverMessage ||
+        'Request failed. Please check your input and try again.';
+
+  toast.error(message);
+}
 
 // The backend's CSRF guard requires the X-CSRF-Token header on mutating
 // requests. We fetch a real token once and reuse it. If the call to obtain
@@ -68,8 +154,9 @@ function removeLegacyAuthStorage() {
   try {
     if (typeof window === 'undefined') return;
 
-    // Remove access tokens saved by older versions of the app.
-    window.localStorage.removeItem('accessToken');
+    // Remove user metadata cached in localStorage.
+    // Access tokens are memory-only and never stored in localStorage.
+    window.localStorage.removeItem('user');
   } catch {
     /* localStorage may be unavailable — ignore */
   }
@@ -140,11 +227,24 @@ function processQueue(error, token = null) {
 }
 
 function handleLogout() {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('user');
-  clearCsrfToken();
-  if (!window.location.pathname.startsWith('/login')) {
-    window.location.href = '/login';
+  try {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('user');
+      } catch {
+        /* ignore localStorage unavailability */
+      }
+
+      clearCsrfToken();
+
+      if (_authStore) {
+        _authStore.getState().logout();
+      }
+    } else {
+      clearCsrfToken();
+    }
+  } catch {
+    clearCsrfToken();
   }
 }
 
@@ -202,9 +302,12 @@ api.interceptors.response.use(
         const newToken = refreshRes.data?.accessToken;
 
         if (newToken) {
+          const meRes = await api.get('/users/me');
           // Store refreshed token in memory only.
           if (_authStore) {
-            _authStore.getState().setAuth({ accessToken: newToken });
+            _authStore
+              .getState()
+              .setAuth({ accessToken: newToken, user: meRes.data });
           }
 
           // The server rotated the refresh cookie. The CSRF token may also
@@ -239,19 +342,13 @@ api.interceptors.response.use(
           }
         }
 
-        if (
-          typeof window !== 'undefined' &&
-          !window.location.pathname.startsWith('/login')
-        ) {
-          window.location.href = '/login';
-        }
-
         return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;
       }
     }
 
+    notifyGlobalApiError(err);
     return Promise.reject(err);
   }
 );

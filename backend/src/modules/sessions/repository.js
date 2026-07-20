@@ -73,9 +73,15 @@ async function revokeSession(sessionId, userId) {
           return 0
         end
         local ok, parsed = pcall(cjson.decode, stored)
-        local storedUserId = stored
+        local storedUserId = nil
         if ok and parsed and parsed.userId then
           storedUserId = tostring(parsed.userId)
+        elseif ok and parsed and parsed.user_id then
+          storedUserId = tostring(parsed.user_id)
+        end
+        -- Fallback: plain-text token stored as just the userId
+        if not storedUserId then
+          storedUserId = stored
         end
         if storedUserId ~= userId then
           return 0
@@ -162,33 +168,8 @@ async function revokeAllUserSessions(userId) {
   }
 }
 
-// ─── getSessionById ───────────────────────────────────────────────────────────
-async function getSessionById(sessionId, userId) {
-  const redis = await getRedisClient();
-
-  if (redis) {
-    const tokenHashes = await redis.sMembers(`user_tokens:${userId}`);
-
-    if (tokenHashes.includes(sessionId)) {
-      return { id: sessionId };
-    }
-
-    return null;
-  }
-
-  const res = await pool.query(
-    `SELECT id
-     FROM refresh_tokens
-     WHERE id = $1 AND user_id = $2`,
-    [sessionId, userId]
-  );
-
-  return res.rows[0] || null;
-}
-
 module.exports = {
   getUserSessions,
   revokeSession,
   revokeAllUserSessions,
-  getSessionById,
 };

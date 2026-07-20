@@ -20,10 +20,19 @@ const DUMMY_USER = {
   password_hash:
     '$argon2id$v=19$m=65536,t=3,p=4$8/VvKJehP9DGKtV1NP5p8g$z0S2q7BsbH2YY16pI0/jXvgI4ElwnccjvW3NNcCSsQk',
 };
+const { getRedisClient } = require('../../config/redis');
+const emailService = require('../../services/email');
 
 async function register(data, creator) {
-  if (data.managerId) {
-    const manager = await repo.findByIdRaw(data.managerId);
+  // Default to the creator (admin) as manager if none was explicitly chosen,
+  // so users created via Admin > Users also show up in team/hierarchy views.
+  const managerId =
+    data.role === 'ADMIN'
+      ? data.managerId || null
+      : data.managerId || creator.id;
+
+  if (managerId) {
+    const manager = await repo.findByIdRaw(managerId);
     if (!manager) throw new Error('Manager not found');
     if (!isValidStep(manager.role, data.role)) {
       throw new Error(
@@ -32,7 +41,7 @@ async function register(data, creator) {
     }
   }
 
-  const user = await repo.createUser(data);
+  const user = await repo.createUser({ ...data, managerId });
 
   await createAuditLog({
     userId: creator.id,
@@ -59,30 +68,65 @@ function publicUser(user) {
     id: user.id,
     email: user.email,
     role: user.role,
-    fullName: user.full_name,
+    full_name: user.full_name,
   };
 }
 
 async function login(email, password, ip, userAgent) {
-  try {
-    const currentAttempts = (await incrementAttempt(email, ip)) || 0;
+  let currentAttempts = 0;
 
-    if (currentAttempts > 5) {
-      throw new UnauthorizedError(
-        'Account temporarily locked. Please try again later.'
-      );
-    }
+  try {
+    currentAttempts = (await incrementAttempt(email, ip)) || 0;
   } catch (err) {
     console.error('Redis Brute Force Check Failed:', err);
+
+    throw new UnauthorizedError(
+      'Login temporarily unavailable. Please try again later.'
+    );
+  }
+
+  if (currentAttempts > 5) {
+    const redis = await getRedisClient();
+    const notifyKey = `lockout-email:${email}`;
+
+    let alreadySent = null;
+
+    if (redis) {
+      alreadySent = await redis.get(notifyKey);
+    }
+
+    if (!alreadySent) {
+      const user = await repo.findByEmail(email);
+
+      if (user) {
+        await emailService.sendAccountLockoutNotification(email, {
+          ipAddress: ip,
+          timestamp: new Date().toISOString(),
+          failedAttempts: currentAttempts,
+        });
+      }
+
+      if (redis) {
+        await redis.set(notifyKey, '1', {
+          EX: 15 * 60,
+        });
+      }
+    }
+
+    throw new UnauthorizedError(
+      'Account temporarily locked. Please try again later.'
+    );
   }
 
   const user = await repo.findByEmail(email);
 
   if (!user || user.suspended) {
-    // Always run argon2.verify even when user not found to flatten timing
     const argon2 = require('argon2');
+
     await argon2.verify(DUMMY_HASH, password).catch(() => {});
+
     await recordLoginAttempt(email, ip, false).catch(() => {});
+
     throw new UnauthorizedError('Invalid credentials');
   }
 
@@ -90,11 +134,10 @@ async function login(email, password, ip, userAgent) {
 
   if (!valid) {
     await recordLoginAttempt(email, ip, false).catch(() => {});
+
     throw new UnauthorizedError('Invalid credentials');
   }
 
-  // Clear all prior failed attempts so attacker-seeded failures don't
-  // trigger a lockout for the legitimate user after a successful login.
   await clearFailedAttempts(email, ip);
   await recordLoginAttempt(email, ip, true);
 
@@ -103,15 +146,6 @@ async function login(email, password, ip, userAgent) {
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
   await repo.storeRefreshTokenRedis(user.id, hashToken(refresh), expires);
-
-  await createAuditLog({
-    userId: user.id,
-    action: 'LOGIN',
-    resourceType: 'auth',
-    resourceId: user.id,
-    ipAddress: ip,
-    userAgent,
-  });
 
   return {
     accessToken: access,
@@ -139,15 +173,27 @@ async function refreshTokens(token, ip) {
     throw new UnauthorizedError('Token revoked/expired');
   }
 
-  const user = await repo.findById(decoded.id);
+  // Ensure the claimed token belongs to the same user identified by the
+  // signed refresh token payload.
+  if (String(claimedUserId) !== String(decoded.id)) {
+    await repo.revokeAllUserTokensRedis(claimedUserId);
+    throw new UnauthorizedError('Invalid refresh token');
+  }
+
+  const user = await repo.findById(claimedUserId);
 
   if (!user || user.suspended) {
+    await repo.revokeAllUserTokensRedis(claimedUserId);
     throw new UnauthorizedError('User not found/suspended');
   }
 
   const newAccess = generateAccessToken(user);
   const newRefresh = generateRefreshToken(user);
   const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  // Revoke every existing refresh token for this user before storing the
+  // replacement. This prevents stolen sibling tokens from remaining usable.
+  await repo.revokeAllUserTokensRedis(user.id);
 
   await repo.storeRefreshTokenRedis(user.id, hashToken(newRefresh), newExpiry);
 

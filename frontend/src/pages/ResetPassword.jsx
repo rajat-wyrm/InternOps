@@ -10,8 +10,7 @@ export default function ResetPassword() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const hash = window.location.hash.slice(1);
-    const params = new URLSearchParams(hash);
+    const params = new URLSearchParams(window.location.search);
     const resetToken = params.get('token');
 
     if (!resetToken) {
@@ -35,14 +34,21 @@ export default function ResetPassword() {
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    if (resetMut.isPending) return;
+
     if (!token) {
       setError('Reset token is missing or invalid');
       return;
     }
 
-    resetMut.mutate({ token, newPassword });
-  };
+    setError('');
+    setMessage('');
 
+    resetMut.mutate({
+      token,
+      newPassword,
+    });
+  };
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-animated-gradient bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 animate-gradient-shift p-4">
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-400/20 rounded-full blur-3xl animate-float-slow" />

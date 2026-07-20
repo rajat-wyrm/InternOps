@@ -13,22 +13,45 @@ async function noticesRoutes(fastify) {
   fastify.get(
     '/notices',
     {
-      schema: { tags: ['Notices'], description: 'Get all notices (admin)' },
+      schema: {
+        tags: ['Notices'],
+        description: 'Get all notices (admin)',
+
+        querystring: {
+          type: 'object',
+          properties: {
+            page: {
+              type: 'integer',
+              minimum: 1,
+              default: 1,
+            },
+            limit: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 100,
+              default: 50,
+            },
+          },
+        },
+      },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
     async (req, reply) => {
       try {
-        const notices = await repo.getAllNotices();
+        const notices = await repo.getAllNotices({
+          page: req.query.page,
+          limit: req.query.limit,
+        });
         return reply.send(notices);
       } catch (err) {
         // If the notices table does not yet exist (migration pending on production)
         // return an empty list with 503 rather than crashing with 500.
         req.log.error({ err }, 'notices table unavailable in GET /notices');
         if (err.code === '42P01') {
-          return reply.status(503).send({
-            error: 'Notices service temporarily unavailable',
-            notices: [],
-          });
+          // NOTE: send a bare array here (not { error, notices: [] }) so the
+          // response shape always matches the success path — the frontend
+          // expects `data` to be an array it can call .map() on directly.
+          return reply.status(503).send([]);
         }
         return reply.status(500).send({ error: 'Failed to fetch notices' });
       }
@@ -66,9 +89,11 @@ async function noticesRoutes(fastify) {
         description: 'Create a notice',
         body: toSchema(
           z.object({
-            title: z.string(),
-            content: z.string(),
-            category: z.string().optional(),
+            title: z.string().trim().min(1, 'Title is required'),
+            content: z.string().trim().min(1, 'Content is required'),
+            category: z
+              .enum(['GENERAL', 'REMINDER', 'ALERT', 'NEWS'])
+              .optional(),
           })
         ),
       },
@@ -109,9 +134,15 @@ async function noticesRoutes(fastify) {
         params: toSchema(z.object({ id: z.string() })),
         body: toSchema(
           z.object({
-            title: z.string().optional(),
-            content: z.string().optional(),
-            category: z.string().optional(),
+            title: z.string().trim().min(1, 'Title cannot be empty').optional(),
+            content: z
+              .string()
+              .trim()
+              .min(1, 'Content cannot be empty')
+              .optional(),
+            category: z
+              .enum(['GENERAL', 'REMINDER', 'ALERT', 'NEWS'])
+              .optional(),
             is_active: z.boolean().optional(),
           })
         ),
@@ -177,7 +208,9 @@ async function noticesRoutes(fastify) {
         resourceId: deleted.id,
         ...extractRequestInfo(req),
       };
-      return reply.status(204).send();
+      return reply.status(200).send({
+        success: true,
+      });
     }
   );
 }

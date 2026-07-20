@@ -22,9 +22,18 @@ const ROLE_OPTIONS = [
   { value: 'INTERN', label: 'Intern' },
 ];
 
+const LABELS = {
+  full_name: 'Full Name',
+  emailAddress: 'Email Address',
+  temporaryPassword: 'Temporary Password',
+  userRole: 'User Role',
+  department: 'Department',
+  assignManager: 'Assign Manager',
+};
+
 export default function CreateUserModal({ open, onClose }) {
   const queryClient = useQueryClient();
-  const [fullName, setFullName] = useState('');
+  const [full_name, setfull_name] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -37,11 +46,10 @@ export default function CreateUserModal({ open, onClose }) {
   useEffect(() => {
     if (!open) return undefined;
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    document.body.classList.add('modal-open');
 
     return () => {
-      document.body.style.overflow = originalOverflow;
+      document.body.classList.remove('modal-open');
     };
   }, [open]);
 
@@ -116,7 +124,7 @@ export default function CreateUserModal({ open, onClose }) {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
 
       // Reset form
-      setFullName('');
+      setfull_name('');
       setEmail('');
       setPassword('');
       setRole('');
@@ -144,7 +152,7 @@ export default function CreateUserModal({ open, onClose }) {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (!fullName.trim()) return setError('Full Name is required');
+    if (!full_name.trim()) return setError('Full Name is required');
     if (!email.trim()) return setError('Email is required');
     if (!password) return setError('Temporary Password is required');
     if (password.length < 8)
@@ -152,7 +160,7 @@ export default function CreateUserModal({ open, onClose }) {
     if (!role) return setError('Role is required');
 
     const payload = {
-      fullName,
+      full_name,
       email,
       password,
       role,
@@ -225,15 +233,15 @@ export default function CreateUserModal({ open, onClose }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Full Name */}
               <div>
-                <label className={labelClass}>Full Name</label>
+                <label className={labelClass}>{LABELS.full_name}</label>
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
                     type="text"
                     required
                     placeholder="John Doe"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    value={full_name}
+                    onChange={(e) => setfull_name(e.target.value)}
                     className={inputClass}
                   />
                 </div>
@@ -241,7 +249,7 @@ export default function CreateUserModal({ open, onClose }) {
 
               {/* Email */}
               <div>
-                <label className={labelClass}>Email Address</label>
+                <label className={labelClass}>{LABELS.emailAddress}</label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
@@ -257,7 +265,7 @@ export default function CreateUserModal({ open, onClose }) {
 
               {/* Temporary Password */}
               <div>
-                <label className={labelClass}>Temporary Password</label>
+                <label className={labelClass}>{LABELS.temporaryPassword}</label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
@@ -285,7 +293,7 @@ export default function CreateUserModal({ open, onClose }) {
 
               {/* Role selection */}
               <div>
-                <label className={labelClass}>User Role</label>
+                <label className={labelClass}>{LABELS.userRole}</label>
                 <div className="relative">
                   <Layers className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 z-10" />
 
@@ -305,7 +313,7 @@ export default function CreateUserModal({ open, onClose }) {
 
               {/* Department */}
               <div>
-                <label className={labelClass}>Department</label>
+                <label className={labelClass}>{LABELS.department}</label>
                 <div className="relative">
                   <HelpCircle className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 z-10" />
 
@@ -323,7 +331,7 @@ export default function CreateUserModal({ open, onClose }) {
               {/* Dynamic Hierarchy Selection */}
               {showManagerSelection && (
                 <div className="md:col-span-2">
-                  <label className={labelClass}>Assign Manager</label>
+                  <label className={labelClass}>{LABELS.assignManager}</label>
 
                   <CustomSelect
                     value={managerId}

@@ -12,9 +12,11 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../../config');
 const { pipeline } = require('stream/promises');
+
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/gif'];
 const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.gif'];
 const uploadRepo = require('../uploads/repository');
+
 const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
   'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
@@ -45,6 +47,9 @@ async function routes(fastify) {
     async (req, reply) => {
       const parts = req.parts();
       let task_id = null;
+      let didComment = false;
+      let didRepost = false;
+      let didShare = false;
       const filesData = [];
 
       for await (const part of parts) {
@@ -59,14 +64,26 @@ async function routes(fastify) {
             });
           }
         } else {
-          if (part.fieldname === 'task_id') {
-            task_id = part.value;
+          switch (part.fieldname) {
+            case 'task_id':
+              task_id = part.value;
+              break;
+            case 'didComment':
+              didComment = part.value === 'true';
+              break;
+            case 'didRepost':
+              didRepost = part.value === 'true';
+              break;
+            case 'didShare':
+              didShare = part.value === 'true';
+              break;
           }
         }
       }
 
-      if (!task_id)
+      if (!task_id) {
         return reply.status(400).send({ error: 'task_id required' });
+      }
 
       if (filesData.length === 0)
         return reply.status(400).send({ error: 'Image file required' });
@@ -92,40 +109,64 @@ async function routes(fastify) {
       await fs.promises.mkdir(absoluteUploadDir, { recursive: true });
 
       const dbSavedPaths = [];
+      const writtenFiles = [];
 
-      for (const data of filesData) {
-        const ext = path.extname(data.filename).toLowerCase();
-        if (
-          !ALLOWED_MIMES.includes(data.mimetype) ||
-          !ALLOWED_EXTS.includes(ext)
-        ) {
-          return reply
-            .status(400)
-            .send({ error: 'Only JPEG, PNG, GIF images are allowed' });
-        }
-        if (data.truncated) {
-          return reply.status(400).send({ error: 'File size exceeds limit' });
+      try {
+        if (!didComment && !didRepost && !didShare) {
+          return reply.status(400).send({
+            error: 'At least one engagement action must be selected.',
+          });
         }
 
-        const firstChunk = data.buffer.subarray(0, 16);
-        const detectedMime = detectMimeFromBuffer(firstChunk);
-        if (!detectedMime || detectedMime !== data.mimetype) {
-          return reply
-            .status(400)
-            .send({ error: 'File contents do not match declared image type' });
+        for (const data of filesData) {
+          const ext = path.extname(data.filename).toLowerCase();
+          if (
+            !ALLOWED_MIMES.includes(data.mimetype) ||
+            !ALLOWED_EXTS.includes(ext)
+          ) {
+            return reply
+              .status(400)
+              .send({ error: 'Only JPEG, PNG, GIF images are allowed' });
+          }
+
+          if (data.truncated) {
+            return reply.status(400).send({ error: 'File size exceeds limit' });
+          }
+
+          const firstChunk = data.buffer.subarray(0, 16);
+          const detectedMime = detectMimeFromBuffer(firstChunk);
+          if (!detectedMime || detectedMime !== data.mimetype) {
+            return reply.status(400).send({
+              error: 'File contents do not match declared image type',
+            });
+          }
+
+          const filename = uuidv4() + ext;
+          const uploadPath = path.join(absoluteUploadDir, filename);
+          await fs.promises.writeFile(uploadPath, data.buffer);
+          writtenFiles.push(uploadPath);
+          dbSavedPaths.push(['uploads', filename].join('/'));
         }
-
-        const filename = uuidv4() + ext;
-        const uploadPath = path.join(absoluteUploadDir, filename);
-
-        await fs.promises.writeFile(uploadPath, data.buffer);
-        dbSavedPaths.push(['uploads', filename].join('/'));
+      } catch (error) {
+        for (const file of writtenFiles) {
+          try {
+            await fs.promises.unlink(file);
+          } catch (_) {
+            // Ignore cleanup errors
+          }
+        }
+        throw error;
       }
 
       const proof = await repo.submitProofWithImages(
         task_id,
         req.user.id,
-        dbSavedPaths
+        dbSavedPaths,
+        {
+          didComment,
+          didRepost,
+          didShare,
+        }
       );
 
       req.auditOnResponse = {
@@ -134,6 +175,7 @@ async function routes(fastify) {
         resourceType: 'proof',
         resourceId: proof.id,
       };
+
       return proof;
     }
   );
@@ -161,12 +203,14 @@ async function routes(fastify) {
         if (!verified) {
           return reply.status(404).send({ error: 'Proof not found' });
         }
+
         req.auditOnResponse = {
           userId: req.user.id,
           action: 'PROOF_VERIFIED',
           resourceType: 'proof',
           resourceId: verified.id,
         };
+
         return verified;
       } catch (err) {
         if (err.message === 'Proof not found') {
@@ -221,6 +265,7 @@ async function routes(fastify) {
       if (!proof) {
         return reply.status(404).send({ error: 'Proof not found' });
       }
+
       await repo.deleteProof(req.params.id);
 
       // Delete legacy image if it exists

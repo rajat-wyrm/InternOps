@@ -47,13 +47,13 @@ scenarios:
     weight: 7
     flow:
       - get:
-          url: '/api/auth/csrf-token'
+          url: '/api/v1/auth/csrf-token'
           capture:
             - json: $.csrfToken
               as: csrfToken
           think: 0.3
       - post:
-          url: '/api/auth/login'
+          url: '/api/v1/auth/login'
           json:
             email: '{{ email }}'
             password: '{{ password }}'
@@ -62,17 +62,17 @@ scenarios:
               as: accessToken
           think: 0.3
       - get:
-          url: '/api/dashboard/stats'
+          url: '/api/v1/dashboard/stats'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
       - get:
-          url: '/api/interns?page=1&limit=20'
+          url: '/api/v1/interns?page=1&limit=20'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.3
       - get:
-          url: '/api/attendance/today'
+          url: '/api/v1/attendance/today'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.3
@@ -81,10 +81,10 @@ scenarios:
     weight: 3
     flow:
       - get:
-          url: '/api/auth/csrf-token'
+          url: '/api/v1/auth/csrf-token'
           think: 0.5
       - post:
-          url: '/api/auth/login'
+          url: '/api/v1/auth/login'
           json:
             email: '{{ email }}'
             password: '{{ password }}'
@@ -93,12 +93,12 @@ scenarios:
               as: accessToken
           think: 0.5
       - get:
-          url: '/api/dashboard/analytics?from=2026-01-01&to=2026-12-31'
+          url: '/api/v1/dashboard/analytics?from=2026-01-01&to=2026-12-31'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 1
       - post:
-          url: '/api/interns'
+          url: '/api/v1/interns'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
             X-CSRF-Token: '{{ csrfToken }}'
@@ -110,7 +110,7 @@ scenarios:
             role: 'intern'
           think: 0.5
       - post:
-          url: '/api/attendance/mark'
+          url: '/api/v1/attendance/mark'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
             X-CSRF-Token: '{{ csrfToken }}'

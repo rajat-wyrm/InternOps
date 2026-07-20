@@ -46,39 +46,33 @@ async function deleteDepartment(id, force = false) {
   }
 
   if (force) {
-    const result = await pool.query(
+    await pool.query(
       `
-      DELETE FROM departments
-      WHERE id = $1
-      RETURNING id
+      UPDATE users
+      SET department_id = NULL
+      WHERE department_id = $1
+        AND deleted_at IS NULL
       `,
       [id]
     );
+  }
 
-    if (result.rowCount === 0) {
-      return {
-        success: false,
-        userCount: 0,
-      };
-    }
-  } else {
-    const result = await pool.query(
-      `
-      UPDATE departments
-      SET deleted_at = NOW(),
-          updated_at = NOW()
-      WHERE id = $1
-      RETURNING id
-      `,
-      [id]
-    );
+  const result = await pool.query(
+    `
+    UPDATE departments
+    SET deleted_at = NOW(),
+        updated_at = NOW()
+    WHERE id = $1
+    RETURNING id
+    `,
+    [id]
+  );
 
-    if (result.rowCount === 0) {
-      return {
-        success: false,
-        userCount: 0,
-      };
-    }
+  if (result.rowCount === 0) {
+    return {
+      success: false,
+      userCount: 0,
+    };
   }
 
   return {

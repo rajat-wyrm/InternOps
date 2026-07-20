@@ -17,6 +17,19 @@ export default function ForgotPassword() {
     onError: (err) => setError(err.response?.data?.error || 'Request failed'),
   });
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    // Prevent double submission
+    if (forgotMut.isPending) return;
+
+    // Clear previous messages
+    setError('');
+    setMessage('');
+
+    forgotMut.mutate(email);
+  };
+
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-animated-gradient bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 animate-gradient-shift p-4">
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-400/20 rounded-full blur-3xl animate-float-slow" />
@@ -55,13 +68,7 @@ export default function ForgotPassword() {
             </div>
           )}
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              forgotMut.mutate(email);
-            }}
-            className="space-y-4"
-          >
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-extrabold uppercase tracking-wider text-white/70 mb-2">
                 Email address
@@ -77,8 +84,9 @@ export default function ForgotPassword() {
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={forgotMut.isPending}
                   required
-                  className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-white/12 border border-white/20 text-white placeholder-white/45 focus:bg-white/18 focus:border-white/50 focus:ring-2 focus:ring-white/25 outline-none transition shadow-inner"
+                  className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-white/12 border border-white/20 text-white placeholder-white/45 focus:bg-white/18 focus:border-white/50 focus:ring-2 focus:ring-white/25 outline-none transition shadow-inner disabled:opacity-70 disabled:cursor-not-allowed"
                 />
               </div>
             </div>

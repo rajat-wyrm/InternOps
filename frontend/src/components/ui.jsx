@@ -1,5 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { AlertCircle, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import useBodyScrollLock from '../hooks/useBodyScrollLock';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -81,6 +83,55 @@ export function Card({ children, className = '', hover = false }) {
   );
 }
 
+function getApiErrorMessage(error, fallback) {
+  return (
+    error?.response?.data?.error ||
+    error?.response?.data?.message ||
+    error?.message ||
+    fallback ||
+    'Something went wrong. Please try again.'
+  );
+}
+
+export function ApiErrorState({
+  error,
+  title = 'Failed to load data',
+  fallback,
+  onRetry,
+  className = '',
+}) {
+  return (
+    <div
+      className={`rounded-3xl border border-red-100 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 shadow-sm ${className}`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-2xl bg-white/70 dark:bg-red-950/60 border border-red-100 dark:border-red-900/60 flex items-center justify-center shrink-0">
+          <AlertCircle className="w-5 h-5" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="font-extrabold text-sm">{title}</p>
+
+          <p className="text-sm mt-1 break-words">
+            {getApiErrorMessage(error, fallback)}
+          </p>
+
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-red-600 text-white text-xs font-extrabold hover:bg-red-700 transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const BADGE = {
   gray: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700',
   green:
@@ -141,12 +192,33 @@ export function Btn({
   );
 }
 
-export function Input({ className = '', ...props }) {
+export function Input({ className = '', type, value, ...props }) {
+  const [show, setShow] = useState(false);
+  const isPassword = type === 'password';
+  const hasValue = String(value ?? '').length > 0;
+
   return (
-    <input
-      {...props}
-      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-2xl px-4 py-3 w-full focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-400 outline-none transition shadow-sm ${className}`}
-    />
+    <div className="relative">
+      <input
+        {...props}
+        type={isPassword && show ? 'text' : type}
+        value={value}
+        className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-2xl px-4 py-3 w-full focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-400 outline-none transition shadow-sm ${
+          isPassword ? 'pr-11' : ''
+        } ${className}`}
+      />
+      {isPassword && hasValue && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setShow((s) => !s)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+          tabIndex={-1}
+        >
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -297,33 +369,88 @@ export function ConfirmationModal({
   loading = false,
   danger = true,
 }) {
-  // Handle body scroll locking and background blurring
-  useEffect(() => {
-    const root = document.getElementById('root');
-
-    if (open) {
-      document.body.style.overflow = 'hidden';
-      if (root) root.classList.add('blur-sm', 'transition-all', 'duration-300');
-    } else {
-      document.body.style.overflow = 'unset';
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset';
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-    };
-  }, [open]);
-
-  if (!open) return null;
+  const modalRef = useRef(null);
+  const previousActiveElementRef = useRef(null);
+  useBodyScrollLock(open, { blurBackground: true });
 
   const handleClose = () => {
     if (loading) return;
     if (onCancel) onCancel();
     else if (onClose) onClose();
   };
+
+  const handleCloseRef = useRef(handleClose);
+  useEffect(() => {
+    handleCloseRef.current = handleClose;
+  }, [handleClose]);
+
+  // Focus trap implementation
+  useEffect(() => {
+    if (!open) return;
+
+    // Save current active element to restore focus when modal closes
+    previousActiveElementRef.current = document.activeElement;
+
+    const modalElement = modalRef.current;
+    const focusableSelectors =
+      'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex="0"], [contenteditable], [autofocus]';
+
+    if (modalElement) {
+      const focusable = modalElement.querySelectorAll(focusableSelectors);
+      if (focusable.length > 0) {
+        focusable[0].focus();
+      } else {
+        modalElement.focus();
+      }
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        handleCloseRef.current();
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        if (!modalElement) return;
+        const focusable = Array.from(
+          modalElement.querySelectorAll(focusableSelectors)
+        );
+        if (focusable.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            last.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === last) {
+            first.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (
+        previousActiveElementRef.current &&
+        typeof previousActiveElementRef.current.focus === 'function'
+      ) {
+        previousActiveElementRef.current.focus();
+      }
+    };
+  }, [open]);
+
+  if (!open) return null;
 
   const finalConfirmText = confirmLabel || confirmText;
   const finalCancelText = cancelLabel || cancelText;
@@ -334,7 +461,9 @@ export function ConfirmationModal({
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
+        ref={modalRef}
+        tabIndex={-1}
+        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-slate-200 dark:border-slate-700">

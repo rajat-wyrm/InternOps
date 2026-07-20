@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User,
@@ -11,7 +11,14 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import api from '../lib/axios';
-import { Card, Btn, Input, Badge, Spinner } from '../components/ui';
+import {
+  Card,
+  Btn,
+  Input,
+  Badge,
+  Spinner,
+  ApiErrorState,
+} from '../components/ui';
 import useAuthStore from '../store/auth';
 
 const ROLE_COLOR = {
@@ -39,33 +46,58 @@ export default function Profile() {
   const user = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
 
-  const [fullName, setFullName] = useState('');
+  const [full_name, setfull_name] = useState('');
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-
-  const { data: profile, isLoading } = useQuery({
+  const [nameError, setNameError] = useState('');
+  const {
+    data: profile,
+    isLoading,
+    isError,
+    error: profileError,
+    refetch,
+  } = useQuery({
     queryKey: ['myProfile'],
     queryFn: () => api.get('/users/me').then((res) => res.data),
-    onSuccess: (data) => {
-      if (data) setFullName(data.full_name || '');
-    },
   });
+
+  useEffect(() => {
+    if (profile) setfull_name(profile.full_name || '');
+  }, [profile]);
 
   const flash = (m) => {
     setMessage(m);
     setError('');
     setTimeout(() => setMessage(''), 2500);
   };
+  const validateProfile = () => {
+    const name = full_name.trim();
+    if (!/^[A-Za-z ]+$/.test(name)) {
+      setNameError('Name can only contain letters and spaces.');
+      return false;
+    }
+    if (name.length < 3) {
+      setNameError('Name must be at least 3 characters.');
+      return false;
+    }
 
+    if (name.length > 50) {
+      setNameError('Name must not exceed 50 characters.');
+      return false;
+    }
+
+    setNameError('');
+    return true;
+  };
   const updateProfileMut = useMutation({
     mutationFn: (data) => api.patch('/users/me', data),
     onSuccess: (_res, vars) => {
       flash('Profile updated successfully');
 
       if (vars?.full_name && user) {
-        setAuth({ user: { ...user, fullName: vars.full_name } });
+        setAuth({ user: { ...user, full_name: vars.full_name } });
       }
 
       queryClient.invalidateQueries({ queryKey: ['myProfile'] });
@@ -106,6 +138,34 @@ export default function Profile() {
     return (
       <div className="flex justify-center p-12">
         <Spinner label="Loading profile..." />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-6xl mx-auto animate-fade-in-up">
+        <div className="mb-6 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
+            <User className="w-6 h-6" />
+          </div>
+
+          <div>
+            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              My Profile
+            </h1>
+            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
+              Manage your account details and security
+            </p>
+          </div>
+        </div>
+
+        <ApiErrorState
+          error={profileError}
+          title="Failed to load profile"
+          fallback="Unable to load your profile. Please try again."
+          onRetry={refetch}
+        />
       </div>
     );
   }
@@ -184,15 +244,27 @@ export default function Profile() {
                   )}
 
                   <label
-                    className="absolute -bottom-2 -right-2 w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center cursor-pointer hover:scale-105 hover:bg-indigo-50 dark:hover:bg-slate-700 transition-all"
-                    title="Change avatar"
+                    className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center transition-all ${
+                      avatarMut.isPending
+                        ? 'opacity-60 cursor-not-allowed'
+                        : 'cursor-pointer hover:scale-105 hover:bg-indigo-50 dark:hover:bg-slate-700'
+                    }`}
+                    title={
+                      avatarMut.isPending ? 'Uploading...' : 'Change avatar'
+                    }
                   >
-                    <Camera className="w-4 h-4" />
+                    {avatarMut.isPending ? (
+                      <span className="text-[10px] font-semibold">...</span>
+                    ) : (
+                      <Camera className="w-4 h-4" />
+                    )}
                     <input
+                      disabled={avatarMut.isPending}
                       type="file"
                       accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
                       className="hidden"
                       onChange={(e) => {
+                        if (avatarMut.isPending) return;
                         const file = e.target.files?.[0];
 
                         if (!file) return;
@@ -290,16 +362,25 @@ export default function Profile() {
               </label>
 
               <Input
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                value={full_name}
+                onChange={(e) => setfull_name(e.target.value)}
                 placeholder="Enter your full name"
               />
+              {nameError && (
+                <p className="text-sm text-red-500 mt-1">{nameError}</p>
+              )}
             </div>
 
             <Btn
-              onClick={() => updateProfileMut.mutate({ full_name: fullName })}
+              onClick={() => {
+                if (!validateProfile()) return;
+
+                updateProfileMut.mutate({
+                  full_name: full_name.trim(),
+                });
+              }}
               disabled={
-                updateProfileMut.isPending || fullName === profile?.full_name
+                updateProfileMut.isPending || full_name === profile?.full_name
               }
               className="w-full sm:w-auto px-6 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
             >
