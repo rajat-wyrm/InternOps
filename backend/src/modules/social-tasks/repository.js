@@ -15,13 +15,29 @@ async function createTask({
 }
 
 async function assignTask(taskId, userIds, assignedBy) {
-  if (!userIds || userIds.length === 0) return;
-  const values = userIds
-    .map((_, i) => `($1, $${i + 2}, $${userIds.length + 2})`)
-    .join(',');
+  // Return if no users are provided
+  if (!userIds || userIds.length === 0) {
+    return;
+  }
+
+  // Validate UUIDs
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  if (!userIds.every((id) => UUID_RE.test(id))) {
+    throw new Error('Invalid userId: all entries must be UUIDs');
+  }
+
   await pool.query(
-    `INSERT INTO task_assignments (task_id, user_id, assigned_by) VALUES ${values}`,
-    [taskId, ...userIds, assignedBy]
+    `
+      INSERT INTO task_assignments (task_id, user_id, assigned_by)
+      SELECT
+        $1,
+        unnest($2::uuid[]),
+        $3
+      ON CONFLICT (task_id, user_id) DO NOTHING
+    `,
+    [taskId, userIds, assignedBy]
   );
 }
 async function getUserEmail(userId) {
