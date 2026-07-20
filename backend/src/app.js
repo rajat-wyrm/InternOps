@@ -109,36 +109,7 @@ app.get(
       .send({ status: healthy ? 'healthy' : 'degraded', checks });
   }
 );
-app.get(
-  '/health/detailed',
-  {
-    config: {
-      rateLimit: false,
-    },
-    preHandler: [authenticate, rbac('ADMIN')],
-  },
-  async (req, reply) => {
-    const checks = { db: false, redis: false };
 
-    try {
-      await pool.query('SELECT 1');
-      checks.db = true;
-    } catch {}
-
-    const redisStatus = getRedisStatus();
-
-    checks.redis =
-      process.env.NODE_ENV === 'test' ||
-      redisStatus === 'connected' ||
-      redisStatus === 'disabled';
-
-    const healthy = checks.db && checks.redis;
-
-    return reply.status(healthy ? 200 : 503).send({
-      status: healthy ? 'healthy' : 'degraded',
-    });
-  }
-);
 app.register(require('@fastify/cors'), {
   origin:
     config.nodeEnv === 'production'
