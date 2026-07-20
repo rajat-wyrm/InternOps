@@ -298,17 +298,18 @@ export function EmptyState({ icon = '📭', title = 'Nothing here yet', text }) 
 }
 
 export function Spinner({ label = 'Loading...', size = 'md' }) {
-  const spinnerSize = {
-  sm: 'h-4 w-4 border-[2px]',
-  md: 'h-8 w-8 border-[3px]',
-  lg: 'h-12 w-12 border-[4px]',
-}[size] || 'h-8 w-8 border-[3px]';
+  const spinnerSize =
+    {
+      sm: 'h-4 w-4 border-[2px]',
+      md: 'h-8 w-8 border-[3px]',
+      lg: 'h-12 w-12 border-[4px]',
+    }[size] || 'h-8 w-8 border-[3px]';
   return (
     <div className="flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400 py-8">
       <span className="relative inline-flex">
         <span
-  className={`rounded-full ${spinnerSize} border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin`}
-/>
+          className={`rounded-full ${spinnerSize} border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin`}
+        />
         <span className="absolute inset-1 rounded-full border border-indigo-100 dark:border-indigo-900/60" />
       </span>
 
