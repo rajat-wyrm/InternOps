@@ -1,6 +1,6 @@
 const {
   sanitizationMiddleware: sanitize,
-} = require('../../middleware/sanitize')
+} = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const ownership = require('../../middleware/ownership');
@@ -306,12 +306,12 @@ async function routes(fastify) {
     '/members/:id/role',
     {
       preHandler: [
-  auth,
-  rbac(...MANAGER_ROLES),
-  requireFreshRole,
-  ownership('id'),
-  sanitize,
-],
+        auth,
+        rbac(...MANAGER_ROLES),
+        requireFreshRole,
+        ownership('id'),
+        sanitize,
+      ],
       schema: {
         tags: ['Team'],
         description: 'Change member role',
@@ -386,12 +386,12 @@ async function routes(fastify) {
     '/members/:id/manager',
     {
       preHandler: [
-  auth,
-  rbac(...MANAGER_ROLES),
-  requireFreshRole,
-  ownership('id'),
-  sanitize,
-],
+        auth,
+        rbac(...MANAGER_ROLES),
+        requireFreshRole,
+        ownership('id'),
+        sanitize,
+      ],
       schema: {
         tags: ['Team'],
         description: 'Change member manager',
