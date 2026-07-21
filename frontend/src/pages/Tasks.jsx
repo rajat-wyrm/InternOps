@@ -91,13 +91,17 @@ export default function Tasks() {
     enabled: isAdmin,
   });
 
-  const activeDepartment = departments.find((d) => d.id === (deptId || filterDeptId));
+  const activeDepartment = departments.find(
+    (d) => d.id === (deptId || filterDeptId)
+  );
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['tasks', deptId || filterDeptId],
     queryFn: () =>
       api
-        .get('/tasks', { params: { department_id: deptId || filterDeptId || undefined } })
+        .get('/tasks', {
+          params: { department_id: deptId || filterDeptId || undefined },
+        })
         .then((res) => res.data),
   });
 
@@ -303,7 +307,11 @@ export default function Tasks() {
 
           <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
             <Link
-              to={deptId ? `/admin/departments/${deptId}/attendance` : '/attendance'}
+              to={
+                deptId
+                  ? `/admin/departments/${deptId}/attendance`
+                  : '/attendance'
+              }
               className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-indigo-100 transition"
             >
               Attendance

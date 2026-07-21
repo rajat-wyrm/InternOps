@@ -316,14 +316,18 @@ export default function DashboardLayout() {
               )}
               {visibleAdminNav.map((n) => {
                 const isDeptNav = n.path === '/departments';
-                const deptMatch = loc.pathname.match(/\/(?:admin\/)?departments\/([^/]+)/);
+                const deptMatch = loc.pathname.match(
+                  /\/(?:admin\/)?departments\/([^/]+)/
+                );
                 const activeDeptId = deptMatch ? deptMatch[1] : null;
 
                 return (
                   <div key={n.path} className="space-y-1">
                     <NavLink n={n} />
                     {isDeptNav && activeDeptId && (
-                      <div className={`space-y-1 ${collapsed ? 'pl-0' : 'pl-4'} animate-fade-in`}>
+                      <div
+                        className={`space-y-1 ${collapsed ? 'pl-0' : 'pl-4'} animate-fade-in`}
+                      >
                         <Link
                           to={`/admin/departments/${activeDeptId}/attendance`}
                           className={`flex items-center gap-2 rounded-xl text-xs font-bold transition-all py-2 ${
