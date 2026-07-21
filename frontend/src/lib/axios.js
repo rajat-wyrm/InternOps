@@ -226,28 +226,6 @@ function processQueue(error, token = null) {
   failedQueue = [];
 }
 
-function handleLogout() {
-  try {
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.removeItem('user');
-      } catch {
-        /* ignore localStorage unavailability */
-      }
-
-      clearCsrfToken();
-
-      if (_authStore) {
-        _authStore.getState().logout();
-      }
-    } else {
-      clearCsrfToken();
-    }
-  } catch {
-    clearCsrfToken();
-  }
-}
-
 api.interceptors.response.use(
   (res) => {
     const url = res.config?.url;
@@ -340,6 +318,11 @@ api.interceptors.response.use(
           } catch {
             /* ignore */
           }
+        }
+
+        // Emit an event that React Router can catch
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('auth:logout'));
         }
 
         return Promise.reject(refreshErr);

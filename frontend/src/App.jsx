@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
 import DashboardLayout from './layouts/DashboardLayout';
 import useAuthStore from './store/auth';
@@ -60,6 +60,7 @@ function Private({ children }) {
 }
 
 export default function App() {
+  const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
   const setHydrated = useAuthStore((s) => s.setHydrated);
   const logout = useAuthStore((s) => s.logout);
@@ -68,6 +69,16 @@ export default function App() {
   const hydrated = useAuthStore((s) => s.hydrated);
   const fetchFlags = useFeatureFlagsStore((s) => s.fetchFlags);
   const resetFlags = useFeatureFlagsStore((s) => s.reset);
+
+  useEffect(() => {
+    const handleForceLogout = () => {
+      logout();
+      navigate('/login', { replace: true });
+    };
+
+    window.addEventListener('auth:logout', handleForceLogout);
+    return () => window.removeEventListener('auth:logout', handleForceLogout);
+  }, [logout, navigate]);
 
   useEffect(() => {
     if (!bootRefreshPromise) {
