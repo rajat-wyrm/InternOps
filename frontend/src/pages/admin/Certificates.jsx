@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import api from '../../lib/axios';
 import {
   Plus,
   Download,
@@ -77,10 +78,10 @@ export default function Certificates() {
   };
 
   const handleDownload = (cert) => {
-    window.open(
-      cert.download_url || `/api/v1/certificates/${cert.id}/download`,
-      '_blank'
-    );
+    const downloadUrl =
+      cert.download_Url ||
+      `${api.defaults.baseURL}/certificates/${cert.id}/download`;
+    window.open(downloadUrl, '_blank');
   };
 
   return (
