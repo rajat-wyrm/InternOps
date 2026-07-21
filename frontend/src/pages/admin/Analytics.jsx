@@ -65,7 +65,12 @@ export default function Analytics() {
     }
   }, [month, monthOptions]);
 
-  const { data: departments = [], isLoading: loadingDepts, isError: deptsError, error: deptsErrorMsg } = useQuery({
+  const {
+    data: departments = [],
+    isLoading: loadingDepts,
+    isError: deptsError,
+    error: deptsErrorMsg,
+  } = useQuery({
     queryKey: ['departmentsList'],
     queryFn: () => api.get('/departments').then((r) => r.data),
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -81,7 +86,11 @@ export default function Analytics() {
 
   const isValidUuid = UUID_REGEX.test(deptId);
 
-  const { data: deptAttendance, isError: deptAttendanceError, error: deptAttendanceErrorMsg } = useQuery({
+  const {
+    data: deptAttendance,
+    isError: deptAttendanceError,
+    error: deptAttendanceErrorMsg,
+  } = useQuery({
     queryKey: ['deptAttendance', deptId, month, year],
     queryFn: () =>
       api
@@ -92,7 +101,11 @@ export default function Analytics() {
     enabled: isValidUuid,
   });
 
-  const { data: topPerformers, isError: topPerformersError, error: topPerformersErrorMsg } = useQuery({
+  const {
+    data: topPerformers,
+    isError: topPerformersError,
+    error: topPerformersErrorMsg,
+  } = useQuery({
     queryKey: ['topPerformers'],
     queryFn: () =>
       api
@@ -100,7 +113,11 @@ export default function Analytics() {
         .then((r) => r.data),
   });
 
-  const { data: trends, isError: trendsError, error: trendsErrorMsg } = useQuery({
+  const {
+    data: trends,
+    isError: trendsError,
+    error: trendsErrorMsg,
+  } = useQuery({
     queryKey: ['attendanceTrends'],
     queryFn: () =>
       api.get('/analytics/attendance-trends?months=6').then((r) => r.data),
@@ -161,7 +178,10 @@ export default function Analytics() {
 
           {topPerformersError ? (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
-              <p className="text-red-600 dark:text-red-400 text-sm font-medium">Failed to load top performers: {topPerformersErrorMsg?.message || 'Unknown error'}</p>
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+                Failed to load top performers:{' '}
+                {topPerformersErrorMsg?.message || 'Unknown error'}
+              </p>
             </div>
           ) : !topPerformers?.length ? (
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 p-4">
@@ -216,7 +236,10 @@ export default function Analytics() {
 
           {trendsError ? (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
-              <p className="text-red-600 dark:text-red-400 text-sm font-medium">Failed to load attendance trends: {trendsErrorMsg?.message || 'Unknown error'}</p>
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+                Failed to load attendance trends:{' '}
+                {trendsErrorMsg?.message || 'Unknown error'}
+              </p>
             </div>
           ) : !byMonth.length ? (
             <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 p-4">
@@ -347,7 +370,10 @@ export default function Analytics() {
           </div>
         ) : deptAttendanceError ? (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
-            <p className="text-red-600 dark:text-red-400 text-sm font-medium">Failed to load department attendance: {deptAttendanceErrorMsg?.message || 'Unknown error'}</p>
+            <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+              Failed to load department attendance:{' '}
+              {deptAttendanceErrorMsg?.message || 'Unknown error'}
+            </p>
           </div>
         ) : !deptAttendance ? (
           <Spinner />
