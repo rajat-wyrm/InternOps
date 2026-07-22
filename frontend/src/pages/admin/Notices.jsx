@@ -281,8 +281,6 @@ export default function Notices() {
               Failed to load notices
             </h3>
 
-           
-
             <Btn className="mt-4" onClick={() => refetch()}>
               Retry
             </Btn>

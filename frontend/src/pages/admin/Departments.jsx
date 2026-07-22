@@ -133,11 +133,10 @@ export default function Departments() {
       </Card>
 
       {isError ? (
-  <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-    <h3 className="text-lg font-semibold text-red-700">
-      Failed to load departments
-    </h3>
-
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+          <h3 className="text-lg font-semibold text-red-700">
+            Failed to load departments
+          </h3>
 
           <Btn className="mt-4" onClick={() => refetch()}>
             Retry

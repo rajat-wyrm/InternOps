@@ -158,8 +158,6 @@ export default function Certificates() {
               Failed to load certificates
             </h3>
 
-      
-
             <Btn className="mt-4" onClick={() => refetch()}>
               Retry
             </Btn>
