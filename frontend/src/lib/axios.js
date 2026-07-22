@@ -258,7 +258,9 @@ api.interceptors.response.use(
         original.url.includes('/auth/refresh') ||
         original.url.includes('/auth/register'));
 
-    if (status === 401 && !original._retry && !isAuthRoute) {
+    const hasToken = !!getMemoryAccessToken();
+
+    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
       // Another refresh is already in flight — queue this request.
       if (isRefreshing) {
         original._retry = true;
