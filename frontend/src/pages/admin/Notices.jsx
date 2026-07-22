@@ -281,12 +281,7 @@ export default function Notices() {
               Failed to load notices
             </h3>
 
-            <p className="mt-2 text-sm text-red-500">
-              {queryError?.response?.data?.error ||
-                queryError?.response?.data?.message ||
-                queryError?.message ||
-                'Something went wrong while fetching notices.'}
-            </p>
+           
 
             <Btn className="mt-4" onClick={() => refetch()}>
               Retry

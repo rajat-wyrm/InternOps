@@ -158,12 +158,7 @@ export default function Certificates() {
               Failed to load certificates
             </h3>
 
-            <p className="mt-2 text-sm text-red-500">
-              {error?.response?.data?.error ||
-                error?.response?.data?.message ||
-                error?.message ||
-                'Something went wrong while fetching certificates.'}
-            </p>
+      
 
             <Btn className="mt-4" onClick={() => refetch()}>
               Retry
