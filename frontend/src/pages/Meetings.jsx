@@ -169,22 +169,39 @@ export default function Meetings({
             </div>
           </div>
 
-          {canCreate && (
-            <Btn
-              onClick={() => setShowForm((s) => !s)}
-              className="rounded-2xl px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
-            >
-              {showForm ? (
-                <span className="flex items-center gap-2">
-                  <X className="w-4 h-4" /> Cancel
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Plus className="w-4 h-4" /> Schedule meeting
-                </span>
-              )}
-            </Btn>
-          )}
+          <div className="flex items-center gap-3">
+            {!isProjectView && user?.role === 'ADMIN' && (
+              <select
+                value={filterDepartmentId}
+                onChange={(e) => setFilterDepartmentId(e.target.value)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm"
+              >
+                <option value="">All Departments</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {canCreate && (
+              <Btn
+                onClick={() => setShowForm((s) => !s)}
+                className="rounded-2xl px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
+              >
+                {showForm ? (
+                  <span className="flex items-center gap-2">
+                    <X className="w-4 h-4" /> Cancel
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Plus className="w-4 h-4" /> Schedule meeting
+                  </span>
+                )}
+              </Btn>
+            )}
+          </div>
         </div>
       )}
 

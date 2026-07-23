@@ -1,11 +1,12 @@
 const pool = require('../../config/db');
+const logger = require('../../logger');
 
 // ============================================================
 // Templates
 // ============================================================
 
 async function createTemplate(data, userId) {
-  console.log('Repository data:', data);
+  logger.debug({ data }, 'Repository data for createTemplate');
   const res = await pool.query(
     `INSERT INTO certificate_templates (name, description,color_scheme, template_data, thumbnail_url, canva_design_id, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7)

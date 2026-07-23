@@ -105,6 +105,7 @@ export default function ResetPassword() {
                   placeholder="New password (min 8)"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                  minLength={8}
                   required
                   className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-white/12 border border-white/20 text-white placeholder-white/45 focus:bg-white/18 focus:border-white/50 focus:ring-2 focus:ring-white/25 outline-none transition shadow-inner"
                 />

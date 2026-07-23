@@ -1,9 +1,10 @@
-﻿const nodemailer = require('nodemailer');
+const nodemailer = require('nodemailer');
 const config = require('../config');
 const pool = require('../config/db');
 const { getRedisClient } = require('../config/redis');
 const path = require('path');
 const fs = require('fs');
+const logger = require('../logger');
 
 const rateLimitMap = new Map();
 const bounceList = new Set();
@@ -143,7 +144,10 @@ class EmailService {
     };
     const transporter = this.getTransporter();
     if (!transporter) {
-      console.log(`[Email] Placeholder -> To: ${to}, Subject: "${subject}"`);
+      logger.info(
+        { to, subject },
+        '[Email] Placeholder — no transporter configured, skipping send'
+      );
       metrics.sent++;
       return {
         messageId: 'console-' + Date.now(),
