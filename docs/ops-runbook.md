@@ -34,13 +34,13 @@ Before deploying the application, ensure the following requirements are met:
 - PostgreSQL database credentials
 - Required application secrets
 
-Create the backend environment file:
+Create the backend environment file for runtime injection:
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-Update all required environment variables before deployment.
+Update all required environment variables before deployment. Docker Compose reads this file at runtime and passes the values into the backend container; it is not copied into the image.
 
 Important variables include:
 
@@ -88,7 +88,7 @@ git pull origin master
 cp backend/.env.example backend/.env
 ```
 
-Update the environment file with the appropriate credentials.
+Update the environment file with the appropriate credentials. The backend container consumes these values at runtime, not at build time.
 
 ### 3. Build Docker images
 

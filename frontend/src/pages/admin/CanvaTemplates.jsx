@@ -19,7 +19,9 @@ import {
   useTemplates,
   useCreateTemplate,
   useDeleteTemplate,
+  useSeedTemplates,
 } from '../../hooks/useCertificates';
+import useBodyScrollLock from '../../hooks/useBodyScrollLock';
 
 export default function CanvaTemplates() {
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -36,14 +38,7 @@ export default function CanvaTemplates() {
     return () => document.removeEventListener('keydown', handleKey);
   }, [showCreateModal]);
 
-  useEffect(() => {
-    if (!showCreateModal) return;
-    const original = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = original;
-    };
-  }, [showCreateModal]);
+  useBodyScrollLock(showCreateModal);
 
   const { data: canvaStatusResp, isLoading: statusLoading } = useCanvaStatus();
   const canvaStatus = canvaStatusResp?.data || {};
@@ -64,6 +59,7 @@ export default function CanvaTemplates() {
   const importMutation = useCanvaImport();
   const createMutation = useCreateTemplate();
   const deleteMutation = useDeleteTemplate();
+  const seedMutation = useSeedTemplates();
 
   const isConnected = canvaStatus?.connected;
 
@@ -85,7 +81,19 @@ export default function CanvaTemplates() {
   const handleCreateTemplate = async (e) => {
     e.preventDefault();
     try {
-      await createMutation.mutateAsync(newTemplate);
+      const payload = {
+        name: newTemplate.name,
+        description: newTemplate.description,
+        template_data: {
+          background: newTemplate.colorScheme[0] || '#3B82F6',
+          accent: newTemplate.colorScheme[1] || '#10B981',
+          text: newTemplate.colorScheme[2] || '#F59E0B',
+          // If you want to keep the full array for other uses, add:
+          // colors: newTemplate.colorScheme
+        },
+        // thumbnail_url and canva_design_id are not used for manual creation
+      };
+      await createMutation.mutateAsync(payload);
       setShowCreateModal(false);
       setNewTemplate({
         name: '',
@@ -111,7 +119,7 @@ export default function CanvaTemplates() {
 
   const handleSeedDefaults = async () => {
     try {
-      await createMutation.mutateAsync({ seed: true });
+      await seedMutation.mutateAsync();
       refetchTemplates();
     } catch (error) {
       console.error('Failed to seed templates:', error);
@@ -164,7 +172,7 @@ export default function CanvaTemplates() {
               {statusLoading ? (
                 <Spinner size="sm" />
               ) : (
-                <Badge variant={isConnected ? 'success' : 'danger'}>
+                <Badge color={isConnected ? 'green' : 'red'}>
                   {isConnected ? (
                     <span className="flex items-center gap-1">
                       <Check className="w-3 h-3" />
@@ -283,11 +291,17 @@ export default function CanvaTemplates() {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleSeedDefaults}
-                disabled={createMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                disabled={seedMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Palette className="w-4 h-4" />
-                Seed Default Templates
+                {seedMutation.isPending ? (
+                  <Spinner size="sm" />
+                ) : (
+                  <Palette className="w-4 h-4" />
+                )}
+                {seedMutation.isPending
+                  ? 'Seeding Templates...'
+                  : 'Seed Default Templates'}
               </button>
               <button
                 onClick={() => setShowCreateModal(true)}
@@ -337,13 +351,25 @@ export default function CanvaTemplates() {
 
                     {/* Color Scheme Preview */}
                     <div className="flex items-center gap-1">
-                      {template.colorScheme?.slice(0, 5).map((color, index) => (
-                        <div
-                          key={index}
-                          className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
-                          style={{ backgroundColor: color }}
-                        />
-                      ))}
+                      {(() => {
+                        const colors = template.template_data
+                          ? [
+                              template.template_data.background,
+                              template.template_data.accent,
+                              template.template_data.text,
+                            ].filter(Boolean)
+                          : [];
+                        if (colors.length === 0) return null;
+                        return colors
+                          .slice(0, 5)
+                          .map((color, index) => (
+                            <div
+                              key={index}
+                              className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
+                              style={{ backgroundColor: color }}
+                            />
+                          ));
+                      })()}
                       {template.colorScheme?.length > 5 && (
                         <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
                           +{template.colorScheme.length - 5}
@@ -354,8 +380,9 @@ export default function CanvaTemplates() {
 
                   <div className="px-4 pb-4">
                     <div className="text-xs text-gray-400 dark:text-gray-500">
-                      Created{' '}
-                      {new Date(template.createdAt).toLocaleDateString()}
+                      {template.created_at
+                        ? `Created ${new Date(template.created_at).toLocaleDateString()}`
+                        : 'Recently created'}
                     </div>
                   </div>
                 </div>

@@ -45,5 +45,8 @@
   },
   "lint-staged": {
     "*": "prettier --write --ignore-unknown"
+  },
+  "dependencies": {
+    "sonner": "^2.0.7"
   }
 }

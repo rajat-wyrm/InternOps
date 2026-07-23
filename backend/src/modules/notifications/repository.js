@@ -109,12 +109,17 @@ async function notifyAdmin(message) {
   const audit = require('../audit/repository'); // Lazy load
 
   const adminRes = await pool.query(
-    "SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1"
+    `SELECT DISTINCT id
+     FROM users
+     WHERE role = 'ADMIN'
+       AND deleted_at IS NULL`
   );
 
-  if (adminRes.rows.length > 0) {
-    const adminId = adminRes.rows[0].id;
+  if (adminRes.rows.length === 0) {
+    return;
+  }
 
+  for (const { id: adminId } of adminRes.rows) {
     await send(adminId, message);
 
     if (audit && typeof audit.logEvent === 'function') {

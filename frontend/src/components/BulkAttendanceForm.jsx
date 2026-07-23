@@ -5,13 +5,16 @@ import { Card, Btn, Input } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDatePicker from './CustomDatePicker';
 
-export default function BulkAttendanceForm() {
+export default function BulkAttendanceForm({
+  roster,
+  departmentId: propDeptId,
+}) {
   const queryClient = useQueryClient();
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState('PRESENT');
   const [remarks, setRemarks] = useState('');
   const [selectedUsers, setSelectedUsers] = useState([]);
-  const [departmentId, setDepartmentId] = useState('');
+  const [departmentId, setDepartmentId] = useState(propDeptId || '');
   const [memberSearch, setMemberSearch] = useState('');
   const [fillMissing, setFillMissing] = useState(false);
   const [msg, setMsg] = useState('');
@@ -20,6 +23,7 @@ export default function BulkAttendanceForm() {
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
+    enabled: !roster,
   });
 
   const { data: reports = [], isLoading: loadingReports } = useQuery({
@@ -30,6 +34,7 @@ export default function BulkAttendanceForm() {
           params: { department_id: departmentId || undefined },
         })
         .then((res) => res.data),
+    enabled: !roster,
   });
 
   const bulkMutation = useMutation({
@@ -46,7 +51,8 @@ export default function BulkAttendanceForm() {
     onError: (err) => setError(err.response?.data?.error || 'Bulk mark failed'),
   });
 
-  const team = (reports ?? []).filter((u) =>
+  const effectiveReports = roster || reports;
+  const team = (effectiveReports ?? []).filter((u) =>
     (u.full_name || u.email)
       .toLowerCase()
       .includes(memberSearch.trim().toLowerCase())
@@ -170,20 +176,23 @@ export default function BulkAttendanceForm() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-            <CustomSelect
-              value={departmentId}
-              onChange={handleDepartmentChange}
-              options={departmentOptions}
-              placeholder="All departments"
-              disabled={bulkMutation.isPending}
-              className="w-full"
-            />
+            {!roster && (
+              <CustomSelect
+                value={departmentId}
+                onChange={handleDepartmentChange}
+                options={departmentOptions}
+                placeholder="All departments"
+                disabled={bulkMutation.isPending}
+                className="w-full"
+              />
+            )}
 
             <Input
               placeholder="Search members..."
               value={memberSearch}
               onChange={(e) => setMemberSearch(e.target.value)}
               disabled={bulkMutation.isPending}
+              className={roster ? 'col-span-1 sm:col-span-2' : ''}
             />
           </div>
 

@@ -4,12 +4,12 @@
 // hunt through a dozen test files.
 
 const argon2 = require('argon2');
-const pool = require('../../src/config/db');
 
 const SEEDED_ADMIN_EMAIL = 'admin@internops.com';
 const SEEDED_ADMIN_PASSWORD = 'Admin@123';
 
 async function resetSeededAdminPassword() {
+  const pool = require('../../src/config/db');
   const hash = await argon2.hash(SEEDED_ADMIN_PASSWORD);
   await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [
     hash,
@@ -18,12 +18,14 @@ async function resetSeededAdminPassword() {
 }
 
 async function clearPasswordResetAttempts() {
+  const pool = require('../../src/config/db');
   await pool.query('DELETE FROM password_reset_attempts');
 }
 
 // Clear brute-force login attempt records so tests that make failed login
 // calls don't accumulate into a lockout for subsequent tests.
 async function clearLoginAttempts() {
+  const pool = require('../../src/config/db');
   await pool.query('DELETE FROM login_attempts');
 }
 

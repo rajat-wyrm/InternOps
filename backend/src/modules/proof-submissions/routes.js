@@ -12,9 +12,11 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../../config');
 const { pipeline } = require('stream/promises');
+
 const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/gif'];
 const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.gif'];
 const uploadRepo = require('../uploads/repository');
+
 const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
   'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
@@ -48,7 +50,6 @@ async function routes(fastify) {
       let didComment = false;
       let didRepost = false;
       let didShare = false;
-
       const filesData = [];
 
       for await (const part of parts) {
@@ -127,6 +128,7 @@ async function routes(fastify) {
               .status(400)
               .send({ error: 'Only JPEG, PNG, GIF images are allowed' });
           }
+
           if (data.truncated) {
             return reply.status(400).send({ error: 'File size exceeds limit' });
           }
@@ -141,7 +143,6 @@ async function routes(fastify) {
 
           const filename = uuidv4() + ext;
           const uploadPath = path.join(absoluteUploadDir, filename);
-
           await fs.promises.writeFile(uploadPath, data.buffer);
           writtenFiles.push(uploadPath);
           dbSavedPaths.push(['uploads', filename].join('/'));
@@ -156,6 +157,7 @@ async function routes(fastify) {
         }
         throw error;
       }
+
       const proof = await repo.submitProofWithImages(
         task_id,
         req.user.id,
@@ -173,6 +175,7 @@ async function routes(fastify) {
         resourceType: 'proof',
         resourceId: proof.id,
       };
+
       return proof;
     }
   );
@@ -200,12 +203,14 @@ async function routes(fastify) {
         if (!verified) {
           return reply.status(404).send({ error: 'Proof not found' });
         }
+
         req.auditOnResponse = {
           userId: req.user.id,
           action: 'PROOF_VERIFIED',
           resourceType: 'proof',
           resourceId: verified.id,
         };
+
         return verified;
       } catch (err) {
         if (err.message === 'Proof not found') {
@@ -260,6 +265,7 @@ async function routes(fastify) {
       if (!proof) {
         return reply.status(404).send({ error: 'Proof not found' });
       }
+
       await repo.deleteProof(req.params.id);
 
       // Delete legacy image if it exists

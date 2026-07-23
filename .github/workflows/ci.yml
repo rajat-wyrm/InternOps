@@ -68,7 +68,7 @@ jobs:
         run: cd backend && npm run seed
 
       - name: Run Jest tests
-        run: cd backend && npm test -- --forceExit --detectOpenHandles --runInBand
+        run: cd backend && npm run test:coverage -- --forceExit
 
 
 

@@ -96,6 +96,13 @@ export default function Reports() {
 
           {attendanceQuery.isLoading ? (
             <Spinner />
+          ) : attendanceQuery.isError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+                Failed to load attendance data:{' '}
+                {attendanceQuery.error?.message || 'Unknown error'}
+              </p>
+            </div>
           ) : !attendanceData?.length ? (
             <p className="text-gray-400 dark:text-slate-500 text-sm">
               No data for selected period.
@@ -133,6 +140,13 @@ export default function Reports() {
 
           {ratingsQuery.isLoading ? (
             <Spinner />
+          ) : ratingsQuery.isError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+                Failed to load ratings data:{' '}
+                {ratingsQuery.error?.message || 'Unknown error'}
+              </p>
+            </div>
           ) : !ratingsData?.length ? (
             <p className="text-gray-400 dark:text-slate-500 text-sm">
               No data for selected period.
@@ -167,6 +181,13 @@ export default function Reports() {
 
           {tasksQuery.isLoading ? (
             <Spinner />
+          ) : tasksQuery.isError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+                Failed to load tasks data:{' '}
+                {tasksQuery.error?.message || 'Unknown error'}
+              </p>
+            </div>
           ) : !tasksData?.length ? (
             <p className="text-gray-400 dark:text-slate-500 text-sm">
               No tasks.

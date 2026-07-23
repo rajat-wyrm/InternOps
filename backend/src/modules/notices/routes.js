@@ -208,7 +208,9 @@ async function noticesRoutes(fastify) {
         resourceId: deleted.id,
         ...extractRequestInfo(req),
       };
-      return reply.status(204).send();
+      return reply.status(200).send({
+        success: true,
+      });
     }
   );
 }

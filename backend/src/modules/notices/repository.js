@@ -23,7 +23,7 @@ async function getAllNotices({ page = 1, limit = 50 } = {}) {
 
   const { rows } = await pool.query(
     'SELECT * FROM notices WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT $1 OFFSET $2',
-    [safelimit, offset]
+    [safeLimit, offset]
   );
   const { rows: countRows } = await pool.query(
     'SELECT COUNT(*) FROM notices WHERE deleted_at IS NULL'

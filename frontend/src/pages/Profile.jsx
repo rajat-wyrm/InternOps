@@ -46,7 +46,7 @@ export default function Profile() {
   const user = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
 
-  const [fullName, setFullName] = useState('');
+  const [full_name, setfull_name] = useState('');
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [message, setMessage] = useState('');
@@ -64,7 +64,7 @@ export default function Profile() {
   });
 
   useEffect(() => {
-    if (profile) setFullName(profile.full_name || '');
+    if (profile) setfull_name(profile.full_name || '');
   }, [profile]);
 
   const flash = (m) => {
@@ -73,7 +73,7 @@ export default function Profile() {
     setTimeout(() => setMessage(''), 2500);
   };
   const validateProfile = () => {
-    const name = fullName.trim();
+    const name = full_name.trim();
     if (!/^[A-Za-z ]+$/.test(name)) {
       setNameError('Name can only contain letters and spaces.');
       return false;
@@ -97,7 +97,7 @@ export default function Profile() {
       flash('Profile updated successfully');
 
       if (vars?.full_name && user) {
-        setAuth({ user: { ...user, fullName: vars.full_name } });
+        setAuth({ user: { ...user, full_name: vars.full_name } });
       }
 
       queryClient.invalidateQueries({ queryKey: ['myProfile'] });
@@ -362,8 +362,8 @@ export default function Profile() {
               </label>
 
               <Input
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                value={full_name}
+                onChange={(e) => setfull_name(e.target.value)}
                 placeholder="Enter your full name"
               />
               {nameError && (
@@ -376,11 +376,11 @@ export default function Profile() {
                 if (!validateProfile()) return;
 
                 updateProfileMut.mutate({
-                  full_name: fullName.trim(),
+                  full_name: full_name.trim(),
                 });
               }}
               disabled={
-                updateProfileMut.isPending || fullName === profile?.full_name
+                updateProfileMut.isPending || full_name === profile?.full_name
               }
               className="w-full sm:w-auto px-6 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
             >

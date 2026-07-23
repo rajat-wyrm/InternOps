@@ -1,5 +1,7 @@
 ﻿const auth = require('../../middleware/auth');
+const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
+const service = require('./service');
 const { z } = require('zod');
 
 const teamQuerySchema = z.object({
@@ -7,7 +9,44 @@ const teamQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
+const fullTeamQuerySchema = z.object({
+  managerId: z.string().uuid(),
+});
+
 async function routes(fastify) {
+  fastify.get(
+    '/full-team',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Hierarchy'],
+        description: 'Get full team for a specific manager',
+        querystring: {
+          type: 'object',
+          required: ['managerId'],
+          properties: { managerId: { type: 'string', format: 'uuid' } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const parsed = fullTeamQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Invalid query parameters',
+          details: parsed.error.issues,
+        });
+      }
+
+      const result = await service.getFullTeam(parsed.data.managerId);
+      return {
+        data: result.rows,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      };
+    }
+  );
+
   fastify.get(
     '/my/direct-reports',
     {

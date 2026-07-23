@@ -7,7 +7,7 @@ module.exports = {
   globalSetup: '<rootDir>/tests/globalSetup.js',
   globalTeardown: '<rootDir>/tests/globalTeardown.js',
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
-  collectCoverage: true,
+  collectCoverage: false,
   coverageDirectory: 'coverage',
   collectCoverageFrom: [
     'src/modules/auth/**/*.js',

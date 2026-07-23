@@ -1,7 +1,6 @@
 require('dotenv').config();
 const validateEnv = require('./config/validateEnv');
 validateEnv();
-
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
@@ -11,10 +10,13 @@ const metrics = require('./utils/metrics');
 const { initializeWebSocket, getIO } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
 const { getRedisStatus } = require('./config/redis');
+const authenticate = require('./middleware/auth');
+const rbac = require('./middleware/rbac');
 const { csrfMiddleware } = require('./middleware/csrf');
 const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
 const { setupCronJobs } = require('./utils/cron');
+
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
   logger:
@@ -45,21 +47,15 @@ app.get(
   },
   async (req, reply) => {
     const redisStatus = getRedisStatus();
-
     if (process.env.NODE_ENV === 'test') {
       return reply.send({ status: 'ok' });
     }
-
     if (redisStatus === 'disconnected') {
-      return reply
-        .status(503)
-        .send({ status: 'degraded', redis: 'disconnected' });
+      return reply.status(503).send({ status: 'degraded' });
     }
-
     return reply.send({ status: 'ok' });
   }
 );
-
 app.get(
   '/health/db',
   {
@@ -92,21 +88,16 @@ app.get(
   },
   async (req, reply) => {
     const checks = { db: false, redis: false };
-
     try {
       await pool.query('SELECT 1');
       checks.db = true;
     } catch {}
-
     const redisStatus = getRedisStatus();
-
     checks.redis =
       process.env.NODE_ENV === 'test' ||
       redisStatus === 'connected' ||
       redisStatus === 'disabled';
-
     const healthy = checks.db && checks.redis;
-
     reply
       .status(healthy ? 200 : 503)
       .send({ status: healthy ? 'healthy' : 'degraded', checks });
@@ -114,10 +105,29 @@ app.get(
 );
 
 app.register(require('@fastify/cors'), {
-  origin:
-    config.nodeEnv === 'production'
+  origin: (origin, cb) => {
+    // In development mode, allow any localhost or 127.0.0.1 port
+    if (config.nodeEnv !== 'production') {
+      if (
+        !origin ||
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
+      ) {
+        return cb(null, true);
+      }
+    }
+
+    const configured = Array.isArray(config.corsOrigin)
       ? config.corsOrigin
-      : 'http://localhost:5173',
+      : typeof config.corsOrigin === 'string' && config.corsOrigin.includes(',')
+        ? config.corsOrigin.split(',').map((o) => o.trim())
+        : [config.corsOrigin];
+
+    if (!origin || configured.includes(origin)) {
+      return cb(null, true);
+    }
+
+    return cb(new Error('Not allowed by CORS'), false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
@@ -137,6 +147,11 @@ app.register(require('@fastify/helmet'), {
   },
 });
 
+app.register(require('@fastify/compress'), {
+  global: true,
+  encodings: ['gzip', 'deflate', 'br'],
+});
+
 //  Register once globally — no Redis dependency
 app.register(require('@fastify/rate-limit'), {
   global: true,
@@ -145,8 +160,12 @@ app.register(require('@fastify/rate-limit'), {
 });
 
 app.register(require('@fastify/cookie'));
+app.addHook('preHandler', async (request, reply) => {
+  const path = request.routerPath ?? request.routeOptions?.url;
+  if (path === '/api/v1/auth/logout') return;
 
-app.addHook('preHandler', csrfMiddleware);
+  return csrfMiddleware(request, reply);
+});
 // Sanitize all string fields in body, query, and params using sanitize-html
 // (allowlist of zero tags) to prevent XSS. Runs after body parsing.
 app.addHook('preHandler', sanitizationMiddleware);
@@ -179,24 +198,92 @@ if (process.env.NODE_ENV !== 'test') {
             'Next API version (v2) — see CONTRIBUTING.md for migration guide',
         },
       ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+        },
+      },
+      security: [
+        {
+          bearerAuth: [],
+        },
+      ],
     },
   });
 
+  const authMiddleware = require('./middleware/auth');
+  const rbac = require('./middleware/rbac');
+
   app.register(require('@fastify/swagger-ui'), {
-    routePrefix: '/docs',
+    routePrefix: '/api-docs',
+    uiHooks: {
+      onRequest: function (request, reply, next) {
+        authMiddleware(request, reply)
+          .then(() => {
+            if (!reply.sent) {
+              rbac('ADMIN')(request, reply, next);
+            }
+          })
+          .catch(next);
+      },
+    },
+  });
+
+  // Dynamically ensure all routes have complete schema definitions (including response schemas)
+  app.addHook('onRoute', (routeOptions) => {
+    // Only apply to our business API routes
+    if (!routeOptions.url.startsWith('/api/')) return;
+
+    routeOptions.schema = routeOptions.schema || {};
+    if (!routeOptions.schema.response) {
+      routeOptions.schema.response = {
+        200: {
+          description: 'Successful response',
+        },
+        400: {
+          description: 'Validation error',
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            details: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: true,
+              },
+            },
+          },
+        },
+        401: {
+          description: 'Unauthorized',
+          type: 'object',
+          properties: { error: { type: 'string' } },
+        },
+        500: {
+          description: 'Internal Server Error',
+          type: 'object',
+          properties: { error: { type: 'string' } },
+        },
+      };
+    }
   });
 }
 
 // ---- API routes (delegated to dedicated router factory) ----
 // v1 — stable; all existing clients target this prefix.
 app.register(require('./routes'), { prefix: '/api/v1' });
+
 // v2 — introduced alongside v1 so both are served concurrently.
 // Breaking changes land here; v1 receives Deprecation+Sunset headers
 // via the onSend hook in routes.js once V1_DEPRECATED=true is set.
 app.register(require('./routes.v2'), { prefix: '/api/v2' });
 
 app.get('/', async (req, reply) => {
-  reply.redirect('/docs');
+  reply.redirect('/api-docs');
 });
 
 app.get('/fallback', async (req, reply) => {
@@ -204,13 +291,14 @@ app.get('/fallback', async (req, reply) => {
     <html>
       <body style="font-family:sans-serif;padding:2em">
         <h1>InternOps API</h1>
-        <a href="/docs">Swagger Docs</a>
+        <a href="/api-docs">Swagger Docs</a>
       </body>
     </html>
   `);
 });
 
 app.addHook('onRequest', metrics.trackActiveRequests);
+
 app.addHook('onRequest', async (request) => {
   request.startTime = Date.now();
 });
@@ -231,13 +319,16 @@ app.addHook('onResponse', async (request, reply) => {
 
   if (!request?.auditOnResponse) return;
 
-  try {
-    await createAuditLog(request.auditOnResponse);
-  } catch (err) {
-    request.log.error(
-      { err, audit: request.auditOnResponse },
-      'Failed to write deferred audit log'
-    );
+  // Only emit audit log for successful responses (status codes 2xx)
+  if (reply.statusCode >= 200 && reply.statusCode < 300) {
+    try {
+      await createAuditLog(request.auditOnResponse);
+    } catch (err) {
+      request.log.error(
+        { err, audit: request.auditOnResponse },
+        'Failed to write deferred audit log'
+      );
+    }
   }
 });
 
@@ -259,7 +350,6 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Validation error'
     );
-
     return reply.status(400).send({
       error: 'Validation error',
       details: error.validation.map((v) => ({
@@ -287,7 +377,6 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Zod validation error'
     );
-
     return reply.status(400).send({
       error: 'Validation error',
       details: error.issues || [],
@@ -339,9 +428,7 @@ const start = async () => {
       port: config.port,
       host: config.host,
     });
-
     initializeWebSocket(app.server, app.log);
-
     app.log.info(
       { port: config.port },
       `Server listening on port ${config.port}`
@@ -352,11 +439,21 @@ const start = async () => {
   }
 };
 
+const SHUTDOWN_TIMEOUT = 20000;
+
 const gracefulShutdown = async (signal) => {
   app.log.info({ signal }, `Received ${signal}, shutting down gracefully...`);
 
+  const forceShutdown = setTimeout(() => {
+    console.error('Shutdown timed out. Forcing exit.');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+
   try {
-    // close WebSocket server if initialized
+    // Stop accepting new requests and finish in-flight requests
+    await app.close();
+
+    // Close WebSocket server if initialized
     try {
       const io = getIO();
       if (io) {
@@ -368,19 +465,17 @@ const gracefulShutdown = async (signal) => {
       app.log.warn({ err: wsErr }, 'Error closing WebSocket server');
     }
 
-    // stop accepting new requests + finish in-flight requests
-    await app.close();
-
-    // close DB pool connections
+    // Close database pool connections
     await pool.end();
 
+    clearTimeout(forceShutdown);
     app.log.info('Cleanup completed. Exiting now.');
-
     if (process.env.NODE_ENV !== 'test') {
       process.exit(0);
     }
   } catch (err) {
     app.log.error({ err }, 'Error during shutdown');
+    clearTimeout(forceShutdown);
     if (process.env.NODE_ENV !== 'test') {
       process.exit(1);
     }

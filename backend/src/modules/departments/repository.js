@@ -25,6 +25,31 @@ async function getAll() {
   ).rows;
 }
 
+async function getDepartmentTeams(departmentId) {
+  const { rows } = await pool.query(
+    `SELECT u.id AS lead_id,
+            u.full_name AS lead_name,
+            u.role,
+            COUNT(r.id)::int AS member_count
+     FROM users u
+     LEFT JOIN users r
+       ON r.manager_id = u.id
+      AND r.deleted_at IS NULL
+     WHERE u.department_id = $1
+       AND u.role IN ('SENIOR_TL', 'TL')
+       AND u.deleted_at IS NULL
+       AND (u.manager_id IS NULL OR u.manager_id NOT IN (
+           SELECT id FROM users WHERE department_id = $1 AND role IN ('SENIOR_TL', 'TL') AND deleted_at IS NULL
+       ))
+     GROUP BY u.id, u.full_name, u.role
+     ORDER BY CASE u.role WHEN 'SENIOR_TL' THEN 0 WHEN 'TL' THEN 1 ELSE 2 END,
+              u.full_name`,
+    [departmentId]
+  );
+
+  return rows;
+}
+
 async function deleteDepartment(id, force = false) {
   const { rows } = await pool.query(
     `
@@ -84,5 +109,6 @@ async function deleteDepartment(id, force = false) {
 module.exports = {
   createDepartment,
   getAll,
+  getDepartmentTeams,
   deleteDepartment,
 };

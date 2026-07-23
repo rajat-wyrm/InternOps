@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Video,
@@ -24,7 +24,11 @@ import {
 import CustomDatePicker from '../components/CustomDatePicker';
 import CustomTimePicker from '../components/CustomTimePicker';
 
-export default function Meetings() {
+export default function Meetings({
+  isProjectView = false,
+  deptId,
+  roster = [],
+} = {}) {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
 
@@ -36,10 +40,19 @@ export default function Meetings() {
     meetingUrl: '',
     startTime: '',
     endTime: '',
-    departmentId: '',
+    departmentId: isProjectView ? deptId : '',
   });
   const [attendees, setAttendees] = useState([]);
-  const [filterDepartmentId, setFilterDepartmentId] = useState('');
+  const [filterDepartmentId, setFilterDepartmentId] = useState(
+    isProjectView ? deptId : ''
+  );
+
+  useEffect(() => {
+    if (isProjectView) {
+      setFilterDepartmentId(deptId || '');
+      setForm((f) => ({ ...f, departmentId: deptId || '' }));
+    }
+  }, [isProjectView, deptId]);
 
   const canCreate = ['ADMIN', 'SENIOR_TL', 'TL'].includes(user?.role);
 
@@ -73,13 +86,13 @@ export default function Meetings() {
   } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
-    enabled: canCreate,
+    enabled: canCreate && !isProjectView,
   });
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
-    enabled: canCreate,
+    enabled: canCreate && !isProjectView,
   });
 
   const createMutation = useMutation({
@@ -94,7 +107,7 @@ export default function Meetings() {
         meetingUrl: '',
         startTime: '',
         endTime: '',
-        departmentId: '',
+        departmentId: isProjectView ? deptId : '',
       });
       setAttendees([]);
     },
@@ -115,47 +128,65 @@ export default function Meetings() {
     createMutation.mutate({ ...form, attendeeIds: attendees });
   };
 
+  const effectiveTeam = isProjectView ? roster : team;
+
   return (
     <div className="animate-fade-in-up">
       {/* Professional Header Block */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60 text-blue-600 dark:text-blue-300 flex items-center justify-center shadow-sm">
-            <Video className="w-6 h-6" />
-          </div>
-
-          <div>
-            <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-blue-600 dark:text-blue-300 font-extrabold mb-1">
-              Team Sync
-            </p>
-
-            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Meetings
-            </h1>
-
-            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
-              Schedule and track team meetings
-            </p>
-          </div>
+      {isProjectView ? (
+        <div className="flex justify-between items-center mb-5">
+          <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
+            Project Meetings
+          </h3>
+          {canCreate && (
+            <Btn
+              onClick={() => setShowForm((s) => !s)}
+              className="rounded-2xl px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600"
+            >
+              {showForm ? 'Cancel' : 'Schedule Meeting'}
+            </Btn>
+          )}
         </div>
+      ) : (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60 text-blue-600 dark:text-blue-300 flex items-center justify-center shadow-sm">
+              <Video className="w-6 h-6" />
+            </div>
 
-        {canCreate && (
-          <Btn
-            onClick={() => setShowForm((s) => !s)}
-            className="rounded-2xl px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
-          >
-            {showForm ? (
-              <span className="flex items-center gap-2">
-                <X className="w-4 h-4" /> Cancel
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Plus className="w-4 h-4" /> Schedule meeting
-              </span>
-            )}
-          </Btn>
-        )}
-      </div>
+            <div>
+              <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-blue-600 dark:text-blue-300 font-extrabold mb-1">
+                Team Sync
+              </p>
+
+              <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                Meetings
+              </h1>
+
+              <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
+                Schedule and track team meetings
+              </p>
+            </div>
+          </div>
+
+          {canCreate && (
+            <Btn
+              onClick={() => setShowForm((s) => !s)}
+              className="rounded-2xl px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
+            >
+              {showForm ? (
+                <span className="flex items-center gap-2">
+                  <X className="w-4 h-4" /> Cancel
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Plus className="w-4 h-4" /> Schedule meeting
+                </span>
+              )}
+            </Btn>
+          )}
+        </div>
+      )}
 
       {showForm && (
         <Card className="p-5 md:p-6 mb-6 animate-fade-in-up border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
@@ -203,32 +234,34 @@ export default function Meetings() {
                 disabled={createMutation.isPending}
               />
             </div>
-            <div>
-              <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-                Department
-                <span className="normal-case font-medium text-slate-400">
-                  {' '}
-                  (optional)
-                </span>
-              </label>
+            {!isProjectView && (
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                  Department
+                  <span className="normal-case font-medium text-slate-400">
+                    {' '}
+                    (optional)
+                  </span>
+                </label>
 
-              <select
-                value={form.departmentId}
-                onChange={(e) =>
-                  setForm({ ...form, departmentId: e.target.value })
-                }
-                disabled={createMutation.isPending}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm"
-              >
-                <option value="">No specific department</option>
+                <select
+                  value={form.departmentId}
+                  onChange={(e) =>
+                    setForm({ ...form, departmentId: e.target.value })
+                  }
+                  disabled={createMutation.isPending}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm"
+                >
+                  <option value="">No specific department</option>
 
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>

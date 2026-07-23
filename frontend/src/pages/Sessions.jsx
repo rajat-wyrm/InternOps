@@ -25,9 +25,15 @@ export default function Sessions() {
   const [revokingId, setRevokingId] = useState(null);
 
   const revokeMut = useMutation({
-    mutationFn: (sessionId) => api.delete(`/sessions/me/${sessionId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    mutationFn: (session) => api.delete(`/sessions/me/${session.sessionId}`),
+    onSuccess: (_, session) => {
+      if (session.isCurrent) {
+        const store = useAuthStore.getState();
+        store.logout();
+        navigate('/login', { replace: true });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      }
     },
     onSettled: () => {
       setRevokingId(null);
@@ -148,10 +154,7 @@ export default function Sessions() {
                     <p className="text-xs text-gray-400">Expires: N/A</p>
                   )}
                 </div>
-                <Btn
-                  variant="outline"
-                  onClick={() => revokeMut.mutate(s.sessionId)}
-                >
+                <Btn variant="outline" onClick={() => revokeMut.mutate(s)}>
                   Revoke
                 </Btn>
               </Card>
