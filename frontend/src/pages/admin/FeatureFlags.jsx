@@ -33,19 +33,22 @@ const ROLE_COLORS = {
 // ─── Stat card colours (static map so Tailwind JIT can detect classes) ───────
 const CARD_STYLES = {
   blue: {
-    border: 'border-blue-100 dark:border-blue-900/40',
-    bg: 'bg-blue-50 dark:bg-blue-900/20',
+    border: 'border-blue-200 dark:border-blue-900/40',
+    cardBg: 'bg-blue-100/60 dark:bg-blue-900/40',
+    iconBg: 'bg-blue-200/70 dark:bg-blue-900/60',
     text: 'text-blue-600 dark:text-blue-400',
   },
   green: {
-    border: 'border-green-100 dark:border-green-900/40',
-    bg: 'bg-green-50 dark:bg-green-900/20',
+    border: 'border-green-200 dark:border-green-900/40',
+    cardBg: 'bg-green-100/60 dark:bg-green-900/40',
+    iconBg: 'bg-green-200/70 dark:bg-green-900/60',
     text: 'text-green-600 dark:text-green-400',
   },
   red: {
-    border: 'border-red-100 dark:border-red-900/40',
-    bg: 'bg-red-50 dark:bg-red-900/20',
-    text: 'text-red-600 dark:text-red-400',
+    border: 'border-rose-200 dark:border-rose-900/40',
+    cardBg: 'bg-rose-100/60 dark:bg-rose-900/40',
+    iconBg: 'bg-rose-200/70 dark:bg-rose-900/60',
+    text: 'text-rose-600 dark:text-rose-400',
   },
 };
 
@@ -518,10 +521,10 @@ export default function FeatureFlags() {
         ].map(({ label, value, icon: Icon, color }) => (
           <div
             key={label}
-            className={`rounded-3xl border p-5 bg-white dark:bg-slate-900 ${CARD_STYLES[color].border} shadow-[0_4px_16px_rgba(0,0,0,0.04)]`}
+            className={`rounded-3xl border p-5 ${CARD_STYLES[color].border} ${CARD_STYLES[color].cardBg} shadow-[0_4px_16px_rgba(0,0,0,0.04)]`}
           >
             <div
-              className={`w-10 h-10 rounded-2xl ${CARD_STYLES[color].bg} ${CARD_STYLES[color].text} flex items-center justify-center mb-3`}
+              className={`w-10 h-10 rounded-2xl ${CARD_STYLES[color].iconBg} ${CARD_STYLES[color].text} flex items-center justify-center mb-3`}
             >
               <Icon className="w-5 h-5" />
             </div>
