@@ -76,17 +76,13 @@ function buildRedisConfig() {
 }
 
 function resolveRefreshSecret() {
-  const independent = process.env.JWT_REFRESH_SECRET;
-  if (independent && independent.trim() !== '') return independent;
+  const secret = process.env.JWT_REFRESH_SECRET;
 
-  if (process.env.NODE_ENV !== 'test') {
-    log.warn(
-      'JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
-    );
+  if (!secret || secret.trim() === '') {
+    throw new Error('JWT_REFRESH_SECRET is not configured');
   }
-  return process.env.JWT_SECRET
-    ? `${process.env.JWT_SECRET}_refresh`
-    : undefined;
+
+  return secret;
 }
 
 const envSchema = z.object({
