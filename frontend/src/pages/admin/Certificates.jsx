@@ -65,8 +65,6 @@ export default function Certificates() {
   } = useCertificates({
     search,
   });
-    refetch,
-  } = useCertificates({ search });
   const certificates = certsData?.data || [];
   const { data: templatesData, isLoading: templatesLoading } = useTemplates();
   const templates = templatesData?.data || [];
