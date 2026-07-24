@@ -91,6 +91,12 @@ async function updateTemplate(id, data) {
     idx++;
   }
 
+  if (data.colorScheme !== undefined) {
+    fields.push(`color_scheme = $${idx}`);
+    params.push(JSON.stringify(data.colorScheme));
+    idx++;
+  }
+
   if (fields.length === 0) return null;
 
   fields.push('updated_at = NOW()');
