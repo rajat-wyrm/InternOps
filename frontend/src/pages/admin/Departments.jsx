@@ -24,6 +24,7 @@ export default function Departments() {
     data: departments = [],
     isLoading,
     isError,
+    error: queryError,
     refetch,
   } = useQuery({
     queryKey: ['departments'],

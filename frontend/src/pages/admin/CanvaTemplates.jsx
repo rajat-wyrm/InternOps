@@ -147,7 +147,7 @@ export default function CanvaTemplates() {
       <PageHeader
         title="Templates & Canva"
         icon="🎨"
-        description="Manage certificate templates and connect to Canva for design imports"
+        subtitle="Manage certificate templates and connect to Canva for design imports"
       />
 
       <div className="max-w-7xl mx-auto space-y-6">

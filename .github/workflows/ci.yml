@@ -52,6 +52,9 @@ jobs:
         shell: bash
         run: npm ci --no-audit --no-fund
 
+      - name: Run backend linting
+        run: cd backend && npm run lint
+
       - name: Wait for PostgreSQL
         run: |
           until pg_isready -h localhost -p 5432 -U postgres; do
