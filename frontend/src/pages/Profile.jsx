@@ -417,6 +417,7 @@ export default function Profile() {
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
                 placeholder="Enter current password"
+                minLength={8}
               />
             </div>
 

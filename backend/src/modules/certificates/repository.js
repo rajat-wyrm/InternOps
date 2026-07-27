@@ -91,6 +91,12 @@ async function updateTemplate(id, data) {
     idx++;
   }
 
+  if (data.colorScheme !== undefined) {
+    fields.push(`color_scheme = $${idx}`);
+    params.push(JSON.stringify(data.colorScheme));
+    idx++;
+  }
+
   if (fields.length === 0) return null;
 
   fields.push('updated_at = NOW()');
@@ -117,8 +123,24 @@ async function deleteTemplate(id) {
 
 async function createCertificate(data, userId) {
   const res = await pool.query(
-    `INSERT INTO certificates (template_id, recipient_name, recipient_email, title, body, issuer, issue_date, expiry_date, certificate_type, status, metadata, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO certificates (
+    template_id,
+    recipient_name,
+    recipient_email,
+    title,
+    body,
+    issuer,
+    issue_date,
+    expiry_date,
+    certificate_type,
+    status,
+    pdf_path,
+    qr_code_url,
+    canva_design_id,
+    metadata,
+    created_by
+)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
       data.template_id || null,
@@ -131,6 +153,9 @@ async function createCertificate(data, userId) {
       data.expiry_date || null,
       data.certificate_type || 'achievement',
       data.status || 'draft',
+      data.pdf_path || null,
+      data.qr_code_url || null,
+      data.canva_design_id || null,
       JSON.stringify(data.metadata || {}),
       userId,
     ]

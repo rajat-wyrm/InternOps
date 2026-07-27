@@ -60,8 +60,11 @@ export default function Certificates() {
     data: certsData,
     isLoading,
     isError,
+    error,
     refetch,
-  } = useCertificates({ search });
+  } = useCertificates({
+    search,
+  });
   const certificates = certsData?.data || [];
   const { data: templatesData, isLoading: templatesLoading } = useTemplates();
   const templates = templatesData?.data || [];
@@ -322,6 +325,7 @@ function GenerateCertificateModal({
     generateMutation.mutate(formData, {
       onSuccess: () => {
         onClose();
+
         setFormData({
           recipient_name: '',
           recipient_email: '',
@@ -331,6 +335,15 @@ function GenerateCertificateModal({
           certificate_type: 'completion',
           template_id: '',
         });
+      },
+
+      onError: (err) => {
+        alert(
+          err?.response?.data?.error ||
+            err?.response?.data?.message ||
+            err?.message ||
+            'Failed to generate certificate.'
+        );
       },
     });
   };

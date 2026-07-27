@@ -91,16 +91,19 @@ export default function ResetPassword() {
             <input type="hidden" value={token} readOnly />
 
             <div>
-              <label className="block text-xs font-extrabold uppercase tracking-wider text-white/70 mb-2">
+              <label
+                htmlFor="newPassword"
+                className="block text-xs font-extrabold uppercase tracking-wider text-white/70 mb-2"
+              >
                 New Password
               </label>
-
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/55">
                   🔒
                 </span>
 
                 <input
+                  id="newPassword"
                   type="password"
                   placeholder="New password (min 8)"
                   value={newPassword}
