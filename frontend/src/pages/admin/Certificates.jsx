@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { toast } from 'sonner';
 import api from '../../lib/axios';
 import {
   Plus,
@@ -86,11 +87,29 @@ export default function Certificates() {
     });
   };
 
-  const handleDownload = (cert) => {
-    const downloadUrl =
-      cert.download_Url ||
-      `${api.defaults.baseURL}/certificates/${cert.id}/download`;
-    window.open(downloadUrl, '_blank');
+  const handleDownload = async (cert) => {
+    try {
+      if (cert.pdf_url) {
+        // Find base URL without /api/v1
+        let baseUrl = api.defaults.baseURL || '';
+        if (baseUrl.endsWith('/api/v1')) baseUrl = baseUrl.slice(0, -7);
+        window.open(`${baseUrl}${cert.pdf_url}`, '_blank');
+        return;
+      }
+
+      const res = await api.get(`/certificates/${cert.id}/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `certificate-${cert.id}.pdf`;
+      a.click();
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error('Download failed', err);
+      toast.error('Failed to download certificate. Please try again.');
+    }
   };
 
   return (

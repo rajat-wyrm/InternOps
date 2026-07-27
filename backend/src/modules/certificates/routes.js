@@ -132,6 +132,30 @@ async function routes(fastify) {
     }
   );
 
+  fastify.get(
+    '/:id/download',
+    {
+      schema: {
+        tags: ['Certificates'],
+        description: 'Download certificate PDF',
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+          required: ['id'],
+        },
+      },
+    },
+    async (req, reply) => {
+      const cert = await service.getCertificate(req.params.id);
+      if (!cert || !cert.pdf_path) {
+        return reply.code(404).send({ error: 'Certificate PDF not found' });
+      }
+      return reply.redirect(`/uploads/certificates/${cert.pdf_path}`);
+    }
+  );
+
   fastify.post(
     '/generate',
     {
