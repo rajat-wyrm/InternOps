@@ -59,54 +59,38 @@ app.get(
     return reply.send({ status: 'ok' });
   }
 );
-app.get(
-  '/health/db',
-  {
-    config: {
-      rateLimit: false,
-    },
-  },
-  async (req, reply) => {
-    try {
-      await pool.query('SELECT 1');
-      reply.send({
-        status: 'ok',
-        db: 'connected',
-      });
-    } catch {
-      reply.status(503).send({
-        status: 'error',
-        db: 'disconnected',
-      });
-    }
-  }
-);
 
 app.get(
-  '/health/full',
+  '/health/detailed',
   {
+    preHandler: [authenticate, rbac('ADMIN')],
     config: {
       rateLimit: false,
     },
   },
   async (req, reply) => {
     const checks = { db: false, redis: false };
+
     try {
       await pool.query('SELECT 1');
       checks.db = true;
     } catch {}
+
     const redisStatus = getRedisStatus();
+
     checks.redis =
       process.env.NODE_ENV === 'test' ||
       redisStatus === 'connected' ||
       redisStatus === 'disabled';
+
     const healthy = checks.db && checks.redis;
-    reply
-      .status(healthy ? 200 : 503)
-      .send({ status: healthy ? 'healthy' : 'degraded', checks });
+
+    reply.status(healthy ? 200 : 503).send({
+      status: healthy ? 'healthy' : 'degraded',
+      checks,
+    });
   }
 );
-
 app.register(require('@fastify/cors'), {
   origin: (origin, cb) => {
     // In development mode, allow any localhost or 127.0.0.1 port
