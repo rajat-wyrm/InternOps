@@ -66,10 +66,7 @@ async function notifyAllInternsAsync(task, log) {
     const totalCount = await repo.getInternEmailCount();
 
     if (totalCount === 0) {
-      log.info(
-        { taskId: task.id },
-        'No interns found to notify'
-      );
+      log.info({ taskId: task.id }, 'No interns found to notify');
       return;
     }
 
