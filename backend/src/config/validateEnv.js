@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const logger = require('./logger');
 
 const REQUIRED_VARS = ['JWT_SECRET', 'DATABASE_URL', 'NODE_ENV'];
 
@@ -32,9 +33,10 @@ function validateEnv() {
   if (process.env.NODE_ENV === 'test') {
     return;
   }
+
   if (process.env.JWT_SECRET === 'change_this_secret_in_production') {
-    console.error(
-      '❌ CRITICAL ERROR: JWT_SECRET is set to the default insecure value.'
+    logger.error(
+      'JWT_SECRET is set to the default insecure value.'
     );
     process.exit(1);
   }
@@ -42,8 +44,6 @@ function validateEnv() {
   const missingRequired = [];
   const missingOptional = [];
 
-  // In production the refresh secret must be an independent high-entropy value,
-  // not derived from JWT_SECRET. Outside production a derived fallback is allowed.
   const requiredVars =
     process.env.NODE_ENV === 'production'
       ? [...REQUIRED_VARS, 'JWT_REFRESH_SECRET']
@@ -64,14 +64,15 @@ function validateEnv() {
   }
 
   if (missingOptional.length > 0) {
-    console.warn('⚠️ Missing optional environment variables:');
+    logger.warn('Missing optional environment variables:');
     for (const key of missingOptional) {
-      console.warn(`   • ${key}`);
+      logger.warn(`• ${key}`);
     }
   }
 
   const schemaResult = envSchema.safeParse(process.env);
   const typeErrors = [];
+
   if (!schemaResult.success) {
     for (const issue of schemaResult.error.issues) {
       typeErrors.push(`${issue.path.join('.')}: ${issue.message}`);
@@ -80,15 +81,16 @@ function validateEnv() {
 
   if (missingRequired.length > 0 || typeErrors.length > 0) {
     if (missingRequired.length > 0) {
-      console.error('❌ Missing required environment variables:');
+      logger.error('Missing required environment variables:');
       for (const key of missingRequired) {
-        console.error(`   • ${key}`);
+        logger.error(`• ${key}`);
       }
     }
+
     if (typeErrors.length > 0) {
-      console.error('❌ Invalid environment variable types:');
+      logger.error('Invalid environment variable types:');
       for (const err of typeErrors) {
-        console.error(`   • ${err}`);
+        logger.error(`• ${err}`);
       }
     }
 
@@ -98,9 +100,13 @@ function validateEnv() {
   // Validate DATABASE_URL format
   const dbUrl = process.env.DATABASE_URL;
   let isDbUrlValid = false;
+
   try {
     const parsed = new URL(dbUrl);
-    if (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') {
+    if (
+      parsed.protocol === 'postgres:' ||
+      parsed.protocol === 'postgresql:'
+    ) {
       isDbUrlValid = true;
     }
   } catch (err) {
@@ -108,9 +114,9 @@ function validateEnv() {
   }
 
   if (!isDbUrlValid) {
-    console.error('❌ Invalid environment variable format:');
-    console.error(
-      '   • DATABASE_URL must be a valid PostgreSQL connection string starting with postgres:// or postgresql://'
+    logger.error('Invalid environment variable format:');
+    logger.error(
+      'DATABASE_URL must be a valid PostgreSQL connection string starting with postgres:// or postgresql://'
     );
     process.exit(1);
   }

@@ -1,86 +1,26 @@
-const crypto = require('crypto');
-const { LRUCache } = require('lru-cache');
-const config = require('../config');
-const { getRedisClient } = require('../config/redis');
-
-const failureState = new Map();
-
-const FAILURE_LIMIT = Number(process.env.AI_PROVIDER_FAILURE_LIMIT || 3);
-const COOLDOWN_MS = Number(
-  process.env.AI_PROVIDER_COOLDOWN_MS || 5 * 60 * 1000
-);
-const CACHE_TTL_MS = Number(process.env.AI_CACHE_TTL_MS || 5 * 60 * 1000);
-const CACHE_MAX_ENTRIES = Number(process.env.AI_CACHE_MAX_ENTRIES || 500);
-const MAX_RESPONSE_BYTES = Number(
-  process.env.AI_MAX_RESPONSE_BYTES || 2 * 1024 * 1024 // 2MB default cap
-);
-
-const USER_CACHE_MAX = Number(process.env.AI_USER_CACHE_MAX || 1000);
-const caches = new LRUCache({ max: USER_CACHE_MAX }); // userId -> LRUCache, evicts oldest when full
-function getCache(userId) {
-  const key = userId || 'global';
-  let cache = caches.get(key);
-  if (!cache) {
-    cache = new LRUCache({
-      max: CACHE_MAX_ENTRIES,
-      ttl: CACHE_TTL_MS,
-      ttlAutopurge: true,
-    });
-    caches.set(key, cache);
-  }
-  return cache;
-}
-
-const MAX_AI_RESPONSE_BYTES = Number(
-  process.env.AI_MAX_RESPONSE_BYTES || 5 * 1024 * 1024
-);
-
-class ResponseSizeLimitError extends Error {
-  constructor(message = 'AI provider response exceeded size cap') {
-    super(message);
-    this.name = 'ResponseSizeLimitError';
-    this.statusCode = 413;
-  }
-}
-
-function isPlaceholder(value) {
-  return !value || String(value).startsWith('your-');
-}
-
-function getProviderOrder() {
-  return (
-    process.env.AI_PROVIDER_ORDER || 'groq,openai,gemini,deepseek,huggingface'
-  )
-    .split(',')
-    .map((p) => p.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function getCacheKey(payload) {
-  const cacheInput = {
-    userId: payload.userId,
-    messages: payload.messages,
-  };
-  return crypto
-    .createHash('sha256')
-    .update(JSON.stringify(cacheInput))
-    .digest('hex');
-}
-
 async function getCachedResponse(payload) {
   const key = getCacheKey(payload);
 
   try {
     const redis = await getRedisClient();
+
     if (redis) {
       const cached = await redis.get(`ai:cache:${payload.userId}:${key}`);
+
       if (cached) {
         return JSON.parse(cached);
       }
+
       return null;
     }
   } catch (error) {
-    console.warn('[AI Cache] Redis read error:', error.message);
+    logger.warn(
+      {
+        err: error,
+        userId: payload.userId,
+      },
+      'AI cache Redis read error'
+    );
   }
 
   const cache = getCache(payload.userId);
@@ -92,6 +32,7 @@ async function setCachedResponse(payload, value) {
 
   try {
     const redis = await getRedisClient();
+
     if (redis) {
       await redis.set(
         `ai:cache:${payload.userId}:${key}`,
@@ -100,10 +41,17 @@ async function setCachedResponse(payload, value) {
           PX: CACHE_TTL_MS,
         }
       );
+
       return;
     }
   } catch (error) {
-    console.warn('[AI Cache] Redis write error:', error.message);
+    logger.warn(
+      {
+        err: error,
+        userId: payload.userId,
+      },
+      'AI cache Redis write error'
+    );
   }
 
   const cache = getCache(payload.userId);
@@ -112,6 +60,7 @@ async function setCachedResponse(payload, value) {
 
 function isProviderOpen(name) {
   const state = failureState.get(name);
+
   if (!state) return true;
 
   if (state.disabledUntil && Date.now() < state.disabledUntil) {
@@ -123,9 +72,7 @@ function isProviderOpen(name) {
   }
 
   return true;
-}
-
-function recordSuccess(name) {
+}function recordSuccess(name) {
   failureState.delete(name);
 }
 
@@ -152,6 +99,7 @@ async function fetchWithTimeout(url, options = {}) {
   const timer = setTimeout(() => controller.abort(), timeout);
 
   const fetchOpts = { ...options };
+
   // Bypass AbortSignal in tests to prevent Jest fetch errors
   if (process.env.NODE_ENV !== 'test') {
     fetchOpts.signal = controller.signal;
@@ -159,9 +107,11 @@ async function fetchWithTimeout(url, options = {}) {
 
   try {
     const response = await fetch(url, fetchOpts);
+
     // Reject oversized responses before buffering the body into memory.
     // Closes the stream-amplification OOM path
     const contentLength = response.headers.get('content-length');
+
     if (contentLength && Number(contentLength) > MAX_RESPONSE_BYTES) {
       throw new Error(
         `Response exceeds maximum allowed size of ${MAX_RESPONSE_BYTES} bytes`
@@ -186,7 +136,6 @@ async function readResponseTextWithLimit(response) {
       );
     }
   }
-
   if (!response.body || typeof response.body.getReader !== 'function') {
     // Fallback for Jest/Node environments that lack getReader() and text()
     let text;
@@ -255,14 +204,13 @@ function buildPrompt(messages = []) {
     role: m.role,
     content: String(m.content || '').slice(0, MAX_MESSAGE_CHARS),
   }));
-
   const totalChars = trimmed.reduce((sum, m) => sum + m.content.length, 0);
 
-  if (totalChars > MAX_TOTAL_CHARS) {
-    throw new Error('Prompt too long');
-  }
+if (totalChars > MAX_TOTAL_CHARS) {
+  throw new Error('Prompt too long');
+}
 
-  return trimmed.map((m) => `${m.role}: ${m.content}`).join('\n');
+return trimmed.map((m) => `${m.role}: ${m.content}`).join('\n');
 }
 
 async function callOpenAICompatible({
@@ -428,6 +376,7 @@ const providerRegistry = {
 
 async function generateAIResponse({ userId, messages }) {
   const safeMessages = Array.isArray(messages) ? messages : [];
+
   const sanitizedMessages = safeMessages.slice(-16).map((m) => ({
     role: m.role,
     content: String(m.content || '').slice(0, 2000),
@@ -489,7 +438,13 @@ async function generateAIResponse({ userId, messages }) {
 
       recordFailure(providerName, error);
 
-      console.warn(`[AI] Provider failed: ${providerName}`, error.message);
+      logger.warn(
+        {
+          provider: providerName,
+          err: error,
+        },
+        'AI provider failed'
+      );
 
       errors.push({
         provider: providerName,
