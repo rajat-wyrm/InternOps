@@ -138,9 +138,11 @@ async function handleIssueOpened(payload) {
   const createdBy = adminUsers[0]?.id || null;
 
   const githubMetadata = {
-    author: payload.sender?.login || issue.user?.login || 'unknown',
+    author: issue.user?.login || payload.sender?.login || 'unknown',
     authorAvatar: issue.user?.avatar_url || null,
     authorUrl: issue.user?.html_url || null,
+    commentCount: issue.comments || 0,
+    commentParticipants: [],
     labels: labels.map((l) => ({
       id: l.id,
       name: l.name,
