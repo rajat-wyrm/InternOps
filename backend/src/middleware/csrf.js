@@ -48,6 +48,74 @@ function logCsrfWarn(request, details, message) {
   request.log?.warn(details, message);
 }
 
+function normalizeOrigin(value) {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return null;
+  }
+}
+
+function getTrustedOrigins() {
+  const origins = [];
+
+  const addValue = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach(addValue);
+    } else if (typeof val === 'string') {
+      if (val.includes(',')) {
+        val.split(',').forEach((v) => addValue(v.trim()));
+      } else {
+        const normalized = normalizeOrigin(val);
+        if (normalized && normalized !== '*') {
+          origins.push(normalized);
+        }
+      }
+    }
+  };
+
+  addValue(config.corsOrigin);
+  addValue(config.appUrl);
+
+  return [...new Set(origins)];
+}
+
+function isTrustedRequestOrigin(request) {
+  const originHeader = request.headers?.origin;
+  const refererHeader = request.headers?.referer;
+  const candidates = [originHeader, refererHeader].filter(Boolean);
+
+  if (!candidates.length) {
+    return false;
+  }
+
+  const trustedOrigins = new Set(getTrustedOrigins());
+  const isDev = config.nodeEnv !== 'production';
+
+  return candidates.some((candidate) => {
+    const normalized = normalizeOrigin(candidate);
+    if (!normalized) return false;
+
+    if (trustedOrigins.has(normalized)) {
+      return true;
+    }
+
+    if (isDev) {
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalized)) {
+        return true;
+      }
+    }
+
+    return false;
+  });
+}
+
 function readSession(request) {
   const cookies = parseCookies(request.headers.cookie);
   const raw = cookies[SESSION_COOKIE];
@@ -174,6 +242,54 @@ async function csrfCheck(request, reply) {
     request.url.split('?')[0].split('#')[0];
   if (EXEMPT.includes(path)) return;
 
+  const hasBearerAuth = Boolean(
+    request.headers.authorization &&
+    request.headers.authorization.startsWith('Bearer ')
+  );
+  let hasValidBearerAuth = false;
+  let decodedBearerToken = null;
+
+  if (hasBearerAuth) {
+    const authHeader = request.headers.authorization;
+    const authToken = authHeader.split(' ')[1];
+    try {
+      decodedBearerToken = verifyAccessToken(authToken);
+      hasValidBearerAuth = true;
+    } catch (err) {
+      logCsrfWarn(
+        request,
+        {
+          err,
+          method: request.method,
+          url: request.url,
+          hasAuthHeader: true,
+          tokenLength: authToken ? authToken.length : 0,
+        },
+        'CSRF bearer token verification failed during request validation'
+      );
+    }
+  }
+
+  const hasSession = Boolean(session && session.sid);
+
+  if (!hasSession && hasValidBearerAuth) {
+    return;
+  }
+
+  if (!isTrustedRequestOrigin(request)) {
+    logCsrfWarn(
+      request,
+      {
+        method: request.method,
+        url: request.url,
+        origin: request.headers?.origin || null,
+        referer: request.headers?.referer || null,
+      },
+      'CSRF origin validation failed'
+    );
+    return reply.status(403).send({ error: 'CSRF validation failed' });
+  }
+
   const headerToken = request.headers['x-csrf-token'];
 
   if (!session || !session.sid || !headerToken) {
@@ -198,27 +314,8 @@ async function csrfCheck(request, reply) {
   let tokenUserId = null;
   if (request.user && request.user.id) {
     tokenUserId = request.user.id;
-  } else {
-    const authHeader = request.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const authToken = authHeader.split(' ')[1];
-      try {
-        const decoded = verifyAccessToken(authToken);
-        tokenUserId = decoded.id;
-      } catch (err) {
-        logCsrfWarn(
-          request,
-          {
-            err,
-            method: request.method,
-            url: request.url,
-            hasAuthHeader: true,
-            tokenLength: authToken ? authToken.length : 0,
-          },
-          'CSRF bearer token verification failed during request validation'
-        );
-      }
-    }
+  } else if (hasValidBearerAuth && decodedBearerToken) {
+    tokenUserId = decodedBearerToken.id;
   }
 
   if (tokenUserId) {

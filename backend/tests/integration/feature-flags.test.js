@@ -49,6 +49,7 @@ function inject(method, url, opts = {}) {
     'X-CSRF-Token': csrfToken,
     'Content-Type': 'application/json',
     Cookie: cookieStr,
+    Origin: 'http://localhost:5173',
     ...opts.headers,
   };
   if (accessToken && !headers['Authorization']) {

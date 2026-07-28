@@ -44,6 +44,7 @@ function authHeaders() {
     Authorization: `Bearer ${accessToken}`,
     'X-CSRF-Token': csrfToken,
     'Content-Type': 'application/json',
+    Origin: 'http://localhost:5173',
   };
 }
 

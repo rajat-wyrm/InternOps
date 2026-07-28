@@ -18,7 +18,8 @@
     "format": "prettier --write .",
     "clean": "rimraf node_modules && npm run clean --workspaces --if-present",
     "reinstall": "npm run clean && npm install",
-    "prepare": "husky"
+    "prepare": "husky",
+    "prompt-test": "pytest ai-service/app/tests"
   },
   "workspaces": [
     "frontend",

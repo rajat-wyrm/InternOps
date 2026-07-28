@@ -172,19 +172,78 @@ Which template would be most appropriate? Return just the template name.`;
 // Certificate Rendering (Group 2 functionality)
 // ============================================================
 
+const aiProvider = require('../../services/aiProviderService');
+const { build_certificate_prompt } = require('../app/prompts');
+const { clean_and_parse_json } = require('../app/utils/prompt_cleaner');
+const { generateCertificatePDF } = require('../certificates/pdf');
+const { generateQRCodeDataURL } = require('../certificates/qr');
+
 async function renderCertificatePNG(data) {
   try {
-    const result = await callPythonEndpoint(
-      `/api/certificate-png?name=${encodeURIComponent(data.name)}&task=${encodeURIComponent(data.task)}`,
-      {},
-      'GET'
-    );
-    return result;
-  } catch (error) {
-    // Fallback to PDF generation
-    const { generateCertificatePDF } = require('../certificates/pdf');
-    const { generateQRCodeDataURL } = require('../certificates/qr');
+    // Step 1: Build AI prompt for design
+    const prompt = build_certificate_prompt(data.task);
 
+    // Step 2: Get AI response
+    const aiResponse = await aiProvider.generate(prompt);
+
+    // Step 3: Clean and parse JSON design spec
+    const designSpec = clean_and_parse_json(aiResponse);
+
+    // Step 4: Generate PDF using AI design spec
+    const pdfBuffer = await generateCertificatePDF(
+      {
+        recipientName: data.name,
+        title: data.task,
+        body: `This is to certify that ${data.name} has successfully completed ${data.task}`,
+        issuer: 'InternOps',
+        issueDate: new Date().toISOString().slice(0, 10),
+        certificateType: data.task,
+        colors: {
+          primary: designSpec.primary_color,
+          secondary: designSpec.secondary_color,
+          background: designSpec.background_color,
+          accent: designSpec.accent_color,
+        },
+        fonts: {
+          title: designSpec.font_family_title,
+          body: designSpec.font_family_body,
+        },
+        badge: designSpec.badge_style,
+        layout: designSpec.layout_alignment,
+      },
+      {}
+    );
+
+    // Step 5: QR code for verification
+    const verifyUrl = `${process.env.APP_URL || 'http://localhost:5173'}/verify/certificate`;
+    const qrCodeUrl = await generateQRCodeDataURL(verifyUrl);
+
+    // Step 6: Save PDF file
+    const filename = `cert_ai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`;
+    const filePath = path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'uploads',
+      'certificates',
+      filename
+    );
+
+    if (!fs.existsSync(path.dirname(filePath))) {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    }
+    fs.writeFileSync(filePath, pdfBuffer);
+
+    return {
+      type: 'pdf',
+      filename,
+      path: `/uploads/certificates/${filename}`,
+      qr_code: qrCodeUrl,
+      design: designSpec,
+    };
+  } catch (error) {
+    // Fallback to default PDF if AI fails
     const pdfBuffer = await generateCertificatePDF(
       {
         recipientName: data.name,
@@ -214,7 +273,6 @@ async function renderCertificatePNG(data) {
     if (!fs.existsSync(path.dirname(filePath))) {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
     }
-
     fs.writeFileSync(filePath, pdfBuffer);
 
     return {
@@ -222,9 +280,22 @@ async function renderCertificatePNG(data) {
       filename,
       path: `/uploads/certificates/${filename}`,
       qr_code: qrCodeUrl,
+      design: {
+        primary_color: '#1E3A8A',
+        secondary_color: '#D97706',
+        background_color: '#FFFFFF',
+        accent_color: '#000000',
+        font_family_title: 'Inter',
+        font_family_body: 'Roboto',
+        badge_style: 'classic_gold',
+        layout_alignment: 'center',
+        design_rationale: `Fallback design for ${data.name}'s achievement.`,
+      },
     };
   }
 }
+
+module.exports = { renderCertificatePNG };
 
 // ============================================================
 // Full Pipeline (All Groups combined)

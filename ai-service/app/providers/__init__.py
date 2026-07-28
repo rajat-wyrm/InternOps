@@ -1,10 +1,11 @@
 from app.providers.base import (
-    AIProviderError,
     BaseAIProvider,
+    AIProviderError,
     ProviderAPIError,
     ProviderRateLimitError,
     ProviderTimeoutError,
 )
+
 from app.providers.gemini import GeminiProvider
 from app.providers.openai import OpenAIProvider
 
