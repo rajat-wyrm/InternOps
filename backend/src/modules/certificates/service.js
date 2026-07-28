@@ -217,13 +217,15 @@ async function startBulkGeneration(data, userId) {
         job.id,
         err
       );
-      repo.updateBulkJob(job.id, {
-        status: 'failed',
-        error_log: [{ error: err.message }],
-        completed_at: new Date().toISOString(),
-      }).catch(() => {
-        /* ignore */
-      });
+      repo
+        .updateBulkJob(job.id, {
+          status: 'failed',
+          error_log: [{ error: err.message }],
+          completed_at: new Date().toISOString(),
+        })
+        .catch(() => {
+          /* ignore */
+        });
     });
   });
 

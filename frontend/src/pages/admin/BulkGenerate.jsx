@@ -33,7 +33,9 @@ const BulkGenerate = () => {
   const templates = templatesData?.data || [];
   const seedTemplatesMutation = useSeedTemplates({
     onSuccess: () => {
-      setSeedMessage('Default templates seeded successfully. Please refresh the page or re-open this step.');
+      setSeedMessage(
+        'Default templates seeded successfully. Please refresh the page or re-open this step.'
+      );
     },
     onError: () => {
       setSeedMessage('Failed to seed templates. Please try again.');
@@ -90,7 +92,9 @@ const BulkGenerate = () => {
   };
 
   const parseCsv = useCallback((text) => {
-    const normalizedText = String(text || '').replace(/^\uFEFF/, '').trim();
+    const normalizedText = String(text || '')
+      .replace(/^\uFEFF/, '')
+      .trim();
     const lines = normalizedText.split(/\r?\n/).filter((line) => line.trim());
     if (lines.length < 2) {
       return { error: 'CSV is empty or missing data.' };
@@ -108,43 +112,47 @@ const BulkGenerate = () => {
 
     if (nameIdx === -1 || emailIdx === -1) {
       return {
-        error: 'CSV headers must include name and email. Expected format: name,email,title,achievement.',
+        error:
+          'CSV headers must include name and email. Expected format: name,email,title,achievement.',
       };
     }
 
     const rowErrors = [];
-    const recipients = lines.slice(1).map((line, index) => {
-      const values = line.split(',').map((v) => v.trim());
-      const row = {
-        name: values[nameIdx] || '',
-        email: values[emailIdx] || '',
-        title: values[titleIdx] || '',
-        achievement: values[achievementIdx] || '',
-      };
+    const recipients = lines
+      .slice(1)
+      .map((line, index) => {
+        const values = line.split(',').map((v) => v.trim());
+        const row = {
+          name: values[nameIdx] || '',
+          email: values[emailIdx] || '',
+          title: values[titleIdx] || '',
+          achievement: values[achievementIdx] || '',
+        };
 
-      const rowNumber = index + 2;
-      const missingName = !row.name;
-      const missingEmail = !row.email;
-      const invalidEmail = row.email && !isValidEmail(row.email);
+        const rowNumber = index + 2;
+        const missingName = !row.name;
+        const missingEmail = !row.email;
+        const invalidEmail = row.email && !isValidEmail(row.email);
 
-      if (missingName || missingEmail || invalidEmail) {
-        let message = '';
-        if (missingName && missingEmail) {
-          message = 'Name and Email are required.';
-        } else if (missingName) {
-          message = 'Name is required.';
-        } else if (missingEmail) {
-          message = 'Email is required.';
-        } else if (invalidEmail) {
-          message = 'Invalid email format.';
+        if (missingName || missingEmail || invalidEmail) {
+          let message = '';
+          if (missingName && missingEmail) {
+            message = 'Name and Email are required.';
+          } else if (missingName) {
+            message = 'Name is required.';
+          } else if (missingEmail) {
+            message = 'Email is required.';
+          } else if (invalidEmail) {
+            message = 'Invalid email format.';
+          }
+
+          rowErrors.push({ row: rowNumber, message });
+          return null;
         }
 
-        rowErrors.push({ row: rowNumber, message });
-        return null;
-      }
-
-      return row;
-    }).filter(Boolean);
+        return row;
+      })
+      .filter(Boolean);
 
     if (!recipients.length) {
       return {
@@ -357,7 +365,8 @@ const BulkGenerate = () => {
                   />
                   {templates.length === 0 && !templatesLoading && (
                     <div className="rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
-                      No certificate templates found. You may need to seed default templates first.
+                      No certificate templates found. You may need to seed
+                      default templates first.
                     </div>
                   )}
                   {templates.length === 0 && (
@@ -443,7 +452,8 @@ const BulkGenerate = () => {
                     Loaded: {csvFileName}
                   </p>
                   <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                    Imported {recipients.length} valid recipient{recipients.length !== 1 ? 's' : ''}.
+                    Imported {recipients.length} valid recipient
+                    {recipients.length !== 1 ? 's' : ''}.
                   </p>
                 </>
               )}
