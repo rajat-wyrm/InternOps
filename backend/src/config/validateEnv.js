@@ -2,7 +2,7 @@ const { z } = require('zod');
 
 const REQUIRED_VARS = ['JWT_SECRET', 'DATABASE_URL', 'NODE_ENV'];
 
-const OPTIONAL_VARS = ['REDIS_URL', 'GOOGLE_CLIENT_ID', 'EMAIL_API_KEY'];
+const OPTIONAL_VARS = ['GOOGLE_CLIENT_ID', 'EMAIL_API_KEY'];
 
 const envSchema = z.object({
   PORT: z.string().regex(/^\d+$/, 'PORT must be a valid integer').optional(),
@@ -61,6 +61,18 @@ function validateEnv() {
     if (val === undefined || val === null || String(val).trim() === '') {
       missingOptional.push(key);
     }
+  }
+
+  const hasRedisConfig =
+    Boolean(process.env.REDIS_URL) ||
+    Boolean(process.env.REDIS_HOST && process.env.REDIS_PASSWORD) ||
+    Boolean(
+      process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+    );
+  if (!hasRedisConfig) {
+    missingOptional.push(
+      'REDIS_URL (or REDIS_HOST + REDIS_PASSWORD, or both UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)'
+    );
   }
 
   if (missingOptional.length > 0) {

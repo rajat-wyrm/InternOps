@@ -8,7 +8,7 @@ const { getRedisClient } = require('../../config/redis');
 // FIX: Check Redis first. If available, read the user's token set and map each
 // surviving hash to a session object. Fall back to Postgres when Redis is off.
 async function getUserSessions(userId) {
-  const redis = await getRedisClient();
+  const redis = await getRedisClient('session cache');
 
   if (redis) {
     const tokenHashes = await redis.sMembers(`user_tokens:${userId}`);
@@ -59,7 +59,7 @@ async function getUserSessions(userId) {
 // The Postgres side stays a soft revoke (UPDATE revoked = TRUE), not a
 // hard DELETE, so revoked sessions remain in the audit trail (#507).
 async function revokeSession(sessionId, userId) {
-  const redis = await getRedisClient();
+  const redis = await getRedisClient('session cache');
   let redisSuccess = false;
 
   if (redis) {
@@ -148,7 +148,7 @@ async function revokeAllUserSessions(userId) {
 
   // 2. Redis cleanup (best-effort)
   try {
-    const redis = await getRedisClient();
+    const redis = await getRedisClient('session cache');
     if (redis) {
       const tokens = await redis.sMembers(`user_tokens:${userId}`);
       if (tokens.length > 0) {

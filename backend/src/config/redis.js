@@ -8,6 +8,16 @@ let redisConnected = false;
 let listenersAttached = false;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30000;
+const warnedFallbackFeatures = new Set();
+
+const DEGRADED_FEATURES = [
+  'global and route rate limits are per-process and reset on restart',
+  'brute-force counters and lockout-email deduplication use database/local fallbacks',
+  'email recipient rate limits are per-process and reset on restart',
+  'AI responses use the local cache only',
+  'session reads fall back to PostgreSQL; Redis cache cleanup is skipped',
+  'access-token blacklist checks are unavailable',
+];
 
 function getSafeRedisError(err) {
   return {
@@ -17,10 +27,30 @@ function getSafeRedisError(err) {
   };
 }
 
+function warnRedisFallback(feature, err) {
+  if (process.env.NODE_ENV === 'test' || warnedFallbackFeatures.has(feature)) {
+    return;
+  }
+
+  warnedFallbackFeatures.add(feature);
+  logger.warn(
+    {
+      feature,
+      redisAvailable: false,
+      ...(err && { err: getSafeRedisError(err) }),
+    },
+    `Redis unavailable; ${feature} is using its degraded fallback`
+  );
+}
+
+function setRedisAvailability(available) {
+  config.redis.available = available;
+}
+
 function buildRedisClientOptions() {
   const redisConfig = config.redis;
 
-  if (!redisConfig?.enabled || !redisConfig.host || !redisConfig.password) {
+  if (!redisConfig?.enabled || !redisConfig.host) {
     return null;
   }
 
@@ -43,11 +73,15 @@ function scheduleReconnect() {
   }, reconnectDelay).unref();
 }
 
-async function getRedisClient() {
+async function getRedisClient(feature) {
   if (process.env.NODE_ENV === 'test') return null;
 
   const redisOptions = buildRedisClientOptions();
-  if (!redisOptions) return null;
+  if (!redisOptions) {
+    setRedisAvailability(false);
+    if (feature) warnRedisFallback(feature);
+    return null;
+  }
 
   if (client) return client;
   if (clientPromise) return clientPromise;
@@ -65,6 +99,7 @@ async function getRedisClient() {
 
         c.on('disconnect', () => {
           redisConnected = false;
+          setRedisAvailability(false);
           client = null;
           clientPromise = null;
 
@@ -73,6 +108,7 @@ async function getRedisClient() {
 
         c.on('connect', () => {
           redisConnected = true;
+          setRedisAvailability(true);
           logger.info('Redis connected');
         });
 
@@ -82,6 +118,7 @@ async function getRedisClient() {
 
       client = c;
       redisConnected = true;
+      setRedisAvailability(true);
       reconnectDelay = 1000;
 
       return client;
@@ -95,6 +132,7 @@ async function getRedisClient() {
       clientPromise = null;
       listenersAttached = false;
       redisConnected = false;
+      setRedisAvailability(false);
       scheduleReconnect();
 
       // Do NOT reset clientPromise here. Keep the settled-null promise so each
@@ -114,15 +152,19 @@ function getRedisStatus() {
   return redisConnected ? 'connected' : 'disconnected';
 }
 
+function getRedisDegradedFeatures() {
+  return [...DEGRADED_FEATURES];
+}
+
 async function blacklistAccessToken(jti, ttl) {
-  const client = await getRedisClient();
+  const client = await getRedisClient('access-token blacklist');
   if (!client) return;
 
   await client.set(`blacklist:${jti}`, '1', { EX: ttl });
 }
 
 async function isAccessTokenBlacklisted(jti) {
-  const client = await getRedisClient();
+  const client = await getRedisClient('access-token blacklist');
   if (!client) return false;
 
   return (await client.exists(`blacklist:${jti}`)) === 1;
@@ -131,6 +173,8 @@ async function isAccessTokenBlacklisted(jti) {
 module.exports = {
   getRedisClient,
   getRedisStatus,
+  getRedisDegradedFeatures,
+  warnRedisFallback,
   blacklistAccessToken,
   isAccessTokenBlacklisted,
 };

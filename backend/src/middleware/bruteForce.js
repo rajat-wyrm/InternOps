@@ -6,7 +6,7 @@ const repo = require('../modules/auth/repository');
 const emailService = require('../services/email');
 
 async function incrementAttempt(email, ip) {
-  const redis = await getRedisClient();
+  const redis = await getRedisClient('brute-force protection');
   if (!redis) return 0;
 
   const key = `brute:${email}:${ip}`;
@@ -33,7 +33,7 @@ async function isAccountLocked(email, ip) {
   if (emailLocked || ipLocked) return true;
 
   try {
-    const redis = await getRedisClient();
+    const redis = await getRedisClient('brute-force protection');
     if (redis) {
       const redisFailed = await redis.get(`brute:${email}:${ip}`);
       if (redisFailed && parseInt(redisFailed, 10) >= MAX_ATTEMPTS) {
@@ -66,7 +66,7 @@ async function clearFailedAttempts(email, ip) {
   );
 
   try {
-    const redis = await getRedisClient();
+    const redis = await getRedisClient('brute-force protection');
     if (redis) {
       await redis.del(`brute:${email}:${ip}`);
     }
@@ -85,7 +85,7 @@ async function bruteForceCheck(request, reply) {
     const user = await repo.findByEmail(email);
     if (user) {
       try {
-        const redis = await getRedisClient();
+        const redis = await getRedisClient('brute-force protection');
         if (redis) {
           const notifyKey = `lockout-email:${email}`;
           const alreadySent = await redis.get(notifyKey);

@@ -11,6 +11,7 @@ const log = pino(
 function buildRedisConfig() {
   const restUrl = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const redisUrl = process.env.REDIS_URL;
 
   const explicitHost = process.env.REDIS_HOST;
   const explicitPort = parseInt(process.env.REDIS_PORT, 10) || 6379;
@@ -20,6 +21,7 @@ function buildRedisConfig() {
   if (explicitHost && explicitPassword) {
     return {
       enabled: true,
+      available: false,
       host: explicitHost,
       port: explicitPort,
       username: explicitUsername,
@@ -28,9 +30,31 @@ function buildRedisConfig() {
     };
   }
 
+  if (redisUrl) {
+    try {
+      const parsed = new URL(redisUrl);
+      if (parsed.protocol === 'redis:' || parsed.protocol === 'rediss:') {
+        return {
+          enabled: Boolean(parsed.hostname),
+          available: false,
+          host: parsed.hostname || null,
+          port: Number(parsed.port) || 6379,
+          username: decodeURIComponent(parsed.username || 'default'),
+          password: parsed.password
+            ? decodeURIComponent(parsed.password)
+            : undefined,
+          tls: parsed.protocol === 'rediss:',
+        };
+      }
+    } catch {
+      // Startup logs the resulting degraded Redis mode.
+    }
+  }
+
   if (!restUrl || !token) {
     return {
       enabled: false,
+      available: false,
       host: null,
       port: 6379,
       username: 'default',
@@ -57,6 +81,7 @@ function buildRedisConfig() {
   if (!host) {
     return {
       enabled: false,
+      available: false,
       host: null,
       port: 6379,
       username: 'default',
@@ -67,6 +92,7 @@ function buildRedisConfig() {
 
   return {
     enabled: true,
+    available: false,
     host,
     port: 6379,
     username: 'default',

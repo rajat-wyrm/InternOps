@@ -57,7 +57,7 @@ class EmailService {
   async _checkRateLimit(to) {
     const windowMs = config.email.rateLimitWindowMs || 60000;
     const max = config.email.rateLimitPerRecipient || 5;
-    const redis = await getRedisClient();
+    const redis = await getRedisClient('email recipient rate limiting');
 
     if (redis) {
       const count = await redis.incr(`email_rl:${to}`);

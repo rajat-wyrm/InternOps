@@ -9,7 +9,12 @@ const pool = require('./config/db');
 const metrics = require('./utils/metrics');
 const { initializeWebSocket, getIO } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
-const { getRedisStatus } = require('./config/redis');
+const {
+  getRedisClient,
+  getRedisStatus,
+  getRedisDegradedFeatures,
+} = require('./config/redis');
+const ResilientRateLimitStore = require('./config/resilientRateLimitStore');
 const authenticate = require('./middleware/auth');
 const rbac = require('./middleware/rbac');
 const { csrfMiddleware } = require('./middleware/csrf');
@@ -146,6 +151,7 @@ app.register(require('@fastify/rate-limit'), {
   global: true,
   max: config.rateLimit.globalMax,
   timeWindow: config.rateLimit.timeWindow,
+  store: ResilientRateLimitStore,
 });
 
 app.register(require('@fastify/cookie'));
@@ -413,6 +419,13 @@ if (process.env.NODE_ENV !== 'test') {
 
 const start = async () => {
   try {
+    await getRedisClient('startup');
+    if (!config.redis.available) {
+      app.log.warn(
+        { redisAvailable: false, degradedFeatures: getRedisDegradedFeatures() },
+        'Redis is unavailable; the application is running in degraded mode'
+      );
+    }
     await app.listen({
       port: config.port,
       host: config.host,

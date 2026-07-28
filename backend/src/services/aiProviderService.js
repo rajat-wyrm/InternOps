@@ -71,7 +71,7 @@ async function getCachedResponse(payload) {
   const key = getCacheKey(payload);
 
   try {
-    const redis = await getRedisClient();
+    const redis = await getRedisClient('AI response cache');
     if (redis) {
       const cached = await redis.get(`ai:cache:${payload.userId}:${key}`);
       if (cached) {
@@ -91,7 +91,7 @@ async function setCachedResponse(payload, value) {
   const key = getCacheKey(payload);
 
   try {
-    const redis = await getRedisClient();
+    const redis = await getRedisClient('AI response cache');
     if (redis) {
       await redis.set(
         `ai:cache:${payload.userId}:${key}`,

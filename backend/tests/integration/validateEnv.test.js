@@ -187,6 +187,10 @@ describe('Environment Variable Validation Tests', () => {
     process.env.DATABASE_URL = 'postgresql://localhost:5432';
     process.env.NODE_ENV = 'development';
     delete process.env.REDIS_URL;
+    delete process.env.REDIS_HOST;
+    delete process.env.REDIS_PASSWORD;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.EMAIL_API_KEY;
 
@@ -204,6 +208,23 @@ describe('Environment Variable Validation Tests', () => {
     );
     expect(warnMock).toHaveBeenCalledWith(
       expect.stringContaining('• EMAIL_API_KEY')
+    );
+  });
+
+  it('documents the Redis fallback when its optional configuration is missing', () => {
+    process.env.JWT_SECRET = 'secret';
+    process.env.DATABASE_URL = 'postgresql://localhost:5432';
+    process.env.NODE_ENV = 'development';
+    delete process.env.REDIS_URL;
+    delete process.env.REDIS_HOST;
+    delete process.env.REDIS_PASSWORD;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    validateEnv();
+
+    expect(warnMock).toHaveBeenCalledWith(
+      expect.stringContaining('• REDIS_URL')
     );
   });
 

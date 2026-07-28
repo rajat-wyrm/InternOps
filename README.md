@@ -106,6 +106,18 @@ http://localhost:5173
 | JWT_SECRET         | Secret key for JWT access tokens      | your-jwt-secret                                     |
 | JWT_REFRESH_SECRET | Secret key for JWT refresh tokens     | your-refresh-secret                                 |
 
+### Redis availability and degraded mode
+
+Redis is optional for a single-instance development setup. Configure `REDIS_URL`,
+`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, or `REDIS_HOST` and
+`REDIS_PASSWORD` for shared production state. When Redis is unavailable, the
+backend starts in degraded mode and logs the affected features: rate limiting,
+brute-force counters, email recipient limits, AI cache, session cache/cleanup,
+and access-token blacklist checks. Local fallbacks keep the service running,
+but their state is per-process and resets on restart. Socket.IO currently uses
+process-local rooms; multi-instance WebSocket coordination requires a Socket.IO
+Redis adapter and is not enabled by this configuration.
+
 ### Complete Environment Variables
 
 All backend environment variables are available in:
