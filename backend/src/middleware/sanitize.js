@@ -9,22 +9,11 @@ const sanitizeHtml = require('sanitize-html');
 const SENSITIVE_FIELDS = new Set([
   'password',
   'oldPassword',
-  'old_password',
   'newPassword',
-  'new_password',
   'confirmPassword',
-  'confirm_password',
   'token',
   'resetToken',
-  'reset_token',
   'refreshToken',
-  'refresh_token',
-  'accessToken',
-  'access_token',
-  'apiKey',
-  'api_key',
-  'clientSecret',
-  'client_secret',
   '_csrf',
 ]);
 
@@ -47,17 +36,19 @@ function sanitizeInput(obj, excludedFields = []) {
   }
 
   for (const key of Object.keys(obj)) {
-    if (SENSITIVE_FIELDS.has(key) || excludedFields.includes(key)) {
-      continue;
-    }
-
     const val = obj[key];
 
+    if (SENSITIVE_FIELDS.has(key)) {
+      continue; // never touch these, no matter what
+    }
+
     if (typeof val === 'string') {
-      obj[key] = sanitizeHtml(val, {
-        allowedTags: [],
-        allowedAttributes: {},
-      });
+      if (!excludedFields.includes(key)) {
+        obj[key] = sanitizeHtml(val, {
+          allowedTags: [],
+          allowedAttributes: {},
+        });
+      }
     } else if (val && typeof val === 'object') {
       sanitizeInput(val, excludedFields);
     }
