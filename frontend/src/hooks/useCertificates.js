@@ -77,7 +77,13 @@ export function useBulkGenerate() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload) => {
-      const { data } = await api.post('/certificates/bulk/generate', payload);
+      const { data } = await api.post(
+        '/certificates/bulk/generate',
+        payload,
+        {
+          timeout: 120000,
+        }
+      );
       return data;
     },
     onSuccess: () => {

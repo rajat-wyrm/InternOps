@@ -191,12 +191,57 @@ async function startBulkGeneration(data, userId) {
       send_email: data.send_email,
       email_subject: data.email_subject,
       email_body: data.email_body,
+      status: 'pending',
+      completed_count: 0,
+      failed_count: 0,
     },
     userId
   );
 
-  // Process certificates synchronously for now (can be made async with a job queue)
-  const results = { generated: 0, failed: 0, errors: [] };
+  await Promise.all(
+    data.certificates.map((certData) =>
+      repo.createBulkJobItem({
+        bulk_job_id: job.id,
+        recipient_name: certData.recipient_name,
+        recipient_email: certData.recipient_email,
+        row_data: certData,
+        status: 'pending',
+      })
+    )
+  );
+
+  setImmediate(() => {
+    processBulkGeneration(job.id, data, userId).catch((err) => {
+      console.error(
+        'Bulk generation background processing failed for job',
+        job.id,
+        err
+      );
+      repo.updateBulkJob(job.id, {
+        status: 'failed',
+        error_log: [{ error: err.message }],
+        completed_at: new Date().toISOString(),
+      }).catch(() => {
+        /* ignore */
+      });
+    });
+  });
+
+  return {
+    success: true,
+    data: {
+      job_id: job.id,
+      total: data.certificates.length,
+      generated: 0,
+      failed: 0,
+      errors: [],
+    },
+  };
+}
+
+async function processBulkGeneration(jobId, data, userId) {
+  let generated = 0;
+  let failed = 0;
 
   for (const certData of data.certificates) {
     try {
@@ -215,7 +260,7 @@ async function startBulkGeneration(data, userId) {
       );
 
       await repo.createBulkJobItem({
-        bulk_job_id: job.id,
+        bulk_job_id: jobId,
         certificate_id: cert.data.id,
         recipient_name: certData.recipient_name,
         recipient_email: certData.recipient_email,
@@ -223,10 +268,10 @@ async function startBulkGeneration(data, userId) {
         status: 'generated',
       });
 
-      results.generated++;
+      generated++;
     } catch (err) {
       await repo.createBulkJobItem({
-        bulk_job_id: job.id,
+        bulk_job_id: jobId,
         recipient_name: certData.recipient_name,
         recipient_email: certData.recipient_email,
         row_data: certData,
@@ -234,33 +279,21 @@ async function startBulkGeneration(data, userId) {
         error_message: err.message,
       });
 
-      results.failed++;
-      results.errors.push({
-        recipient: certData.recipient_name,
-        error: err.message,
-      });
+      failed++;
     }
+
+    await repo.updateBulkJob(jobId, {
+      completed_count: generated,
+      failed_count: failed,
+    });
   }
 
-  // Update job status
-  await repo.updateBulkJob(job.id, {
+  await repo.updateBulkJob(jobId, {
     status: 'completed',
-    completed_count: results.generated,
-    failed_count: results.failed,
-    error_log: results.errors,
+    completed_count: generated,
+    failed_count: failed,
     completed_at: new Date().toISOString(),
   });
-
-  return {
-    success: true,
-    data: {
-      job_id: job.id,
-      total: data.certificates.length,
-      generated: results.generated,
-      failed: results.failed,
-      errors: results.errors,
-    },
-  };
 }
 
 async function getBulkJobStatus(id) {

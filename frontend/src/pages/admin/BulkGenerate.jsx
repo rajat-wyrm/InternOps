@@ -5,6 +5,7 @@ import {
   useBulkGenerate,
   useTemplates,
   useBulkJobStatus,
+  useSeedTemplates,
 } from '../../hooks/useCertificates';
 import {
   Upload,
@@ -24,9 +25,20 @@ const BulkGenerate = () => {
   const [jobId, setJobId] = useState(null);
   const [csvFileName, setCsvFileName] = useState('');
   const [validationError, setValidationError] = useState('');
+  const [csvRowErrors, setCsvRowErrors] = useState([]);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [seedMessage, setSeedMessage] = useState('');
 
   const { data: templatesData, isLoading: templatesLoading } = useTemplates();
   const templates = templatesData?.data || [];
+  const seedTemplatesMutation = useSeedTemplates({
+    onSuccess: () => {
+      setSeedMessage('Default templates seeded successfully. Please refresh the page or re-open this step.');
+    },
+    onError: () => {
+      setSeedMessage('Failed to seed templates. Please try again.');
+    },
+  });
   const bulkGenerateMutation = useBulkGenerate();
 
   const templateOptions = [
@@ -78,8 +90,11 @@ const BulkGenerate = () => {
   };
 
   const parseCsv = useCallback((text) => {
-    const lines = text.trim().split('\n');
-    if (lines.length < 2) return [];
+    const normalizedText = String(text || '').replace(/^\uFEFF/, '').trim();
+    const lines = normalizedText.split(/\r?\n/).filter((line) => line.trim());
+    if (lines.length < 2) {
+      return { error: 'CSV is empty or missing data.' };
+    }
 
     const headers = lines[0]
       .toLowerCase()
@@ -91,43 +106,134 @@ const BulkGenerate = () => {
     const titleIdx = headers.findIndex((h) => h === 'title');
     const achievementIdx = headers.findIndex((h) => h === 'achievement');
 
-    if (nameIdx === -1 || emailIdx === -1) return [];
+    if (nameIdx === -1 || emailIdx === -1) {
+      return {
+        error: 'CSV headers must include name and email. Expected format: name,email,title,achievement.',
+      };
+    }
 
-    return lines
-      .slice(1)
-      .map((line) => {
-        const values = line.split(',').map((v) => v.trim());
-        return {
-          name: values[nameIdx] || '',
-          email: values[emailIdx] || '',
-          title: values[titleIdx] || '',
-          achievement: values[achievementIdx] || '',
-        };
-      })
-      .filter((r) => r.name && r.email);
+    const rowErrors = [];
+    const recipients = lines.slice(1).map((line, index) => {
+      const values = line.split(',').map((v) => v.trim());
+      const row = {
+        name: values[nameIdx] || '',
+        email: values[emailIdx] || '',
+        title: values[titleIdx] || '',
+        achievement: values[achievementIdx] || '',
+      };
+
+      const rowNumber = index + 2;
+      const missingName = !row.name;
+      const missingEmail = !row.email;
+      const invalidEmail = row.email && !isValidEmail(row.email);
+
+      if (missingName || missingEmail || invalidEmail) {
+        let message = '';
+        if (missingName && missingEmail) {
+          message = 'Name and Email are required.';
+        } else if (missingName) {
+          message = 'Name is required.';
+        } else if (missingEmail) {
+          message = 'Email is required.';
+        } else if (invalidEmail) {
+          message = 'Invalid email format.';
+        }
+
+        rowErrors.push({ row: rowNumber, message });
+        return null;
+      }
+
+      return row;
+    }).filter(Boolean);
+
+    if (!recipients.length) {
+      return {
+        rows: [],
+        rowErrors,
+        error: 'No valid recipient rows found in the CSV file.',
+      };
+    }
+
+    return { rows: recipients, rowErrors };
   }, []);
 
   const handleCsvUpload = useCallback(
-    (e) => {
-      const file = e.target.files[0];
+    (file) => {
       if (!file) return;
 
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        setRecipients([]);
+        setCsvFileName('');
+        setCsvRowErrors([]);
+        setValidationError('Please upload a valid CSV file.');
+        return;
+      }
+
       setValidationError('');
+      setCsvRowErrors([]);
       setCsvFileName(file.name);
 
       const reader = new FileReader();
       reader.onload = (event) => {
         const parsed = parseCsv(event.target.result);
-        setRecipients(parsed);
+        if (parsed.error) {
+          setRecipients([]);
+          setValidationError(parsed.error);
+          setCsvRowErrors(parsed.rowErrors || []);
+          return;
+        }
+
+        setRecipients(parsed.rows);
+        setCsvRowErrors(parsed.rowErrors || []);
+
+        if (parsed.rowErrors?.length) {
+          setValidationError(
+            `${parsed.rowErrors.length} row${
+              parsed.rowErrors.length > 1 ? 's' : ''
+            } were skipped due to validation errors.`
+          );
+        }
       };
       reader.readAsText(file);
-      e.target.value = '';
     },
     [parseCsv]
   );
 
+  const handleFileInputChange = useCallback(
+    (e) => {
+      const file = e.target.files[0];
+      handleCsvUpload(file);
+      e.target.value = '';
+    },
+    [handleCsvUpload]
+  );
+
+  const handleDragOver = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragActive(true);
+  }, []);
+
+  const handleDragLeave = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragActive(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsDragActive(false);
+      const file = event.dataTransfer.files[0];
+      handleCsvUpload(file);
+    },
+    [handleCsvUpload]
+  );
+
   const addRow = () => {
     setValidationError('');
+    setCsvRowErrors([]);
     setRecipients([
       ...recipients,
       { name: '', email: '', title: '', achievement: '' },
@@ -136,11 +242,13 @@ const BulkGenerate = () => {
 
   const removeRow = (index) => {
     setValidationError('');
+    setCsvRowErrors([]);
     setRecipients(recipients.filter((_, i) => i !== index));
   };
 
   const updateRow = (index, field, value) => {
     setValidationError('');
+    setCsvRowErrors([]);
     const updated = [...recipients];
     updated[index] = { ...updated[index], [field]: value };
     setRecipients(updated);
@@ -239,13 +347,42 @@ const BulkGenerate = () => {
                   <span>Loading templates...</span>
                 </div>
               ) : (
-                <CustomSelect
-                  value={selectedTemplate}
-                  onChange={setSelectedTemplate}
-                  options={templateOptions}
-                  placeholder="Select a template..."
-                  className="w-full"
-                />
+                <div className="space-y-4">
+                  <CustomSelect
+                    value={selectedTemplate}
+                    onChange={setSelectedTemplate}
+                    options={templateOptions}
+                    placeholder="Select a template..."
+                    className="w-full"
+                  />
+                  {templates.length === 0 && !templatesLoading && (
+                    <div className="rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
+                      No certificate templates found. You may need to seed default templates first.
+                    </div>
+                  )}
+                  {templates.length === 0 && (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSeedMessage('');
+                          seedTemplatesMutation.mutate();
+                        }}
+                        disabled={seedTemplatesMutation.isPending}
+                        className="px-6 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {seedTemplatesMutation.isPending
+                          ? 'Seeding templates...'
+                          : 'Seed Default Templates'}
+                      </button>
+                      {seedMessage && (
+                        <p className="text-sm text-gray-700 dark:text-gray-300">
+                          {seedMessage}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
               <button
                 type="button"
@@ -265,7 +402,16 @@ const BulkGenerate = () => {
               Step 2: Add Recipients
             </h2>
 
-            <div className="mb-6 p-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+            <div
+              className={`mb-6 p-4 border-2 border-dashed rounded-lg transition-colors ${
+                isDragActive
+                  ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950'
+                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <div className="flex items-center gap-4">
                 <Upload className="h-8 w-8 text-gray-400" />
                 <div>
@@ -275,12 +421,15 @@ const BulkGenerate = () => {
                   <p className="text-xs text-gray-500">
                     Format: name, email, title, achievement
                   </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Drag & drop a CSV file here, or click choose file.
+                  </p>
                 </div>
                 <label className="ml-auto cursor-pointer">
                   <input
                     type="file"
                     accept=".csv"
-                    onChange={handleCsvUpload}
+                    onChange={handleFileInputChange}
                     className="hidden"
                   />
                   <span className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
@@ -289,9 +438,14 @@ const BulkGenerate = () => {
                 </label>
               </div>
               {csvFileName && (
-                <p className="mt-2 text-sm text-green-600 dark:text-green-400">
-                  Loaded: {csvFileName}
-                </p>
+                <>
+                  <p className="mt-2 text-sm text-green-600 dark:text-green-400">
+                    Loaded: {csvFileName}
+                  </p>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                    Imported {recipients.length} valid recipient{recipients.length !== 1 ? 's' : ''}.
+                  </p>
+                </>
               )}
             </div>
 
@@ -305,6 +459,19 @@ const BulkGenerate = () => {
             {validationError && (
               <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm font-semibold text-red-700 dark:text-red-300">
                 {validationError}
+              </div>
+            )}
+
+            {csvRowErrors.length > 0 && (
+              <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+                <p className="font-semibold mb-2">Skipped rows:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  {csvRowErrors.map((rowError) => (
+                    <li key={rowError.row}>
+                      Row {rowError.row}: {rowError.message}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
