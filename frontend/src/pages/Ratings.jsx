@@ -42,7 +42,11 @@ function Stars({ value }) {
   );
 }
 
-export default function Ratings() {
+export default function Ratings({
+  isProjectView = false,
+  deptId,
+  roster = [],
+} = {}) {
   const user = useAuthStore((s) => s.user);
   const canRate = ['ADMIN', 'CAPTAIN', 'TL', 'SENIOR_TL'].includes(user?.role);
   const isManager = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(
@@ -50,23 +54,37 @@ export default function Ratings() {
   );
   const isAdmin = user?.role === 'ADMIN';
 
-  const [viewDepartmentId, setViewDepartmentId] = useState('');
-  const [viewUserId, setViewUserId] = useState(user?.id || '');
+  const [viewDepartmentId, setViewDepartmentId] = useState(
+    isProjectView ? deptId : ''
+  );
+  const [viewUserId, setViewUserId] = useState(() => {
+    if (isProjectView && roster.length > 0) {
+      return roster[0].id;
+    }
+    return user?.id || '';
+  });
 
   useEffect(() => {
-    if (user?.id && !viewUserId) setViewUserId(user.id);
-  }, [user?.id]);
+    if (isProjectView) {
+      setViewDepartmentId(deptId || '');
+      if (roster.length > 0) {
+        setViewUserId(roster[0].id);
+      }
+    } else {
+      if (user?.id && !viewUserId) setViewUserId(user.id);
+    }
+  }, [isProjectView, deptId, roster, user?.id]);
 
   const { data: team = [] } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
-    enabled: isManager,
+    enabled: isManager && !isProjectView,
   });
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
-    enabled: isManager,
+    enabled: isManager && !isProjectView,
   });
 
   const {
@@ -79,9 +97,9 @@ export default function Ratings() {
     enabled: !!viewUserId,
   });
 
-  const handleViewDepartmentChange = (deptId) => {
-    setViewDepartmentId(deptId);
-    if (deptId) {
+  const handleViewDepartmentChange = (dId) => {
+    setViewDepartmentId(dId);
+    if (dId) {
       setViewUserId('');
     } else {
       setViewUserId(user?.id || '');
@@ -102,49 +120,65 @@ export default function Ratings() {
     })),
   ];
 
-  const ratingUserOptions = [
-    {
-      value: user?.id || '',
-      label: `Me (${user?.email || 'Current user'})`,
-    },
-    ...team
-      .filter(
-        (m) =>
-          m.id !== user?.id &&
-          (!viewDepartmentId || m.department_id === viewDepartmentId)
-      )
-      .map((m) => ({
+  const effectiveTeam = isProjectView ? roster : team;
+
+  const filteredTeam = isProjectView
+    ? roster
+    : team.filter(
+        (m) => !viewDepartmentId || m.department_id === viewDepartmentId
+      );
+
+  const ratingUserOptions = isProjectView
+    ? roster.map((m) => ({
         value: m.id,
         label: `${m.full_name || m.email} (${m.role})`,
-      })),
-  ];
+      }))
+    : [
+        {
+          value: user?.id || '',
+          label: `Me (${user?.email || 'Current user'})`,
+        },
+        ...filteredTeam
+          .filter((m) => m.id !== user?.id)
+          .map((m) => ({
+            value: m.id,
+            label: `${m.full_name || m.email} (${m.role})`,
+          })),
+      ];
 
   return (
     <div className="animate-fade-in-up">
       {/* Professional Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/60 text-amber-600 dark:text-amber-300 flex items-center justify-center shadow-sm">
-            <Star className="w-6 h-6" />
-          </div>
+      {!isProjectView && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/60 text-amber-600 dark:text-amber-300 flex items-center justify-center shadow-sm">
+              <Star className="w-6 h-6" />
+            </div>
 
-          <div>
-            <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-amber-600 dark:text-amber-300 font-extrabold mb-1">
-              Performance
-            </p>
+            <div>
+              <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-amber-600 dark:text-amber-300 font-extrabold mb-1">
+                Performance
+              </p>
 
-            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Ratings
-            </h1>
+              <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                Ratings
+              </h1>
 
-            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
-              Evaluate performance and view historical scores
-            </p>
+              <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
+                Evaluate performance and view historical scores
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {canRate && <RatingForm />}
+      {canRate && (
+        <RatingForm
+          roster={isProjectView ? roster : undefined}
+          departmentId={deptId}
+        />
+      )}
 
       <div className="bg-white dark:bg-slate-900 p-6 md:p-7 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
@@ -184,20 +218,22 @@ export default function Ratings() {
         <div className="space-y-5">
           {isManager ? (
             <>
-              <div>
-                <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-                  Department
-                </label>
+              {!isProjectView && (
+                <div>
+                  <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                    Department
+                  </label>
 
-                <CustomSelect
-                  value={viewDepartmentId}
-                  onChange={handleViewDepartmentChange}
-                  options={departmentOptions}
-                  placeholder="All departments"
-                  className="w-full"
-                  searchable={true}
-                />
-              </div>
+                  <CustomSelect
+                    value={viewDepartmentId}
+                    onChange={handleViewDepartmentChange}
+                    options={departmentOptions}
+                    placeholder="All departments"
+                    className="w-full"
+                    searchable={true}
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">

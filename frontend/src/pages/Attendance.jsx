@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { CalendarCheck } from 'lucide-react';
 import api from '../lib/axios';
@@ -17,14 +17,30 @@ const STATUS_BADGE = {
     'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60',
 };
 
-export default function Attendance() {
+export default function Attendance({
+  isProjectView = false,
+  deptId,
+  roster = [],
+} = {}) {
   const user = useAuthStore((s) => s.user);
   const canMark = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(user?.role);
   const isManager = canMark;
 
-  const [viewUserId, setViewUserId] = useState(user?.id || '');
+  const [viewUserId, setViewUserId] = useState(() => {
+    if (isProjectView && roster.length > 0) {
+      return roster[0].id;
+    }
+    return user?.id || '';
+  });
   const [page, setPage] = useState(1);
   const limit = 30;
+
+  useEffect(() => {
+    if (isProjectView && roster.length > 0) {
+      setViewUserId(roster[0].id);
+      setPage(1);
+    }
+  }, [isProjectView, roster]);
 
   // Reset to the first page whenever the viewed user changes.
   const selectUser = (id) => {
@@ -42,7 +58,7 @@ export default function Attendance() {
     queryKey: ['authorizedMembers'],
     queryFn: () =>
       api.get('/attendance/authorized-members').then((res) => res.data),
-    enabled: isManager,
+    enabled: isManager && !isProjectView,
   });
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -59,55 +75,70 @@ export default function Attendance() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(Math.ceil(total / limit), 1);
 
+  const effectiveTeam = isProjectView ? roster : team;
+
   const selectedName =
     viewUserId === user?.id
       ? 'Me'
-      : team.find((m) => m.id === viewUserId)?.full_name ||
-        team.find((m) => m.id === viewUserId)?.email ||
+      : effectiveTeam.find((m) => m.id === viewUserId)?.full_name ||
+        effectiveTeam.find((m) => m.id === viewUserId)?.email ||
         '';
 
-  const attendanceUserOptions = [
-    {
-      value: user?.id || '',
-      label: `Me (${user?.email || 'Current user'})`,
-    },
-    ...team
-      .filter((m) => m.id !== user?.id)
-      .map((m) => ({
+  const attendanceUserOptions = isProjectView
+    ? roster.map((m) => ({
         value: m.id,
         label: `${m.full_name || m.email} (${m.role})`,
-      })),
-  ];
+      }))
+    : [
+        {
+          value: user?.id || '',
+          label: `Me (${user?.email || 'Current user'})`,
+        },
+        ...team
+          .filter((m) => m.id !== user?.id)
+          .map((m) => ({
+            value: m.id,
+            label: `${m.full_name || m.email} (${m.role})`,
+          })),
+      ];
 
   return (
     <div className="animate-fade-in-up">
       {/* Professional Header Block */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/60 text-emerald-600 dark:text-emerald-300 flex items-center justify-center shadow-sm">
-            <CalendarCheck className="w-6 h-6" />
-          </div>
+      {!isProjectView && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/60 text-emerald-600 dark:text-emerald-300 flex items-center justify-center shadow-sm">
+              <CalendarCheck className="w-6 h-6" />
+            </div>
 
-          <div>
-            <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-300 font-extrabold mb-1">
-              Attendance
-            </p>
+            <div>
+              <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-300 font-extrabold mb-1">
+                Attendance
+              </p>
 
-            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Attendance
-            </h1>
+              <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                Attendance
+              </h1>
 
-            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
-              Track and manage daily attendance records
-            </p>
+              <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
+                Track and manage daily attendance records
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {canMark && (
         <>
-          <AttendanceMarkForm />
-          <BulkAttendanceForm />
+          <AttendanceMarkForm
+            roster={isProjectView ? roster : undefined}
+            departmentId={deptId}
+          />
+          <BulkAttendanceForm
+            roster={isProjectView ? roster : undefined}
+            departmentId={deptId}
+          />
         </>
       )}
 

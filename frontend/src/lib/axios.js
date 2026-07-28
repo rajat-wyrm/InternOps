@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { toast } from 'sonner';
 
 function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
@@ -12,11 +13,18 @@ function getBaseUrl() {
   }
   url = url.replace(/\/+$/, '');
 
-  // Append /api/v1 if the URL is an origin-only value (no path component yet).
-  // This keeps all API calls working correctly when VITE_API_URL is set to
-  // just "http://localhost:5000" rather than "http://localhost:5000/api/v1".
-  if (!/\/api\/v\d+/.test(url)) {
-    url = `${url}/api/v1`;
+  // Normalize bare API URLs to the versioned backend path.
+  // This keeps API calls working correctly when VITE_API_URL is set to
+  // "http://localhost:5000", "http://localhost:5000/api", or "http://localhost:5000/api/v1".
+  const hasApiVersionPath = /\/api\/v\d+(?:\/|$)/i.test(url);
+  const hasApiOnlyPath = /\/api$/i.test(url);
+
+  if (!hasApiVersionPath) {
+    if (hasApiOnlyPath) {
+      url = url.replace(/\/api$/i, '/api/v1');
+    } else {
+      url = `${url}/api/v1`;
+    }
   }
 
   return url;
@@ -26,6 +34,76 @@ const api = axios.create({
   withCredentials: true,
   timeout: 15000,
 });
+
+function getApiErrorMessage(responseData) {
+  if (!responseData) return null;
+  if (typeof responseData === 'string') return responseData;
+  if (typeof responseData.error === 'string' && responseData.error.trim()) {
+    return responseData.error.trim();
+  }
+  if (typeof responseData.message === 'string' && responseData.message.trim()) {
+    return responseData.message.trim();
+  }
+  if (typeof responseData.detail === 'string' && responseData.detail.trim()) {
+    return responseData.detail.trim();
+  }
+  if (
+    typeof responseData.description === 'string' &&
+    responseData.description.trim()
+  ) {
+    return responseData.description.trim();
+  }
+  if (Array.isArray(responseData.errors) && responseData.errors.length) {
+    const firstError = responseData.errors[0];
+    if (typeof firstError === 'string') return firstError;
+    if (typeof firstError?.message === 'string' && firstError.message.trim()) {
+      return firstError.message.trim();
+    }
+  }
+  return null;
+}
+
+function shouldShowGlobalToast(err) {
+  const original = err.config || {};
+  const isAuthRoute =
+    original.url &&
+    (original.url.includes('/auth/login') ||
+      original.url.includes('/auth/refresh') ||
+      original.url.includes('/auth/register'));
+
+  return !(
+    original._retry ||
+    original._suppressGlobalError ||
+    isAuthRoute ||
+    original.url?.includes('/auth/refresh')
+  );
+}
+
+function notifyGlobalApiError(err) {
+  if (!shouldShowGlobalToast(err)) {
+    return;
+  }
+
+  if (!err.response) {
+    const networkMessage =
+      err.code === 'ECONNABORTED'
+        ? 'The request timed out. Please check your connection and try again.'
+        : 'Unable to connect to the server. Check your internet connection and try again.';
+
+    toast.error(networkMessage);
+    return;
+  }
+
+  const status = err.response.status;
+  const serverMessage = getApiErrorMessage(err.response.data);
+  const message =
+    status >= 500
+      ? 'Something went wrong on our side. Please try again later.'
+      : serverMessage ||
+        'Request failed. Please check your input and try again.';
+
+  toast.error(message);
+}
 
 // The backend's CSRF guard requires the X-CSRF-Token header on mutating
 // requests. We fetch a real token once and reuse it. If the call to obtain
@@ -148,28 +226,6 @@ function processQueue(error, token = null) {
   failedQueue = [];
 }
 
-function handleLogout() {
-  try {
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.removeItem('user');
-      } catch {
-        /* ignore localStorage unavailability */
-      }
-
-      clearCsrfToken();
-
-      if (_authStore) {
-        _authStore.getState().logout();
-      }
-    } else {
-      clearCsrfToken();
-    }
-  } catch {
-    clearCsrfToken();
-  }
-}
-
 api.interceptors.response.use(
   (res) => {
     const url = res.config?.url;
@@ -202,7 +258,9 @@ api.interceptors.response.use(
         original.url.includes('/auth/refresh') ||
         original.url.includes('/auth/register'));
 
-    if (status === 401 && !original._retry && !isAuthRoute) {
+    const hasToken = !!getMemoryAccessToken();
+
+    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
       // Another refresh is already in flight — queue this request.
       if (isRefreshing) {
         original._retry = true;
@@ -264,12 +322,18 @@ api.interceptors.response.use(
           }
         }
 
+        // Emit an event that React Router can catch
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('auth:logout'));
+        }
+
         return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;
       }
     }
 
+    notifyGlobalApiError(err);
     return Promise.reject(err);
   }
 );

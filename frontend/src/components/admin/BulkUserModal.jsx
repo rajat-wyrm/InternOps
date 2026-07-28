@@ -5,7 +5,7 @@ import api from '../../lib/axios';
 
 const ROLES = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
-const CSV_TEMPLATE = `fullName,email,password,role
+const CSV_TEMPLATE = `full_name,email,password,role
 John Doe,john@example.com,TempPass@123,INTERN
 Jane Smith,jane@example.com,TempPass@123,TL`;
 
@@ -23,7 +23,7 @@ function parseCsv(text) {
 function UserRow({ row }) {
   return (
     <tr className="hover:bg-slate-50">
-      <td className="px-3 py-2 text-slate-700">{row.fullName || '\u2014'}</td>
+      <td className="px-3 py-2 text-slate-700">{row.full_name || '\u2014'}</td>
       <td className="px-3 py-2 text-slate-700">{row.email}</td>
       <td className="px-3 py-2">
         <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium text-[11px]">

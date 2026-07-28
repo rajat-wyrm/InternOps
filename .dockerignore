@@ -1,6 +1,8 @@
 node_modules
 .git
 .env
+backend/.env
+backend/.env.*
 *.log
 Dockerfile
 docker-compose.yml

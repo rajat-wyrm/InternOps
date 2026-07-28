@@ -15,13 +15,29 @@ async function createTask({
 }
 
 async function assignTask(taskId, userIds, assignedBy) {
-  if (!userIds || userIds.length === 0) return;
-  const values = userIds
-    .map((_, i) => `($1, $${i + 2}, $${userIds.length + 2})`)
-    .join(',');
+  // Return if no users are provided
+  if (!userIds || userIds.length === 0) {
+    return;
+  }
+
+  // Validate UUIDs
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  if (!userIds.every((id) => UUID_RE.test(id))) {
+    throw new Error('Invalid userId: all entries must be UUIDs');
+  }
+
   await pool.query(
-    `INSERT INTO task_assignments (task_id, user_id, assigned_by) VALUES ${values}`,
-    [taskId, ...userIds, assignedBy]
+    `
+      INSERT INTO task_assignments (task_id, user_id, assigned_by)
+      SELECT
+        $1,
+        unnest($2::uuid[]),
+        $3
+      ON CONFLICT (task_id, user_id) DO NOTHING
+    `,
+    [taskId, userIds, assignedBy]
   );
 }
 async function getUserEmail(userId) {
@@ -35,13 +51,23 @@ async function isTaskAssignedToUser(taskId, userId) {
     `SELECT 1 FROM social_tasks st
      WHERE st.id = $1 AND st.deleted_at IS NULL
        AND (
-         NOT EXISTS (SELECT 1 FROM task_assignments WHERE task_id = st.id AND deleted_at IS NULL)
-         OR EXISTS (SELECT 1 FROM task_assignments WHERE task_id = st.id AND user_id = $2 AND deleted_at IS NULL)
+         NOT EXISTS (
+           SELECT 1 FROM task_assignments
+           WHERE task_id = st.id AND deleted_at IS NULL
+         )
+         OR EXISTS (
+           SELECT 1 FROM task_assignments
+           WHERE task_id = st.id
+             AND user_id = $2
+             AND deleted_at IS NULL
+         )
        )`,
     [taskId, userId]
   );
+
   return res.rowCount > 0;
 }
+
 async function getAllInternEmails(limit = 500, offset = 0) {
   const res = await pool.query(
     `SELECT email
@@ -63,15 +89,15 @@ async function getInternEmailCount() {
      WHERE role IN ('INTERN', 'CAPTAIN')
        AND email IS NOT NULL`
   );
+
   return res.rows[0].count;
 }
-async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
+
+// Shared WHERE-clause builder so getTasks and getTasksCount can never
+// drift out of sync with each other (same filters, same params order
+// up to the point pagination params are appended).
+function buildTaskFilterClause(filters, userId, userRole) {
   const params = [];
-
-  const safeLimit = Math.min(Number(limit) || 50, 100);
-  const safePage = Math.max(Number(page) || 1, 1);
-  const offset = (safePage - 1) * safeLimit;
-
   const where = ['st.deleted_at IS NULL'];
 
   if (!['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(userRole)) {
@@ -90,7 +116,16 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
     where.push(`st.deadline <= $${params.length}`);
   }
 
-  const whereSql = `WHERE ${where.join(' AND ')}`;
+  return { whereSql: `WHERE ${where.join(' AND ')}`, params };
+}
+
+async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
+  const safeLimit = Math.min(Number(limit) || 50, 100);
+  const safePage = Math.max(Number(page) || 1, 1);
+  const offset = (safePage - 1) * safeLimit;
+
+  const { whereSql, params } = buildTaskFilterClause(filters, userId, userRole);
+
   params.push(safeLimit);
   params.push(offset);
 
@@ -105,6 +140,20 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
 
   return (await pool.query(q, params)).rows;
 }
+
+async function getTasksCount(filters, userId, userRole) {
+  const { whereSql, params } = buildTaskFilterClause(filters, userId, userRole);
+
+  const q = `
+    SELECT COUNT(*)::int AS count
+    FROM social_tasks st
+    ${whereSql}
+  `;
+
+  const res = await pool.query(q, params);
+  return res.rows[0].count;
+}
+
 async function submitProof(
   taskId,
   internId,
@@ -287,11 +336,13 @@ module.exports = {
   getUserEmail,
   isTaskAssignedToUser,
   getTasks,
+  getTasksCount,
   submitProof,
   submitProofWithImages,
   verifyProof,
   getProofsByTask,
   getProofsByIntern,
+
   getProof,
   deleteProof,
   getProofImage,

@@ -101,7 +101,7 @@ export default function AdminDashboard() {
         ? true
         : undefined;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: [
       'adminUsers',
       page,
@@ -263,7 +263,29 @@ export default function AdminDashboard() {
           />
         </div>
       </Card>
+      {isError && (
+        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-800 px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="font-semibold text-red-700 dark:text-red-300">
+              {rows.length
+                ? "Couldn't refresh the users list."
+                : 'Failed to load users.'}
+            </p>
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {error?.response?.data?.message ||
+                error?.message ||
+                'Something went wrong while fetching users.'}
+            </p>
+          </div>
 
+          <button
+            onClick={() => refetch()}
+            className="ml-4 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {/* Users Table */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 overflow-hidden shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         {isLoading ? (

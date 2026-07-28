@@ -288,13 +288,21 @@ module.exports = async function socialTasksRoutes(fastify) {
       preHandler: [auth],
     },
     async (req) => {
-      return repo.getTasks(
-        req.query || {},
-        req.user.id,
-        req.user.role,
-        req.query.page,
-        req.query.limit
-      );
+      const page = req.query.page || 1;
+      const limit = req.query.limit || 50;
+
+      const [tasks, total] = await Promise.all([
+        repo.getTasks(req.query || {}, req.user.id, req.user.role, page, limit),
+        repo.getTasksCount(req.query || {}, req.user.id, req.user.role),
+      ]);
+
+      return {
+        tasks,
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+      };
     }
   );
 

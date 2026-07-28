@@ -23,6 +23,7 @@ async function authMiddleware(request, reply) {
     request.user = Object.freeze({
       id: decoded.id,
       role: decoded.role,
+      departmentId: decoded.departmentId,
       type: decoded.typ,
       jti: decoded.jti,
       exp: decoded.exp,

@@ -44,6 +44,7 @@ function authHeaders() {
     Authorization: `Bearer ${accessToken}`,
     'X-CSRF-Token': csrfToken,
     'Content-Type': 'application/json',
+    Origin: 'http://localhost:5173',
   };
 }
 
@@ -149,7 +150,7 @@ beforeAll(async () => {
       email: SECOND_ADMIN_EMAIL,
       password: 'SecondAdmin@123',
       role: 'ADMIN',
-      fullName: 'Second Admin',
+      full_name: 'Second Admin',
     },
   });
   if (reg2.statusCode !== 201) {
@@ -168,7 +169,7 @@ beforeAll(async () => {
       email: INTERN_EMAIL,
       password: 'Intern@123',
       role: 'INTERN',
-      fullName: 'Test Intern',
+      full_name: 'Test Intern',
     },
   });
   if (regIntern.statusCode !== 201) {

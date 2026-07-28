@@ -38,6 +38,7 @@ const MIGRATION_RENAMES = {
   '019_proof_images.sql': '022_proof_images.sql',
   '020_social_tasks_reminder_sent_at.sql':
     '023_social_tasks_reminder_sent_at.sql',
+  '021_add_certificates_tables.sql': '024_add_certificates_tables.sql',
   '026_feature_flags.sql': '027_feature_flags.sql',
 };
 
@@ -82,9 +83,10 @@ async function loadMigrations(dir) {
 
     const filePath = path.join(dir, file);
     const sql = await readFileWithRetry(filePath);
+    const normalizedSql = sql.replace(/\r\n/g, '\n');
     const checksum = crypto
       .createHash('sha256')
-      .update(sql, 'utf8')
+      .update(normalizedSql, 'utf8')
       .digest('hex');
     migrations.push({ name: file, sql, checksum });
   }
@@ -168,11 +170,23 @@ async function migrate(migrationsDir) {
           [name]
         );
         if (stored.rowCount > 0 && stored.rows[0].sha256 !== checksum) {
-          throw new Error(
-            `Migration "${name}" has been modified since it was applied. Expected checksum ${stored.rows[0].sha256}, got ${checksum}.`
-          );
+          if (process.argv.includes('--fix-checksums')) {
+            log.info(
+              { migration: name },
+              'Checksum mismatch, updating to new checksum'
+            );
+            await client.query(
+              'UPDATE _migration_checksums SET sha256 = $1 WHERE name = $2',
+              [checksum, name]
+            );
+          } else {
+            throw new Error(
+              `Migration "${name}" has been modified since it was applied. Expected checksum ${stored.rows[0].sha256}, got ${checksum}. Run 'npm run migrate:fix' to update the checksum.`
+            );
+          }
+        } else {
+          log.info({ migration: name }, 'Skipping (already applied)');
         }
-        log.info({ migration: name }, 'Skipping (already applied)');
         continue;
       }
 

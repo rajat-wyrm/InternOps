@@ -30,6 +30,28 @@ const ROLE_COLORS = {
   INTERN: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
 };
 
+// ─── Stat card colours (static map so Tailwind JIT can detect classes) ───────
+const CARD_STYLES = {
+  blue: {
+    border: 'border-blue-200 dark:border-blue-900/40',
+    cardBg: 'bg-blue-100/60 dark:bg-blue-900/40',
+    iconBg: 'bg-blue-200/70 dark:bg-blue-900/60',
+    text: 'text-blue-600 dark:text-blue-400',
+  },
+  green: {
+    border: 'border-green-200 dark:border-green-900/40',
+    cardBg: 'bg-green-100/60 dark:bg-green-900/40',
+    iconBg: 'bg-green-200/70 dark:bg-green-900/60',
+    text: 'text-green-600 dark:text-green-400',
+  },
+  red: {
+    border: 'border-rose-200 dark:border-rose-900/40',
+    cardBg: 'bg-rose-100/60 dark:bg-rose-900/40',
+    iconBg: 'bg-rose-200/70 dark:bg-rose-900/60',
+    text: 'text-rose-600 dark:text-rose-400',
+  },
+};
+
 const ALL_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
@@ -482,27 +504,27 @@ export default function FeatureFlags() {
             label: 'Total Flags',
             value: flags.length,
             icon: ShieldCheck,
-            color: 'indigo',
+            color: 'blue',
           },
           {
             label: 'Enabled',
             value: enabledCount,
             icon: ToggleRight,
-            color: 'emerald',
+            color: 'green',
           },
           {
             label: 'Disabled',
             value: flags.length - enabledCount,
             icon: ToggleLeft,
-            color: 'rose',
+            color: 'red',
           },
         ].map(({ label, value, icon: Icon, color }) => (
           <div
             key={label}
-            className={`rounded-3xl border p-5 bg-white dark:bg-slate-900 border-${color}-100 dark:border-${color}-900/40 shadow-[0_4px_16px_rgba(0,0,0,0.04)]`}
+            className={`rounded-3xl border p-5 ${CARD_STYLES[color].border} ${CARD_STYLES[color].cardBg} shadow-[0_4px_16px_rgba(0,0,0,0.04)]`}
           >
             <div
-              className={`w-10 h-10 rounded-2xl bg-${color}-50 dark:bg-${color}-900/20 text-${color}-600 dark:text-${color}-400 flex items-center justify-center mb-3`}
+              className={`w-10 h-10 rounded-2xl ${CARD_STYLES[color].iconBg} ${CARD_STYLES[color].text} flex items-center justify-center mb-3`}
             >
               <Icon className="w-5 h-5" />
             </div>
