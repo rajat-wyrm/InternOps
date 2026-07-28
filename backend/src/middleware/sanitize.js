@@ -20,6 +20,21 @@ const SENSITIVE_FIELDS = new Set([
 function sanitizeInput(obj, excludedFields = []) {
   if (typeof obj !== 'object' || obj === null) return;
 
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      const val = obj[i];
+      if (typeof val === 'string') {
+        obj[i] = sanitizeHtml(val, {
+          allowedTags: [],
+          allowedAttributes: {},
+        });
+      } else if (val && typeof val === 'object') {
+        sanitizeInput(val, excludedFields);
+      }
+    }
+    return;
+  }
+
   for (const key of Object.keys(obj)) {
     const val = obj[key];
 
