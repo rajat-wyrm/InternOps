@@ -151,22 +151,7 @@ module.exports = async function socialTasksRoutes(fastify) {
           'Task created but notification email failed'
         );
       }
-
-      try {
-        const internEmails = await repo.getAllInternEmails();
-
-        for (const email of internEmails) {
-          await emailService.sendNotification(email, {
-            title: 'New Social Media Task',
-            message: `A new task "${task.title}" has been posted. Please complete it before the deadline.`,
-          });
-        }
-      } catch (emailErr) {
-        req.log.warn(
-          { emailErr },
-          'Task created but intern notification emails failed'
-        );
-      }
+      notifyAllInternsAsync(task, req.log);
       return task;
     }
   );
@@ -195,6 +180,19 @@ module.exports = async function socialTasksRoutes(fastify) {
         resourceId: task.id,
         details: parsed.data,
       };
+      if (task.source === 'github' && task.github_issue_number) {
+        setImmediate(async () => {
+          try {
+            const githubSync = require('../github-sync/service');
+            await githubSync.syncTaskToGithub(task.id, req.user.id);
+          } catch (syncErr) {
+            req.log.warn(
+              { taskId: task.id, err: syncErr.message },
+              'Two-way GitHub sync failed'
+            );
+          }
+        });
+      }
       return task;
     }
   );
@@ -207,6 +205,7 @@ module.exports = async function socialTasksRoutes(fastify) {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
     async (req, reply) => {
+      const task = await repo.getTaskById(req.params.id);
       await repo.deleteTask(req.params.id);
       req.auditOnResponse = {
         userId: req.user.id,
@@ -216,6 +215,19 @@ module.exports = async function socialTasksRoutes(fastify) {
         resourceId: req.params.id,
         details: {},
       };
+      if (task && task.source === 'github' && task.github_issue_number) {
+        setImmediate(async () => {
+          try {
+            const githubSync = require('../github-sync/service');
+            await githubSync.closeGithubIssueFromTask(task.id, req.user.id);
+          } catch (syncErr) {
+            req.log.warn(
+              { taskId: task.id, err: syncErr.message },
+              'GitHub issue close on delete failed'
+            );
+          }
+        });
+      }
       return { success: true };
     }
   );
@@ -258,7 +270,8 @@ module.exports = async function socialTasksRoutes(fastify) {
     }
   );
 
-  // List social tasks (any authenticated user). Optional ?deadlineBefore=ISO date.
+  // List social tasks (any authenticated user).
+  // Optional query params: ?deadlineBefore=ISO date, ?source=github|manual
   fastify.get(
     '/',
     {
@@ -282,27 +295,23 @@ module.exports = async function socialTasksRoutes(fastify) {
             deadlineBefore: {
               type: 'string',
             },
+            source: {
+              type: 'string',
+              enum: ['manual', 'github'],
+            },
           },
         },
       },
       preHandler: [auth],
     },
     async (req) => {
-      const page = req.query.page || 1;
-      const limit = req.query.limit || 50;
-
-      const [tasks, total] = await Promise.all([
-        repo.getTasks(req.query || {}, req.user.id, req.user.role, page, limit),
-        repo.getTasksCount(req.query || {}, req.user.id, req.user.role),
-      ]);
-
-      return {
-        tasks,
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        totalPages: Math.max(Math.ceil(total / limit), 1),
-      };
+      return repo.getTasks(
+        req.query || {},
+        req.user.id,
+        req.user.role,
+        req.query.page,
+        req.query.limit
+      );
     }
   );
 
