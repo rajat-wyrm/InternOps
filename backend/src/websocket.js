@@ -74,7 +74,7 @@ function initializeWebSocket(server, logger) {
     engineSocket.on('close', () => cleanupPendingConnection(engineSocket));
   });
 
-  io.use(async (socket, next) => {
+ io.use(async (socket, next) => {
   const engineSocket = socket.conn;
   const rawToken = socket.handshake?.auth?.token;
   const token = typeof rawToken === 'string' ? rawToken : '';
@@ -93,12 +93,24 @@ function initializeWebSocket(server, logger) {
         },
         'WebSocket authentication failed: missing token'
       );
+
       cleanupPendingConnection(engineSocket);
       socket.disconnect(true);
       return next(new Error('Authentication error'));
     }
 
     const decoded = verifyAccessToken(token);
+
+    if (!decoded || !decoded.jti) {
+      log?.warn(
+        { clientIp },
+        'WebSocket authentication failed: missing token ID (jti)'
+      );
+
+      cleanupPendingConnection(engineSocket);
+      socket.disconnect(true);
+      return next(new Error('Authentication error'));
+    }
 
     if (await isAccessTokenBlacklisted(decoded.jti)) {
       log?.warn(
@@ -129,6 +141,7 @@ function initializeWebSocket(server, logger) {
       },
       'WebSocket authentication failed during token verification'
     );
+
     cleanupPendingConnection(engineSocket);
     socket.disconnect(true);
     next(new Error('Authentication error'));
