@@ -17,8 +17,13 @@ const SENSITIVE_FIELDS = new Set([
   '_csrf',
 ]);
 
-function sanitizeInput(obj, excludedFields = []) {
-  if (typeof obj !== 'object' || obj === null) return;
+function isPlainObject(val) {
+  return Object.prototype.toString.call(val) === '[object Object]';
+}
+
+function sanitizeInput(obj, excludedFields = [], depth = 0) {
+  // Prevent stack overflow DoS attacks
+  if (depth > 10 || !obj || typeof obj !== 'object') return;
 
   if (Array.isArray(obj)) {
     for (let i = 0; i < obj.length; i++) {
@@ -28,29 +33,29 @@ function sanitizeInput(obj, excludedFields = []) {
           allowedTags: [],
           allowedAttributes: {},
         });
-      } else if (val && typeof val === 'object') {
-        sanitizeInput(val, excludedFields);
+      } else if (isPlainObject(val) || Array.isArray(val)) {
+        sanitizeInput(val, excludedFields, depth + 1);
       }
     }
     return;
   }
 
-  for (const key of Object.keys(obj)) {
-    const val = obj[key];
+  if (!isPlainObject(obj)) return;
 
-    if (SENSITIVE_FIELDS.has(key)) {
-      continue; // never touch these, no matter what
+  for (const key of Object.keys(obj)) {
+    if (SENSITIVE_FIELDS.has(key) || excludedFields.includes(key)) {
+      continue;
     }
 
+    const val = obj[key];
+
     if (typeof val === 'string') {
-      if (!excludedFields.includes(key)) {
-        obj[key] = sanitizeHtml(val, {
-          allowedTags: [],
-          allowedAttributes: {},
-        });
-      }
-    } else if (val && typeof val === 'object') {
-      sanitizeInput(val, excludedFields);
+      obj[key] = sanitizeHtml(val, {
+        allowedTags: [],
+        allowedAttributes: {},
+      });
+    } else if (isPlainObject(val) || Array.isArray(val)) {
+      sanitizeInput(val, excludedFields, depth + 1);
     }
   }
 }
