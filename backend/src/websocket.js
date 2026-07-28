@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const config = require('./config');
 const { verifyAccessToken } = require('./utils/tokens');
+const { isAccessTokenBlacklisted } = require('./config/redis');
 
 let io = null;
 let log = null;
@@ -73,50 +74,66 @@ function initializeWebSocket(server, logger) {
     engineSocket.on('close', () => cleanupPendingConnection(engineSocket));
   });
 
-  io.use((socket, next) => {
-    const engineSocket = socket.conn;
-    const rawToken = socket.handshake?.auth?.token;
-    const token = typeof rawToken === 'string' ? rawToken : '';
-    const clientIp =
-      socket.handshake?.headers?.['x-forwarded-for'] ||
-      socket.handshake?.address;
+  io.use(async (socket, next) => {
+  const engineSocket = socket.conn;
+  const rawToken = socket.handshake?.auth?.token;
+  const token = typeof rawToken === 'string' ? rawToken : '';
+  const clientIp =
+    socket.handshake?.headers?.['x-forwarded-for'] ||
+    socket.handshake?.address;
 
-    try {
-      if (!token) {
-        log?.warn(
-          {
-            clientIp,
-            hasToken: false,
-            tokenLength: 0,
-            tokenSegments: 0,
-          },
-          'WebSocket authentication failed: missing token'
-        );
-        cleanupPendingConnection(engineSocket);
-        socket.disconnect(true);
-        return next(new Error('Authentication error'));
-      }
-
-      const decoded = verifyAccessToken(token);
-      socket.userId = decoded.id;
-      cleanupPendingConnection(engineSocket);
-      next();
-    } catch (err) {
+  try {
+    if (!token) {
       log?.warn(
         {
-          err,
           clientIp,
-          hasToken: Boolean(token),
-          tokenLength: token.length,
-          tokenSegments: token ? token.split('.').length : 0,
+          hasToken: false,
+          tokenLength: 0,
+          tokenSegments: 0,
         },
-        'WebSocket authentication failed during token verification'
+        'WebSocket authentication failed: missing token'
       );
       cleanupPendingConnection(engineSocket);
       socket.disconnect(true);
-      next(new Error('Authentication error'));
+      return next(new Error('Authentication error'));
     }
-  });
+
+    const decoded = verifyAccessToken(token);
+
+    if (await isAccessTokenBlacklisted(decoded.jti)) {
+      log?.warn(
+        {
+          clientIp,
+          userId: decoded.id,
+          jti: decoded.jti,
+        },
+        'WebSocket authentication failed: token revoked'
+      );
+
+      cleanupPendingConnection(engineSocket);
+      socket.disconnect(true);
+      return next(new Error('Token revoked'));
+    }
+
+    socket.userId = decoded.id;
+    cleanupPendingConnection(engineSocket);
+    next();
+  } catch (err) {
+    log?.warn(
+      {
+        err,
+        clientIp,
+        hasToken: Boolean(token),
+        tokenLength: token.length,
+        tokenSegments: token ? token.split('.').length : 0,
+      },
+      'WebSocket authentication failed during token verification'
+    );
+    cleanupPendingConnection(engineSocket);
+    socket.disconnect(true);
+    next(new Error('Authentication error'));
+  }
+});
 
   io.on('connection', (socket) => {
     cleanupPendingConnection(socket.conn);
