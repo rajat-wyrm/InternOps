@@ -16,7 +16,8 @@ function initializeWebSocket(server, logger) {
       const url = new URL(req.url, 'http://localhost');
       const token =
         url.searchParams.get('token') ||
-        (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')
+        (req.headers.authorization &&
+        req.headers.authorization.startsWith('Bearer ')
           ? req.headers.authorization.split(' ')[1]
           : null) ||
         req.headers['sec-websocket-protocol'];
@@ -28,7 +29,8 @@ function initializeWebSocket(server, logger) {
           log?.warn(
             {
               err,
-              clientIp: req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+              clientIp:
+                req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
             },
             'WebSocket handshake authentication failed: invalid token'
           );
@@ -94,7 +96,10 @@ function initializeWebSocket(server, logger) {
 
     if (socket.conn) {
       socket.conn.on('error', (err) => {
-        log?.error({ err, userId: socket.userId }, 'Underlying socket connection error');
+        log?.error(
+          { err, userId: socket.userId },
+          'Underlying socket connection error'
+        );
       });
     }
 

@@ -49,14 +49,14 @@ describe('DashboardLayout Component Tests', () => {
       },
     });
     vi.clearAllMocks();
-    
+
     // Reset Zustand stores
     useAuthStore.setState({
       accessToken: null,
       user: null,
       hydrated: false,
     });
-    
+
     // Default feature flags
     useFeatureFlagsStore.setState({
       flags: {
@@ -98,7 +98,9 @@ describe('DashboardLayout Component Tests', () => {
 
     renderLayout();
 
-    expect(await screen.findByText('Dashboard', { selector: 'span' })).toBeInTheDocument();
+    expect(
+      await screen.findByText('Dashboard', { selector: 'span' })
+    ).toBeInTheDocument();
     expect(screen.getByText('Attendance')).toBeInTheDocument();
     expect(screen.getByText('Ratings')).toBeInTheDocument();
     expect(screen.getByText('Tasks')).toBeInTheDocument();
@@ -106,7 +108,7 @@ describe('DashboardLayout Component Tests', () => {
     expect(screen.getByText('Notifications')).toBeInTheDocument();
     expect(screen.getByText('Profile')).toBeInTheDocument();
     expect(screen.getByText('Sessions')).toBeInTheDocument();
-    
+
     // Interns should not see administrative options
     expect(screen.queryByText('Users')).not.toBeInTheDocument();
     expect(screen.queryByText('Departments')).not.toBeInTheDocument();
@@ -121,7 +123,9 @@ describe('DashboardLayout Component Tests', () => {
     renderLayout();
 
     expect(await screen.findByText('Users')).toBeInTheDocument();
-    expect(screen.getByText('Dashboard', { selector: 'span' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Dashboard', { selector: 'span' })
+    ).toBeInTheDocument();
     expect(screen.getByText('Departments')).toBeInTheDocument();
     expect(screen.getByText('Audit Log')).toBeInTheDocument();
   });
@@ -138,7 +142,9 @@ describe('DashboardLayout Component Tests', () => {
     fireEvent.click(logoutBtn);
 
     // Confirm that the confirmation modal pops up
-    expect(screen.getByText(/Are you sure you want to log out/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Are you sure you want to log out/i)
+    ).toBeInTheDocument();
 
     const confirmBtn = screen.getByText('Logout', { selector: 'button' });
     fireEvent.click(confirmBtn);

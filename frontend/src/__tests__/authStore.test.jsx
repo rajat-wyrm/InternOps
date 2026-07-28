@@ -16,9 +16,9 @@ describe('Auth Store (Zustand) Unit Tests', () => {
   it('updates state via setAuth', () => {
     const mockUser = { id: '1', email: 'test@example.com', role: 'ADMIN' };
     const mockToken = 'mockToken123';
-    
+
     useAuthStore.getState().setAuth({ accessToken: mockToken, user: mockUser });
-    
+
     const state = useAuthStore.getState();
     expect(state.accessToken).toBe(mockToken);
     expect(state.user).toEqual(mockUser);
@@ -32,11 +32,11 @@ describe('Auth Store (Zustand) Unit Tests', () => {
   it('clears state on logout', () => {
     useAuthStore.getState().setAuth({
       accessToken: 'token',
-      user: { email: 'admin@internops.com' }
+      user: { email: 'admin@internops.com' },
     });
-    
+
     useAuthStore.getState().logout();
-    
+
     const state = useAuthStore.getState();
     expect(state.accessToken).toBeNull();
     expect(state.user).toBeNull();

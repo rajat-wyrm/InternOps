@@ -128,7 +128,9 @@ export default function Ratings() {
       })),
   ];
 
-  const activeDepartment = departments.find((d) => d.id === (deptId || viewDepartmentId));
+  const activeDepartment = departments.find(
+    (d) => d.id === (deptId || viewDepartmentId)
+  );
 
   return (
     <div className="animate-fade-in-up">
@@ -156,7 +158,11 @@ export default function Ratings() {
 
           <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
             <Link
-              to={deptId ? `/admin/departments/${deptId}/attendance` : '/attendance'}
+              to={
+                deptId
+                  ? `/admin/departments/${deptId}/attendance`
+                  : '/attendance'
+              }
               className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-indigo-100 transition"
             >
               Attendance

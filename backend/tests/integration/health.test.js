@@ -62,12 +62,17 @@ describe('Health Check Integration Tests', () => {
 
   describe('WebSocket Handshake Authentication', () => {
     it('should reject handshake with invalid token', (done) => {
-      http.get(`${serverUrl}/socket.io/?EIO=4&transport=polling&token=invalid_token`, (res) => {
-        expect(res.statusCode).toBe(403);
-        done();
-      }).on('error', (err) => {
-        done(err);
-      });
+      http
+        .get(
+          `${serverUrl}/socket.io/?EIO=4&transport=polling&token=invalid_token`,
+          (res) => {
+            expect(res.statusCode).toBe(403);
+            done();
+          }
+        )
+        .on('error', (err) => {
+          done(err);
+        });
     });
   });
 });

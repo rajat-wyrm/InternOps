@@ -44,7 +44,7 @@ describe('Login Component Tests', () => {
       },
     });
     vi.clearAllMocks();
-    
+
     // Default mock response for notices
     api.get.mockResolvedValue({ data: [] });
   });
@@ -63,7 +63,9 @@ describe('Login Component Tests', () => {
     const { container } = renderLogin();
 
     expect(container.querySelector('input[type="email"]')).toBeInTheDocument();
-    expect(container.querySelector('input[type="password"]')).toBeInTheDocument();
+    expect(
+      container.querySelector('input[type="password"]')
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Log In/i })).toBeInTheDocument();
     expect(screen.getByText(/Forgot Password\?/i)).toBeInTheDocument();
   });
@@ -74,7 +76,9 @@ describe('Login Component Tests', () => {
     const form = container.querySelector('form');
     fireEvent.submit(form);
 
-    expect(await screen.findByText('Email and password required')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Email and password required')
+    ).toBeInTheDocument();
   });
 
   it('handles API error response gracefully', async () => {
@@ -97,7 +101,9 @@ describe('Login Component Tests', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Log In/i }));
 
-    expect(await screen.findByText('Invalid credentials provided')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Invalid credentials provided')
+    ).toBeInTheDocument();
   });
 
   it('submits form successfully and navigates to home', async () => {
