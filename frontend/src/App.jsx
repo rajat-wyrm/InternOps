@@ -36,6 +36,7 @@ const CanvaTemplates = lazy(() => import('./pages/admin/CanvaTemplates'));
 const AICertificates = lazy(() => import('./pages/admin/AICertificates'));
 const QuickGenerate = lazy(() => import('./pages/admin/QuickGenerate'));
 const FeatureFlags = lazy(() => import('./pages/admin/FeatureFlags'));
+const GithubSync = lazy(() => import('./pages/admin/GithubSync'));
 const ProjectsPage = lazy(() => import('./pages/admin/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/admin/ProjectDetailPage'));
 
@@ -356,6 +357,14 @@ export default function App() {
               element={
                 <RoleGuard allowedRoles={['ADMIN']}>
                   <FeatureFlags />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="github-sync"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <GithubSync />
                 </RoleGuard>
               }
             />
