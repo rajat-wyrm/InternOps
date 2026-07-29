@@ -48,9 +48,10 @@ def _is_valid_key(key: Optional[str]) -> bool:
 
 def _get_key_attr(provider_name: str) -> str:
     """Return the Settings attribute name holding the credential for a provider."""
-    if provider_name == "huggingface":
+    provider_clean = provider_name.strip().lower()
+    if provider_clean == "huggingface":
         return "HUGGINGFACE_TOKEN"
-    return f"{provider_name.upper()}_API_KEY"
+    return f"{provider_clean.upper()}_API_KEY"
 
 
 class Settings(BaseSettings):

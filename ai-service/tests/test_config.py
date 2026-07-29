@@ -189,6 +189,15 @@ def test_get_provider_key_unsupported_provider_raises_error():
 
     assert "not a supported provider" in str(exc_info.value)
 
+def test_get_provider_key_huggingface():
+    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
+    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
+    os.environ["HUGGINGFACE_TOKEN"] = "valid_hf_token"
+
+    cfg = reload_config()
+    assert cfg.settings.get_provider_key("huggingface") == "valid_hf_token"
+    assert cfg.settings.get_provider_key("HuggingFace") == "valid_hf_token"
+
 def test_backward_compatibility():
     os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
     os.environ["GEMINI_API_KEY"] = "valid_gemini"
