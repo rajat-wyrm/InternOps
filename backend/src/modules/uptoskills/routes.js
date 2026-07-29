@@ -1,6 +1,6 @@
-﻿const { toSchema } = require('../../utils/schemaHelper');
-const auth = require('../../middleware/auth');
+﻿const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
+
 async function routes(fastify) {
   fastify.get(
     '/sync-status',
@@ -11,7 +11,13 @@ async function routes(fastify) {
         description: 'Get uptoskills sync status',
       },
     },
-    async () => ({ status: 'not_implemented' })
+    async (request, reply) => {
+      return reply.code(501).send({
+        error: 'Not Implemented',
+        message: 'UptoSkills integration is not available yet.',
+      });
+    }
   );
 }
+
 module.exports = routes;
