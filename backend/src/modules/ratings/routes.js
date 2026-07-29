@@ -14,11 +14,20 @@ const suggestionRoutes = require('./suggestion.routes');
 
 module.exports = async function ratingsRoutes(fastify) {
   await fastify.register(suggestionRoutes);
+
   // Submit a rating for someone in your team (immutable history row).
   fastify.post(
     '/',
     {
       schema: { tags: ['Ratings'], description: 'Submit a rating' },
+
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'), sanitize],
     },
     async (req, reply) => {

@@ -110,10 +110,19 @@ async function routes(fastify) {
   );
 
   // Bulk mark attendance (manager roles, ownership validated per entry)
+  // Bulk mark attendance (manager roles, ownership validated per entry)
   fastify.post(
     '/bulk',
     {
       schema: { tags: ['Attendance'], description: 'Bulk mark attendance' },
+
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
+        },
+      },
+
       preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
     },
     async (req, reply) => {
