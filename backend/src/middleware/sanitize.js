@@ -20,7 +20,15 @@ function sanitizeInput(obj, allowedFields = []) {
 }
 
 function sanitizationMiddleware(request, reply, done) {
-  const SAFE_FIELDS = ['name', 'description', 'message', 'title', 'content'];
+  const SAFE_FIELDS = [
+    'name',
+    'description',
+    'message',
+    'title',
+    'content',
+    'meeting_url',
+    'meetingUrl',
+  ];
 
   if (request.body) {
     sanitizeInput(request.body, SAFE_FIELDS);
