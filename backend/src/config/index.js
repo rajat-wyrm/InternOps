@@ -9,33 +9,33 @@ const log = pino(
 );
 
 function buildRedisConfig() {
-  const restUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-
   const explicitHost = process.env.REDIS_HOST;
   const explicitPort = parseInt(process.env.REDIS_PORT, 10) || 6379;
   const explicitUsername = process.env.REDIS_USERNAME || 'default';
   const explicitPassword = process.env.REDIS_PASSWORD;
 
-  if (explicitHost && explicitPassword) {
+  if (explicitHost) {
     return {
       enabled: true,
       host: explicitHost,
       port: explicitPort,
       username: explicitUsername,
-      password: explicitPassword,
-      tls: process.env.REDIS_TLS !== 'false',
+      password: explicitPassword || undefined,
+      tls: process.env.REDIS_TLS === 'true',
     };
   }
 
-  if (!restUrl || !token) {
+  const restUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (!restUrl || !token || restUrl === 'your-redis-url') {
     return {
       enabled: false,
       host: null,
       port: 6379,
       username: 'default',
       password: null,
-      tls: true,
+      tls: false,
     };
   }
 
@@ -61,7 +61,7 @@ function buildRedisConfig() {
       port: 6379,
       username: 'default',
       password: null,
-      tls: true,
+      tls: false,
     };
   }
 

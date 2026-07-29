@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import Papa from 'papaparse';
 import { PageHeader, Card, Badge, Spinner } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
 import {
@@ -51,10 +52,25 @@ const BulkGenerate = () => {
     })),
   ];
 
-  const { data: jobStatusData, isFetching: isPolling } =
-    useBulkJobStatus(jobId);
+  const {
+    data: jobStatusData,
+    isFetching,
+    isLoading,
+    refetch,
+  } = useBulkJobStatus(jobId);
   const jobStatus = jobStatusData?.data || null;
+  const isPolling = isFetching && !!jobStatus && !isLoading;
   const isGenerating = bulkGenerateMutation.isPending;
+
+  useEffect(() => {
+    if (!jobId || jobStatus?.status !== 'processing') return undefined;
+
+    const interval = setInterval(() => {
+      refetch();
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [jobId, jobStatus?.status, refetch]);
 
   const isValidEmail = (email) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
@@ -100,61 +116,109 @@ const BulkGenerate = () => {
       return { error: 'CSV is empty or missing data.' };
     }
 
-    const headers = lines[0]
-      .toLowerCase()
-      .split(',')
-      .map((h) => h.trim());
+    if (!normalizedText) {
+      return { error: 'CSV file is empty.' };
+    }
+  
+    const parseResult = Papa.parse(normalizedText, {
+      header: true,
+      skipEmptyLines: 'greedy',
+      transformHeader: (h) =>
+        String(h || '')
+          .trim()
+          .toLowerCase(),
+    });
 
-    const nameIdx = headers.findIndex((h) => h === 'name');
-    const emailIdx = headers.findIndex((h) => h === 'email');
-    const titleIdx = headers.findIndex((h) => h === 'title');
-    const achievementIdx = headers.findIndex((h) => h === 'achievement');
+    if (parseResult.errors && parseResult.errors.length > 0) {
+      const fatalErrors = parseResult.errors.filter(
+        (e) => e.type === 'Quotes' || e.type === 'Delimiter'
+      );
+      if (fatalErrors.length > 0 && parseResult.data.length === 0) {
+        return { error: `Failed to parse CSV: ${fatalErrors[0].message}` };
+      }
+    }
 
-    if (nameIdx === -1 || emailIdx === -1) {
+    const rows = parseResult.data;
+    if (!rows || rows.length === 0) {
+      return { error: 'CSV file contains no data rows.' };
+    }
+
+    const sampleRowKeys = Object.keys(rows[0] || {});
+    const nameKey = sampleRowKeys.find((k) =>
+      [
+        'name',
+        'recipient_name',
+        'recipient name',
+        'full name',
+        'fullname',
+        'recipient',
+      ].includes(k)
+    );
+    const emailKey = sampleRowKeys.find((k) =>
+      [
+        'email',
+        'recipient_email',
+        'recipient email',
+        'email address',
+        'emailaddress',
+      ].includes(k)
+    );
+    const titleKey = sampleRowKeys.find((k) =>
+      [
+        'title',
+        'certificate title',
+        'certificate_title',
+        'role',
+        'position',
+      ].includes(k)
+    );
+    const achievementKey = sampleRowKeys.find((k) =>
+      ['achievement', 'description', 'reason', 'details'].includes(k)
+    );
+
+    if (!nameKey || !emailKey) {
       return {
         error:
-          'CSV headers must include name and email. Expected format: name,email,title,achievement.',
+          'CSV headers must include name and email columns (e.g. name,email,title,achievement).',
       };
     }
 
     const rowErrors = [];
-    const recipients = lines
-      .slice(1)
-      .map((line, index) => {
-        const values = line.split(',').map((v) => v.trim());
-        const row = {
-          name: values[nameIdx] || '',
-          email: values[emailIdx] || '',
-          title: values[titleIdx] || '',
-          achievement: values[achievementIdx] || '',
-        };
 
-        const rowNumber = index + 2;
-        const missingName = !row.name;
-        const missingEmail = !row.email;
-        const invalidEmail = row.email && !isValidEmail(row.email);
+    const validRecipients = [];
 
-        if (missingName || missingEmail || invalidEmail) {
-          let message = '';
-          if (missingName && missingEmail) {
-            message = 'Name and Email are required.';
-          } else if (missingName) {
-            message = 'Name is required.';
-          } else if (missingEmail) {
-            message = 'Email is required.';
-          } else if (invalidEmail) {
-            message = 'Invalid email format.';
-          }
+    rows.forEach((row, index) => {
+      const rowNumber = index + 2;
+      const name = String(row[nameKey] || '').trim();
+      const email = String(row[emailKey] || '').trim();
+      const title = titleKey ? String(row[titleKey] || '').trim() : '';
+      const achievement = achievementKey
+        ? String(row[achievementKey] || '').trim()
+        : '';
 
-          rowErrors.push({ row: rowNumber, message });
-          return null;
+      const missingName = !name;
+      const missingEmail = !email;
+      const invalidEmailFormat = email && !isValidEmail(email);
+
+      if (missingName || missingEmail || invalidEmailFormat) {
+        let message = '';
+        if (missingName && missingEmail) {
+          message = 'Name and Email are required.';
+        } else if (missingName) {
+          message = 'Name is required.';
+        } else if (missingEmail) {
+          message = 'Email is required.';
+        } else if (invalidEmailFormat) {
+          message = 'Invalid email format.';
         }
+        rowErrors.push({ row: rowNumber, message });
+      } else {
+        validRecipients.push({ name, email, title, achievement });
+      }
+    });
 
-        return row;
-      })
-      .filter(Boolean);
+    if (validRecipients.length === 0) {
 
-    if (!recipients.length) {
       return {
         rows: [],
         rowErrors,
@@ -162,7 +226,7 @@ const BulkGenerate = () => {
       };
     }
 
-    return { rows: recipients, rowErrors };
+    return { rows: validRecipients, rowErrors };
   }, []);
 
   const handleCsvUpload = useCallback(
@@ -201,6 +265,10 @@ const BulkGenerate = () => {
             } were skipped due to validation errors.`
           );
         }
+      };
+      reader.onerror = () => {
+        setRecipients([]);
+        setValidationError('Error reading CSV file.');
       };
       reader.readAsText(file);
     },
@@ -303,9 +371,12 @@ const BulkGenerate = () => {
     }
   };
 
+  const processedCount =
+    (jobStatus?.completed_count || 0) + (jobStatus?.failed_count || 0);
   const progress = jobStatus
-    ? Math.round(
-        ((jobStatus.completed_count || 0) / (jobStatus.total_count || 1)) * 100
+    ? Math.min(
+        100,
+        Math.round((processedCount / (jobStatus.total_count || 1)) * 100)
       )
     : 0;
 
@@ -786,15 +857,16 @@ const BulkGenerate = () => {
                   </Badge>
                   {isPolling && (
                     <span className="text-sm text-gray-500 flex items-center gap-1">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Polling...
+                      <Loader2 className="h-4 w-4 animate-spin" /> Refreshing
+                      status...
                     </span>
                   )}
                 </div>
 
-                {jobStatus.status === 'completed' && jobStatus.items && (
+                {jobStatus.items && jobStatus.items.length > 0 && (
                   <div className="mt-6">
                     <h3 className="text-lg font-medium mb-3 text-gray-900 dark:text-white">
-                      Generated Certificates
+                      Job Items & Status
                     </h3>
                     <div className="max-h-64 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
                       <table className="w-full text-sm">
@@ -807,7 +879,7 @@ const BulkGenerate = () => {
                               Status
                             </th>
                             <th className="px-4 py-2 text-left text-gray-600 dark:text-gray-400">
-                              Certificate ID
+                              Details / Certificate ID
                             </th>
                           </tr>
                         </thead>
@@ -832,13 +904,37 @@ const BulkGenerate = () => {
                                 </Badge>
                               </td>
                               <td className="px-4 py-2 text-gray-500 font-mono text-xs">
-                                {item.certificate_id || '-'}
+                                {item.error_message ? (
+                                  <span className="text-red-500 font-sans">
+                                    {item.error_message}
+                                  </span>
+                                ) : (
+                                  item.certificate_id || '-'
+                                )}
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
+                  </div>
+                )}
+
+                {jobStatus.error_log && jobStatus.error_log.length > 0 && (
+                  <div className="mt-4 p-4 border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 rounded-lg text-sm text-red-700 dark:text-red-300">
+                    <p className="font-semibold mb-1">Job Failure Logs:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      {jobStatus.error_log.map((errItem, idx) => (
+                        <li key={idx}>
+                          {errItem.recipient ? `${errItem.recipient}: ` : ''}
+                          {errItem.error ||
+                            errItem.message ||
+                            (typeof errItem === 'string'
+                              ? errItem
+                              : JSON.stringify(errItem))}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 

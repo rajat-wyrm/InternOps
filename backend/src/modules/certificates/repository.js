@@ -474,6 +474,51 @@ async function saveCanvaSettings(data, userId) {
   return res.rows[0];
 }
 
+async function createBulkJobItemsBatch(items) {
+  if (!items || items.length === 0) return [];
+
+  const values = [];
+  const valueRows = items.map((item, i) => {
+    const offset = i * 6;
+    values.push(
+      item.bulk_job_id,
+      item.certificate_id || null,
+      item.recipient_name,
+      item.recipient_email || null,
+      JSON.stringify(item.row_data || {}),
+      item.status || 'pending'
+    );
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`;
+  });
+
+  const query = `
+    INSERT INTO bulk_job_items (bulk_job_id, certificate_id, recipient_name, recipient_email, row_data, status)
+    VALUES ${valueRows.join(', ')}
+    RETURNING *
+  `;
+
+  const res = await pool.query(query, values);
+  return res.rows;
+}
+
+async function getPendingBulkJobs() {
+  const res = await pool.query(
+    "SELECT * FROM bulk_jobs WHERE status IN ('pending', 'processing') ORDER BY created_at ASC"
+  );
+  return res.rows;
+}
+
+async function failPendingBulkJobItems(bulkJobId, errorMessage) {
+  const res = await pool.query(
+    `UPDATE bulk_job_items
+     SET status = 'failed', error_message = $2
+     WHERE bulk_job_id = $1 AND status = 'pending'
+     RETURNING *`,
+    [bulkJobId, errorMessage || 'Bulk job failed before processing']
+  );
+  return res.rows;
+}
+
 module.exports = {
   createTemplate,
   getTemplates,
@@ -493,7 +538,11 @@ module.exports = {
   getBulkJobById,
   updateBulkJob,
 
+  getPendingBulkJobs,
+  failPendingBulkJobItems,
+
   createBulkJobItem,
+  createBulkJobItemsBatch,
   updateBulkJobItem,
   getBulkJobItems,
 

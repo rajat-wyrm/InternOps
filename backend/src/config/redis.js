@@ -20,21 +20,26 @@ function getSafeRedisError(err) {
 function buildRedisClientOptions() {
   const redisConfig = config.redis;
 
-  if (!redisConfig?.enabled || !redisConfig.host || !redisConfig.password) {
+  if (!redisConfig?.enabled || !redisConfig.host) {
     return null;
   }
 
-  return {
+  const options = {
     username: redisConfig.username || 'default',
-    password: redisConfig.password,
     socket: {
       host: redisConfig.host,
       port: redisConfig.port || 6379,
-      tls: redisConfig.tls !== false,
+      tls: redisConfig.tls !== false && process.env.REDIS_TLS === 'true',
       connectTimeout: 1000,
       reconnectStrategy: false,
     },
   };
+
+  if (redisConfig.password) {
+    options.password = redisConfig.password;
+  }
+
+  return options;
 }
 function scheduleReconnect() {
   setTimeout(() => {
@@ -53,12 +58,18 @@ async function getRedisClient() {
   if (clientPromise) return clientPromise;
 
   clientPromise = (async () => {
+    let c = null;
+
     try {
-      const c = redis.createClient(redisOptions);
+      c = redis.createClient(redisOptions);
+
       if (!listenersAttached) {
         c.on('error', (err) => {
           logger.warn(
-            { err: getSafeRedisError(err), name: 'redis_error' },
+            {
+              err: getSafeRedisError(err),
+              name: 'redis_error',
+            },
             'Redis connection error'
           );
         });
@@ -78,6 +89,7 @@ async function getRedisClient() {
 
         listenersAttached = true;
       }
+
       await c.connect();
 
       client = c;
@@ -86,19 +98,25 @@ async function getRedisClient() {
 
       return client;
     } catch (err) {
-      logger.warn(
-        { err: getSafeRedisError(err), name: 'redis_unavailable' },
-        'Redis unavailable - continuing without it'
-      );
+      logger.warn('Redis unavailable - continuing in fallback mode');
+
+      redisConnected = false;
+
+      if (c) {
+        try {
+          await c.disconnect();
+        } catch (discErr) {
+          // Ignore disconnect errors
+        }
+      }
 
       client = null;
       clientPromise = null;
       listenersAttached = false;
       redisConnected = false;
+
       scheduleReconnect();
 
-      // Do NOT reset clientPromise here. Keep the settled-null promise so each
-      // subsequent call returns null immediately instead of retrying repeatedly.
       return null;
     }
   })();

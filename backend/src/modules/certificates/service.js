@@ -198,36 +198,19 @@ async function startBulkGeneration(data, userId) {
     userId
   );
 
-  await Promise.all(
-    data.certificates.map((certData) =>
-      repo.createBulkJobItem({
-        bulk_job_id: job.id,
-        recipient_name: certData.recipient_name,
-        recipient_email: certData.recipient_email,
-        row_data: certData,
-        status: 'pending',
-      })
-    )
-  );
+  const itemsToCreate = data.certificates.map((certData) => ({
+    bulk_job_id: job.id,
+    recipient_name: certData.recipient_name,
+    recipient_email: certData.recipient_email,
+    row_data: certData,
+    status: 'pending',
+  }));
 
-  setImmediate(() => {
-    processBulkGeneration(job.id, data, userId).catch((err) => {
-      console.error(
-        'Bulk generation background processing failed for job',
-        job.id,
-        err
-      );
-      repo
-        .updateBulkJob(job.id, {
-          status: 'failed',
-          error_log: [{ error: err.message }],
-          completed_at: new Date().toISOString(),
-        })
-        .catch(() => {
-          /* ignore */
-        });
-    });
-  });
+  await repo.createBulkJobItemsBatch(itemsToCreate);
+
+  const bulkJobQueue = require('../../services/bulkJobQueue');
+  bulkJobQueue.addJob(job.id, data, userId);
+
 
   return {
     success: true,
@@ -241,59 +224,144 @@ async function startBulkGeneration(data, userId) {
   };
 }
 
-async function processBulkGeneration(jobId, data, userId) {
-  let generated = 0;
-  let failed = 0;
+async function processBulkGeneration(jobId, initialData, userId, pLimiter) {
+  const pLimit = require('p-limit');
+  const limit = pLimiter || pLimit(5);
 
-  for (const certData of data.certificates) {
-    try {
-      const cert = await generateCertificate(
-        {
-          template_id: data.template_id,
-          recipient_name: certData.recipient_name,
-          recipient_email: certData.recipient_email,
-          title: certData.title || 'Certificate of Achievement',
-          body: certData.body,
-          issuer: certData.issuer,
-          certificate_type: certData.certificate_type || 'achievement',
-          metadata: certData.metadata,
-        },
-        userId
-      );
+  const job = await repo.getBulkJobById(jobId);
+  if (!job) return;
 
-      await repo.createBulkJobItem({
-        bulk_job_id: jobId,
-        certificate_id: cert.data.id,
-        recipient_name: certData.recipient_name,
-        recipient_email: certData.recipient_email,
-        row_data: certData,
-        status: 'generated',
-      });
+  const dbItems = await repo.getBulkJobItems(jobId);
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const rawTemplateId = initialData?.template_id || job.template_id;
+  const templateId = uuidRegex.test(String(rawTemplateId || ''))
+    ? rawTemplateId
+    : null;
 
-      generated++;
-    } catch (err) {
-      await repo.createBulkJobItem({
-        bulk_job_id: jobId,
-        recipient_name: certData.recipient_name,
-        recipient_email: certData.recipient_email,
-        row_data: certData,
-        status: 'failed',
-        error_message: err.message,
-      });
+  let itemsToProcess = dbItems.filter((i) => i.status === 'pending');
 
-      failed++;
-    }
-
-    await repo.updateBulkJob(jobId, {
-      completed_count: generated,
-      failed_count: failed,
-    });
+  if (itemsToProcess.length === 0 && initialData?.certificates?.length > 0) {
+    const batch = initialData.certificates.map((certData) => ({
+      bulk_job_id: jobId,
+      recipient_name: certData.recipient_name,
+      recipient_email: certData.recipient_email,
+      row_data: certData,
+      status: 'pending',
+    }));
+    itemsToProcess = await repo.createBulkJobItemsBatch(batch);
   }
 
+  let generated = job.completed_count || 0;
+  let failed = job.failed_count || 0;
+  const errors = [];
+  let lastProgressUpdate = Date.now();
+
+  const updateProgress = async (force = false) => {
+    const now = Date.now();
+    if (force || now - lastProgressUpdate > 300) {
+      lastProgressUpdate = now;
+      await repo
+        .updateBulkJob(jobId, {
+          completed_count: generated,
+          failed_count: failed,
+        })
+        .catch(() => {});
+    }
+  };
+
+  const tasks = itemsToProcess.map((item) =>
+    limit(async () => {
+      const certData =
+        typeof item.row_data === 'string'
+          ? JSON.parse(item.row_data)
+          : item.row_data || {
+              recipient_name: item.recipient_name,
+              recipient_email: item.recipient_email,
+            };
+
+      try {
+        let cert;
+        let lastErr;
+
+        for (let attempt = 1; attempt <= 4; attempt++) {
+          try {
+            cert = await generateCertificate(
+              {
+                template_id: templateId,
+                recipient_name: item.recipient_name || certData.recipient_name,
+                recipient_email:
+                  item.recipient_email || certData.recipient_email,
+                title: certData.title || 'Certificate of Achievement',
+                body: certData.body,
+                issuer: certData.issuer,
+                certificate_type: certData.certificate_type || 'achievement',
+                metadata: certData.metadata,
+              },
+              userId || job.created_by
+            );
+            lastErr = null;
+            break;
+          } catch (e) {
+            lastErr = e;
+            if (attempt < 4) {
+              await new Promise((r) => setTimeout(r, 200 * attempt));
+            }
+          }
+        }
+
+        if (lastErr) throw lastErr;
+
+        let updatedItem = false;
+        for (let updateAttempt = 1; updateAttempt <= 3; updateAttempt++) {
+          try {
+            await repo.updateBulkJobItem(item.id, {
+              certificate_id: cert.data.id,
+              status: 'generated',
+            });
+            updatedItem = true;
+            break;
+          } catch (updateErr) {
+            if (updateAttempt < 3) await new Promise((r) => setTimeout(r, 150));
+          }
+        }
+
+        if (updatedItem) {
+          generated++;
+        } else {
+          failed++;
+        }
+      } catch (err) {
+        await repo
+          .updateBulkJobItem(item.id, {
+            status: 'failed',
+            error_message: err.message,
+          })
+          .catch(() => {});
+        failed++;
+        errors.push({
+          recipient: item.recipient_name || 'Recipient',
+          error: err.message,
+        });
+      }
+
+      await updateProgress();
+    })
+  );
+
+  await Promise.all(tasks);
+  await updateProgress(true);
+
+  const finalStatus =
+    itemsToProcess.length > 0 && failed === itemsToProcess.length
+      ? 'failed'
+      : 'completed';
+
   await repo.updateBulkJob(jobId, {
-    status: 'completed',
+    status: finalStatus,
     completed_count: generated,
     failed_count: failed,
+    error_log: errors.length > 0 ? errors : undefined,
     completed_at: new Date().toISOString(),
   });
 }
@@ -511,6 +579,7 @@ module.exports = {
   verifyCertificate,
   deleteCertificate,
   startBulkGeneration,
+  processBulkGeneration,
   getBulkJobStatus,
   generateAIContent,
   suggestTemplate,

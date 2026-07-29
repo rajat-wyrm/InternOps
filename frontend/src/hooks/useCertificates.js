@@ -96,6 +96,9 @@ export function useBulkJobStatus(jobId) {
       return data;
     },
     enabled: !!jobId,
+    refetchInterval: (data) => (data?.status === 'processing' ? 2000 : false),
+    refetchIntervalInBackground: true,
+    staleTime: 1000,
   });
 }
 
