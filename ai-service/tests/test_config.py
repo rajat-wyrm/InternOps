@@ -41,39 +41,19 @@ def test_success_single_provider():
     assert cfg.FALLBACK_AI_PROVIDERS == ["groq", "openai", "anthropic"]
     assert cfg.ACTIVE_FALLBACK_PROVIDERS == []
 
-def test_startup_fail_zero_providers():
-    import os
+
+def test_startup_fail_zero_providers(monkeypatch):
     import importlib
     import app.core.config as config
 
-    env_path = ".env"
-    backup_path = ".env.bak"
+    monkeypatch.setenv("PRIMARY_AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "")
 
-    # Temporarily hide the .env file
-    if os.path.exists(env_path):
-        os.rename(env_path, backup_path)
+    with pytest.raises(Exception) as exc_info:
+        importlib.reload(config)
 
-    try:
-        # Remove any provider keys from the process environment
-        for key in [
-            "GEMINI_API_KEY",
-            "GROQ_API_KEY",
-            "OPENAI_API_KEY",
-            "ANTHROPIC_API_KEY",
-            "DEEPSEEK_API_KEY",
-            "HUGGINGFACE_TOKEN",
-        ]:
-            os.environ.pop(key, None)
+    assert "Startup validation failed" in str(exc_info.value)
 
-        with pytest.raises(Exception) as exc_info:
-            importlib.reload(config)
-
-        assert "Startup validation failed" in str(exc_info.value)
-
-    finally:
-        # Restore .env
-        if os.path.exists(backup_path):
-            os.rename(backup_path, env_path)
 def test_invalid_primary_provider():
     os.environ["PRIMARY_AI_PROVIDER"] = "invalid_provider"
     os.environ["GEMINI_API_KEY"] = "valid_gemini_key"

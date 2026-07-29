@@ -142,12 +142,8 @@ class Settings(BaseSettings):
             return f"{provider_name.upper()}_API_KEY"
 
         # 2. Validate Primary Provider Credentials (must fail startup)
-        
         primary_key_attr = get_key_attr(primary)
         primary_key = getattr(self, primary_key_attr, None)
-
-        
-
         if not is_valid_key(primary_key):
             raise ValueError(
                 f"Startup validation failed: PRIMARY_AI_PROVIDER '{primary}' is configured, but its API key '{primary_key_attr}' is missing or set to a placeholder."
@@ -165,7 +161,6 @@ class Settings(BaseSettings):
                     f"Fallback provider '{fb}' lacks a valid API key ({fb_key_attr}). It will be skipped from the active fallback chain.",
                     RuntimeWarning
                 )
-               
         self.ACTIVE_FALLBACK_PROVIDERS = active_fallbacks
 
         # 4. Model Overrides & Defaults for Active Providers Only
@@ -176,14 +171,12 @@ class Settings(BaseSettings):
             if not model_val or not model_val.strip():
                 # Apply default model
                 setattr(self, model_attr, DEFAULT_MODELS[provider])
-            
             # Raise error if active provider still cannot resolve to a usable model
             resolved_model = getattr(self, model_attr, None)
             if not resolved_model or not resolved_model.strip():
                 raise ValueError(
                     f"Model validation failed: Active provider '{provider}' has no resolved model."
                 )
-
         return self
 
 # Instantiate settings
