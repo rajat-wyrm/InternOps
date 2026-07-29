@@ -1,17 +1,18 @@
-const repo = require('./repository');
+const service = require('./service');
 
 async function verifyCertificate(fastify) {
   fastify.get(
-    '/verify/:id',
+    '/verify/certificate/:token',
     {
       schema: {
         tags: ['Certificates'],
-        description: 'Verify certificate authenticity (public)',
+        description: 'Verify certificate authenticity using verification token',
       },
     },
     async (req, reply) => {
-      const cert = await repo.getCertificateById(req.params.id);
-      if (!cert) {
+      const result = await service.verifyCertificate(req.params.token);
+
+      if (!result) {
         return reply.code(404).send({
           success: false,
           valid: false,
@@ -21,17 +22,7 @@ async function verifyCertificate(fastify) {
 
       return {
         success: true,
-        valid: true,
-        data: {
-          id: cert.id,
-          recipient_name: cert.recipient_name,
-          title: cert.title,
-          issuer: cert.issuer,
-          issue_date: cert.issue_date,
-          certificate_type: cert.certificate_type,
-          status: cert.status,
-          template_name: cert.template_name,
-        },
+        ...result,
       };
     }
   );

@@ -36,6 +36,24 @@ PLACEHOLDER_KEYS = {
     "your_huggingface_token"
 }
 
+def _is_valid_key(key: Optional[str]) -> bool:
+    """Return True if the given key/token is present and not a placeholder."""
+    if not key:
+        return False
+    key_stripped = key.strip()
+    if not key_stripped or key_stripped in PLACEHOLDER_KEYS:
+        return False
+    return True
+
+
+def _get_key_attr(provider_name: str) -> str:
+    """Return the Settings attribute name holding the credential for a provider."""
+    provider_clean = provider_name.strip().lower()
+    if provider_clean == "huggingface":
+        return "HUGGINGFACE_TOKEN"
+    return f"{provider_clean.upper()}_API_KEY"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -127,24 +145,10 @@ class Settings(BaseSettings):
                 f"Conflict: PRIMARY_AI_PROVIDER '{primary}' cannot also be listed in FALLBACK_AI_PROVIDERS {fallbacks}"
             )
 
-        def is_valid_key(key: Optional[str]) -> bool:
-            if not key:
-                return False
-            key_stripped = key.strip()
-            if not key_stripped or key_stripped in PLACEHOLDER_KEYS:
-                return False
-            return True
-
-        # Helper to get corresponding key/token attribute name
-        def get_key_attr(provider_name: str) -> str:
-            if provider_name == "huggingface":
-                return "HUGGINGFACE_TOKEN"
-            return f"{provider_name.upper()}_API_KEY"
-
         # 2. Validate Primary Provider Credentials (must fail startup)
-        primary_key_attr = get_key_attr(primary)
+        primary_key_attr = _get_key_attr(primary)
         primary_key = getattr(self, primary_key_attr, None)
-        if not is_valid_key(primary_key):
+        if not _is_valid_key(primary_key):
             raise ValueError(
                 f"Startup validation failed: PRIMARY_AI_PROVIDER '{primary}' is configured, but its API key '{primary_key_attr}' is missing or set to a placeholder."
             )
@@ -152,9 +156,9 @@ class Settings(BaseSettings):
         # 3. Filter Fallback Providers by Credentials (warn only, populate ACTIVE_FALLBACK_PROVIDERS)
         active_fallbacks = []
         for fb in fallbacks:
-            fb_key_attr = get_key_attr(fb)
+            fb_key_attr = _get_key_attr(fb)
             fb_key = getattr(self, fb_key_attr, None)
-            if is_valid_key(fb_key):
+            if _is_valid_key(fb_key):
                 active_fallbacks.append(fb)
             else:
                 warnings.warn(
@@ -182,6 +186,31 @@ class Settings(BaseSettings):
                 )
 
         return self
+
+    def get_provider_key(self, provider: str) -> str:
+        """
+        Fetch the API key/token for a given provider, raising a descriptive
+        ValueError instead of letting callers hit a raw KeyError/AttributeError
+        when a key is missing, blank, or still set to its placeholder value.
+        """
+        if not isinstance(provider, str) or not provider.strip():
+            raise ValueError("Configuration error: provider name must be a non-empty string.")
+
+        provider_clean = provider.strip().lower()
+        if provider_clean not in SUPPORTED_PROVIDERS:
+            raise ValueError(
+                f"Configuration error: '{provider}' is not a supported provider. "
+                f"Must be one of {SUPPORTED_PROVIDERS}"
+            )
+
+        key_attr = _get_key_attr(provider_clean)
+        key = getattr(self, key_attr, None)
+        if not _is_valid_key(key):
+            raise ValueError(
+                f"Configuration error: Missing or invalid API key for provider '{provider_clean}' "
+                f"(expected '{key_attr}' to be set to a real value)."
+            )
+        return key
 
 # Instantiate settings
 settings = Settings()

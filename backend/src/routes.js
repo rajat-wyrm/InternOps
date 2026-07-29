@@ -93,6 +93,10 @@ module.exports = async function routes(fastify, opts) {
     prefix: '/feature-flags',
   });
 
+  fastify.register(require('./modules/github-sync/index'), {
+    prefix: '/github',
+  });
+
   // Public certificate verification (no auth)
   const { verifyCertificate } = require('./modules/certificates/verify');
   verifyCertificate(fastify);

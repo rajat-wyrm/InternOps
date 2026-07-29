@@ -139,8 +139,9 @@ function writeSession(reply, sessionId, userId = null) {
   reply.setCookie(SESSION_COOKIE, signed, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite: 'strict',
     path: '/',
+    maxAge: 24 * 60 * 60, // 24 hours
   });
 }
 
@@ -160,6 +161,7 @@ function rotateAndSetCsrf(request, reply, userId = null) {
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/',
+    maxAge: 24 * 60 * 60, // 24 hours
   });
 
   return csrfToken;

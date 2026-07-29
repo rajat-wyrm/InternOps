@@ -1560,9 +1560,14 @@ export default function Team() {
         </div>
       )}
 
-      {selected && (
-        <MemberDetail memberId={selected} onClose={() => setSelected(null)} />
-      )}
+      {selected &&
+        createPortal(
+          <MemberDetail
+            memberId={selected}
+            onClose={() => setSelected(null)}
+          />,
+          document.body
+        )}
 
       {adding && <AddMemberModal onClose={() => setAdding(false)} />}
     </div>

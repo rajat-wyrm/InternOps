@@ -23,6 +23,11 @@ InternOps is an enterprise-grade workforce management platform designed to strea
 - Fastify
 - PostgreSQL (Raw SQL)
 
+**AI Service**
+
+- Python 3.10+
+- AI Models & Integrations
+
 **Frontend**
 
 - React
@@ -67,12 +72,32 @@ cp .env.example .env
 Edit `.env` and fill in your credentials (see [Environment Variables](#environment-variables)), then run migrations and seed the database:
 
 ```bash
+# Run from inside backend/
 npm run migrate
 npm run seed
 npm run dev
+
+# OR run from the project root:
+npm run migrate --workspace=backend
+npm run seed --workspace=backend
+npm run dev --workspace=backend
 ```
 
-### 3. Set up the frontend
+### 3. Set up the AI Service
+
+In a new terminal:
+
+```bash
+cd ai-service
+python -m venv .venv
+# Activate: source .venv/bin/activate (macOS/Linux) or .venv\Scripts\activate (Windows)
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+Set the required API keys inside `.env` to enable AI features.
+
+### 4. Set up the frontend
 
 In a new terminal:
 
@@ -85,10 +110,14 @@ cp .env.example .env
 Set `VITE_API_BASE_URL` in `.env`, then start the dev server:
 
 ```bash
+# Run from inside frontend/
 npm run dev
+
+# OR run from the project root:
+npm run dev --workspace=frontend
 ```
 
-### 4. Open the app
+### 5. Open the app
 
 ```
 http://localhost:5173
@@ -144,7 +173,20 @@ npm run dev
 
 ---
 
-### 3. Setup Frontend
+### 3. Setup AI Service
+
+```bash
+cd ai-service
+python -m venv .venv
+# Activate the virtual environment
+pip install -r requirements.txt
+cp .env.example .env
+# Fill in your AI API keys
+```
+
+---
+
+### 4. Setup Frontend
 
 ```bash
 cd frontend
@@ -170,6 +212,7 @@ http://localhost:5173
 
 ```plaintext
 InternOps/
+├── ai-service/    # Standalone Python AI Service
 ├── backend/       # Fastify REST API, Services, Repositories
 ├── frontend/      # React + Vite web application
 ```
@@ -193,6 +236,10 @@ InternOps/
 | `npm run dev`     | Start the Vite development server |
 | `npm run build`   | Build the production application  |
 | `npm run preview` | Preview the production build      |
+
+### AI Service (`cd ai-service`)
+
+(Python environment) Activate your virtual environment and run the main entry point to start the service.
 
 ---
 
