@@ -16,3 +16,9 @@ async def get_pool():
         )
 
     return _pool
+async def close_pool():
+    global _pool
+
+    if _pool is not None:
+        await _pool.close()
+        _pool = None

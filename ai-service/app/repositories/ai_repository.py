@@ -65,4 +65,11 @@ async def get_daily_usage_report() -> list:
             """
         )
 
-    return [dict(row) for row in rows]
+    return [
+    {
+        "userId": row["id"],
+        "count": row["successful_requests"],
+        **dict(row),
+    }
+    for row in rows
+]

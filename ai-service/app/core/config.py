@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # Host/Port/Redis configs
     AI_SERVICE_HOST: str = "0.0.0.0"
     AI_SERVICE_PORT: int = 8000
-    DATABASE_URL: str
+    DATABASE_URL: Optional[str] = None
     REDIS_URL: Optional[str] = None
 
     @field_validator("PRIMARY_AI_PROVIDER", mode="before")
