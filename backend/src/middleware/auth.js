@@ -5,6 +5,9 @@ const {
 } = require('../config/redis');
 
 async function authMiddleware(request, reply) {
+  // Debug: print every incoming request URL
+  console.log('Request URL:', request.url);
+
   const auth = request.headers.authorization;
 
   if (!auth || !auth.startsWith('Bearer ')) {
