@@ -1,0 +1,68 @@
+from app.core.database import get_pool
+
+
+async def get_today_usage(user_id: str) -> int:
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT successful_requests
+            FROM ai_usage
+            WHERE user_id = $1
+              AND usage_date = CURRENT_DATE
+            """,
+            user_id,
+        )
+
+    return row["successful_requests"] if row else 0
+
+
+async def increment_usage(user_id: str) -> None:
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO ai_usage (
+                user_id,
+                usage_date,
+                successful_requests
+            )
+            VALUES (
+                $1,
+                CURRENT_DATE,
+                1
+            )
+            ON CONFLICT (user_id, usage_date)
+            DO UPDATE
+            SET
+                successful_requests = ai_usage.successful_requests + 1,
+                updated_at = NOW()
+            """,
+            user_id,
+        )
+
+
+async def get_daily_usage_report() -> list:
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                u.id,
+                u.email,
+                u.full_name,
+                u.role,
+                COALESCE(a.successful_requests, 0) AS successful_requests
+            FROM users u
+            LEFT JOIN ai_usage a
+                ON u.id = a.user_id
+                AND a.usage_date = CURRENT_DATE
+            WHERE u.deleted_at IS NULL
+            ORDER BY successful_requests DESC
+            """
+        )
+
+    return [dict(row) for row in rows]

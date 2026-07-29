@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     # Host/Port/Redis configs
     AI_SERVICE_HOST: str = "0.0.0.0"
     AI_SERVICE_PORT: int = 8000
+    DATABASE_URL: str
     REDIS_URL: Optional[str] = None
 
     @field_validator("PRIMARY_AI_PROVIDER", mode="before")
@@ -209,4 +210,5 @@ HUGGINGFACE_MODEL = settings.HUGGINGFACE_MODEL
 
 AI_SERVICE_HOST = settings.AI_SERVICE_HOST
 AI_SERVICE_PORT = settings.AI_SERVICE_PORT
+DATABASE_URL = settings.DATABASE_URL
 REDIS_URL = settings.REDIS_URL
