@@ -6,7 +6,7 @@ from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load .env file using dotenv to ensure os.environ is populated
-# load_dotenv()
+load_dotenv()
 
 # Maximum AI requests allowed per minute for a user/client
 RATE_LIMIT_PER_MINUTE = int(
@@ -142,12 +142,11 @@ class Settings(BaseSettings):
             return f"{provider_name.upper()}_API_KEY"
 
         # 2. Validate Primary Provider Credentials (must fail startup)
-        print("PRIMARY =", primary)
+        
         primary_key_attr = get_key_attr(primary)
         primary_key = getattr(self, primary_key_attr, None)
 
-        print("PRIMARY KEY ATTR =", primary_key_attr)
-        print("PRIMARY KEY VALUE =", repr(primary_key))
+        
 
         if not is_valid_key(primary_key):
             raise ValueError(
@@ -166,8 +165,7 @@ class Settings(BaseSettings):
                     f"Fallback provider '{fb}' lacks a valid API key ({fb_key_attr}). It will be skipped from the active fallback chain.",
                     RuntimeWarning
                 )
-                print(f"[WARNING] Fallback provider '{fb}' lacks a valid API key ({fb_key_attr}). It will be skipped from the active fallback chain.")
-
+               
         self.ACTIVE_FALLBACK_PROVIDERS = active_fallbacks
 
         # 4. Model Overrides & Defaults for Active Providers Only
