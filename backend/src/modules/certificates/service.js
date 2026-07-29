@@ -211,7 +211,6 @@ async function startBulkGeneration(data, userId) {
   const bulkJobQueue = require('../../services/bulkJobQueue');
   bulkJobQueue.addJob(job.id, data, userId);
 
-
   return {
     success: true,
     data: {

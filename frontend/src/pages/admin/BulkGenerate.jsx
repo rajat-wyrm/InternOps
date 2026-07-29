@@ -119,7 +119,7 @@ const BulkGenerate = () => {
     if (!normalizedText) {
       return { error: 'CSV file is empty.' };
     }
-  
+
     const parseResult = Papa.parse(normalizedText, {
       header: true,
       skipEmptyLines: 'greedy',
@@ -218,7 +218,6 @@ const BulkGenerate = () => {
     });
 
     if (validRecipients.length === 0) {
-
       return {
         rows: [],
         rowErrors,
