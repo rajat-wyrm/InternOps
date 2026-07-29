@@ -1,5 +1,6 @@
 ﻿const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
+const uptoskillsService = require('./service');
 
 async function routes(fastify) {
   fastify.get(
@@ -12,10 +13,16 @@ async function routes(fastify) {
       },
     },
     async (request, reply) => {
-      return reply.code(501).send({
-        error: 'Not Implemented',
-        message: 'UptoSkills integration is not available yet.',
-      });
+      try {
+        const status = await uptoskillsService.getSyncStatus();
+
+        return reply.send(status);
+      } catch (error) {
+        return reply.code(500).send({
+          error: 'Failed to get UptoSkills sync status',
+          message: error.message,
+        });
+      }
     }
   );
 }
