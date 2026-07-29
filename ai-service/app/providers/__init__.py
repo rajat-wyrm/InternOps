@@ -8,6 +8,7 @@ from app.providers.base import (
 
 from app.providers.gemini import GeminiProvider
 from app.providers.openai import OpenAIProvider
+from app.providers.orchestrator import AIOrchestrator, ai_orchestrator
 
 __all__ = [
     "BaseAIProvider",
@@ -17,4 +18,6 @@ __all__ = [
     "ProviderTimeoutError",
     "GeminiProvider",
     "OpenAIProvider",
+    "AIOrchestrator",
+    "ai_orchestrator",
 ]

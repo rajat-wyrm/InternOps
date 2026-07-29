@@ -121,6 +121,28 @@ def test_health_endpoint_reports_healthy_when_key_present(client, monkeypatch):
     assert gemini_entry["lastErrorMessage"] is None
 
 
+def test_health_endpoint_reports_unhealthy_when_circuit_open(client, monkeypatch):
+    import time
+    from app.providers.orchestrator import get_circuit_breaker
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    cb = get_circuit_breaker("gemini")
+    cb.failures = 3
+    cb.disabled_until = time.time() + 300
+
+    try:
+        r = client.get("/ai/health")
+        body = r.json()
+        gemini_entry = next(p for p in body["providers"] if p["name"] == "gemini")
+        assert gemini_entry["status"] == "unhealthy"
+        assert "Circuit breaker open" in gemini_entry["lastErrorMessage"]
+    finally:
+        cb.record_success()
+
+
+
 def test_usage_endpoint(client):
     r = client.get("/ai/usage")
     assert r.status_code == 200

@@ -8,7 +8,15 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @pytest.fixture(autouse=True)
-def clean_env():
+def clean_env(monkeypatch):
+    # Mock dotenv.load_dotenv to do nothing
+    import dotenv
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *args, **kwargs: None)
+    
+    # Mock DotEnvSettingsSource.__call__ to return an empty dict to bypass physical .env reading
+    import pydantic_settings
+    monkeypatch.setattr(pydantic_settings.sources.DotEnvSettingsSource, "__call__", lambda self: {})
+
     # Keep track of and remove any AI-service environment variables before each test
     prefix_keys = ("GEMINI_", "GROQ_", "OPENAI_", "ANTHROPIC_", "DEEPSEEK_", "HUGGINGFACE_", "PRIMARY_", "FALLBACK_")
     original = {k: os.environ.get(k) for k in os.environ if k.startswith(prefix_keys)}
