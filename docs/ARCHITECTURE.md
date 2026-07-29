@@ -12,18 +12,22 @@
 8. [Email Pipeline](#8-email-pipeline)
 9. [File Upload Flow](#9-file-upload-flow)
 10. [Database Migration](#10-database-migration)
-11. [Folder Structure](#11-folder-structure)
+11. [Feature Flags](#11-feature-flags)
+12. [AI Service](#12-ai-service)
+13. [Folder Structure](#13-folder-structure)
 
 ---
 
 ## 1. System Overview
 
-InternOps is implemented as a split front-end / back-end application.
+InternOps is implemented as a multi-service application with a primary Node.js backend and an independent Python AI service.
 
 - Frontend: React app built with Vite, located in `frontend/`.
 - Backend: Fastify-based Node.js API server under `backend/src/`.
+- AI Service: Standalone Python API service for AI features under `ai-service/`.
 - Database: PostgreSQL stores application data and migration metadata.
 - Authentication: JWT access and refresh tokens are used for session management.
+- Feature Flags: Config-file and database-backed toggle system with LRU cache and runtime updates.
 - WebSocket: Socket.IO is used for real-time notifications and user-specific channels.
 - Email service: nodemailer-backed service loads templates and sends emails with retry and bounce handling.
 - File uploads: Fastify multipart upload with MIME and magic-byte validation, then stored on disk and recorded in PostgreSQL.
@@ -308,7 +312,7 @@ The upload route also prevents path traversal by resolving and validating the ta
 
 ## 10. Database Migration
 
-Migrations use raw SQL files in the repository `migrations/` directory.
+Migrations use raw SQL files in the repository `backend/migrations/` directory.
 
 - `backend/src/db/migrate.js` reads files, validates names, and computes checksums.
 - A PostgreSQL advisory lock ensures only one migration process runs at a time.
@@ -327,12 +331,35 @@ This structure ensures migrations are deterministic and prevents a modified migr
 
 ---
 
-## 11. Folder Structure
+## 11. Feature Flags
+
+InternOps uses a hybrid feature flag system (config-file + database-backed) that evaluates rules at runtime.
+
+- **Config Registry**: Static definitions and defaults in `flags.config.js`.
+- **Database Table**: Stores runtime overrides (enabled state, rollout percentage, allowed roles).
+- **LRU Cache**: Flags are evaluated and cached with a short TTL (e.g., 30s) to minimize DB load.
+- **Kill-Switch**: Instantly disables a flag and invalidates the cache for immediate effect.
+- **Frontend Sync**: The React app fetches flag state post-auth and stores it in Zustand, accessible via `useFeatureFlag` hook or `<FeatureGate>` component.
+
+---
+
+## 12. AI Service
+
+The AI functionality is offloaded to a standalone Python service (`ai-service/`).
+This allows AI developers to work independently of the main Node.js stack.
+
+- **Communication**: The Node.js backend communicates with the Python service via REST API.
+- **Structure**: Based on a Python framework, structured with routers/API, core logic, providers, and models.
+
+---
+
+## 13. Folder Structure
 
 - `backend/src/modules/` — feature-specific route, service, and repository code.
 - `backend/src/middleware/` — request-level middleware for auth, RBAC, CSRF, ownership, sanitization, and feature flags.
 - `backend/src/services/` — shared services such as email and AI provider integration.
 - `backend/src/utils/` — utility helpers for tokens, hierarchy, audit logging, database transactions, and metrics.
 - `backend/src/config/` — configuration, environment validation, database pool, and Redis setup.
-- `migrations/` — SQL migration files that define schema changes.
+- `backend/migrations/` — SQL migration files that define schema changes.
+- `ai-service/` — Standalone Python AI service for AI features.
 - `frontend/` — React + Vite frontend application.

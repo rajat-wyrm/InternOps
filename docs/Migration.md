@@ -13,6 +13,14 @@ general deployment steps, see the main Operations Runbook.
 Migrations run as an explicit, separate step — never automatically on
 application startup.
 
+From the project root:
+
+```bash
+npm run migrate --workspace=backend
+```
+
+From the `backend/` directory:
+
 ```bash
 npm run migrate
 ```
@@ -45,6 +53,14 @@ one of these approaches depending on the situation:
 Write a new forward migration that reverses the change (e.g.
 `026_revert_xyz.sql`) and run:
 
+From the project root:
+
+```bash
+npm run migrate --workspace=backend
+```
+
+From the `backend/` directory:
+
 ```bash
 npm run migrate
 ```
@@ -55,21 +71,43 @@ npm run migrate
 2. Fix the SQL file.
 3. Re-run:
 
+From the project root:
+
+```bash
+npm run migrate --workspace=backend
+```
+
+From the `backend/` directory:
+
 ```bash
 npm run migrate
 ```
 
 ## Important
 
-Never edit an already-applied migration file directly. The checksum
+It is recommended to avoid editing an already-applied migration file directly. The checksum
 check in `migrate.js` will throw an error if the file content no
 longer matches what was recorded when it was applied.
+
+If you must modify a migration file that has already been applied, you can update the checksum by running:
+
+From the project root:
+
+```bash
+npm run migrate:fix --workspace=backend
+```
+
+From the `backend/` directory:
+
+```bash
+npm run migrate:fix
+```
 
 ---
 
 # Deployment Order
 
-1. Run `npm run migrate` against the target database.
+1. Run `npm run migrate --workspace=backend` (or `npm run migrate` from within `backend/`) against the target database.
 2. Deploy or restart the application instances.
 
 ---

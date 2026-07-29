@@ -12,6 +12,7 @@ Thank you for your interest in contributing to **InternOps**! This document walk
   - [1. Fork & Clone](#1-fork--clone)
   - [2. Backend Setup](#2-backend-setup)
   - [3. Frontend Setup](#3-frontend-setup)
+  - [4. AI Service Setup](#4-ai-service-setup)
 - [Running Tests Locally](#running-tests-locally)
   - [Prerequisites for Tests](#prerequisites-for-tests)
   - [Running the Test Suite](#running-the-test-suite)
@@ -42,6 +43,7 @@ Make sure the following are installed on your machine before getting started:
 | -------------- | ---------------------- | ------------------------------------------------------------------ |
 | **Node.js**    | v18+ (v22 recommended) | [nodejs.org](https://nodejs.org)                                   |
 | **npm**        | v8+                    | Bundled with Node.js                                               |
+| **Python**     | v3.10+                 | Required for the standalone AI service                             |
 | **PostgreSQL** | v14+                   | [postgresql.org](https://www.postgresql.org)                       |
 | **Redis**      | —                      | Use [Upstash](https://upstash.com) (free tier) or a local instance |
 | **Git**        | Any recent version     | —                                                                  |
@@ -72,8 +74,15 @@ Make sure the following are installed on your machine before getting started:
 
 ### 2. Backend Setup
 
+From the project root:
+
 ```bash
-cd backend
+npm install --workspace=backend
+```
+
+From the `backend/` directory:
+
+```bash
 npm install
 ```
 
@@ -117,12 +126,29 @@ GROQ_API_KEY=your-groq-key
 
 **Run database migrations and seed data:**
 
+From the project root:
+
+```bash
+npm run migrate --workspace=backend   # creates all tables
+npm run seed --workspace=backend      # inserts the default admin user
+```
+
+From the `backend/` directory:
+
 ```bash
 npm run migrate   # creates all tables
 npm run seed      # inserts the default admin user
 ```
 
 **Start the development server:**
+
+From the project root:
+
+```bash
+npm run dev --workspace=backend       # hot-reloads via node --watch
+```
+
+From the `backend/` directory:
 
 ```bash
 npm run dev       # hot-reloads via node --watch
@@ -137,8 +163,15 @@ Swagger docs are served at `http://localhost:5000/documentation`.
 
 Open a new terminal, then:
 
+From the project root:
+
 ```bash
-cd frontend
+npm install --workspace=frontend
+```
+
+From the `frontend/` directory:
+
+```bash
 npm install
 ```
 
@@ -157,11 +190,51 @@ VITE_API_BASE_URL=http://localhost:5000
 
 **Start the Vite dev server:**
 
+From the project root:
+
+```bash
+npm run dev --workspace=frontend
+```
+
+From the `frontend/` directory:
+
 ```bash
 npm run dev
 ```
 
 The app will be available at `http://localhost:5173`.
+
+---
+
+### 4. AI Service Setup
+
+Open a new terminal, then:
+
+```bash
+cd ai-service
+```
+
+**Set up Python environment and install dependencies:**
+
+You can use `uv`, `venv`, or `conda`. For a standard `venv` + `pip` setup:
+
+```bash
+python -m venv .venv
+# Activate environment (Windows)
+.venv\Scripts\activate
+# Activate environment (macOS/Linux)
+source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+**Configure environment variables:**
+
+```bash
+cp .env.example .env
+```
+
+Set the required API keys (e.g., Gemini, Groq) inside `.env` to enable AI features.
 
 ---
 
@@ -194,9 +267,22 @@ Edit `backend/.env.test` if your local PostgreSQL user or password differs from 
 
 All test commands are run from the `backend/` directory:
 
-```bash
-cd backend
+From the project root:
 
+```bash
+# Run all integration tests (includes migrate + seed automatically via globalSetup)
+npm test --workspace=backend
+
+# Run a single test file
+npm test --workspace=backend -- tests/integration/auth.test.js
+
+# Run in watch mode (re-runs on file changes)
+npm test --workspace=backend -- --watch
+```
+
+From the `backend/` directory:
+
+```bash
 # Run all integration tests (includes migrate + seed automatically via globalSetup)
 npm test
 
@@ -261,6 +347,8 @@ When adding new features in these areas, please add or update the corresponding 
   └── repository.js   # SQL queries against the DB
   ```
 
+- **Feature Flags**: Any new major feature should be gated behind a feature flag. Add your flag to `src/modules/feature-flags/flags.config.js` and create a corresponding DB migration. See [Feature Flags Guide](docs/FEATURE_FLAGS.md) for details.
+
 ---
 
 ### Frontend (React / Vite)
@@ -279,7 +367,22 @@ When adding new features in these areas, please add or update the corresponding 
 
 The project uses **Prettier** for formatting and **ESLint** for static analysis. Both must pass before a PR can be merged — they are enforced by the `format.yml` CI workflow.
 
-**Run locally from the `backend/` directory:**
+**Run locally for the backend:**
+
+From the project root:
+
+```bash
+# Check for lint errors
+npm run lint --workspace=backend
+
+# Auto-fix formatting
+npm run format --workspace=backend
+
+# Validate DB-related conventions
+npm run lint:db --workspace=backend
+```
+
+From the `backend/` directory:
 
 ```bash
 # Check for lint errors

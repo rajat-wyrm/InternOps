@@ -48,6 +48,8 @@ It includes:
     - [bulk\_jobs](#bulk_jobs)
     - [bulk\_job\_items](#bulk_job_items)
     - [canva\_settings](#canva_settings)
+    - [bounced\_emails](#bounced_emails)
+    - [feature\_flags](#feature_flags)
   - [Foreign Keys (Summary)](#foreign-keys-summary)
   - [Indexes (Summary)](#indexes-summary)
   - [Maintaining this Documentation](#maintaining-this-documentation)
@@ -380,6 +382,7 @@ Indexes & Comments:
 - `template_data` JSONB NOT NULL DEFAULT '{}'
 - `thumbnail_url` TEXT
 - `canva_design_id` VARCHAR(255)
+- `color_scheme` JSONB DEFAULT '[]'::jsonb
 - `is_active` BOOLEAN DEFAULT TRUE
 - `created_by` UUID REFERENCES users(id) ON DELETE SET NULL
 - `created_at` TIMESTAMPTZ DEFAULT NOW()
@@ -467,6 +470,31 @@ Indexes:
 - `created_at` TIMESTAMPTZ DEFAULT NOW()
 - `updated_at` TIMESTAMPTZ DEFAULT NOW()
 
+### bounced_emails
+
+- `email` TEXT PRIMARY KEY
+- `bounced_at` TIMESTAMPTZ NOT NULL DEFAULT NOW()
+- `reason` TEXT
+
+Indexes:
+
+- `bounced_emails_bounced_at_idx` ON (bounced_at)
+
+### feature_flags
+
+- `key` VARCHAR(100) PRIMARY KEY
+- `enabled` BOOLEAN NOT NULL DEFAULT FALSE
+- `rollout_pct` INTEGER NOT NULL DEFAULT 100
+- `allowed_roles` JSONB
+- `description` TEXT
+- `updated_at` TIMESTAMPTZ NOT NULL DEFAULT NOW()
+- `updated_by` UUID REFERENCES users(id) ON DELETE SET NULL
+
+Constraints & Indexes:
+
+- CHECK (rollout_pct BETWEEN 0 AND 100)
+- `idx_feature_flags_key` ON (key)
+
 ---
 
 ## Foreign Keys (Summary)
@@ -499,6 +527,7 @@ Indexes:
 - `bulk_jobs.created_by` -> `users.id` (ON DELETE SET NULL)
 - `bulk_job_items.bulk_job_id` -> `bulk_jobs.id` (ON DELETE CASCADE)
 - `bulk_job_items.certificate_id` -> `certificates.id` (ON DELETE SET NULL)
+- `feature_flags.updated_by` -> `users.id` (ON DELETE SET NULL)
 
 ---
 
@@ -523,6 +552,8 @@ Indexes:
 - `idx_notices_active`
 - `idx_certificates_created_by`, `idx_certificates_template_id`, `idx_certificates_status`, `idx_certificates_recipient_email`
 - `idx_bulk_jobs_created_by`, `idx_bulk_jobs_status`, `idx_bulk_job_items_bulk_job_id`, `idx_certificate_templates_created_by`
+- `bounced_emails_bounced_at_idx`
+- `idx_feature_flags_key`
 
 ---
 
