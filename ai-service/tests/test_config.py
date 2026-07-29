@@ -4,6 +4,8 @@ import importlib
 import pytest
 from unittest import mock
 
+from pydantic_settings import SettingsConfigDict
+
 # Ensure ai-service root is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -40,12 +42,38 @@ def test_success_single_provider():
     assert cfg.ACTIVE_FALLBACK_PROVIDERS == []
 
 def test_startup_fail_zero_providers():
-    # No keys are configured
-    with pytest.raises(Exception) as exc_info:
-        reload_config()
-    
-    assert "Startup validation failed" in str(exc_info.value)
+    import os
+    import importlib
+    import app.core.config as config
 
+    env_path = ".env"
+    backup_path = ".env.bak"
+
+    # Temporarily hide the .env file
+    if os.path.exists(env_path):
+        os.rename(env_path, backup_path)
+
+    try:
+        # Remove any provider keys from the process environment
+        for key in [
+            "GEMINI_API_KEY",
+            "GROQ_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "HUGGINGFACE_TOKEN",
+        ]:
+            os.environ.pop(key, None)
+
+        with pytest.raises(Exception) as exc_info:
+            importlib.reload(config)
+
+        assert "Startup validation failed" in str(exc_info.value)
+
+    finally:
+        # Restore .env
+        if os.path.exists(backup_path):
+            os.rename(backup_path, env_path)
 def test_invalid_primary_provider():
     os.environ["PRIMARY_AI_PROVIDER"] = "invalid_provider"
     os.environ["GEMINI_API_KEY"] = "valid_gemini_key"

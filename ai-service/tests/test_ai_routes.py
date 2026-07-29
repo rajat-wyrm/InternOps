@@ -130,13 +130,37 @@ def test_usage_endpoint(client):
 
 
 def test_rate_limit_trips_after_configured_max(client, monkeypatch):
-    # chat_rate_limiter.max_per_minute defaults to AI_CHAT_RATE_LIMIT_PER_MIN (10)
+    import app.api.ai_routes as ai_routes_module
+    from app.models.ai import ProviderResult
+
+    # Fake provider instead of real Gemini
+    async def fake_call_provider(user_id, messages):
+        return ProviderResult(
+            provider="fake-provider",
+            cached=False,
+            content="ok",
+        )
+
+    # Replace the real call_provider() with our fake one
+    monkeypatch.setattr(ai_routes_module, "call_provider", fake_call_provider)
+
     limit = chat_rate_limiter.max_per_minute
     headers = {"x-user-id": "rate-limit-test-user"}
 
+    # These requests should NOT hit the rate limit
     for _ in range(limit):
-        r = client.post("/ai/chat", json={"prompt": "hi"}, headers=headers)
-        assert r.status_code != 429  # shouldn't be limited yet
+        r = client.post(
+            "/ai/chat",
+            json={"prompt": "hi"},
+            headers=headers,
+        )
+        assert r.status_code != 429
 
-    r = client.post("/ai/chat", json={"prompt": "hi"}, headers=headers)
+    # This one SHOULD hit the rate limit
+    r = client.post(
+        "/ai/chat",
+        json={"prompt": "hi"},
+        headers=headers,
+    )
+
     assert r.status_code == 429

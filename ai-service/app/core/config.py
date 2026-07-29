@@ -6,7 +6,7 @@ from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load .env file using dotenv to ensure os.environ is populated
-load_dotenv()
+# load_dotenv()
 
 # Maximum AI requests allowed per minute for a user/client
 RATE_LIMIT_PER_MINUTE = int(
@@ -142,8 +142,13 @@ class Settings(BaseSettings):
             return f"{provider_name.upper()}_API_KEY"
 
         # 2. Validate Primary Provider Credentials (must fail startup)
+        print("PRIMARY =", primary)
         primary_key_attr = get_key_attr(primary)
         primary_key = getattr(self, primary_key_attr, None)
+
+        print("PRIMARY KEY ATTR =", primary_key_attr)
+        print("PRIMARY KEY VALUE =", repr(primary_key))
+
         if not is_valid_key(primary_key):
             raise ValueError(
                 f"Startup validation failed: PRIMARY_AI_PROVIDER '{primary}' is configured, but its API key '{primary_key_attr}' is missing or set to a placeholder."
