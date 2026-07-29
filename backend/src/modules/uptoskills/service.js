@@ -59,9 +59,7 @@ async function syncProjects() {
 async function getSyncStatus() {
   return {
     configured: Boolean(config.uptoskills.baseUrl),
-    status: config.uptoskills.baseUrl
-      ? 'ready'
-      : 'not_configured',
+    status: config.uptoskills.baseUrl ? 'ready' : 'not_configured',
   };
 }
 
