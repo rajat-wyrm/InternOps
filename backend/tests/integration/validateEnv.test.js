@@ -5,6 +5,7 @@ describe('Environment Variable Validation Tests', () => {
   let exitMock;
   let errorMock;
   let warnMock;
+  let infoMock;
 
   beforeEach(() => {
     // Backup original environment variables
@@ -16,6 +17,7 @@ describe('Environment Variable Validation Tests', () => {
     // Mock console methods
     errorMock = jest.spyOn(console, 'error').mockImplementation(() => {});
     warnMock = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    infoMock = jest.spyOn(console, 'info').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -26,6 +28,7 @@ describe('Environment Variable Validation Tests', () => {
     exitMock.mockRestore();
     errorMock.mockRestore();
     warnMock.mockRestore();
+    infoMock.mockRestore();
   });
 
   it('should skip validation in test environment', () => {
@@ -200,8 +203,8 @@ describe('Environment Variable Validation Tests', () => {
     expect(warnMock).toHaveBeenCalledWith(
       expect.stringContaining('⚠️ Missing optional environment variables:')
     );
-    expect(warnMock).toHaveBeenCalledWith(
-      expect.stringContaining('• REDIS_URL')
+    expect(infoMock).toHaveBeenCalledWith(
+      expect.stringContaining('Redis is not configured')
     );
     expect(warnMock).toHaveBeenCalledWith(
       expect.stringContaining('• GOOGLE_CLIENT_ID')
@@ -223,8 +226,8 @@ describe('Environment Variable Validation Tests', () => {
 
     validateEnv();
 
-    expect(warnMock).toHaveBeenCalledWith(
-      expect.stringContaining('• REDIS_URL')
+    expect(infoMock).toHaveBeenCalledWith(
+      expect.stringContaining('Redis is not configured')
     );
   });
 

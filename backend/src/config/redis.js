@@ -66,11 +66,19 @@ function buildRedisClientOptions() {
     },
   };
 }
+
+let reconnectTimer = null;
+
 function scheduleReconnect() {
-  setTimeout(() => {
+  if (reconnectTimer) return;
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
     clientPromise = null;
     reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
-  }, reconnectDelay).unref();
+  }, reconnectDelay);
+
+  reconnectTimer.unref();
 }
 
 async function getRedisClient(feature) {

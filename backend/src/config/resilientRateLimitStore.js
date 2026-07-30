@@ -39,6 +39,15 @@ class ResilientRateLimitStore {
 
   async _increment(key, timeWindow, max) {
     const redis = await getRedisClient(this.feature);
+
+    const now = Date.now();
+
+    // Remove expired entries
+    for (const [storedKey, storedEntry] of this.entries) {
+      if (storedEntry.startedAt + storedEntry.ttl <= now) {
+        this.entries.delete(storedKey);
+      }
+    }
     if (redis) {
       try {
         const result = await redis.eval(RATE_LIMIT_LUA, {
@@ -56,7 +65,6 @@ class ResilientRateLimitStore {
       }
     }
 
-    const now = Date.now();
     const existing = this.entries.get(key);
     let entry = existing;
     if (!entry || entry.startedAt + timeWindow <= now) {

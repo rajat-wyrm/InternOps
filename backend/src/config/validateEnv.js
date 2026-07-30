@@ -70,8 +70,8 @@ function validateEnv() {
       process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
     );
   if (!hasRedisConfig) {
-    missingOptional.push(
-      'REDIS_URL (or REDIS_HOST + REDIS_PASSWORD, or both UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)'
+    console.info(
+      'ℹ Redis is not configured. Redis-backed features will run in degraded mode.'
     );
   }
 
