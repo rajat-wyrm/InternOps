@@ -312,10 +312,7 @@ const SPINNER_SIZE_MAP = {
   },
 };
 
-export function Spinner({
-  label = 'Loading...',
-  size = 'md',
-}) {
+export function Spinner({ label = 'Loading...', size = 'md' }) {
   const spinnerSize = SPINNER_SIZE_MAP[size] || SPINNER_SIZE_MAP.md;
 
   return (
