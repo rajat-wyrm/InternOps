@@ -191,6 +191,13 @@ async function routes(fastify) {
       schema: {
         tags: ['Certificates'],
         description: 'Revoke certificate (soft revoke — preserves audit trail)',
+        body: {
+          type: 'object',
+          properties: {
+            reason: { type: 'string', maxLength: 500 },
+          },
+          additionalProperties: false,
+        },
       },
     },
     async (req, reply) => {
