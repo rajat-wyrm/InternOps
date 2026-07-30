@@ -13,4 +13,5 @@ async function getRatings(userId) {
   );
   return res.rows;
 }
-module.exports = { addRating, getRatings };
+module.exports = { addRating, getRatings, getRatingHistory: getRatings,
+ };

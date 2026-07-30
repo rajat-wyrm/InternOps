@@ -11,6 +11,7 @@ const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const { send: sendNotification } = require('../notifications/repository');
 const { z } = require('zod');
 const suggestionRoutes = require('./suggestion.routes');
+const overallService = require('./overall.service');
 
 module.exports = async function ratingsRoutes(fastify) {
   await fastify.register(suggestionRoutes);
@@ -79,4 +80,18 @@ module.exports = async function ratingsRoutes(fastify) {
       return repo.getRatings(req.params.userId);
     }
   );
+
+fastify.get(
+  '/:userId/overall-summary',
+  {
+    schema: {
+      tags: ['Ratings'],
+      description: 'Get overall performance summary',
+    },
+    preHandler: [auth, ownership('userId')],
+  },
+  async (req) => {
+    return overallService.generateOverallSummary(req.params.userId);
+   }
+ );
 };
