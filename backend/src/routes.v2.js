@@ -15,10 +15,12 @@ module.exports = async function routesV2(fastify) {
   }));
 
   fastify.setNotFoundHandler(async (request, reply) => {
+    const path = request.raw.url || request.url;
+
     reply.status(410).send({
       error: 'Gone',
-      message: `Route ${request.method} /api/v2${request.url} is not implemented. Use /api/v1 for stable endpoints.`,
-      docs: `${config.appUrl || ''}/docs`,
+      message: `Route ${request.method} ${path} is not implemented. Use /api/v1 for stable endpoints.`,
+      docs: `${config?.appUrl || ''}/docs`,
     });
   });
 };
