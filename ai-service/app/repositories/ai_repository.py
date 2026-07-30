@@ -22,7 +22,9 @@ async def get_today_usage(user_id: str) -> int:
         return row["successful_requests"] if row else 0
 
     except Exception as e:
-        raise RuntimeError(f"Failed to fetch today's usage: {e}")
+        raise RuntimeError(
+            f"Failed to fetch today's usage: {e}"
+        ) from e
 
 
 async def increment_usage(user_id: str) -> None:
@@ -55,7 +57,9 @@ async def increment_usage(user_id: str) -> None:
             )
 
     except Exception as e:
-        raise RuntimeError(f"Failed to increment usage: {e}")
+        raise RuntimeError(
+            f"Failed to increment usage: {e}"
+        ) from e
 
 
 async def get_daily_usage_report() -> list:
@@ -86,4 +90,6 @@ async def get_daily_usage_report() -> list:
         ]
 
     except Exception as e:
-        raise RuntimeError(f"Failed to fetch usage report: {e}")
+        raise RuntimeError(
+            f"Failed to fetch usage report: {e}"
+        ) from e
