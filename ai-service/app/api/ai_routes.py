@@ -172,7 +172,7 @@ async def chat(
             )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI provider rate limit exceeded",
+            detail="AI provider service unavailable"
         )
     except AIProviderError as error:
         # Covers ProviderTimeoutError, and any AIProviderError raised
