@@ -66,9 +66,9 @@ async function updateUserPassword(userId, newPassword) {
   await revokeAllUserTokensRedis(userId);
 }
 
-// Atomic password reset: marks the token used and updates the password
-// inside a single transaction. If any step fails, the token remains
-// valid and the user can retry with the same email link.
+// Atomic password reset: lock the token row, mark it used, and update the
+// password inside a single transaction so concurrent requests cannot reuse a
+// single reset token.
 async function resetPasswordAtomic(rawToken, newPassword) {
   const client = await pool.connect();
   try {
@@ -80,12 +80,12 @@ async function resetPasswordAtomic(rawToken, newPassword) {
       .digest('hex');
 
     const tokenRes = await client.query(
-      `UPDATE password_reset_tokens
-       SET used = TRUE
+      `SELECT id, user_id
+       FROM password_reset_tokens
        WHERE token_hash = $1
          AND used = FALSE
          AND expires_at > NOW()
-       RETURNING user_id`,
+       FOR UPDATE`,
       [tokenHash]
     );
 
@@ -94,7 +94,13 @@ async function resetPasswordAtomic(rawToken, newPassword) {
       return null;
     }
 
-    const userId = tokenRes.rows[0].user_id;
+    const tokenRecord = tokenRes.rows[0];
+    await client.query(
+      'UPDATE password_reset_tokens SET used = TRUE WHERE id = $1',
+      [tokenRecord.id]
+    );
+
+    const userId = tokenRecord.user_id;
     const hash = await argon2.hash(newPassword);
 
     await client.query(

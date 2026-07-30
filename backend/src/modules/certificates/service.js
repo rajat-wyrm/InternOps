@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const repo = require('./repository');
 const { generateCertificatePDF } = require('./pdf');
 const { generateQRCodeDataURL } = require('./qr');
@@ -78,8 +79,13 @@ async function generateCertificate(data, userId) {
     templateData
   );
 
-  // Generate QR code for verification
-  const verifyUrl = `${process.env.APP_URL || 'http://localhost:5173'}/verify/certificate`;
+  // Generate unique verification token
+  const verificationToken = crypto.randomUUID();
+
+  // Generate verification URL
+  const verifyUrl = `${process.env.APP_URL || 'http://localhost:5173'}/verify/certificate/${verificationToken}`;
+
+  // Generate QR code
   const qrCodeUrl = await generateQRCodeDataURL(verifyUrl);
 
   // Save PDF to disk
@@ -94,6 +100,7 @@ async function generateCertificate(data, userId) {
       status: 'generated',
       pdf_path: filename,
       qr_code_url: qrCodeUrl,
+      verification_token: verificationToken,
     },
     userId
   );
@@ -103,6 +110,8 @@ async function generateCertificate(data, userId) {
     data: {
       ...cert,
       pdf_url: `/uploads/certificates/${filename}`,
+      verification_token: verificationToken,
+      verification_url: verifyUrl,
     },
   };
 }
@@ -124,6 +133,34 @@ async function getCertificate(id) {
   return {
     ...cert,
     pdf_url: cert.pdf_path ? `/uploads/certificates/${cert.pdf_path}` : null,
+  };
+}
+async function verifyCertificate(token) {
+  const cert = await repo.getCertificateByVerificationToken(token);
+
+  if (!cert) {
+    return null;
+  }
+
+  if (cert.revoked_at) {
+    return {
+      valid: false,
+      reason: 'Certificate has been revoked',
+      certificate: {
+        ...cert,
+        pdf_url: cert.pdf_path
+          ? `/uploads/certificates/${cert.pdf_path}`
+          : null,
+      },
+    };
+  }
+
+  return {
+    valid: true,
+    certificate: {
+      ...cert,
+      pdf_url: cert.pdf_path ? `/uploads/certificates/${cert.pdf_path}` : null,
+    },
   };
 }
 
@@ -326,7 +363,16 @@ async function quickGenerate(data, userId) {
   const dateRangeText = `from ${startFormatted} to ${endFormatted}`;
   const pdfBody =
     'During this period, the candidate demonstrated exemplary professional standards, technical proficiency, and significant contribution to our organizational goals.';
-  // 4. Generate PDF
+  // 4. Generate verification token
+  const verificationToken = crypto.randomUUID();
+
+  // Verification URL
+  const verifyUrl = `${process.env.APP_URL || 'http://localhost:5173'}/verify/certificate/${verificationToken}`;
+
+  // Generate QR Code
+  const qrCodeUrl = await generateQRCodeDataURL(verifyUrl);
+
+  // 5. Generate PDF
   const pdfBuffer = await generateCertificatePDF(
     {
       recipientName: data.recipient_name,
@@ -340,20 +386,21 @@ async function quickGenerate(data, userId) {
       issueDate: new Date().toISOString().slice(0, 10),
       certificateType: 'internship',
       certificateNumber,
+
+      // NEW
+      qrCode: qrCodeUrl,
+      verificationUrl: verifyUrl,
+      certificateId: verificationToken,
     },
     templateData
   );
-
-  // 5. Generate QR code
-  const verifyUrl = `${process.env.APP_URL || 'http://localhost:5173'}/verify/certificate`;
-  const qrCodeUrl = await generateQRCodeDataURL(verifyUrl);
 
   // 6. Save PDF to disk
   const filename = `cert_${certificateNumber.replace(/\//g, '-')}_${Date.now()}.pdf`;
   const filePath = path.join(UPLOAD_DIR, filename);
   fs.writeFileSync(filePath, pdfBuffer);
 
-  // 7. Save to database
+  // 7. Save certificate
   const cert = await repo.createCertificate(
     {
       template_id: data.template_id || null,
@@ -364,8 +411,11 @@ async function quickGenerate(data, userId) {
       issue_date: new Date().toISOString().slice(0, 10),
       certificate_type: 'internship',
       status: 'generated',
+
       pdf_path: filename,
       qr_code_url: qrCodeUrl,
+      verification_token: verificationToken,
+
       metadata: {
         certificate_number: certificateNumber,
         domain: data.domain,
@@ -387,6 +437,9 @@ async function quickGenerate(data, userId) {
       start_date: data.start_date,
       end_date: data.end_date,
       pdf_url: `/uploads/certificates/${filename}`,
+      verification_token: verificationToken,
+      verification_url: verifyUrl,
+      qr_code_url: qrCodeUrl,
     },
   };
 }
@@ -420,6 +473,7 @@ module.exports = {
   generateCertificate,
   listCertificates,
   getCertificate,
+  verifyCertificate,
   deleteCertificate,
   startBulkGeneration,
   getBulkJobStatus,

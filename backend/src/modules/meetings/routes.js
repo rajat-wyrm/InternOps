@@ -39,8 +39,20 @@ const createMeetingBody = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  meetingUrl: z.string().url().optional(),
-  meeting_url: z.string().url().optional(),
+  meetingUrl: z
+    .string()
+    .url()
+    .optional()
+    .refine((v) => !v || /^https?:\/\//i.test(v), {
+      message: 'Only HTTP/HTTPS URLs allowed',
+    }),
+  meeting_url: z
+    .string()
+    .url()
+    .optional()
+    .refine((v) => !v || /^https?:\/\//i.test(v), {
+      message: 'Only HTTP/HTTPS URLs allowed',
+    }),
   startTime: z.string().optional(),
   start_time: z.string().optional(),
   endTime: z.string().optional(),
@@ -62,8 +74,20 @@ const updateMeetingBody = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  meetingUrl: z.string().url().optional(),
-  meeting_url: z.string().url().optional(),
+  meetingUrl: z
+    .string()
+    .url()
+    .optional()
+    .refine((v) => !v || /^https?:\/\//i.test(v), {
+      message: 'Only HTTP/HTTPS URLs allowed',
+    }),
+  meeting_url: z
+    .string()
+    .url()
+    .optional()
+    .refine((v) => !v || /^https?:\/\//i.test(v), {
+      message: 'Only HTTP/HTTPS URLs allowed',
+    }),
   startTime: z.string().optional(),
   start_time: z.string().optional(),
   endTime: z.string().optional(),

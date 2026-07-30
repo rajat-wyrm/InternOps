@@ -433,8 +433,6 @@ async function generateAIResponse({ userId, messages }) {
     content: String(m.content || '').slice(0, 2000),
   }));
 
-  //console.log('Sanitized messages:',JSON.stringify(sanitizedMessages, null, 2));
-
   const payload = { userId, messages: sanitizedMessages };
   const cached = await getCachedResponse(payload);
 

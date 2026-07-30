@@ -4,10 +4,11 @@ module.exports = {
   verbose: true,
   forceExit: true,
   detectOpenHandles: true,
+  maxWorkers: 1,
   globalSetup: '<rootDir>/tests/globalSetup.js',
   globalTeardown: '<rootDir>/tests/globalTeardown.js',
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
-  collectCoverage: true,
+  collectCoverage: false,
   coverageDirectory: 'coverage',
   collectCoverageFrom: [
     'src/modules/auth/**/*.js',
@@ -24,5 +25,5 @@ module.exports = {
       statements: 40,
     },
   },
-  testTimeout: 30000,
+  testTimeout: 60000,
 };

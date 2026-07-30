@@ -4,6 +4,8 @@ const {
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
+const service = require('./service');
+const { z } = require('zod');
 
 async function routes(fastify) {
   // Create a department (Admin only)
@@ -47,6 +49,36 @@ async function routes(fastify) {
       schema: { tags: ['Departments'], description: 'List all departments' },
     },
     async () => repo.getAll()
+  );
+
+  fastify.get(
+    '/:deptId/teams',
+    {
+      preHandler: [auth, rbac('ADMIN')],
+      schema: {
+        tags: ['Departments'],
+        description: 'List department teams by lead',
+        params: {
+          type: 'object',
+          required: ['deptId'],
+          properties: { deptId: { type: 'string', format: 'uuid' } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const parsed = z
+        .object({ deptId: z.string().uuid() })
+        .safeParse(req.params);
+
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Invalid department id',
+          details: parsed.error.issues,
+        });
+      }
+
+      return service.getDepartmentTeams(parsed.data.deptId);
+    }
   );
 
   // Delete department

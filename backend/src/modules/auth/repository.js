@@ -31,7 +31,7 @@ async function createUser(data) {
         data.role,
         data.managerId || null,
         data.departmentId || null,
-        data.fullName || null,
+        data.full_name || null,
       ]
     );
 

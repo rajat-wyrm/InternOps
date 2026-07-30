@@ -18,11 +18,13 @@ async function seed() {
     // USERS
     // ============================================================
     console.log('Seeding users...');
-    const pw = await hash('Admin@123');
+    const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@internops.com';
+    const adminPass = process.env.SEED_ADMIN_PASSWORD || 'Admin@123';
+    const pw = await hash(adminPass);
     const users = [
       {
         id: uuid(),
-        email: 'admin@internops.com',
+        email: adminEmail,
         role: 'ADMIN',
         full_name: 'System Admin',
       },
@@ -145,7 +147,7 @@ async function seed() {
     // First ensure admin exists
     const adminCheck = await client.query(
       'SELECT id FROM users WHERE email = $1',
-      ['admin@internops.com']
+      [adminEmail]
     );
     if (adminCheck.rowCount === 0) {
       await client.query(
@@ -161,15 +163,13 @@ async function seed() {
         ]
       );
     }
-    await client.query('DELETE FROM users WHERE email != $1', [
-      'admin@internops.com',
-    ]);
+    await client.query('DELETE FROM users WHERE email != $1', [adminEmail]);
 
     for (const u of users) {
-      if (u.email === 'admin@internops.com') {
+      if (u.email === adminEmail) {
         await client.query(
-          'UPDATE users SET full_name = $1, role = $2 WHERE email = $3',
-          [u.full_name, u.role, u.email]
+          'UPDATE users SET full_name = $1, role = $2, password_hash = $3 WHERE email = $4',
+          [u.full_name, u.role, pw, u.email]
         );
       } else {
         await client.query(

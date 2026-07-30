@@ -1,3 +1,4 @@
+const argon2 = require('argon2');
 const { UnauthorizedError } = require('../../utils/errors');
 const repo = require('./repository');
 const {
@@ -68,13 +69,13 @@ function publicUser(user) {
     id: user.id,
     email: user.email,
     role: user.role,
-    fullName: user.full_name,
+    full_name: user.full_name,
   };
 }
-async function login(email, password, ip, userAgent) {
-  let currentAttempts;
 
-  // Step 1: Increment Redis counter
+async function login(email, password, ip, userAgent) {
+  let currentAttempts = 0;
+
   try {
     currentAttempts = (await incrementAttempt(email, ip)) || 0;
   } catch (err) {
@@ -85,7 +86,6 @@ async function login(email, password, ip, userAgent) {
     );
   }
 
-  // Step 2: If already locked, send notification once
   if (currentAttempts > 5) {
     const redis = await getRedisClient();
     const notifyKey = `lockout-email:${email}`;
@@ -119,13 +119,9 @@ async function login(email, password, ip, userAgent) {
     );
   }
 
-  // Step 3: Find user
   const user = await repo.findByEmail(email);
 
-  // Step 4: Invalid user
   if (!user || user.suspended) {
-    const argon2 = require('argon2');
-
     await argon2.verify(DUMMY_HASH, password).catch(() => {});
 
     await recordLoginAttempt(email, ip, false).catch(() => {});
@@ -133,7 +129,6 @@ async function login(email, password, ip, userAgent) {
     throw new UnauthorizedError('Invalid credentials');
   }
 
-  // Step 5: Verify password
   const valid = await repo.verifyPassword(user, password);
 
   if (!valid) {
@@ -142,7 +137,6 @@ async function login(email, password, ip, userAgent) {
     throw new UnauthorizedError('Invalid credentials');
   }
 
-  // Step 6: Successful login
   await clearFailedAttempts(email, ip);
   await recordLoginAttempt(email, ip, true);
 

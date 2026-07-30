@@ -15,6 +15,7 @@ import {
   X,
   Trash2,
   Pencil,
+  GitPullRequest as GithubIcon,
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
@@ -218,6 +219,13 @@ export default function Tasks() {
       showNotification(err.response?.data?.error || 'Delete failed'),
   });
 
+  const syncToGithubMutation = useMutation({
+    mutationFn: (taskId) => api.post(`/github/sync-task/${taskId}`),
+    onSuccess: () => showNotification('Task synced to GitHub'),
+    onError: (err) =>
+      showNotification(err.response?.data?.error || 'Sync to GitHub failed'),
+  });
+
   const deleteImageMutation = useMutation({
     mutationFn: (imageId) => api.delete(`/proofs/images/${imageId}`),
     onSuccess: () => {
@@ -356,6 +364,39 @@ export default function Tasks() {
                             {isOverdue ? 'Overdue' : 'Active'}
                           </Badge>
                         )}
+
+                        {t.source === 'github' && (
+                          <>
+                            <a
+                              href={t.github_issue_url || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-900 text-white dark:bg-gray-700 dark:text-gray-100 hover:bg-gray-700 dark:hover:bg-gray-600 transition"
+                              title={`Issue #${t.github_issue_number || ''}`}
+                            >
+                              <GithubIcon className="w-3 h-3" />
+                              {t.github_issue_number
+                                ? `#${t.github_issue_number}`
+                                : 'GitHub'}
+                            </a>
+                            {canManageTask && (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition disabled:opacity-50"
+                                title="Sync task changes to GitHub"
+                                disabled={syncToGithubMutation.isPending}
+                                onClick={() =>
+                                  syncToGithubMutation.mutate(t.id)
+                                }
+                              >
+                                <GithubIcon className="w-3 h-3" />
+                                {syncToGithubMutation.isPending
+                                  ? 'Syncing...'
+                                  : 'Sync'}
+                              </button>
+                            )}
+                          </>
+                        )}
                       </div>
 
                       {canManageTask && (
@@ -415,7 +456,48 @@ export default function Tasks() {
                       )}
                     </div>
 
-                    {t.description && (
+                    {t.source === 'github' &&
+                      t.github_labels &&
+                      (() => {
+                        const meta =
+                          typeof t.github_labels === 'string'
+                            ? JSON.parse(t.github_labels)
+                            : t.github_labels;
+                        const author = meta?.author;
+                        const avatar = meta?.authorAvatar;
+                        const commentCount = meta?.commentCount;
+                        return (
+                          <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                            {avatar && (
+                              <img
+                                src={avatar}
+                                alt={author}
+                                className="w-5 h-5 rounded-full"
+                              />
+                            )}
+                            {author && (
+                              <span className="font-medium">{author}</span>
+                            )}
+                            {commentCount !== undefined && (
+                              <span className="flex items-center gap-1">
+                                <MessageCircle className="w-3.5 h-3.5" />
+                                {commentCount} comment
+                                {commentCount !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            <a
+                              href={t.github_issue_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 hover:underline"
+                            >
+                              View on GitHub
+                            </a>
+                          </div>
+                        );
+                      })()}
+
+                    {t.description && t.source !== 'github' && (
                       <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
                         {t.description}
                       </p>
@@ -718,7 +800,9 @@ export default function Tasks() {
                                     .replace(/\\/g, '/')
                                     .replace(/^\/+/, '');
                                   const base = (
-                                    import.meta.env.VITE_API_BASE_URL || ''
+                                    import.meta.env.VITE_API_URL ||
+                                    import.meta.env.VITE_API_BASE_URL ||
+                                    ''
                                   ).replace(/\/+$/, '');
                                   const src = base
                                     ? `${base}/${normalized}`

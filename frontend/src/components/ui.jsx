@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import useBodyScrollLock from '../hooks/useBodyScrollLock';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -70,9 +71,10 @@ export function UserAvatar({
   );
 }
 
-export function Card({ children, className = '', hover = false }) {
+export function Card({ children, className = '', hover = false, ...props }) {
   return (
     <div
+      {...props}
       className={`relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:shadow-none text-slate-900 dark:text-white ${
         hover ? 'card-hover cursor-pointer' : ''
       } ${className}`}
@@ -297,34 +299,31 @@ export function EmptyState({ icon = '📭', title = 'Nothing here yet', text }) 
   );
 }
 
-const SPINNER_SIZE_MAP = {
-  sm: {
-    spinner: 'w-4 h-4 border-2',
-    inset: 'inset-0.5',
-  },
-  md: {
-    spinner: 'w-8 h-8 border-[3px]',
-    inset: 'inset-1',
-  },
-  lg: {
-    spinner: 'w-12 h-12 border-4',
-    inset: 'inset-1.5',
-  },
-};
-
 export function Spinner({ label = 'Loading...', size = 'md' }) {
-  const spinnerSize = SPINNER_SIZE_MAP[size] || SPINNER_SIZE_MAP.md;
+  const spinnerSize =
+    {
+      sm: 'h-4 w-4 border-[2px]',
+      md: 'h-8 w-8 border-[3px]',
+      lg: 'h-12 w-12 border-[4px]',
+    }[size] || 'h-8 w-8 border-[3px]';
 
   return (
     <div className="flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400 py-8">
       <span className="relative inline-flex">
         <span
-          className={`${spinnerSize.spinner} rounded-full border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin`}
+          className={`rounded-full ${spinnerSize} border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin`}
         />
-        <span
-          className={`absolute ${spinnerSize.inset} rounded-full border border-indigo-100 dark:border-indigo-900/60`}
-        />
+        <span className="absolute inset-1 rounded-full border border-indigo-100 dark:border-indigo-900/60" />
       </span>
+
+      {label && (
+        <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+          {label}
+        </span>
+      )}
+    </div>
+  );
+}
 
       {label && (
         <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -391,6 +390,7 @@ export function ConfirmationModal({
 }) {
   const modalRef = useRef(null);
   const previousActiveElementRef = useRef(null);
+  useBodyScrollLock(open, { blurBackground: true });
 
   const handleClose = () => {
     if (loading) return;
@@ -402,26 +402,6 @@ export function ConfirmationModal({
   useEffect(() => {
     handleCloseRef.current = handleClose;
   }, [handleClose]);
-
-  // Handle body scroll locking and background blurring
-  useEffect(() => {
-    const root = document.getElementById('root');
-
-    if (open) {
-      document.body.classList.add('modal-open');
-      if (root) root.classList.add('blur-sm', 'transition-all', 'duration-300');
-    } else {
-      document.body.classList.remove('modal-open');
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-    }
-
-    return () => {
-      document.body.classList.remove('modal-open');
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-    };
-  }, [open]);
 
   // Focus trap implementation
   useEffect(() => {

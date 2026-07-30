@@ -11,10 +11,25 @@ const CONCURRENCY = 20;
 const BATCH_SIZE = 500;
 
 const emailService = require('../services/email');
-
+function scheduleSafeCronJob(schedule, jobName, task) {
+  cron.schedule(schedule, () => {
+    Promise.resolve()
+      .then(task)
+      .catch((err) => {
+        console.error(
+          JSON.stringify({
+            job: jobName,
+            err: err.message,
+            stack: err.stack,
+          }),
+          'Unhandled cron job rejection'
+        );
+      });
+  });
+}
 function setupCronJobs() {
   try {
-    cron.schedule('0 * * * *', async () => {
+    scheduleSafeCronJob('0 * * * *', 'proof-image-cleanup', async () => {
       if (cleanupRunning) {
         console.warn(
           JSON.stringify({
@@ -47,24 +62,7 @@ function setupCronJobs() {
         let filesDeleted = 0;
         let totalUpdated = 0;
 
-        while (true) {
-          const { rows } = await pool.query(
-            `
-            SELECT id, image_path
-            FROM proof_submissions
-           WHERE status = 'VERIFIED'
-            AND verified_at < $1
-            AND image_path IS NOT NULL
-            ORDER BY id
-            LIMIT $2
-            `,
-            [cutoff, BATCH_SIZE]
-          );
-
-          if (rows.length === 0) break;
-
-          totalProcessed += rows.length;
-
+        const processRows = async (rows, options) => {
           const deletedIds = [];
           const limit = pLimit(CONCURRENCY);
 
@@ -111,17 +109,66 @@ function setupCronJobs() {
           });
 
           if (deletedIds.length > 0) {
-            await pool.query(
-              `
+            await pool.query(options.updateSql, [deletedIds]);
+            totalUpdated += deletedIds.length;
+          }
+        };
+
+        while (true) {
+          const { rows } = await pool.query(
+            `
+            SELECT id, image_path
+            FROM proof_submissions
+           WHERE status = 'VERIFIED'
+            AND verified_at < $1
+            AND image_path IS NOT NULL
+            ORDER BY id
+            LIMIT $2
+            `,
+            [cutoff, BATCH_SIZE]
+          );
+
+          if (rows.length === 0) break;
+
+          totalProcessed += rows.length;
+          await processRows(rows, {
+            updateSql: `
               UPDATE proof_submissions
               SET image_path = NULL
               WHERE id = ANY($1::int[])
-              `,
-              [deletedIds]
-            );
+            `,
+          });
 
-            totalUpdated += deletedIds.length;
+          if (rows.length < BATCH_SIZE) {
+            break;
           }
+        }
+
+        while (true) {
+          const { rows } = await pool.query(
+            `
+            SELECT pi.id, pi.image_path
+            FROM proof_images pi
+            JOIN proof_submissions ps ON ps.id = pi.proof_id
+           WHERE ps.status = 'VERIFIED'
+             AND ps.verified_at < $1
+             AND pi.deleted_at IS NULL
+           ORDER BY pi.id
+           LIMIT $2
+            `,
+            [cutoff, BATCH_SIZE]
+          );
+
+          if (rows.length === 0) break;
+
+          totalProcessed += rows.length;
+          await processRows(rows, {
+            updateSql: `
+              UPDATE proof_images
+              SET deleted_at = NOW()
+              WHERE id = ANY($1::int[])
+            `,
+          });
 
           if (rows.length < BATCH_SIZE) {
             break;
@@ -152,7 +199,7 @@ function setupCronJobs() {
       }
     });
 
-    cron.schedule('5 * * * *', async () => {
+    scheduleSafeCronJob('5 * * * *', 'deadline-reminder', async () => {
       if (reminderRunning) {
         console.warn(
           JSON.stringify({
@@ -226,7 +273,7 @@ function setupCronJobs() {
           deadlineHourMap.get(key).interns.push({
             id: row.intern_id,
             email: row.email,
-            fullName: row.full_name,
+            full_name: row.full_name,
           });
         }
 
@@ -247,7 +294,7 @@ function setupCronJobs() {
             try {
               await emailService.sendNotification(intern.email, {
                 title: 'Deadline Reminder',
-                message: `Hi ${intern.fullName || 'there'}, the task "${task.taskTitle}" has a deadline ${deadlineText}. Please submit your proof before the deadline passes to ensure your work is counted.`,
+                message: `Hi ${intern.full_name || 'there'}, the task "${task.taskTitle}" has a deadline ${deadlineText}. Please submit your proof before the deadline passes to ensure your work is counted.`,
                 actionUrl: `${appUrl}/tasks`,
                 actionText: 'Submit Proof',
               });

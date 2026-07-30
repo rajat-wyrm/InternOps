@@ -248,6 +248,7 @@ describe('Security Error Logging (#1012)', () => {
         cookie: `csrf-sid=${encodeURIComponent(sessionCookie)}`,
         'x-csrf-token': _internal.tokenFor('session-123'),
         authorization: 'Bearer bad.jwt.token',
+        origin: 'http://localhost:5173',
       },
       log: {
         warn: jest.fn(),

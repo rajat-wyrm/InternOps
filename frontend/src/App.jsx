@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
 import DashboardLayout from './layouts/DashboardLayout';
 import useAuthStore from './store/auth';
@@ -36,6 +36,9 @@ const CanvaTemplates = lazy(() => import('./pages/admin/CanvaTemplates'));
 const AICertificates = lazy(() => import('./pages/admin/AICertificates'));
 const QuickGenerate = lazy(() => import('./pages/admin/QuickGenerate'));
 const FeatureFlags = lazy(() => import('./pages/admin/FeatureFlags'));
+const GithubSync = lazy(() => import('./pages/admin/GithubSync'));
+const ProjectsPage = lazy(() => import('./pages/admin/ProjectsPage'));
+const ProjectDetailPage = lazy(() => import('./pages/admin/ProjectDetailPage'));
 
 function PageLoader() {
   return (
@@ -60,6 +63,7 @@ function Private({ children }) {
 }
 
 export default function App() {
+  const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
   const setHydrated = useAuthStore((s) => s.setHydrated);
   const logout = useAuthStore((s) => s.logout);
@@ -68,6 +72,16 @@ export default function App() {
   const hydrated = useAuthStore((s) => s.hydrated);
   const fetchFlags = useFeatureFlagsStore((s) => s.fetchFlags);
   const resetFlags = useFeatureFlagsStore((s) => s.reset);
+
+  useEffect(() => {
+    const handleForceLogout = () => {
+      logout();
+      navigate('/login', { replace: true });
+    };
+
+    window.addEventListener('auth:logout', handleForceLogout);
+    return () => window.removeEventListener('auth:logout', handleForceLogout);
+  }, [logout, navigate]);
 
   useEffect(() => {
     if (!bootRefreshPromise) {
@@ -273,6 +287,22 @@ export default function App() {
               }
             />
             <Route
+              path="departments/:deptId/projects"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <ProjectsPage />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="departments/:deptId/projects/:leadId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <ProjectDetailPage />
+                </RoleGuard>
+              }
+            />
+            <Route
               path="audit"
               element={
                 <RoleGuard allowedRoles={['ADMIN']}>
@@ -327,6 +357,14 @@ export default function App() {
               element={
                 <RoleGuard allowedRoles={['ADMIN']}>
                   <FeatureFlags />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="github-sync"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <GithubSync />
                 </RoleGuard>
               }
             />

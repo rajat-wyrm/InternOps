@@ -1,16 +1,32 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import api from '../../lib/axios';
-import { Card, Btn, Input, EmptyState, Spinner } from '../../components/ui';
+import {
+  Card,
+  Btn,
+  Input,
+  EmptyState,
+  Spinner,
+  PageHeader,
+} from '../../components/ui';
 
 export default function Departments() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
 
-  const { data: departments = [], isLoading } = useQuery({
+  const {
+    data: departments = [],
+    isLoading,
+    isError,
+    error: queryError,
+    refetch,
+  } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((r) => r.data),
   });
@@ -23,6 +39,7 @@ export default function Departments() {
     onSuccess: () => {
       setName('');
       setError('');
+      setShowAddForm(false);
       inv();
     },
     onError: (err) =>
@@ -47,86 +64,93 @@ export default function Departments() {
   return (
     <div className="animate-fade-in-up">
       {/* Professional Header Block */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
-            <Building2 className="w-6 h-6" />
-          </div>
-
-          <div>
-            <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-indigo-600 dark:text-indigo-300 font-extrabold mb-1">
-              Organization
-            </p>
-
-            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Departments
-            </h1>
-
-            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
-              Organize your workforce into structural units
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        <div className="flex items-center gap-4 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center border border-indigo-100 dark:border-indigo-900/60 shrink-0">
-            <Plus className="w-5 h-5" />
-          </div>
-
-          <div>
-            <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
-              Add New Department
-            </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Create a department to group users and reports.
-            </p>
-          </div>
-        </div>
-
-        {error && (
-          <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 text-sm mb-4 bg-rose-50 dark:bg-rose-950/40 p-3 rounded-2xl border border-rose-100 dark:border-rose-900/60">
-            <AlertCircle className="w-4 h-4" />
-            {error}
-          </div>
-        )}
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim()) createMut.mutate(name.trim());
-          }}
-          className="flex gap-3 flex-wrap"
-        >
-          <Input
-            placeholder="E.g., Social Media Marketing"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="max-w-md"
-          />
-
+      <PageHeader
+        title="Departments"
+        subtitle="Organize your workforce into structural units"
+        icon={<Building2 className="w-6 h-6" />}
+        actions={
           <Btn
-            type="submit"
-            disabled={createMut.isPending}
-            className="rounded-2xl px-5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
+            onClick={() => {
+              setError('');
+              setName('');
+              setShowAddForm(!showAddForm);
+            }}
+            className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-extrabold rounded-2xl"
           >
-            {createMut.isPending ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Adding...
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Plus className="w-4 h-4" />
-                Add Department
-              </span>
-            )}
+            {showAddForm ? 'Cancel' : 'Add Department'}
           </Btn>
-        </form>
-      </Card>
+        }
+      />
 
-      {isLoading ? (
+      {showAddForm && (
+        <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none animate-fade-in-up">
+          <div className="flex items-center gap-4 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center border border-indigo-100 dark:border-indigo-900/60 shrink-0">
+              <Plus className="w-5 h-5" />
+            </div>
+
+            <div>
+              <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
+                Add New Department
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Create a department to group users and reports.
+              </p>
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 text-sm mb-4 bg-rose-50 dark:bg-rose-950/40 p-3 rounded-2xl border border-rose-100 dark:border-rose-900/60">
+              <AlertCircle className="w-4 h-4" />
+              {error}
+            </div>
+          )}
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (name.trim()) createMut.mutate(name.trim());
+            }}
+            className="flex gap-3 flex-wrap"
+          >
+            <Input
+              placeholder="E.g., Social Media Marketing"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="max-w-md"
+            />
+
+            <Btn
+              type="submit"
+              disabled={createMut.isPending}
+              className="rounded-2xl px-5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
+            >
+              {createMut.isPending ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Adding...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Plus className="w-4 h-4" />
+                  Add Department
+                </span>
+              )}
+            </Btn>
+          </form>
+        </Card>
+      )}
+      {isError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+          <h3 className="text-lg font-semibold text-red-700">
+            Failed to load departments
+          </h3>
+
+          <Btn className="mt-4" onClick={() => refetch()}>
+            Retry
+          </Btn>
+        </div>
+      ) : isLoading ? (
         <div className="flex justify-center p-8">
           <Spinner />
         </div>
@@ -143,7 +167,9 @@ export default function Departments() {
           {departments.map((d, i) => (
             <Card
               key={d.id}
-              className="p-5 card-hover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none group"
+              hover
+              onClick={() => navigate(`/departments/${d.id}/projects`)}
+              className="p-5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none group"
             >
               <div className="flex items-center gap-4">
                 <div

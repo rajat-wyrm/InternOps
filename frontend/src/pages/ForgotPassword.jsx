@@ -70,16 +70,19 @@ export default function ForgotPassword() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-extrabold uppercase tracking-wider text-white/70 mb-2">
+              <label
+                htmlFor="email"
+                className="block text-xs font-extrabold uppercase tracking-wider text-white/70 mb-2"
+              >
                 Email address
               </label>
-
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/55">
                   ✉️
                 </span>
 
                 <input
+                  id="email"
                   type="email"
                   placeholder="you@example.com"
                   value={email}

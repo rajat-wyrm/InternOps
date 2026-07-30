@@ -25,6 +25,7 @@ import {
   Sparkles,
   Zap,
   ToggleRight,
+  GitPullRequest,
 } from 'lucide-react';
 
 import { useState, useEffect, useRef } from 'react';
@@ -146,6 +147,13 @@ const adminNav = [
     label: 'Feature Flags',
     icon: ToggleRight,
     allowedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/github-sync',
+    label: 'GitHub Sync',
+    icon: GitPullRequest,
+    allowedRoles: ADMIN_ONLY_ROLES,
+    featureFlag: 'GITHUB_ISSUE_SYNC',
   },
 ];
 

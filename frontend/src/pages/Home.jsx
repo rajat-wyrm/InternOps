@@ -98,7 +98,7 @@ function ManagerHome({ user }) {
         </p>
 
         <h1 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Welcome, {user?.fullName || user?.email}
+          Welcome, {user?.full_name || user?.email}
         </h1>
 
         <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-2 max-w-2xl">
@@ -304,7 +304,7 @@ function InternHome({ user }) {
         </p>
 
         <h1 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Welcome, {user?.fullName || user?.email}
+          Welcome, {user?.full_name || user?.email}
         </h1>
 
         <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-2 max-w-2xl">
@@ -464,7 +464,7 @@ export default function Home() {
     );
   }
 
-  const u = { ...user, fullName: me?.full_name || user?.fullName };
+  const u = { ...user, full_name: me?.full_name || user?.full_name };
 
   const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(
     user?.role
