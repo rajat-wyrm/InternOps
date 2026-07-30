@@ -15,10 +15,10 @@ module.exports = async function globalSetup() {
     await pool.query('SELECT 1');
 
     const hash = await argon2.hash(SEEDED_ADMIN_PASSWORD);
-    await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [
-      hash,
-      SEEDED_ADMIN_EMAIL,
-    ]);
+    await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE lower(email) = lower($2)',
+      [hash, SEEDED_ADMIN_EMAIL]
+    );
 
     // Wipe password-reset attempt counters so they don't bleed between
     // test files.
