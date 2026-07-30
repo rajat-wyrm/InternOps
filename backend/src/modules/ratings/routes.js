@@ -90,8 +90,20 @@ fastify.get(
     },
     preHandler: [auth, ownership('userId')],
   },
-  async (req) => {
-    return overallService.generateOverallSummary(req.params.userId);
-   }
- );
+  async (req, reply) => {
+    const { userId } = z
+      .object({
+        userId: z.string().uuid(),
+      })
+      .parse(req.params);
+
+    try {
+      return await overallService.generateOverallSummary(userId);
+    } catch (error) {
+      return reply.status(500).send({
+        error: 'Failed to generate overall summary',
+      });
+    }
+  }
+);
 };
