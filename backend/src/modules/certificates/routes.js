@@ -190,24 +190,25 @@ async function routes(fastify) {
     {
       schema: {
         tags: ['Certificates'],
-        description: 'Delete/revoke certificate',
+        description: 'Revoke certificate (soft revoke — preserves audit trail)',
       },
     },
     async (req, reply) => {
-      const result = await service.deleteCertificate(req.params.id);
+      const reason = req.body?.reason || null;
+      const result = await service.revokeCertificate(req.params.id, reason);
       if (!result)
         return reply.code(404).send({ error: 'Certificate not found' });
 
       req.auditOnResponse = {
         userId: req.user.id,
-        action: 'CERTIFICATE_DELETE',
+        action: 'CERTIFICATE_REVOKE',
         resourceType: 'certificate',
         resourceId: req.params.id,
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
       };
 
-      return { success: true, message: 'Certificate deleted' };
+      return { success: true, message: 'Certificate revoked' };
     }
   );
 
