@@ -11,8 +11,13 @@
  *   6. DB trigger rejects direct SQL bypass          → DB exception
  */
 
+console.log('LOAD 1');
 const app = require('../../src/app');
+
+console.log('LOAD 2');
 const pool = require('../../src/config/db');
+
+console.log('LOAD 3');
 const {
   SEEDED_ADMIN_EMAIL,
   SEEDED_ADMIN_PASSWORD,
@@ -20,6 +25,8 @@ const {
   parseSetCookie,
   mergeCookies,
 } = require('./helpers');
+
+console.log('LOAD 4');
 
 const runId = Date.now();
 
@@ -72,11 +79,14 @@ async function refreshCsrfToken() {
 // ---------------------------------------------------------------------------
 // Setup / Teardown
 // ---------------------------------------------------------------------------
-
 beforeAll(async () => {
+  console.log('STEP 1');
   await app.ready();
+
+  console.log('STEP 2');
   await resetSeededAdminPassword();
 
+  console.log('STEP 3');
   // Clean up other users/admins that might be lingering from other tests
   try {
     await pool.query("DELETE FROM users WHERE role = 'ADMIN' AND email <> $1", [

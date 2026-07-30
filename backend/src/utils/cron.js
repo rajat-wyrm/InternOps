@@ -11,10 +11,25 @@ const CONCURRENCY = 20;
 const BATCH_SIZE = 500;
 
 const emailService = require('../services/email');
-
+function scheduleSafeCronJob(schedule, jobName, task) {
+  cron.schedule(schedule, () => {
+    Promise.resolve()
+      .then(task)
+      .catch((err) => {
+        console.error(
+          JSON.stringify({
+            job: jobName,
+            err: err.message,
+            stack: err.stack,
+          }),
+          'Unhandled cron job rejection'
+        );
+      });
+  });
+}
 function setupCronJobs() {
   try {
-    cron.schedule('0 * * * *', async () => {
+    scheduleSafeCronJob('0 * * * *', 'proof-image-cleanup', async () => {
       if (cleanupRunning) {
         console.warn(
           JSON.stringify({
@@ -184,7 +199,7 @@ function setupCronJobs() {
       }
     });
 
-    cron.schedule('5 * * * *', async () => {
+    scheduleSafeCronJob('5 * * * *', 'deadline-reminder', async () => {
       if (reminderRunning) {
         console.warn(
           JSON.stringify({

@@ -26,12 +26,18 @@ function generateCertificatePDF(data, templateData = {}) {
         title = 'Certificate',
         subtitle = 'Of Internship Completion',
         body = '',
-        roleLine = '', // e.g. "has successfully completed their internship as Captain of domain"
-        domain = '', // e.g. "MERN STACK"
-        dateRange = '', // e.g. "from 16 March 2026 to 16 June 2026"
+        roleLine = '',
+        domain = '',
+        dateRange = '',
         issuer = 'Authorized Signatory',
         issueDate = new Date().toISOString().slice(0, 10),
         certificateNumber = null,
+
+        // NEW
+        qrCode = null,
+        verificationUrl = '',
+        certificateId = '',
+
         verifyEmail = 'recruitment@uptoskills.com',
       } = { ...templateData, ...data };
 
@@ -207,13 +213,54 @@ function generateCertificatePDF(data, templateData = {}) {
         .text(issueDate, barX + 12, issuedY + 14);
       doc.restore();
 
-      // ---- Verify line ----
+      // ----------------------------
+      // Verification Section
+      // ----------------------------
+
+      const verifyY = CERT_HEIGHT - 80;
+
+      // QR Code
+      if (qrCode) {
+        doc.image(qrCode, CERT_WIDTH / 2 - 30, verifyY - 20, {
+          width: 60,
+          height: 60,
+        });
+      }
+
+      // Verification label
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor(COLORS.text)
+        .text('VERIFY CERTIFICATE', CERT_WIDTH / 2 - 90, verifyY + 45, {
+          width: 180,
+          align: 'center',
+        });
+
+      // Verification URL
       doc
         .font('Helvetica')
-        .fontSize(8)
-        .fillColor(COLORS.muted)
-        .text(`Verify by mailing us at ${verifyEmail}`, barX, CERT_HEIGHT - 46);
+        .fontSize(7)
+        .fillColor('#2563EB')
+        .text(verificationUrl, CERT_WIDTH / 2 - 140, verifyY + 58, {
+          width: 280,
+          align: 'center',
+        });
 
+      // Verification Token
+      doc
+        .font('Courier')
+        .fontSize(7)
+        .fillColor(COLORS.muted)
+        .text(
+          `Verification ID: ${certificateId}`,
+          CERT_WIDTH / 2 - 140,
+          verifyY + 70,
+          {
+            width: 280,
+            align: 'center',
+          }
+        );
       // ---- Bottom-right: Seal + Authorized Signatory ----
       const sealWidth = 88;
       const sealX = CERT_WIDTH - 150 - sealWidth / 2 + 30;
