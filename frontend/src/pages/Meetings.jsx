@@ -341,14 +341,14 @@ export default function Meetings({
               />
             )}
 
-            {team.length > 0 && !teamIsError && (
+            {effectiveTeam.length > 0 && !teamIsError && (
               <div className="pt-1">
                 <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
                   Attendees ({attendees.length} selected)
                 </label>
 
                 <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto p-3 bg-slate-50 dark:bg-slate-800/70 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  {team.map((m) => (
+                  {effectiveTeam.map((m) => (
                     <button
                       type="button"
                       key={m.id}
@@ -413,6 +413,11 @@ export default function Meetings({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {meetings.map((m) => {
             const meetingLink = m.meetingUrl || m.meeting_url;
+            const isDeletingThisMeeting =
+              deleteMutation.isPending && deleteMutation.variables === m.id;
+
+            const isDeleteErrorForThisMeeting =
+              deleteMutation.isError && deleteMutation.variables === m.id;
 
             return (
               <Card
@@ -448,16 +453,20 @@ export default function Meetings({
                   {m.created_by === user?.id && (
                     <button
                       onClick={() => deleteMutation.mutate(m.id)}
-                      disabled={deleteMutation.isPending}
+                      disabled={isDeletingThisMeeting}
                       className="text-slate-300 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
                       title="Delete meeting"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      {isDeletingThisMeeting ? (
+                        <span className="text-xs">Deleting...</span>
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
                     </button>
                   )}
                 </div>
 
-                {deleteMutation.isError && (
+                {isDeleteErrorForThisMeeting && (
                   <div className="mt-4">
                     <ApiErrorState
                       error={deleteMutation.error}
@@ -482,7 +491,7 @@ export default function Meetings({
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 underline"
                       >
-                        <ExternalLink className="w-4 h-4"></ExternalLink>
+                        <ExternalLink className="w-4 h-4" />
                         Join Meeting
                       </a>
                     ) : (

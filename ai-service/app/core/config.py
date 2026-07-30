@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     DEEPSEEK_MODEL: Optional[str] = None
     HUGGINGFACE_MODEL: Optional[str] = None
 
+    # Auth
+    JWT_SECRET: str = ""
+
     # Host/Port/Redis configs
     AI_SERVICE_HOST: str = "0.0.0.0"
     AI_SERVICE_PORT: int = 8000
@@ -133,6 +136,16 @@ class Settings(BaseSettings):
                             providers.append(p_clean)
             return providers
         return v or []
+
+    @field_validator("JWT_SECRET", mode="after")
+    @classmethod
+    def require_jwt_secret(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError(
+                "Startup validation failed: JWT_SECRET is required for service-to-service auth. "
+                "Set it to the same value as the Node backend's JWT_SECRET."
+            )
+        return v
 
     @model_validator(mode="after")
     def validate_and_resolve(self) -> "Settings":
@@ -231,6 +244,8 @@ OPENAI_MODEL = settings.OPENAI_MODEL
 ANTHROPIC_MODEL = settings.ANTHROPIC_MODEL
 DEEPSEEK_MODEL = settings.DEEPSEEK_MODEL
 HUGGINGFACE_MODEL = settings.HUGGINGFACE_MODEL
+
+JWT_SECRET = settings.JWT_SECRET
 
 AI_SERVICE_HOST = settings.AI_SERVICE_HOST
 AI_SERVICE_PORT = settings.AI_SERVICE_PORT

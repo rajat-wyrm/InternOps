@@ -155,6 +155,13 @@ async function verifyCertificate(token) {
     };
   }
 
+  if (cert.status !== 'generated') {
+    return {
+      valid: false,
+      reason: 'Certificate has not been issued',
+    };
+  }
+
   return {
     valid: true,
     certificate: {
@@ -177,6 +184,12 @@ async function deleteCertificate(id) {
   }
 
   return repo.deleteCertificate(id);
+}
+
+async function revokeCertificate(id, reason = null) {
+  const cert = await repo.getCertificateById(id);
+  if (!cert) return null;
+  return repo.revokeCertificate(id, reason);
 }
 
 // ============================================================
@@ -475,6 +488,7 @@ module.exports = {
   getCertificate,
   verifyCertificate,
   deleteCertificate,
+  revokeCertificate,
   startBulkGeneration,
   getBulkJobStatus,
   generateAIContent,
