@@ -1,69 +1,55 @@
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+import time
+import asyncio
+from enum import Enum
+from typing import Optional
 
+class CircuitState(Enum):
+    CLOSED = "closed"
+    OPEN = "open" 
+    HALF_OPEN = "half_open"
 
-# --- Standardized Provider Exceptions ---
+class CircuitBreaker:
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: int = 30):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.last_failure_time = 0
+        self.state = CircuitState.CLOSED
+    
+    def can_execute(self) -> bool:
+        if self.state == CircuitState.CLOSED:
+            return True
+        if self.state == CircuitState.OPEN:
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = CircuitState.HALF_OPEN
+                return True
+            return False
+        return True # HALF_OPEN
+    
+    def record_success(self):
+        self.failure_count = 0
+        self.state = CircuitState.CLOSED
+    
+    def record_failure(self):
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        if self.failure_count >= self.failure_threshold:
+            self.state = CircuitState.OPEN
 
-class AIProviderError(Exception):
-    """Base exception for all AI provider errors."""
-
-    def __init__(self, message: str, provider_name: str, status_code: Optional[int] = None):
-        super().__init__(message)
-        self.message = message
-        self.provider_name = provider_name
-        self.status_code = status_code
-
-    def __str__(self) -> str:
-        suffix = f" (status={self.status_code})" if self.status_code is not None else ""
-        return f"[{self.provider_name}] {self.message}{suffix}"
-
-
-class ProviderAPIError(AIProviderError):
-    """Raised when an upstream LLM API returns a non-200 error code."""
-    pass
-
-
-class ProviderRateLimitError(AIProviderError):
-    """Raised when a provider rate limit (HTTP 429) or quota limit is hit."""
-    pass
-
-
-class ProviderTimeoutError(AIProviderError):
-    """Raised when an upstream call times out."""
-    pass
-
-
-# --- Abstract Base Interface ---
-
-class BaseAIProvider(ABC):
-    """Abstract contract that all AI model adapters must implement."""
-
-    def __init__(self, api_key: str, model_name: str):
-        self.api_key = api_key
-        self.model_name = model_name
-
-    @property
-    def provider_name(self) -> str:
-        """Returns the canonical string name of the provider."""
-        return self.__class__.__name__.removesuffix("Provider").lower()
-
-    @abstractmethod
-    async def generate_text(
-        self,
-        prompt: str,
-        temperature: float = 0.7,
-        **kwargs,
-    ) -> str:
-        """Generate unstructured text output from the provider."""
-        pass
-
-    @abstractmethod
-    async def generate_json(
-        self,
-        prompt: str,
-        schema: Dict[str, Any],
-        temperature: float = 0.2,
-        **kwargs,
-    ) -> Dict[str, Any]:
-        """Generate structured JSON response adhering to a target schema."""
-        pass
+class BaseAIProvider:
+    def __init__(self):
+        self.circuit_breaker = CircuitBreaker()
+    
+    async def call_with_failover(self, providers: list):
+        for i, provider in enumerate(providers):
+            if not provider.circuit_breaker.can_execute():
+                continue
+            try:
+                # exponential backoff: 1s, 2s, 4s
+                await asyncio.sleep(2 ** i)
+                result = await provider.generate()
+                provider.circuit_breaker.record_success()
+                return result
+            except Exception:
+                provider.circuit_breaker.record_failure()
+        raise Exception("All providers failed")
