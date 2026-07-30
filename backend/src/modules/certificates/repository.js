@@ -118,9 +118,31 @@ async function deleteTemplate(id) {
 
 async function createCertificate(data, userId) {
   const res = await pool.query(
-    `INSERT INTO certificates (template_id, recipient_name, recipient_email, title, body, issuer, issue_date, expiry_date, certificate_type, status, metadata, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-     RETURNING *`,
+    `
+    INSERT INTO certificates (
+      template_id,
+      recipient_name,
+      recipient_email,
+      title,
+      body,
+      issuer,
+      issue_date,
+      expiry_date,
+      certificate_type,
+      status,
+      pdf_path,
+      qr_code_url,
+      verification_token,
+      canva_design_id,
+      metadata,
+      created_by
+    )
+    VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+      $11,$12,$13,$14,$15,$16
+    )
+    RETURNING *
+    `,
     [
       data.template_id || null,
       data.recipient_name,
@@ -132,13 +154,34 @@ async function createCertificate(data, userId) {
       data.expiry_date || null,
       data.certificate_type || 'achievement',
       data.status || 'draft',
+      data.pdf_path || null,
+      data.qr_code_url || null,
+      data.verification_token,
+      data.canva_design_id || null,
       JSON.stringify(data.metadata || {}),
       userId,
     ]
   );
+
   return res.rows[0];
 }
+async function getCertificateByVerificationToken(token) {
+  const res = await pool.query(
+    `
+    SELECT
+      c.*,
+      t.name AS template_name,
+      t.template_data
+    FROM certificates c
+    LEFT JOIN certificate_templates t
+      ON c.template_id = t.id
+    WHERE c.verification_token = $1
+    `,
+    [token]
+  );
 
+  return res.rows[0] || null;
+}
 async function getCertificateById(id) {
   const res = await pool.query(
     `SELECT c.*, t.name as template_name, t.template_data
@@ -214,6 +257,7 @@ async function updateCertificate(id, data) {
     'status',
     'pdf_path',
     'qr_code_url',
+    'verification_token',
     'canva_design_id',
   ];
   for (const key of updatable) {
@@ -240,7 +284,23 @@ async function updateCertificate(id, data) {
   );
   return res.rows[0] || null;
 }
+async function revokeCertificate(id, reason = null) {
+  const res = await pool.query(
+    `
+    UPDATE certificates
+    SET
+      revoked = TRUE,
+      revoked_reason = $2,
+      revoked_at = NOW(),
+      updated_at = NOW()
+    WHERE id = $1
+    RETURNING *
+    `,
+    [id, reason]
+  );
 
+  return res.rows[0] || null;
+}
 async function deleteCertificate(id) {
   const res = await pool.query(
     'DELETE FROM certificates WHERE id = $1 RETURNING id',
@@ -420,17 +480,23 @@ module.exports = {
   getTemplateById,
   updateTemplate,
   deleteTemplate,
+
   createCertificate,
   getCertificateById,
+  getCertificateByVerificationToken,
   listCertificates,
   updateCertificate,
+  revokeCertificate,
   deleteCertificate,
+
   createBulkJob,
   getBulkJobById,
   updateBulkJob,
+
   createBulkJobItem,
   updateBulkJobItem,
   getBulkJobItems,
+
   getCanvaSettings,
   saveCanvaSettings,
 };

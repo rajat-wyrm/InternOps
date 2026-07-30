@@ -54,55 +54,94 @@ async function listMeetings({
   const safePage = Math.max(Number(page) || 1, 1);
   const offset = (safePage - 1) * safeLimit;
 
-  let query = `
-    SELECT DISTINCT m.*, COUNT(*) OVER() AS total_count
+  const countParams = [];
+  const dataParams = [];
+
+  let countQuery = `
+    SELECT COUNT(DISTINCT m.id) AS count
     FROM meetings m
-    LEFT JOIN meeting_attendees a ON m.id = a.meeting_id
+    LEFT JOIN meeting_attendees a 
+      ON m.id = a.meeting_id
     WHERE m.deleted_at IS NULL
   `;
-  const params = [];
+
+  let dataQuery = `
+    SELECT DISTINCT m.*
+    FROM meetings m
+    LEFT JOIN meeting_attendees a 
+      ON m.id = a.meeting_id
+    WHERE m.deleted_at IS NULL
+  `;
+
   let condIdx = 1;
 
   const selectedDepartmentId = requestedDepartmentId || departmentId;
 
-  // Access control:
-  // creator OR attendee OR department meeting
   if (userId) {
-    query += ` AND (
-      m.created_by = $${condIdx}
-      OR a.user_id = $${condIdx}
-    `;
-    params.push(userId);
+    const accessConditions = [
+      `m.created_by = $${condIdx}`,
+      `a.user_id = $${condIdx}`,
+    ];
+
+    countParams.push(userId);
+    dataParams.push(userId);
+
     condIdx++;
 
     if (selectedDepartmentId) {
-      query += ` OR m.department_id = $${condIdx}`;
-      params.push(selectedDepartmentId);
+      accessConditions.push(`m.department_id = $${condIdx}`);
+
+      countParams.push(selectedDepartmentId);
+      dataParams.push(selectedDepartmentId);
+
       condIdx++;
     }
 
-    query += `)`;
+    const accessQuery = `
+    AND (${accessConditions.join(' OR ')})
+  `;
+
+    countQuery += accessQuery;
+    dataQuery += accessQuery;
   }
+
   if (fromDate) {
-    query += ` AND m.meeting_date >= $${condIdx}`;
-    params.push(fromDate);
+    countQuery += ` AND m.meeting_date >= $${condIdx}`;
+    dataQuery += ` AND m.meeting_date >= $${condIdx}`;
+
+    countParams.push(fromDate);
+    dataParams.push(fromDate);
+
     condIdx++;
   }
+
   if (toDate) {
-    query += ` AND m.meeting_date <= $${condIdx}`;
-    params.push(toDate);
+    countQuery += ` AND m.meeting_date <= $${condIdx}`;
+    dataQuery += ` AND m.meeting_date <= $${condIdx}`;
+
+    countParams.push(toDate);
+    dataParams.push(toDate);
+
     condIdx++;
   }
-  query += `
-    ORDER BY m.meeting_date DESC, m.start_time DESC
+
+  dataQuery += `
+    ORDER BY m.meeting_date DESC,
+    m.start_time DESC
     LIMIT $${condIdx}
     OFFSET $${condIdx + 1}
   `;
-  params.push(safeLimit, offset);
-  const res = await pool.query(query, params);
-  const total = res.rows.length > 0 ? Number(res.rows[0].total_count) : 0;
+
+  dataParams.push(safeLimit, offset);
+
+  const countResult = await pool.query(countQuery, countParams);
+
+  const dataResult = await pool.query(dataQuery, dataParams);
+
+  const total = Number(countResult.rows[0].count);
+
   return {
-    data: res.rows.map(({ total_count, ...meeting }) => meeting),
+    data: dataResult.rows,
     pagination: {
       total,
       page: safePage,

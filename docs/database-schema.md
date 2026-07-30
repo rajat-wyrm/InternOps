@@ -46,8 +46,12 @@ It includes:
     - [certificate\_templates](#certificate_templates)
     - [certificates](#certificates)
     - [bulk\_jobs](#bulk_jobs)
-    - [bulk\_job\_items](#bulk_job_items)
-    - [canva\_settings](#canva_settings)
+    - [bulk_job_items](#bulk_job_items)
+    - [canva_settings](#canva_settings)
+    - [bounced_emails](#bounced_emails)
+    - [feature_flags](#feature_flags)
+    - [github_sync_log](#github_sync_log)
+    - [github_sync_settings](#github_sync_settings)
   - [Foreign Keys (Summary)](#foreign-keys-summary)
   - [Indexes (Summary)](#indexes-summary)
   - [Maintaining this Documentation](#maintaining-this-documentation)
@@ -186,11 +190,20 @@ Indexes:
 - `updated_at` TIMESTAMPTZ DEFAULT NOW()
 - `deleted_at` TIMESTAMPTZ
 - `reminder_sent_at` TIMESTAMPTZ
+- `github_issue_id` BIGINT
+- `github_issue_number` INTEGER
+- `github_repo` VARCHAR(255)
+- `github_issue_url` TEXT
+- `source` VARCHAR(50) DEFAULT 'manual'
+- `github_labels` JSONB DEFAULT '[]'::jsonb
+- `last_synced_at` TIMESTAMPTZ
 
 Indexes:
 
 - `idx_social_tasks_deadline` ON (deadline)
 - `idx_social_tasks_deadline_reminder` ON (deadline) WHERE deadline IS NOT NULL AND reminder_sent_at IS NULL AND deleted_at IS NULL
+- `idx_social_tasks_github_issue_id` ON (github_issue_id) WHERE github_issue_id IS NOT NULL
+- `idx_social_tasks_source` ON (source)
 
 ### proof_submissions
 
@@ -323,6 +336,7 @@ Indexes:
 - `assigned_by` UUID NOT NULL REFERENCES users(id)
 - `assigned_at` TIMESTAMPTZ DEFAULT NOW()
 - `deleted_at` TIMESTAMPTZ
+- `source` VARCHAR(50) DEFAULT 'manual'
 - UNIQUE (task_id, user_id)
 
 Indexes:
@@ -381,6 +395,7 @@ Indexes & Comments:
 - `thumbnail_url` TEXT
 - `canva_design_id` VARCHAR(255)
 - `is_active` BOOLEAN DEFAULT TRUE
+- `color_scheme` JSONB DEFAULT '{"primary": "#1E3A8A", "secondary": "#DBEAFE", "text": "#1F2937"}'
 - `created_by` UUID REFERENCES users(id) ON DELETE SET NULL
 - `created_at` TIMESTAMPTZ DEFAULT NOW()
 - `updated_at` TIMESTAMPTZ DEFAULT NOW()
@@ -467,6 +482,60 @@ Indexes:
 - `created_at` TIMESTAMPTZ DEFAULT NOW()
 - `updated_at` TIMESTAMPTZ DEFAULT NOW()
 
+### bounced_emails
+
+- `id` UUID PRIMARY KEY DEFAULT `uuid_generate_v4()`
+- `email` VARCHAR(255) NOT NULL UNIQUE
+- `reason` VARCHAR(255)
+- `bounced_at` TIMESTAMPTZ DEFAULT NOW()
+
+Indexes:
+
+- `idx_bounced_emails_email` ON (email)
+
+### feature_flags
+
+- `id` UUID PRIMARY KEY DEFAULT `uuid_generate_v4()`
+- `key` VARCHAR(100) NOT NULL UNIQUE
+- `enabled` BOOLEAN NOT NULL DEFAULT FALSE
+- `description` TEXT
+- `updated_at` TIMESTAMPTZ DEFAULT NOW()
+- `updated_by` UUID REFERENCES users(id) ON DELETE SET NULL
+
+### github_sync_log
+
+- `id` UUID PRIMARY KEY DEFAULT `uuid_generate_v4()`
+- `event_type` VARCHAR(100) NOT NULL
+- `action` VARCHAR(100) NOT NULL
+- `github_issue_id` BIGINT
+- `github_issue_number` INTEGER
+- `github_repo` VARCHAR(255)
+- `task_id` UUID REFERENCES social_tasks(id)
+- `status` VARCHAR(50) NOT NULL DEFAULT 'success'
+- `message` TEXT
+- `details` JSONB DEFAULT '{}'::jsonb
+- `triggered_by` VARCHAR(255)
+- `created_at` TIMESTAMPTZ DEFAULT NOW()
+
+Indexes:
+
+- `idx_github_sync_log_created_at` ON (created_at DESC)
+- `idx_github_sync_log_status` ON (status)
+
+### github_sync_settings
+
+- `id` UUID PRIMARY KEY DEFAULT `uuid_generate_v4()`
+- `repo` VARCHAR(255) NOT NULL
+- `webhook_secret` VARCHAR(255)
+- `github_token` VARCHAR(255)
+- `is_active` BOOLEAN DEFAULT true
+- `last_ping_at` TIMESTAMPTZ
+- `last_sync_at` TIMESTAMPTZ
+- `total_issues_synced` INTEGER DEFAULT 0
+- `failed_syncs` INTEGER DEFAULT 0
+- `created_at` TIMESTAMPTZ DEFAULT NOW()
+- `updated_at` TIMESTAMPTZ DEFAULT NOW()
+
 ---
 
 ## Foreign Keys (Summary)
@@ -499,6 +568,8 @@ Indexes:
 - `bulk_jobs.created_by` -> `users.id` (ON DELETE SET NULL)
 - `bulk_job_items.bulk_job_id` -> `bulk_jobs.id` (ON DELETE CASCADE)
 - `bulk_job_items.certificate_id` -> `certificates.id` (ON DELETE SET NULL)
+- `feature_flags.updated_by` -> `users.id` (ON DELETE SET NULL)
+- `github_sync_log.task_id` -> `social_tasks.id`
 
 ---
 
@@ -523,6 +594,9 @@ Indexes:
 - `idx_notices_active`
 - `idx_certificates_created_by`, `idx_certificates_template_id`, `idx_certificates_status`, `idx_certificates_recipient_email`
 - `idx_bulk_jobs_created_by`, `idx_bulk_jobs_status`, `idx_bulk_job_items_bulk_job_id`, `idx_certificate_templates_created_by`
+- `idx_bounced_emails_email`
+- `idx_social_tasks_github_issue_id`, `idx_social_tasks_source`
+- `idx_github_sync_log_created_at`, `idx_github_sync_log_status`
 
 ---
 

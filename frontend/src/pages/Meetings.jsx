@@ -24,6 +24,14 @@ import {
 import CustomDatePicker from '../components/CustomDatePicker';
 import CustomTimePicker from '../components/CustomTimePicker';
 
+function isSafeUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return ['https:', 'http:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
 export default function Meetings({
   isProjectView = false,
   deptId,
@@ -464,15 +472,21 @@ export default function Meetings({
 
               {m.meetingUrl && (
                 <div className="mt-4">
-                  <a
-                    href={m.meetingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 underline"
-                  >
-                    <ExternalLink className="w-4 h-4"></ExternalLink>
-                    Join Meeting
-                  </a>
+                  {isSafeUrl(m.meetingUrl) ? (
+                    <a
+                      href={m.meetingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 underline"
+                    >
+                      <ExternalLink className="w-4 h-4"></ExternalLink>
+                      Join Meeting
+                    </a>
+                  ) : (
+                    <span className="text-xs text-rose-500 font-medium">
+                      Invalid or unsafe meeting link
+                    </span>
+                  )}
                 </div>
               )}
 

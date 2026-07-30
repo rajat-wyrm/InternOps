@@ -61,6 +61,15 @@ function sanitizeInput(obj, excludedFields = [], depth = 0) {
 }
 
 function sanitizationMiddleware(request, reply, done) {
+  const SAFE_FIELDS = [
+    'name',
+    'description',
+    'message',
+    'title',
+    'content',
+    'meeting_url',
+    'meetingUrl',
+  ];
   // Previously an allowlist (SAFE_FIELDS) — meant any field NOT in this
   // list (email, bio, etc.) was never sanitized at all. Now empty, so
   // every field is sanitized by default except SENSITIVE_FIELDS above.
