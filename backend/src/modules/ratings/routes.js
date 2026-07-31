@@ -79,4 +79,19 @@ module.exports = async function ratingsRoutes(fastify) {
       return repo.getRatings(req.params.userId);
     }
   );
+
+  // View ratings for all users in a department (Admin / Manager)
+  fastify.get(
+    '/department/:deptId',
+    {
+      schema: {
+        tags: ['Ratings'],
+        description: 'Get ratings for a department',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')],
+    },
+    async (req) => {
+      return repo.getRatingsByDepartment(req.params.deptId);
+    }
+  );
 };

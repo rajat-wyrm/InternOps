@@ -42,8 +42,6 @@ class BaseAIProvider(ABC):
         self.api_key = api_key
         self.model_name = model_name
 
-    
-
     @property
     def provider_name(self) -> str:
         """Returns the canonical string name of the provider."""

@@ -6,6 +6,7 @@ const pool = new Pool({
   connectionString: config.databaseUrl || process.env.DATABASE_URL,
   max: config.dbPoolMax || 20,
   idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
 });
 
 pool.on('error', (err) => {

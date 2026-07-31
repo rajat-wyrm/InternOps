@@ -159,7 +159,7 @@ async def chat(
         return ChatResponse(
             provider=result.provider, cached=result.cached, content=result.content
         )
-    except ProviderRateLimitError:
+    except ProviderRateLimitError as error:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="AI provider rate limit exceeded",
@@ -172,17 +172,16 @@ async def chat(
             )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI service unavailable",
+            detail="AI provider service unavailable"
         )
-    except AIProviderError:
+    except AIProviderError as error:
         # Covers ProviderTimeoutError, and any AIProviderError raised
         # directly by the registry (e.g. missing API key config).
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="AI service unavailable",
         )
-
-
+        
 # ---------------------------------------------------------------------------
 # GET /ai/health
 # ---------------------------------------------------------------------------

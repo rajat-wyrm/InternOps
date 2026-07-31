@@ -26,86 +26,91 @@ async function routes(fastify) {
       preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
     },
     async (req, reply) => {
-      const schema = z.object({
-        user_id: z.string().uuid(),
-        date: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
-        status: z.enum(['PRESENT', 'ABSENT', 'HALF_DAY']),
-        remarks: z.string().max(500).optional(),
-      });
-      const parsed = schema.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: parsed.error.issues,
+      try {
+        const schema = z.object({
+          user_id: z.string().uuid(),
+          date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+          status: z.enum(['PRESENT', 'ABSENT', 'HALF_DAY']),
+          remarks: z.string().max(500).optional(),
         });
-      }
-      const { user_id, date, status, remarks } = parsed.data;
-
-      if (req.user.role !== 'ADMIN' && req.user.id === user_id) {
-        return reply
-          .status(400)
-          .send({ error: 'You cannot mark your own attendance' });
-      }
-
-      if (req.user.role !== 'ADMIN') {
-        const ok = await checkHierarchyAccess(req.user.id, user_id);
-
-        if (!ok) {
-          return reply
-            .status(403)
-            .send({ error: 'This member is not in your team' });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.status(400).send({
+            error: 'Validation failed',
+            details: parsed.error.issues,
+          });
         }
+        const { user_id, date, status, remarks } = parsed.data;
+
+        if (req.user.role !== 'ADMIN' && req.user.id === user_id) {
+          return reply
+            .status(400)
+            .send({ error: 'You cannot mark your own attendance' });
+        }
+
+        if (req.user.role !== 'ADMIN') {
+          const ok = await checkHierarchyAccess(req.user.id, user_id);
+
+          if (!ok) {
+            return reply
+              .status(403)
+              .send({ error: 'This member is not in your team' });
+          }
+        }
+
+        const { attendance, notification } = await dbTx(async (client) => {
+          const att = await repo.markAttendance(
+            user_id,
+            req.user.id,
+            date,
+            status,
+            remarks,
+            client
+          );
+
+          await createAuditLog(
+            {
+              userId: req.user.id,
+              ...extractRequestInfo(req),
+              action: 'ATTENDANCE_MARKED',
+              resourceType: 'attendance',
+              resourceId: att.id,
+              details: { target: user_id, date, status, remarks },
+            },
+            client
+          );
+
+          const createdNotification = await sendNotification(
+            user_id,
+            `Your attendance for ${date} has been marked as ${status}.`,
+            client,
+            { emit: false }
+          );
+
+          return {
+            attendance: att,
+            notification: createdNotification,
+          };
+        });
+
+        const unreadCount = await getUnreadCount(user_id);
+
+        await notifyUser(user_id, 'notification-received', {
+          notification,
+          unreadCount,
+        });
+
+        await notifyUser(attendance.user_id, 'attendance-marked', {
+          attendance,
+        });
+
+        return reply.status(201).send(attendance);
+      } catch (err) {
+        req.log.error(err, 'Error in POST /attendance/mark');
+        return reply.status(500).send({ error: 'Internal server error' });
       }
-
-      const { attendance, notification } = await dbTx(async (client) => {
-        const att = await repo.markAttendance(
-          user_id,
-          req.user.id,
-          date,
-          status,
-          remarks,
-          client
-        );
-
-        await createAuditLog(
-          {
-            userId: req.user.id,
-            ...extractRequestInfo(req),
-            action: 'ATTENDANCE_MARKED',
-            resourceType: 'attendance',
-            resourceId: att.id,
-            details: { target: user_id, date, status, remarks },
-          },
-          client
-        );
-
-        const createdNotification = await sendNotification(
-          user_id,
-          `Your attendance for ${date} has been marked as ${status}.`,
-          client,
-          { emit: false }
-        );
-
-        return {
-          attendance: att,
-          notification: createdNotification,
-        };
-      });
-
-      const unreadCount = await getUnreadCount(user_id);
-
-      await notifyUser(user_id, 'notification-received', {
-        notification,
-        unreadCount,
-      });
-
-      await notifyUser(attendance.user_id, 'attendance-marked', {
-        attendance,
-      });
-
-      return reply.status(201).send(attendance);
     }
   );
 
@@ -117,93 +122,98 @@ async function routes(fastify) {
       preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
     },
     async (req, reply) => {
-      const entrySchema = z.object({
-        user_id: z.string().uuid(),
-        date: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
-        status: z.enum(['PRESENT', 'ABSENT', 'HALF_DAY']),
-        remarks: z.string().max(500).optional(),
-      });
-      const bodySchema = z.object({
-        entries: z.array(entrySchema).min(1),
-      });
-      const parsed = bodySchema.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: parsed.error.issues,
+      try {
+        const entrySchema = z.object({
+          user_id: z.string().uuid(),
+          date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+          status: z.enum(['PRESENT', 'ABSENT', 'HALF_DAY']),
+          remarks: z.string().max(500).optional(),
         });
-      }
-      const entries = parsed.data.entries;
-
-      // Authorize all entries in a single recursive query — avoids N+1.
-      if (req.user.role !== 'ADMIN') {
-        const targetIds = [...new Set(entries.map((e) => e.user_id))];
-        if (targetIds.includes(req.user.id)) {
+        const bodySchema = z.object({
+          entries: z.array(entrySchema).min(1),
+        });
+        const parsed = bodySchema.safeParse(req.body);
+        if (!parsed.success) {
           return reply.status(400).send({
-            error: 'You cannot mark your own attendance',
+            error: 'Validation failed',
+            details: parsed.error.issues,
           });
         }
-        const allowedIds = await repo.listHierarchySubordinates(
-          req.user.id,
-          targetIds
-        );
-        const unauthorized = targetIds.filter((id) => !allowedIds.has(id));
-        if (unauthorized.length > 0) {
-          return reply.status(403).send({
-            error: 'Some selected members are not in your hierarchy',
-            unauthorized,
+        const entries = parsed.data.entries;
+
+        // Authorize all entries in a single recursive query — avoids N+1.
+        if (req.user.role !== 'ADMIN') {
+          const targetIds = [...new Set(entries.map((e) => e.user_id))];
+          if (targetIds.includes(req.user.id)) {
+            return reply.status(400).send({
+              error: 'You cannot mark your own attendance',
+            });
+          }
+          const allowedIds = await repo.listHierarchySubordinates(
+            req.user.id,
+            targetIds
+          );
+          const unauthorized = targetIds.filter((id) => !allowedIds.has(id));
+          if (unauthorized.length > 0) {
+            return reply.status(403).send({
+              error: 'Some selected members are not in your hierarchy',
+              unauthorized,
+            });
+          }
+        }
+
+        const { results } = await dbTx(async (client) => {
+          const records = await repo.bulkMark(entries, req.user.id, client);
+
+          await createAuditLog(
+            {
+              userId: req.user.id,
+              ...extractRequestInfo(req),
+              action: 'ATTENDANCE_BULK_MARKED',
+              resourceType: 'attendance',
+              details: { count: records.length, date: entries[0]?.date },
+            },
+            client
+          );
+
+          return {
+            results: records,
+          };
+        });
+
+        const notificationsData = entries.map((e) => ({
+          user_id: e.user_id,
+          message: `Your attendance for ${e.date} has been marked as ${e.status}.`,
+        }));
+
+        const notifications = await bulkSend(notificationsData);
+
+        for (const notification of notifications) {
+          const unreadCount = await getUnreadCount(notification.user_id);
+
+          await notifyUser(notification.user_id, 'notification-received', {
+            notification,
+            unreadCount,
           });
         }
-      }
 
-      const { results } = await dbTx(async (client) => {
-        const records = await repo.bulkMark(entries, req.user.id, client);
-
-        await createAuditLog(
-          {
-            userId: req.user.id,
-            ...extractRequestInfo(req),
-            action: 'ATTENDANCE_BULK_MARKED',
-            resourceType: 'attendance',
-            details: { count: records.length, date: entries[0]?.date },
-          },
-          client
-        );
+        for (const attendance of results) {
+          await notifyUser(attendance.user_id, 'attendance-marked', {
+            attendance,
+          });
+        }
 
         return {
-          results: records,
+          success: true,
+          count: results.length,
+          records: results,
         };
-      });
-
-      const notificationsData = entries.map((e) => ({
-        user_id: e.user_id,
-        message: `Your attendance for ${e.date} has been marked as ${e.status}.`,
-      }));
-
-      const notifications = await bulkSend(notificationsData);
-
-      for (const notification of notifications) {
-        const unreadCount = await getUnreadCount(notification.user_id);
-
-        await notifyUser(notification.user_id, 'notification-received', {
-          notification,
-          unreadCount,
-        });
+      } catch (err) {
+        req.log.error(err, 'Error in POST /attendance/bulk');
+        return reply.status(500).send({ error: 'Internal server error' });
       }
-
-      for (const attendance of results) {
-        await notifyUser(attendance.user_id, 'attendance-marked', {
-          attendance,
-        });
-      }
-
-      return {
-        success: true,
-        count: results.length,
-        records: results,
-      };
     }
   );
 
@@ -214,9 +224,19 @@ async function routes(fastify) {
       schema: { tags: ['Attendance'], description: 'Get attendance records' },
       preHandler: [auth, ownership('userId')],
     },
-    async (req) => {
-      const { from, to, page, limit } = req.query;
-      return repo.getAttendance(req.params.userId, { from, to, page, limit });
+    async (req, reply) => {
+      try {
+        const { from, to, page, limit } = req.query;
+        return await repo.getAttendance(req.params.userId, {
+          from,
+          to,
+          page,
+          limit,
+        });
+      } catch (err) {
+        req.log.error(err, 'Error in GET /attendance/:userId');
+        return reply.status(500).send({ error: 'Internal server error' });
+      }
     }
   );
 
@@ -231,19 +251,24 @@ async function routes(fastify) {
       preHandler: [auth, ownership('userId')],
     },
     async (req, reply) => {
-      const schema = z.object({
-        month: z.coerce.number().int().min(1).max(12),
-        year: z.coerce.number().int().min(1970).max(3000),
-      });
-      const parsed = schema.safeParse(req.query);
-      if (!parsed.success) {
-        return reply.status(400).send({
-          error: 'month and year are required',
-          details: parsed.error.issues,
+      try {
+        const schema = z.object({
+          month: z.coerce.number().int().min(1).max(12),
+          year: z.coerce.number().int().min(1970).max(3000),
         });
+        const parsed = schema.safeParse(req.query);
+        if (!parsed.success) {
+          return reply.status(400).send({
+            error: 'month and year are required',
+            details: parsed.error.issues,
+          });
+        }
+        const { month, year } = parsed.data;
+        return await repo.getMonthlyStats(req.params.userId, month, year);
+      } catch (err) {
+        req.log.error(err, 'Error in GET /attendance/:userId/stats');
+        return reply.status(500).send({ error: 'Internal server error' });
       }
-      const { month, year } = parsed.data;
-      return repo.getMonthlyStats(req.params.userId, month, year);
     }
   );
 
@@ -254,14 +279,27 @@ async function routes(fastify) {
       schema: { tags: ['Attendance'], description: 'Get members I can view' },
       preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
     },
-    async (req) => {
-      if (req.user.role === 'ADMIN') {
-        const all = await pool.query(
-          'SELECT id, full_name, email, role FROM users WHERE deleted_at IS NULL'
-        );
-        return all.rows;
+    async (req, reply) => {
+      try {
+        if (req.user.role === 'ADMIN') {
+          const department_id = req.query?.department_id;
+          if (department_id) {
+            const res = await pool.query(
+              'SELECT id, full_name, email, role, department_id FROM users WHERE deleted_at IS NULL AND department_id = $1',
+              [department_id]
+            );
+            return res.rows;
+          }
+          const all = await pool.query(
+            'SELECT id, full_name, email, role, department_id FROM users WHERE deleted_at IS NULL'
+          );
+          return all.rows;
+        }
+        return await repo.getAuthorizedSubordinates(req.user.id);
+      } catch (err) {
+        req.log.error(err, 'Error in GET /attendance/authorized-members');
+        return reply.status(500).send({ error: 'Internal server error' });
       }
-      return await repo.getAuthorizedSubordinates(req.user.id);
     }
   );
 }
