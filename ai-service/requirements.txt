@@ -66,3 +66,4 @@ typing-inspection==0.4.2
     #    pydantic
 uvicorn==0.51.0
     # via ai-service
+redis>=6.0.0
