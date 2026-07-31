@@ -937,6 +937,31 @@ export default function Tasks() {
                               {p.status}
                             </Badge>
 
+                            <div
+                              className="flex flex-wrap items-center gap-1.5 mt-2"
+                              aria-label="Reported engagement actions"
+                            >
+                              {p.did_comment && (
+                                <Badge color="blue">Comment</Badge>
+                              )}
+
+                              {p.did_repost && (
+                                <Badge color="purple">Repost</Badge>
+                              )}
+
+                              {p.did_share && (
+                                <Badge color="green">Share</Badge>
+                              )}
+
+                              {!p.did_comment &&
+                                !p.did_repost &&
+                                !p.did_share && (
+                                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                                    No action data recorded
+                                  </span>
+                                )}
+                            </div>
+
                             <p className="text-slate-500 dark:text-slate-400 mt-2 truncate w-full">
                               Intern:{' '}
                               {p.intern_name ||

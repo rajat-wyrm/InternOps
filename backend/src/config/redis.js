@@ -174,6 +174,19 @@ async function blacklistAccessToken(jti, ttl) {
 async function isAccessTokenBlacklisted(jti) {
   const client = await getRedisClient('access-token blacklist');
   if (!client) return false;
+  const client = await getRedisClient();
+
+  if (!client) {
+    logger.error(
+      { jti },
+
+      'Redis unavailable — cannot verify token revocation status'
+    );
+
+    // Fail closed: treat token as revoked when revocation cannot be verified.
+
+    return process.env.NODE_ENV !== 'test';
+  }
 
   return (await client.exists(`blacklist:${jti}`)) === 1;
 }

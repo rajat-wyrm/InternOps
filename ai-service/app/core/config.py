@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     # Host/Port/Redis configs
     AI_SERVICE_HOST: str = "0.0.0.0"
     AI_SERVICE_PORT: int = 8000
+    DATABASE_URL: Optional[str] = None
     REDIS_URL: Optional[str] = None
 
     @field_validator("PRIMARY_AI_PROVIDER", mode="before")
@@ -249,4 +250,5 @@ JWT_SECRET = settings.JWT_SECRET
 
 AI_SERVICE_HOST = settings.AI_SERVICE_HOST
 AI_SERVICE_PORT = settings.AI_SERVICE_PORT
+DATABASE_URL = settings.DATABASE_URL
 REDIS_URL = settings.REDIS_URL
