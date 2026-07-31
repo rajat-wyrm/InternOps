@@ -121,7 +121,8 @@ def test_health_endpoint_reports_healthy_when_key_present(client, monkeypatch):
     assert gemini_entry["lastErrorMessage"] is None
 
 
-def test_health_endpoint_reports_unhealthy_when_circuit_open(client, monkeypatch):
+@pytest.mark.asyncio
+async def test_health_endpoint_reports_unhealthy_when_circuit_open(client, monkeypatch):
     import time
     from app.providers.orchestrator import get_circuit_breaker
 
@@ -139,7 +140,7 @@ def test_health_endpoint_reports_unhealthy_when_circuit_open(client, monkeypatch
         assert gemini_entry["status"] == "unhealthy"
         assert "Circuit breaker open" in gemini_entry["lastErrorMessage"]
     finally:
-        cb.record_success()
+        await cb.record_success()
 
 
 

@@ -1,4 +1,4 @@
-import os
+import asyncio
 import time
 import logging
 from typing import Dict, Any, List, Optional, Tuple
@@ -8,33 +8,45 @@ from app.providers.registry import get_provider
 
 logger = logging.getLogger(__name__)
 
-# Circuit breaker parameters (allow override via environment variables)
-FAILURE_LIMIT = int(os.getenv("AI_PROVIDER_FAILURE_LIMIT", "3"))
-COOLDOWN_SECONDS = float(os.getenv("AI_PROVIDER_COOLDOWN_MS", "300000")) / 1000.0  # Default: 300,000 ms -> 300 s
-
 class CircuitBreaker:
     def __init__(self):
         self.failures = 0
         self.disabled_until: Optional[float] = None
+        self._lock = asyncio.Lock()
 
-    def is_open(self) -> bool:
+    async def is_open(self) -> bool:
+        """Pure query: check if the circuit is currently open (and cooldown has not expired).
+        Does not acquire a lock as this is a pure read query and attributes access is atomic.
+        """
         if self.disabled_until is not None:
             if time.time() < self.disabled_until:
                 return True
-            else:
-                # Cooldown expired, transition to CLOSED/probe state
-                self.failures = 0
-                self.disabled_until = None
         return False
 
-    def record_failure(self):
-        self.failures += 1
-        if self.failures >= FAILURE_LIMIT:
-            self.disabled_until = time.time() + COOLDOWN_SECONDS
+    async def allow_request(self) -> bool:
+        """Check request permission and handle cooldown state transitions atomically under lock."""
+        async with self._lock:
+            if self.disabled_until is not None:
+                if time.time() < self.disabled_until:
+                    return False
+                else:
+                    # Cooldown expired, transition to CLOSED/probe state (state mutation)
+                    self.failures = 0
+                    self.disabled_until = None
+            return True
 
-    def record_success(self):
-        self.failures = 0
-        self.disabled_until = None
+    async def record_failure(self):
+        async with self._lock:
+            self.failures += 1
+            limit = settings.AI_PROVIDER_FAILURE_LIMIT
+            cooldown_seconds = settings.AI_PROVIDER_COOLDOWN_MS / 1000.0
+            if self.failures >= limit:
+                self.disabled_until = time.time() + cooldown_seconds
+
+    async def record_success(self):
+        async with self._lock:
+            self.failures = 0
+            self.disabled_until = None
 
 # In-memory registry of circuit breakers per provider
 _circuit_breakers: Dict[str, CircuitBreaker] = {}
@@ -125,7 +137,7 @@ class AIOrchestrator:
         for provider_name in providers_chain:
             cb = get_circuit_breaker(provider_name)
 
-            if cb.is_open():
+            if not await cb.allow_request():
                 errors.append({
                     "provider": provider_name,
                     "reason": "circuit_open"
@@ -145,14 +157,21 @@ class AIOrchestrator:
             try:
                 func = getattr(provider, method_name)
                 result = await func(*args, **kwargs)
-                cb.record_success()
+                await cb.record_success()
                 return result, provider.provider_name
-            except Exception as e:
+            except ProviderAPIError as e:
                 # 413 Entity Too Large is unrecoverable, propagate immediately without failover
-                if isinstance(e, ProviderAPIError) and e.status_code == 413:
+                if e.status_code == 413:
                     raise
 
-                cb.record_failure()
+                await cb.record_failure()
+                logger.warning(f"AI provider '{provider_name}' call failed during failover: {str(e)}")
+                errors.append({
+                    "provider": provider_name,
+                    "reason": str(e)
+                })
+            except AIProviderError as e:
+                await cb.record_failure()
                 logger.warning(f"AI provider '{provider_name}' call failed during failover: {str(e)}")
                 errors.append({
                     "provider": provider_name,

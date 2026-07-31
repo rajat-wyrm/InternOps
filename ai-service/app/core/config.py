@@ -72,6 +72,38 @@ class Settings(BaseSettings):
     AI_SERVICE_PORT: int = 8000
     REDIS_URL: Optional[str] = None
 
+    # Circuit Breaker Configuration
+    AI_PROVIDER_FAILURE_LIMIT: int = 3
+    AI_PROVIDER_COOLDOWN_MS: float = 300000.0
+
+    @field_validator("AI_PROVIDER_FAILURE_LIMIT", mode="before")
+    @classmethod
+    def validate_failure_limit(cls, v):
+        if isinstance(v, str):
+            try:
+                v = int(v)
+            except ValueError:
+                raise ValueError("AI_PROVIDER_FAILURE_LIMIT must be a valid integer")
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise ValueError("AI_PROVIDER_FAILURE_LIMIT must be a number")
+        if v <= 0:
+            raise ValueError("AI_PROVIDER_FAILURE_LIMIT must be greater than 0")
+        return int(v)
+
+    @field_validator("AI_PROVIDER_COOLDOWN_MS", mode="before")
+    @classmethod
+    def validate_cooldown_ms(cls, v):
+        if isinstance(v, str):
+            try:
+                v = float(v)
+            except ValueError:
+                raise ValueError("AI_PROVIDER_COOLDOWN_MS must be a valid number")
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise ValueError("AI_PROVIDER_COOLDOWN_MS must be a number")
+        if v <= 0:
+            raise ValueError("AI_PROVIDER_COOLDOWN_MS must be greater than 0")
+        return float(v)
+
     @field_validator("PRIMARY_AI_PROVIDER", mode="before")
     @classmethod
     def clean_primary_provider(cls, v):
@@ -210,3 +242,6 @@ HUGGINGFACE_MODEL = settings.HUGGINGFACE_MODEL
 AI_SERVICE_HOST = settings.AI_SERVICE_HOST
 AI_SERVICE_PORT = settings.AI_SERVICE_PORT
 REDIS_URL = settings.REDIS_URL
+
+AI_PROVIDER_FAILURE_LIMIT = settings.AI_PROVIDER_FAILURE_LIMIT
+AI_PROVIDER_COOLDOWN_MS = settings.AI_PROVIDER_COOLDOWN_MS

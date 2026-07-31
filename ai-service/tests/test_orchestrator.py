@@ -62,7 +62,7 @@ async def test_orchestrator_success_primary(monkeypatch):
     # Circuit breaker remains healthy
     cb = get_circuit_breaker("gemini")
     assert cb.failures == 0
-    assert not cb.is_open()
+    assert not await cb.is_open()
 
 @pytest.mark.asyncio
 async def test_orchestrator_failover_to_fallback(monkeypatch):
@@ -86,7 +86,7 @@ async def test_orchestrator_failover_to_fallback(monkeypatch):
     # Gemini failure recorded
     cb_gemini = get_circuit_breaker("gemini")
     assert cb_gemini.failures == 1
-    assert not cb_gemini.is_open()
+    assert not await cb_gemini.is_open()
 
     # OpenAI success recorded/maintained
     cb_openai = get_circuit_breaker("openai")
@@ -113,7 +113,7 @@ async def test_orchestrator_circuit_breaker_trips_and_bypasses(monkeypatch):
         assert providers["gemini"].calls == i + 1
 
     # Circuit breaker should now be OPEN
-    assert cb_gemini.is_open()
+    assert await cb_gemini.is_open()
     assert cb_gemini.failures == 3
 
     # 4th call should bypass gemini entirely
@@ -141,7 +141,7 @@ async def test_orchestrator_circuit_breaker_half_open_recovery(monkeypatch):
     for _ in range(3):
         await orchestrator.generate_text_with_fallback("test")
 
-    assert cb_gemini.is_open()
+    assert await cb_gemini.is_open()
 
     # Make gemini healthy
     gemini_mock.fail_with = None
@@ -151,14 +151,14 @@ async def test_orchestrator_circuit_breaker_half_open_recovery(monkeypatch):
     monkeypatch.setattr(time, "time", lambda: future_time)
 
     # Cooldown should be expired, meaning circuit breaker is no longer open (probe/half-open)
-    assert not cb_gemini.is_open()
+    assert not await cb_gemini.is_open()
 
     # Next call should attempt primary again, succeed, and reset failure counts
     content, provider_name = await orchestrator.generate_text_with_fallback("test")
     assert provider_name == "gemini"
     assert content == "Response from gemini"
     assert cb_gemini.failures == 0
-    assert not cb_gemini.is_open()
+    assert not await cb_gemini.is_open()
 
 @pytest.mark.asyncio
 async def test_orchestrator_all_providers_failed(monkeypatch):

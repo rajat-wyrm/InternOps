@@ -77,7 +77,7 @@ async def call_provider(user_id: str, messages: List[dict]) -> ProviderResult:
     )
 
 
-def get_provider_health() -> list:
+async def get_provider_health() -> list:
     raw_health = get_configured_providers_health()
     report = []
     for p in raw_health:
@@ -86,7 +86,7 @@ def get_provider_health() -> list:
         available = p["available"]
         last_error = p.get("lastError") or {}
         
-        if cb.is_open():
+        if await cb.is_open():
             available = False
             last_error = {"message": f"Circuit breaker open. Cooldown until {datetime.fromtimestamp(cb.disabled_until).isoformat() if cb.disabled_until else 'unknown'}"}
             
@@ -217,7 +217,7 @@ async def health():
             status="healthy" if p["available"] else "unhealthy",
             lastErrorMessage=(p.get("lastError") or {}).get("message"),
         )
-        for p in get_provider_health()
+        for p in await get_provider_health()
     ]
     return HealthResponse(providers=providers)
 
