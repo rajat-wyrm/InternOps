@@ -1,9 +1,16 @@
+const http = require('http');
 const app = require('../../src/app');
 
 describe('Health Check Integration Tests', () => {
+  let serverUrl;
+
   beforeAll(async () => {
     jest.setTimeout(30000);
-    await app.ready();
+    const { initializeWebSocket } = require('../../src/websocket');
+    // Start listening on an ephemeral port so we can test socket.io
+    // handshake HTTP handlers (which bypass fastify route routing).
+    serverUrl = await app.listen({ port: 0 });
+    initializeWebSocket(app.server, app.log);
   });
 
   afterAll(async () => {
@@ -32,6 +39,22 @@ describe('Health Check Integration Tests', () => {
       });
 
       expect([401, 403]).toContain(res.statusCode);
+    });
+  });
+
+  describe('WebSocket Handshake Authentication', () => {
+    it('should reject handshake with invalid token', (done) => {
+      http
+        .get(
+          `${serverUrl}/socket.io/?EIO=4&transport=polling&token=invalid_token`,
+          (res) => {
+            expect(res.statusCode).toBe(403);
+            done();
+          }
+        )
+        .on('error', (err) => {
+          done(err);
+        });
     });
   });
 });

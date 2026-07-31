@@ -120,6 +120,20 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
     where.push(`st.deadline <= $${params.length}`);
   }
 
+  if (filters.department_id) {
+    params.push(filters.department_id);
+    where.push(
+      `(
+         st.created_by IN (SELECT id FROM users WHERE department_id = $${params.length} AND deleted_at IS NULL)
+         OR st.id IN (
+           SELECT ta.task_id FROM task_assignments ta 
+           JOIN users u ON u.id = ta.user_id 
+           WHERE u.department_id = $${params.length} AND ta.deleted_at IS NULL
+         )
+       )`
+    );
+  }
+
   if (filters.source) {
     params.push(filters.source);
     where.push(`st.source = $${params.length}`);

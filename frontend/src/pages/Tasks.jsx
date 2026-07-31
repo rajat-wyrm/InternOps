@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Target,
@@ -15,11 +16,15 @@ import {
   X,
   Trash2,
   Pencil,
+  Building2,
+  CalendarCheck,
+  Star,
   GitPullRequest as GithubIcon,
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import CreateTaskForm from '../components/CreateTaskForm';
+import CustomSelect from '../components/CustomSelect';
 import { Card, Btn, Badge, EmptyState, Spinner } from '../components/ui';
 
 const PLATFORM_ICON = {
@@ -33,11 +38,20 @@ const PLATFORM_ICON = {
 const overdue = (d) => new Date(d) < new Date();
 
 export default function Tasks() {
+  const { deptId } = useParams();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [selectedProofTaskId, setSelectedProofTaskId] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [filterDeptId, setFilterDeptId] = useState(deptId || '');
+
+  const activeDeptId = deptId || filterDeptId;
+
+  useEffect(() => {
+    if (deptId) setFilterDeptId(deptId);
+  }, [deptId]);
+
   const [draftFiles, setDraftFiles] = useState({
     taskId: null,
     files: [],
@@ -67,15 +81,29 @@ export default function Tasks() {
   const [editForm, setEditForm] = useState({});
   const [deletingTaskId, setDeletingTaskId] = useState(null);
 
+  const isAdmin = user?.role === 'ADMIN';
   const canCreateTask = ['ADMIN', 'SENIOR_TL'].includes(user?.role);
   const canManageTask = ['ADMIN', 'SENIOR_TL'].includes(user?.role);
   const canVerify = ['ADMIN', 'CAPTAIN', 'TL', 'SENIOR_TL'].includes(
     user?.role
   );
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/departments').then((res) => res.data),
+    enabled: isAdmin,
+  });
+
+  const activeDepartment = departments.find((d) => d.id === activeDeptId);
+
   const { data: tasks, isLoading } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => api.get('/tasks').then((res) => res.data),
+    queryKey: ['tasks', activeDeptId],
+    queryFn: () =>
+      api
+        .get('/tasks', {
+          params: { department_id: activeDeptId || undefined },
+        })
+        .then((res) => res.data),
   });
 
   const { data: proofs, refetch: refetchProofs } = useQuery({
@@ -263,6 +291,60 @@ export default function Tasks() {
 
   return (
     <div className="animate-fade-in-up">
+      {/* Admin Department Navigation Context Banner */}
+      {isAdmin && activeDeptId && (
+        <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-indigo-500/20 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs uppercase font-extrabold tracking-wider text-indigo-300">
+                  Department Context
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/30 text-indigo-200">
+                  Admin Scope
+                </span>
+              </div>
+              <h2 className="text-lg font-extrabold text-white">
+                {activeDepartment?.name || 'Department View'}
+              </h2>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+            <Link
+              to={
+                deptId
+                  ? `/admin/departments/${deptId}/attendance`
+                  : '/attendance'
+              }
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-indigo-100 transition"
+            >
+              Attendance
+            </Link>
+            <Link
+              to={deptId ? `/admin/departments/${deptId}/ratings` : '/ratings'}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-indigo-100 transition"
+            >
+              Ratings
+            </Link>
+            <Link
+              to={deptId ? `/admin/departments/${deptId}/tasks` : '/tasks'}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-500 text-white shadow-sm"
+            >
+              Tasks
+            </Link>
+            <Link
+              to="/admin/departments"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-indigo-200 transition ml-auto md:ml-2"
+            >
+              Change Department
+            </Link>
+          </div>
+        </div>
+      )}
       {notification && (
         <div className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-200 flex items-center justify-between shadow-sm animate-fade-in">
           <span className="font-semibold text-sm">{notification}</span>
