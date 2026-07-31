@@ -322,8 +322,8 @@ async function csrfCheck(request, reply) {
     tokenUserId = decodedBearerToken.id;
   }
 
-  if (tokenUserId && session.userId) {
-    if (String(session.userId) !== String(tokenUserId)) {
+  if (tokenUserId) {
+    if (session.userId !== String(tokenUserId)) {
       return reply.status(403).send({ error: 'CSRF validation failed' });
     }
   }
