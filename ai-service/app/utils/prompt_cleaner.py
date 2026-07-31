@@ -3,7 +3,7 @@ import json
 from typing import Dict, Any
 
 def clean_and_parse_json(raw_response: str) -> Dict[str, Any]:
-    """Strips markdown code blocks, preambles, and parses raw text into a dict."""
+    """Strips markdown code blocks, preambles, and parses raw text into a dict safely."""
     cleaned = raw_response.strip()
     
     # Strip markdown ```json ... ``` fences if present
@@ -15,5 +15,13 @@ def clean_and_parse_json(raw_response: str) -> Dict[str, Any]:
     match = re.search(r"(\{.*\})", cleaned, re.DOTALL)
     if match:
         cleaned = match.group(1)
-        
-    return json.loads(cleaned)
+    
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Graceful fallback to avoid crashing the backend
+        return {
+            "score": None,
+            "feedback": "Parsing failed. Response contained invalid JSON.",
+            "suggestions": "Please retry or check prompt formatting."
+        }

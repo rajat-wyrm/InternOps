@@ -3,6 +3,7 @@ const config = require('../config');
 const { verifyAccessToken } = require('../utils/tokens');
 const SESSION_COOKIE = 'csrf-sid';
 const TOKEN_COOKIE = 'csrf-token';
+const ONE_DAY_IN_SECONDS = 24 * 60 * 60;
 
 function getSecret() {
   const secret = config.jwt?.secret;
@@ -141,7 +142,7 @@ function writeSession(reply, sessionId, userId = null) {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
     path: '/',
-    maxAge: 24 * 60 * 60, // 24 hours
+    maxAge: ONE_DAY_IN_SECONDS, // 24 hours
   });
 }
 
@@ -161,7 +162,7 @@ function rotateAndSetCsrf(request, reply, userId = null) {
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/',
-    maxAge: 24 * 60 * 60, // 24 hours
+    maxAge: ONE_DAY_IN_SECONDS, // 24 hours
   });
 
   return csrfToken;
@@ -214,6 +215,7 @@ function generateToken(request, reply) {
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/',
+    maxAge: ONE_DAY_IN_SECONDS,
   });
 
   return token;

@@ -1,6 +1,12 @@
 const PERMISSIONS = {
   ADMIN: ['all'],
-  SENIOR_TL: ['read:team', 'write:team', 'read:attendance', 'read:reports'],
+  SENIOR_TL: [
+    'read:team',
+    'write:team',
+    'read:attendance',
+    'read:reports',
+    'manage:team',
+  ],
   TL: ['read:team', 'write:team', 'read:attendance'],
   CAPTAIN: ['read:team'],
   INTERN: ['read:own_profile'],
@@ -13,13 +19,13 @@ function rbac(...requirements) {
     const allowedActions = PERMISSIONS[userRole] || [];
 
     // If the user is ADMIN, let them proceed directly
-    if (allowedActions.includes('all')) {
+    if (allowedActions.includes('all') || userRole === 'ADMIN') {
       return done();
     }
 
-    // Check if any of the passed requirements matches an allowed action or the user's role
+    // Check if any of the passed requirements matches an allowed action or if the user's role matches the requirement.
     const hasPermission = requirements.some(
-      (reqItem) => allowedActions.includes(reqItem) || reqItem === userRole
+      (reqItem) => allowedActions.includes(reqItem) || userRole === reqItem
     );
 
     if (hasPermission) {

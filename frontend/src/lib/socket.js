@@ -9,6 +9,7 @@ export function connectSocket(token) {
     import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
   socket = io(apiUrl, {
     auth: { token },
+    query: { token },
     withCredentials: true,
     autoConnect: true,
   });

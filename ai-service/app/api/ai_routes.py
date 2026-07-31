@@ -2,12 +2,12 @@
 AI routes — Python/FastAPI port of ai_routes.js
 
 Split to match ai-service/app's layout (api/ + core/ + models/ + providers/):
-  - app/models/ai.py         -> request/response schemas
-  - app/core/auth.py          -> get_current_user (STUB)
-  - app/core/rbac.py           -> require_roles (STUB)
+  - app/models/ai.py          -> request/response schemas
+  - app/core/auth.py           -> get_current_user (STUB)
+  - app/core/rbac.py            -> require_roles (STUB)
   - app/core/rate_limit.py      -> enforce_rate_limit (STUB)
-  - app/core/usage.py            -> daily usage tracking (STUB)
-  - app/providers/*                -> base/gemini/openai adapters (real, from #1421)
+  - app/core/usage.py             -> daily usage tracking (STUB)
+  - app/providers/*                 -> base/gemini/openai adapters (real, from #1421)
   - app/providers/registry.py     -> provider selection (get_provider), added here
 
 `call_provider` below flattens the message list into a single prompt
@@ -40,6 +40,7 @@ from ..models.ai import (
 from ..providers.base import AIProviderError, ProviderAPIError, ProviderRateLimitError
 from ..providers.orchestrator import ai_orchestrator, get_circuit_breaker
 from ..providers.registry import get_configured_providers_health, get_provider
+from ..core.security import sanitize_prompt
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -113,9 +114,7 @@ async def chat(
     current_user: User = Depends(get_current_user),
     _rate_limited: None = Depends(enforce_rate_limit),
 ):
-    # TODO(sanitize): run body through a real sanitizer once one exists
-    # (JS used a sanitizationMiddleware ahead of the handler)
-
+    
     final_messages: List[dict] = []
 
     if body.messages:
@@ -162,6 +161,15 @@ async def chat(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Message content cannot be empty",
+        )
+
+    try:
+        for msg in final_messages:
+            msg["content"] = sanitize_prompt(msg["content"])
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
 
     usage = await get_today_usage(current_user.id)

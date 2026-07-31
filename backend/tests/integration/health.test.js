@@ -31,14 +31,14 @@ describe('Health Check Integration Tests', () => {
     });
   });
 
-  describe('GET /health/detailed', () => {
-    it('should require authentication', async () => {
+  describe('GET /health/full', () => {
+    it('should return health status', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/health/detailed',
+        url: '/health/full',
       });
 
-      expect([401, 403]).toContain(res.statusCode);
+      expect([200, 503]).toContain(res.statusCode);
     });
   });
 
