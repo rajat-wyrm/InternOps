@@ -15,7 +15,7 @@ const overallService = require('./overall.service');
 
 module.exports = async function ratingsRoutes(fastify) {
   await fastify.register(suggestionRoutes);
-  
+
   // Submit a rating for someone in your team (immutable history row).
   fastify.post(
     '/',
@@ -75,15 +75,17 @@ module.exports = async function ratingsRoutes(fastify) {
   fastify.get(
     '/:userId',
     {
-      schema: { 
-        tags: ['Ratings'], 
+      schema: {
+        tags: ['Ratings'],
         description: 'Get rating history',
         params: z.object({ userId: z.string().uuid() }),
       },
       preHandler: [auth, ownership('userId')],
     },
     async (req) => {
-      const { userId } = z.object({ userId: z.string().uuid() }).parse(req.params);
+      const { userId } = z
+        .object({ userId: z.string().uuid() })
+        .parse(req.params);
       return repo.getRatings(userId);
     }
   );
@@ -128,7 +130,9 @@ module.exports = async function ratingsRoutes(fastify) {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')],
     },
     async (req) => {
-      const { deptId } = z.object({ deptId: z.string().uuid() }).parse(req.params);
+      const { deptId } = z
+        .object({ deptId: z.string().uuid() })
+        .parse(req.params);
       return repo.getRatingsByDepartment(deptId);
     }
   );

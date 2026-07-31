@@ -14,14 +14,9 @@ async function generateOverallSummary(userId) {
     }
 
     // Calculate average score
-    const totalScore = history.reduce(
-      (sum, rating) => sum + rating.score,
-      0
-    );
+    const totalScore = history.reduce((sum, rating) => sum + rating.score, 0);
 
-    const overallScore = Number(
-      (totalScore / history.length).toFixed(2)
-    );
+    const overallScore = Number((totalScore / history.length).toFixed(2));
 
     // Calculate trend using recent ratings
     let trend = 'stable';
@@ -43,7 +38,6 @@ async function generateOverallSummary(userId) {
       trend,
       history,
     };
-
   } catch (error) {
     throw new Error(`Failed to generate overall summary: ${error.message}`);
   }
