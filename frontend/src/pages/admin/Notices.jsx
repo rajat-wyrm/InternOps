@@ -155,7 +155,13 @@ export default function Notices() {
   const [deletingId, setDeletingId] = useState(null);
   const [page, setPage] = useState(1);
 
-  const { data: noticesData, isLoading } = useQuery({
+  const {
+    data: noticesData,
+    isLoading,
+    isError,
+    error: queryError,
+    refetch,
+  } = useQuery({
     queryKey: ['notices-admin', page],
     queryFn: () =>
       api
@@ -182,18 +188,39 @@ export default function Notices() {
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...body }) => api.patch(`/notices/${id}`, body),
+
     onSuccess: () => {
       setEditingId(null);
+      setFormError('');
       inv();
+    },
+
+    onError: (err) => {
+      setFormError(
+        err.response?.data?.error ||
+          err.response?.data?.message ||
+          'Failed to update notice'
+      );
     },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/notices/${id}`),
+
     onSuccess: () => {
+      setFormError('');
       inv();
       setNoticeToDelete(null);
     },
+
+    onError: (err) => {
+      setFormError(
+        err.response?.data?.error ||
+          err.response?.data?.message ||
+          'Failed to delete notice'
+      );
+    },
+
     onSettled: () => setDeletingId(null),
   });
 
@@ -247,7 +274,19 @@ export default function Notices() {
         />
       </Card>
 
-      {isLoading ? (
+      {isError ? (
+        <Card className="p-6">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-red-600">
+              Failed to load notices
+            </h3>
+
+            <Btn className="mt-4" onClick={() => refetch()}>
+              Retry
+            </Btn>
+          </div>
+        </Card>
+      ) : isLoading ? (
         <div className="flex flex-col gap-3">
           {[1, 2, 3].map((i) => (
             <div

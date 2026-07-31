@@ -1,7 +1,16 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import {
+  Building2,
+  Plus,
+  Trash2,
+  Loader2,
+  AlertCircle,
+  CalendarCheck,
+  Star,
+  Target,
+} from 'lucide-react';
 import api from '../../lib/axios';
 import {
   Card,
@@ -24,6 +33,7 @@ export default function Departments() {
     data: departments = [],
     isLoading,
     isError,
+    error: queryError,
     refetch,
   } = useQuery({
     queryKey: ['departments'],
@@ -209,6 +219,36 @@ export default function Departments() {
                     <Trash2 className="w-4 h-4" />
                   )}
                 </button>
+              </div>
+
+              {/* Department Sub-sections for Admin Hierarchy */}
+              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 flex-wrap">
+                <Link
+                  to={`/admin/departments/${d.id}/attendance`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition"
+                  title="View & manage attendance for this department"
+                >
+                  <CalendarCheck className="w-3.5 h-3.5" />
+                  Attendance
+                </Link>
+
+                <Link
+                  to={`/admin/departments/${d.id}/ratings`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition"
+                  title="View ratings for this department"
+                >
+                  <Star className="w-3.5 h-3.5" />
+                  Ratings
+                </Link>
+
+                <Link
+                  to={`/admin/departments/${d.id}/tasks`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition"
+                  title="View tasks for this department"
+                >
+                  <Target className="w-3.5 h-3.5" />
+                  Tasks
+                </Link>
               </div>
             </Card>
           ))}

@@ -16,7 +16,7 @@ export default function AuditLog() {
   const [page, setPage] = useState(1);
   const limit = 50;
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['auditLogs', page],
     queryFn: () =>
       api.get(`/audit?page=${page}&limit=${limit}`).then((res) => res.data),

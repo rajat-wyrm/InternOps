@@ -148,17 +148,23 @@ export default function Login() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-extrabold uppercase text-white/65 mb-2">
+                <label
+                  htmlFor="email"
+                  className="block text-xs font-extrabold uppercase text-white/65 mb-2"
+                >
                   Email
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/45" />
                   <input
+                    id="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={loginMut.isPending}
                     required
+                    autoComplete="email"
+                    placeholder="Enter your email"
                     aria-describedby={error ? 'login-error' : undefined}
                     aria-invalid={!!error}
                     className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
@@ -166,17 +172,24 @@ export default function Login() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-extrabold uppercase text-white/65 mb-2">
+                <label
+                  htmlFor="password"
+                  className="block text-xs font-extrabold uppercase text-white/65 mb-2"
+                >
                   Password
                 </label>
+
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/45" />
                   <input
+                    id="password"
                     type={show ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={loginMut.isPending}
                     required
+                    autoComplete="current-password"
+                    placeholder="Enter your password"
                     aria-describedby={error ? 'login-error' : undefined}
                     aria-invalid={!!error}
                     className="w-full pl-12 pr-12 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"

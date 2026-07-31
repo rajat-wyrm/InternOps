@@ -24,6 +24,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       'X-CSRF-Token': cookies['csrf-token'] || csrfToken,
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
+      Origin: 'http://localhost:5173',
       ...extra,
     };
   }
