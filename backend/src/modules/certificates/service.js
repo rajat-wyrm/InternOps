@@ -458,7 +458,9 @@ async function quickGenerate(data, userId) {
 }
 
 function formatDate(dateStr) {
+  if (!dateStr) return 'N/A';
   const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return String(dateStr);
   const months = [
     'January',
     'February',

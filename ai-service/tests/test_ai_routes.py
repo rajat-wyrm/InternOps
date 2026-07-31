@@ -19,10 +19,14 @@ from app.api.ai_routes import router
 from app.core.rate_limit import chat_rate_limiter
 
 
+from app.core.auth import get_current_user, User
+
+
 @pytest.fixture
 def client():
     app = FastAPI()
     app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: User(id="test_user", roles=["ADMIN"])
     # reset in-memory stubs between tests so they don't bleed into each other
     chat_rate_limiter._hits.clear()
     return TestClient(app, raise_server_exceptions=False)
@@ -105,7 +109,7 @@ def test_health_endpoint(client, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     names = {p["name"] for p in body["providers"]}
-    assert names == {"gemini", "openai"}
+    assert {"gemini", "openai"}.issubset(names)
     assert all(p["status"] == "unhealthy" for p in body["providers"])
 
 

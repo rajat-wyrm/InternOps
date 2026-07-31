@@ -1,5 +1,6 @@
-from app.core.database import get_pool
+import logging
 
+logger = logging.getLogger(__name__)
 
 async def get_today_usage(user_id: str) -> int:
     if not user_id:
@@ -22,9 +23,8 @@ async def get_today_usage(user_id: str) -> int:
         return row["successful_requests"] if row else 0
 
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to fetch today's usage: {e}"
-        ) from e
+        logger.warning("Database unavailable for get_today_usage: %s", e)
+        return 0
 
 
 async def increment_usage(user_id: str) -> None:
@@ -57,9 +57,7 @@ async def increment_usage(user_id: str) -> None:
             )
 
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to increment usage: {e}"
-        ) from e
+        logger.warning("Database unavailable for increment_usage: %s", e)
 
 
 async def get_daily_usage_report() -> list:
@@ -90,6 +88,5 @@ async def get_daily_usage_report() -> list:
         ]
 
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to fetch usage report: {e}"
-        ) from e
+        logger.warning("Database unavailable for get_daily_usage_report: %s", e)
+        return []

@@ -206,7 +206,7 @@ async def health():
             status="healthy" if p["available"] else "unhealthy",
             lastErrorMessage=(p.get("lastError") or {}).get("message"),
         )
-        for p in get_provider_health()
+        for p in get_configured_providers_health()
     ]
     return HealthResponse(providers=providers)
 

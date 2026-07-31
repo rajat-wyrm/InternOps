@@ -262,14 +262,18 @@ class EmailService {
   }
 
   async _recordBounces(addresses) {
-    try {
-      await pool.query('INSERT INTO bounced_emails (email) VALUES ($1)', [
-        addresses,
-      ]);
-    } catch {
-      // fallback to in-memory bounce list when DB is unavailable
+    const list = Array.isArray(addresses) ? addresses : [addresses];
+    for (const email of list) {
+      try {
+        await pool.query(
+          'INSERT INTO bounced_emails (email) VALUES ($1) ON CONFLICT DO NOTHING',
+          [email]
+        );
+      } catch {
+        // fallback to in-memory bounce list when DB is unavailable
+      }
+      bounceList.add(email);
     }
-    addresses.forEach((address) => bounceList.add(address));
   }
 
   _clearBounceList() {
