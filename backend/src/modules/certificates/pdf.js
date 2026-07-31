@@ -18,6 +18,33 @@ const COLORS = {
   name: '#0F172A',
 };
 
+function fitFontSize(
+  doc,
+  text,
+  {
+    font = 'Times-Bold',
+    maxWidth,
+    maxSize = 40,
+    minSize = 22,
+    characterSpacing = 0,
+  }
+) {
+  doc.font(font);
+
+  for (let size = maxSize; size >= minSize; size -= 1) {
+    doc.fontSize(size);
+
+    const width =
+      doc.widthOfString(text) + Math.max(0, text.length - 1) * characterSpacing;
+
+    if (width <= maxWidth) {
+      return size;
+    }
+  }
+
+  return minSize;
+}
+
 function generateCertificatePDF(data, templateData = {}) {
   return new Promise((resolve, reject) => {
     try {
@@ -87,14 +114,29 @@ function generateCertificatePDF(data, templateData = {}) {
       }
 
       // ---- Title ----
+      const titleText = title.toUpperCase();
+      const titleX = 80;
+      const titleWidth = CERT_WIDTH - titleX * 2;
+      const titleCharacterSpacing = 4;
+      const titleFontSize = fitFontSize(doc, titleText, {
+        font: 'Times-Bold',
+        maxWidth: titleWidth,
+        maxSize: 40,
+        minSize: 22,
+        characterSpacing: titleCharacterSpacing,
+      });
+
       doc
         .font('Times-Bold')
-        .fontSize(40)
+        .fontSize(titleFontSize)
         .fillColor(COLORS.title)
-        .text(title.toUpperCase(), 0, 152, {
+        .text(titleText, titleX, 152, {
           align: 'center',
-          width: CERT_WIDTH,
-          characterSpacing: 6,
+          width: titleWidth,
+          height: titleFontSize + 8,
+          characterSpacing: titleCharacterSpacing,
+          lineBreak: false,
+          ellipsis: false,
         });
 
       // ---- Subtitle ----
@@ -184,19 +226,23 @@ function generateCertificatePDF(data, templateData = {}) {
       const footerY = CERT_HEIGHT - 130;
       const barX = 46;
 
-      doc.save();
-      doc.rect(barX, footerY, 2.5, 34).fill(COLORS.innerBorder);
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(9)
-        .fillColor(COLORS.muted)
-        .text('CERTIFICATE ID', barX + 12, footerY, { characterSpacing: 1 });
-      doc
-        .font('Courier-Bold')
-        .fontSize(11)
-        .fillColor(COLORS.title)
-        .text(certificateNumber || '—', barX + 12, footerY + 14);
-      doc.restore();
+      if (certificateNumber) {
+        doc.save();
+        doc.rect(barX, footerY, 2.5, 34).fill(COLORS.innerBorder);
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(9)
+          .fillColor(COLORS.muted)
+          .text('CERTIFICATE ID', barX + 12, footerY, {
+            characterSpacing: 1,
+          });
+        doc
+          .font('Courier-Bold')
+          .fontSize(11)
+          .fillColor(COLORS.title)
+          .text(certificateNumber, barX + 12, footerY + 14);
+        doc.restore();
+      }
 
       const issuedY = footerY + 40;
       doc.save();
@@ -217,50 +263,81 @@ function generateCertificatePDF(data, templateData = {}) {
       // Verification Section
       // ----------------------------
 
-      const verifyY = CERT_HEIGHT - 80;
+      const hasVerificationData = Boolean(
+        qrCode || verificationUrl || certificateId
+      );
 
-      // QR Code
-      if (qrCode) {
-        doc.image(qrCode, CERT_WIDTH / 2 - 30, verifyY - 20, {
-          width: 60,
-          height: 60,
-        });
+      if (hasVerificationData) {
+        const verificationCenterX = CERT_WIDTH / 2;
+        const qrSize = 54;
+        const qrX = verificationCenterX - qrSize / 2;
+        const qrY = CERT_HEIGHT - 132;
+
+        if (qrCode) {
+          doc.image(qrCode, qrX, qrY, {
+            width: qrSize,
+            height: qrSize,
+          });
+        }
+
+        let verificationTextY = qrCode ? qrY + qrSize + 4 : qrY;
+
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(7.5)
+          .fillColor(COLORS.text)
+          .text(
+            'VERIFY CERTIFICATE',
+            verificationCenterX - 100,
+            verificationTextY,
+            {
+              width: 200,
+              align: 'center',
+              lineBreak: false,
+            }
+          );
+
+        verificationTextY += 11;
+
+        if (verificationUrl) {
+          doc
+            .font('Helvetica')
+            .fontSize(6.5)
+            .fillColor('#2563EB')
+            .text(
+              verificationUrl,
+              verificationCenterX - 145,
+              verificationTextY,
+              {
+                width: 290,
+                align: 'center',
+                lineBreak: false,
+                ellipsis: true,
+              }
+            );
+
+          verificationTextY += 10;
+        }
+
+        if (certificateId) {
+          doc
+            .font('Courier')
+            .fontSize(6.5)
+            .fillColor(COLORS.muted)
+            .text(
+              `Verification ID: ${certificateId}`,
+              verificationCenterX - 145,
+              verificationTextY,
+              {
+                width: 290,
+                align: 'center',
+                lineBreak: false,
+                ellipsis: true,
+              }
+            );
+        }
       }
 
-      // Verification label
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(8)
-        .fillColor(COLORS.text)
-        .text('VERIFY CERTIFICATE', CERT_WIDTH / 2 - 90, verifyY + 45, {
-          width: 180,
-          align: 'center',
-        });
-
-      // Verification URL
-      doc
-        .font('Helvetica')
-        .fontSize(7)
-        .fillColor('#2563EB')
-        .text(verificationUrl, CERT_WIDTH / 2 - 140, verifyY + 58, {
-          width: 280,
-          align: 'center',
-        });
-
-      // Verification Token
-      doc
-        .font('Courier')
-        .fontSize(7)
-        .fillColor(COLORS.muted)
-        .text(
-          `Verification ID: ${certificateId}`,
-          CERT_WIDTH / 2 - 140,
-          verifyY + 70,
-          {
-            width: 280,
-            align: 'center',
-          }
-        );
       // ---- Bottom-right: Seal + Authorized Signatory ----
       const sealWidth = 88;
       const sealX = CERT_WIDTH - 150 - sealWidth / 2 + 30;

@@ -85,8 +85,9 @@ class GeminiProvider(BaseAIProvider):
             try:
                 async with client.stream("POST", url, json=payload) as response:
                     if response.status_code == 429:
+                        body = await response.aread()
                         raise ProviderRateLimitError(
-                            "Gemini rate limit or quota exceeded",
+                            f"Gemini rate limit: {body.decode(errors='replace')}",
                             self.provider_name,
                             status_code=429,
                         )

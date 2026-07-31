@@ -310,6 +310,9 @@ module.exports = async function socialTasksRoutes(fastify) {
             deadlineBefore: {
               type: 'string',
             },
+            department_id: {
+              type: 'string',
+            },
             source: {
               type: 'string',
               enum: ['manual', 'github'],

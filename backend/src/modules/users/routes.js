@@ -57,9 +57,8 @@ const updateProfileSchema = z.object({
   notes: z.string().optional(),
   avatar_url: z
     .string()
-    .refine((val) => isValidAvatarUrl(val), {
-      message: 'Must be a valid image URL or an internal upload path',
-    })
+    .url()
+    .regex(/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)$/i)
     .optional(),
 });
 

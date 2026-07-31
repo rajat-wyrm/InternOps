@@ -7,6 +7,16 @@ async function verifyCertificate(fastify) {
       schema: {
         tags: ['Certificates'],
         description: 'Verify certificate authenticity using verification token',
+        params: {
+          type: 'object',
+          properties: {
+            token: {
+              type: 'string',
+              format: 'uuid',
+            },
+          },
+          required: ['token'],
+        },
       },
     },
     async (req, reply) => {
