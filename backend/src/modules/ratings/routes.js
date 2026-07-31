@@ -78,7 +78,6 @@ module.exports = async function ratingsRoutes(fastify) {
       schema: {
         tags: ['Ratings'],
         description: 'Get rating history',
-        params: z.object({ userId: z.string().uuid() }),
       },
       preHandler: [auth, ownership('userId')],
     },
@@ -97,7 +96,6 @@ module.exports = async function ratingsRoutes(fastify) {
       schema: {
         tags: ['Ratings'],
         description: 'Get overall performance summary',
-        params: z.object({ userId: z.string().uuid() }),
       },
       preHandler: [auth, ownership('userId')],
     },
@@ -125,7 +123,6 @@ module.exports = async function ratingsRoutes(fastify) {
       schema: {
         tags: ['Ratings'],
         description: 'Get ratings for a department',
-        params: z.object({ deptId: z.string().uuid() }),
       },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')],
     },
