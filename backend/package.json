@@ -30,7 +30,6 @@
     "cross-env": "^10.1.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.8.5",
-    "grep": "^0.1.0",
     "jsonwebtoken": "^9.0.2",
     "lru-cache": "^11.5.1",
     "node-cron": "^3.0.3",
