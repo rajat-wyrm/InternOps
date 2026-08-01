@@ -16,6 +16,7 @@ InternOps is an enterprise-grade workforce management platform designed to strea
 | ---------------- | ----------------------- |
 | Frontend         | React + Vite            |
 | Backend          | Node.js + Fastify       |
+| AI Service       | Python + FastAPI        |
 | Database         | PostgreSQL 14           |
 | Authentication   | JWT                     |
 | Monitoring       | Prometheus + Grafana    |
@@ -34,13 +35,13 @@ Before deploying the application, ensure the following requirements are met:
 - PostgreSQL database credentials
 - Required application secrets
 
-Create the backend environment file:
+Create the backend environment file for runtime injection:
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-Update all required environment variables before deployment.
+Update all required environment variables before deployment. Docker Compose reads this file at runtime and passes the values into the backend container; it is not copied into the image.
 
 Important variables include:
 
@@ -88,7 +89,7 @@ git pull origin master
 cp backend/.env.example backend/.env
 ```
 
-Update the environment file with the appropriate credentials.
+Update the environment file with the appropriate credentials. The backend container consumes these values at runtime, not at build time.
 
 ### 3. Build Docker images
 
@@ -358,6 +359,16 @@ docker-compose exec backend npm run migrate
 - Verify Prometheus and Grafana containers are running.
 - Restart the monitoring stack if required.
 - Review monitoring container logs.
+
+---
+
+## Feature Flag Operations (Kill-Switches)
+
+InternOps includes a database-driven Feature Flags system for runtime configuration. If a newly deployed feature causes instability, it can be disabled instantly without a rollback or redeploy:
+
+1. Connect to the PostgreSQL database.
+2. Update the flag's `enabled` status to `false` in the `feature_flags` table.
+3. The backend caches flag states for 10 minutes, but you can invalidate the cache via Redis or wait for the TTL to expire.
 
 ---
 

@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { toast } from 'sonner';
+import api from '../../lib/axios';
 import {
   Plus,
   Download,
@@ -27,6 +29,7 @@ import {
   ConfirmationModal,
 } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
+import useBodyScrollLock from '../../hooks/useBodyScrollLock';
 
 const CERTIFICATE_TYPES = [
   { value: 'completion', label: 'Completion' },
@@ -54,7 +57,15 @@ export default function Certificates() {
   const [showModal, setShowModal] = useState(false);
   const [certToDelete, setCertToDelete] = useState(null);
 
-  const { data: certsData, isLoading } = useCertificates({ search });
+  const {
+    data: certsData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useCertificates({
+    search,
+  });
   const certificates = certsData?.data || [];
   const { data: templatesData, isLoading: templatesLoading } = useTemplates();
   const templates = templatesData?.data || [];
@@ -76,11 +87,29 @@ export default function Certificates() {
     });
   };
 
-  const handleDownload = (cert) => {
-    window.open(
-      cert.download_url || `/api/v1/certificates/${cert.id}/download`,
-      '_blank'
-    );
+  const handleDownload = async (cert) => {
+    try {
+      if (cert.pdf_url) {
+        // Find base URL without /api/v1
+        let baseUrl = api.defaults.baseURL || '';
+        if (baseUrl.endsWith('/api/v1')) baseUrl = baseUrl.slice(0, -7);
+        window.open(`${baseUrl}${cert.pdf_url}`, '_blank');
+        return;
+      }
+
+      const res = await api.get(`/certificates/${cert.id}/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `certificate-${cert.id}.pdf`;
+      a.click();
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error('Download failed', err);
+      toast.error('Failed to download certificate. Please try again.');
+    }
   };
 
   return (
@@ -143,7 +172,19 @@ export default function Certificates() {
       </Card>
 
       {/* Certificates Table */}
-      {isLoading ? (
+      {isError ? (
+        <Card className="p-6">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-red-600">
+              Failed to load certificates
+            </h3>
+
+            <Btn className="mt-4" onClick={() => refetch()}>
+              Retry
+            </Btn>
+          </div>
+        </Card>
+      ) : isLoading ? (
         <Spinner label="Loading certificates..." />
       ) : filteredCertificates.length === 0 ? (
         <EmptyState
@@ -273,25 +314,7 @@ function GenerateCertificateModal({
     certificate_type: 'completion',
     template_id: '',
   });
-  useEffect(() => {
-    const root = document.getElementById('root');
-
-    if (isOpen) {
-      document.body.classList.add('modal-open');
-
-      if (root) {
-        root.classList.add('blur-sm', 'transition-all', 'duration-300');
-      }
-    }
-
-    return () => {
-      document.body.classList.remove('modal-open');
-
-      if (root) {
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-      }
-    };
-  }, [isOpen]);
+  useBodyScrollLock(isOpen, { blurBackground: true });
 
   const templateOptions = [
     {
@@ -321,6 +344,7 @@ function GenerateCertificateModal({
     generateMutation.mutate(formData, {
       onSuccess: () => {
         onClose();
+
         setFormData({
           recipient_name: '',
           recipient_email: '',
@@ -330,6 +354,15 @@ function GenerateCertificateModal({
           certificate_type: 'completion',
           template_id: '',
         });
+      },
+
+      onError: (err) => {
+        alert(
+          err?.response?.data?.error ||
+            err?.response?.data?.message ||
+            err?.message ||
+            'Failed to generate certificate.'
+        );
       },
     });
   };

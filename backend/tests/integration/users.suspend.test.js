@@ -11,8 +11,13 @@
  *   6. DB trigger rejects direct SQL bypass          → DB exception
  */
 
+console.log('LOAD 1');
 const app = require('../../src/app');
+
+console.log('LOAD 2');
 const pool = require('../../src/config/db');
+
+console.log('LOAD 3');
 const {
   SEEDED_ADMIN_EMAIL,
   SEEDED_ADMIN_PASSWORD,
@@ -20,6 +25,8 @@ const {
   parseSetCookie,
   mergeCookies,
 } = require('./helpers');
+
+console.log('LOAD 4');
 
 const runId = Date.now();
 
@@ -44,6 +51,7 @@ function authHeaders() {
     Authorization: `Bearer ${accessToken}`,
     'X-CSRF-Token': csrfToken,
     'Content-Type': 'application/json',
+    Origin: 'http://localhost:5173',
   };
 }
 
@@ -71,11 +79,14 @@ async function refreshCsrfToken() {
 // ---------------------------------------------------------------------------
 // Setup / Teardown
 // ---------------------------------------------------------------------------
-
 beforeAll(async () => {
+  console.log('STEP 1');
   await app.ready();
+
+  console.log('STEP 2');
   await resetSeededAdminPassword();
 
+  console.log('STEP 3');
   // Clean up other users/admins that might be lingering from other tests
   try {
     await pool.query("DELETE FROM users WHERE role = 'ADMIN' AND email <> $1", [
@@ -149,7 +160,7 @@ beforeAll(async () => {
       email: SECOND_ADMIN_EMAIL,
       password: 'SecondAdmin@123',
       role: 'ADMIN',
-      fullName: 'Second Admin',
+      full_name: 'Second Admin',
     },
   });
   if (reg2.statusCode !== 201) {
@@ -168,7 +179,7 @@ beforeAll(async () => {
       email: INTERN_EMAIL,
       password: 'Intern@123',
       role: 'INTERN',
-      fullName: 'Test Intern',
+      full_name: 'Test Intern',
     },
   });
   if (regIntern.statusCode !== 201) {

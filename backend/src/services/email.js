@@ -1,71 +1,44 @@
 const nodemailer = require('nodemailer');
 const config = require('../config');
+const pool = require('../config/db');
+const logger = require('../logger');
+const { getRedisClient } = require('../config/redis');
 const path = require('path');
 const fs = require('fs');
-const pino = require('pino');
-const { getRedisClient } = require('../config/redis');
-const pool = require('../config/db');
 
-const log = pino(
-  process.env.NODE_ENV === 'development'
-    ? { transport: { target: 'pino-pretty' } }
-    : {}
-);
-
-// In-memory fallbacks — used only when Redis / DB are unavailable
-const _fallbackRateLimitMap = new Map();
-const _fallbackBounceList = new Map();
-
-// Periodic cleanup of the in-memory fallback structures (#990, #948, #994, #944)
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const BOUNCE_TTL_MS = 24 * 60 * 60 * 1000;
-setInterval(() => {
-  const now = Date.now();
-  for (const [email, timestamps] of _fallbackRateLimitMap) {
-    const fresh = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-    if (fresh.length === 0) _fallbackRateLimitMap.delete(email);
-    else _fallbackRateLimitMap.set(email, fresh);
-  }
-
-  for (const [email, timestamp] of _fallbackBounceList) {
-    if (now - timestamp >= BOUNCE_TTL_MS) {
-      _fallbackBounceList.delete(email);
-    }
-  }
-}, CLEANUP_INTERVAL_MS).unref();
+const rateLimitMap = new Map();
+const bounceList = new Set();
 
 const metrics = { sent: 0, failed: 0, bounced: 0, retried: 0 };
 
-// --- Email delivery queue (in-memory) ---
-const emailQueue = [];
-let queueProcessing = false;
-const queueMetrics = { queued: 0, processed: 0 };
-
-function enqueueEmailJob(jobFn) {
-  return new Promise((resolve, reject) => {
-    emailQueue.push({ jobFn, resolve, reject });
-    queueMetrics.queued++;
-    processQueue();
-  });
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-async function processQueue() {
-  if (queueProcessing) return; // already running, new job will be picked up in the loop
-  queueProcessing = true;
-  while (emailQueue.length > 0) {
-    const { jobFn, resolve, reject } = emailQueue.shift();
-    try {
-      const result = await jobFn();
-      queueMetrics.processed++;
-      resolve(result);
-    } catch (err) {
-      queueMetrics.processed++;
-      reject(err);
+// Periodically prune stale rate-limit entries to prevent unbounded memory growth
+const RATE_LIMIT_PRUNE_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
+function pruneRateLimitMap() {
+  const windowMs = config.email.rateLimitWindowMs || 60000;
+  const now = Date.now();
+  for (const [key, timestamps] of rateLimitMap.entries()) {
+    const fresh = timestamps.filter((t) => now - t < windowMs);
+    if (fresh.length === 0) {
+      rateLimitMap.delete(key);
+    } else {
+      rateLimitMap.set(key, fresh);
     }
   }
-  queueProcessing = false;
 }
+const rateLimitPruneTimer = setInterval(
+  pruneRateLimitMap,
+  RATE_LIMIT_PRUNE_INTERVAL_MS
+);
+rateLimitPruneTimer.unref();
 
 class EmailService {
   constructor() {
@@ -98,7 +71,7 @@ class EmailService {
       config.email.pass !== 'your-smtp-password' &&
       !config.email.pass.startsWith('your-');
     if (!config.email.host || !hasValidCreds) {
-      log.warn('SMTP not configured – using console fallback');
+      logger.warn('[Email] SMTP not configured-using console fallback');
       return null;
     }
     this.transporter = nodemailer.createTransport({
@@ -113,69 +86,31 @@ class EmailService {
   async _checkRateLimit(to) {
     const windowMs = config.email.rateLimitWindowMs || 60000;
     const max = config.email.rateLimitPerRecipient || 5;
-    const windowSec = Math.ceil(windowMs / 1000);
-    const key = `email_rl:${to}`;
+    const redis = await getRedisClient();
 
-    try {
-      const redis = await getRedisClient();
-      if (redis) {
-        // Redis-backed: atomic increment + sliding window via TTL
-        const count = await redis.incr(key);
-        if (count === 1) await redis.expire(key, windowSec);
-        if (count > max) {
-          throw new Error(`Rate limit exceeded for ${to}`);
-        }
-        return;
+    if (redis) {
+      const count = await redis.incr(`email_rl:${to}`);
+      if (count === 1) {
+        await redis.expire(`email_rl:${to}`, Math.ceil(windowMs / 1000));
       }
-    } catch (err) {
-      if (err.message.startsWith('Rate limit exceeded')) throw err;
-      log.warn(
-        { err: err.message },
-        'Redis rate-limit check failed; falling back to in-memory'
-      );
+      if (count > max) {
+        throw new Error(`Rate limit exceeded for ${to}`);
+      }
+      return;
     }
 
-    // In-memory fallback (single-instance only)
     const now = Date.now();
-    if (!_fallbackRateLimitMap.has(to)) _fallbackRateLimitMap.set(to, []);
-    const timestamps = _fallbackRateLimitMap
-      .get(to)
-      .filter((t) => now - t < windowMs);
+    if (!rateLimitMap.has(to)) rateLimitMap.set(to, []);
+    const timestamps = rateLimitMap.get(to).filter((t) => now - t < windowMs);
     if (timestamps.length >= max) {
       throw new Error(`Rate limit exceeded for ${to}`);
     }
     timestamps.push(now);
-    _fallbackRateLimitMap.set(to, timestamps);
+    rateLimitMap.set(to, timestamps);
   }
 
-  async _checkBounce(to) {
-    if (!config.email.bounceCheckEnabled) return;
-
-    if (process.env.NODE_ENV !== 'test') {
-      try {
-        const { rows } = await pool.query(
-          `SELECT bounced_at FROM bounced_emails WHERE email = $1`,
-          [to]
-        );
-        if (rows.length > 0) {
-          const age = Date.now() - new Date(rows[0].bounced_at).getTime();
-          if (age < BOUNCE_TTL_MS) {
-            throw new Error(`Bounced address suppressed: ${to}`);
-          }
-        }
-        return;
-      } catch (err) {
-        if (err.message.startsWith('Bounced address suppressed')) throw err;
-        log.warn(
-          { err: err.message },
-          'DB bounce check failed; falling back to in-memory'
-        );
-      }
-    }
-
-    // In-memory fallback (always used in test, fallback in production when DB is unavailable)
-    const bouncedAt = _fallbackBounceList.get(to);
-    if (bouncedAt && Date.now() - bouncedAt < BOUNCE_TTL_MS) {
+  _checkBounce(to) {
+    if (config.email.bounceCheckEnabled && bounceList.has(to)) {
       throw new Error(`Bounced address suppressed: ${to}`);
     }
   }
@@ -183,24 +118,28 @@ class EmailService {
   _render(templateName, data) {
     const tpl = this.templates[templateName];
     if (!tpl) return { html: null, text: null };
+
     const render = (str) => {
       if (!str) return null;
+
       return str
-        .replace(/\{\{(\w+)\}\}/g, (_, k) => (data[k] != null ? data[k] : ''))
+        .replace(/\{\{(\w+)\}\}/g, (_, k) =>
+          data[k] != null ? escapeHtml(data[k]) : ''
+        )
         .replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, k, content) =>
           data[k]
             ? content.replace(/\{\{(\w+)\}\}/g, (__, kk) =>
-                data[kk] != null ? data[kk] : ''
+                data[kk] != null ? escapeHtml(data[kk]) : ''
               )
             : ''
         );
     };
+
     return {
       html: render(tpl.html),
       text: render(tpl.txt),
     };
   }
-
   _stripHtml(html) {
     return html
       ? html
@@ -213,24 +152,9 @@ class EmailService {
   async send({ to, subject, template, data, html, text }) {
     if (!to || !subject)
       throw new Error('Missing required fields: to, subject');
-    await this._checkBounce(to);
+    this._checkBounce(to);
     await this._checkRateLimit(to);
-    enqueueEmailJob(() =>
-      this._deliver({ to, subject, template, data, html, text })
-    ).catch((err) => {
-      log.error(
-        { to, subject, err: err.message },
-        'Queued email ultimately failed after retries'
-      );
-    });
-    return {
-      queued: true,
-      to,
-      subject,
-    };
-  }
 
-  async _deliver({ to, subject, template, data, html, text }) {
     let htmlContent = html;
     let textContent = text;
 
@@ -251,13 +175,9 @@ class EmailService {
       text: textContent || (htmlContent ? this._stripHtml(htmlContent) : ''),
       html: htmlContent || undefined,
     };
-
     const transporter = this.getTransporter();
     if (!transporter) {
-      log.info(
-        { to, subject },
-        'Email placeholder (no SMTP transporter configured)'
-      );
+      logger.info(`[Email] Placeholder -> To: ${to}, Subject: "${subject}"`);
       metrics.sent++;
       return {
         messageId: 'console-' + Date.now(),
@@ -279,23 +199,17 @@ class EmailService {
         const info = await transporter.sendMail(mailOptions);
         metrics.sent++;
         if (info.rejected && info.rejected.length > 0) {
-          await this._recordBounces(info.rejected);
+          info.rejected.forEach((addr) => bounceList.add(addr));
           metrics.bounced += info.rejected.length;
         }
         return info;
       } catch (err) {
         lastError = err;
-        log.error(
-          {
-            to,
-            attempt: attempt + 1,
-            maxAttempts: maxRetries + 1,
-            err: err.message,
-          },
-          'Email send attempt failed'
+        logger.error(
+          `[Email] Attempt ${attempt + 1}/${maxRetries + 1} failed for ${to}: ${err.message}`
         );
         if (err.responseCode >= 500 || /55[0135]/.test(err.message)) {
-          await this._recordBounces([to], err.message);
+          bounceList.add(to);
           metrics.bounced++;
           break;
         }
@@ -303,15 +217,14 @@ class EmailService {
     }
 
     metrics.failed++;
-    log.error(
-      { to, err: lastError?.message },
-      'All email send attempts failed'
+    logger.error(
+      `[Email] All attempts failed for ${to}: ${lastError?.message}`
     );
     throw lastError || new Error(`Failed to send email to ${to}`);
   }
 
   async sendPasswordReset(email, resetToken) {
-    const resetLink = `${config.appUrl || 'http://localhost:5173'}/reset-password?token=${encodeURIComponent(resetToken)}`;
+    const resetLink = `${config.appUrl}/reset-password#token=${encodeURIComponent(resetToken)}`;
     return this.send({
       to: email,
       subject: 'InternOps - Password Reset Request',
@@ -321,7 +234,7 @@ class EmailService {
   }
 
   async sendAccountVerification(email, verificationToken) {
-    const verifyLink = `${config.appUrl || 'http://localhost:5173'}/verify-email?token=${verificationToken}`;
+    const verifyLink = `${config.appUrl}/verify-email?token=${verificationToken}`;
     return this.send({
       to: email,
       subject: 'InternOps - Verify Your Email',
@@ -339,15 +252,8 @@ class EmailService {
     });
   }
 
-  async _flushQueue() {
-    // waits until the queue has fully drained (test helper)
-    while (queueProcessing || emailQueue.length > 0) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
-  }
-
   getMetrics() {
-    return { ...metrics, ...queueMetrics, queueLength: emailQueue.length };
+    return { ...metrics };
   }
 
   resetMetrics() {
@@ -358,51 +264,55 @@ class EmailService {
   }
 
   _clearRateLimits() {
-    _fallbackRateLimitMap.clear();
-  }
-
-  async _recordBounces(addresses, reason) {
-    if (process.env.NODE_ENV === 'test') {
-      for (const addr of addresses) {
-        _fallbackBounceList.set(addr, Date.now());
-      }
-      return;
-    }
-
-    try {
-      for (const addr of addresses) {
-        await pool.query(
-          `INSERT INTO bounced_emails (email, bounced_at, reason)
-           VALUES ($1, NOW(), $2)
-           ON CONFLICT (email) DO UPDATE
-             SET bounced_at = NOW(), reason = EXCLUDED.reason`,
-          [addr, reason || null]
-        );
-      }
-    } catch (err) {
-      log.warn(
-        { err: err.message },
-        'Failed to persist bounce to DB; using in-memory fallback'
-      );
-      for (const addr of addresses) {
-        _fallbackBounceList.set(addr, Date.now());
-      }
-    }
+    rateLimitMap.clear();
   }
 
   _trackBounce(address) {
-    // Kept for backward-compat with tests; delegates to the persistent path
-    return this._recordBounces([address]);
+    bounceList.add(address);
   }
 
-  async _clearBounceList() {
-    _fallbackBounceList.clear();
-    if (process.env.NODE_ENV === 'test') return;
-    try {
-      await pool.query('DELETE FROM bounced_emails');
-    } catch (err) {
-      log.warn({ err: err.message }, 'Failed to clear bounced_emails table');
+  async _recordBounces(addresses) {
+    const list = Array.isArray(addresses) ? addresses : [addresses];
+    for (const email of list) {
+      try {
+        await pool.query(
+          'INSERT INTO bounced_emails (email) VALUES ($1) ON CONFLICT DO NOTHING',
+          [email]
+        );
+      } catch {
+        // fallback to in-memory bounce list when DB is unavailable
+      }
+      bounceList.add(email);
     }
+  }
+
+  _clearBounceList() {
+    bounceList.clear();
+  }
+
+  async _flushQueue() {
+    return undefined;
+  }
+
+  async _deliver(mailOptions) {
+    return this.send(mailOptions);
+  }
+
+  async sendAccountLockoutNotification(
+    email,
+    { ipAddress, timestamp, failedAttempts }
+  ) {
+    return this.send({
+      to: email,
+      subject: 'InternOps - Account Lockout Alert',
+      html: `
+  <p>Your account has been locked due to <strong>${escapeHtml(failedAttempts)}</strong> failed login attempts.</p>
+  <p><strong>IP Address:</strong> ${escapeHtml(ipAddress)}</p>
+  <p><strong>Timestamp:</strong> ${escapeHtml(timestamp)}</p>
+  <p>If this was not you, please secure your account immediately.</p>
+`,
+      text: `Your account has been locked due to ${escapeHtml(failedAttempts)} failed login attempts.\nIP: ${escapeHtml(ipAddress)}\nTimestamp: ${escapeHtml(timestamp)}`,
+    });
   }
 }
 

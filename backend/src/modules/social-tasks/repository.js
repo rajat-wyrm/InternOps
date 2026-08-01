@@ -6,7 +6,37 @@ async function createTask({
   taskLink,
   deadline,
   createdBy,
+  githubIssueId,
+  githubIssueNumber,
+  githubRepo,
+  githubIssueUrl,
+  source,
 }) {
+  const hasGithubFields =
+    githubIssueId || githubIssueNumber || githubRepo || githubIssueUrl;
+  if (hasGithubFields) {
+    const res = await pool.query(
+      `INSERT INTO social_tasks
+        (title, description, target_platform, task_link, deadline, created_by,
+         github_issue_id, github_issue_number, github_repo, github_issue_url, source)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING *`,
+      [
+        title,
+        description,
+        targetPlatform,
+        taskLink,
+        deadline,
+        createdBy,
+        githubIssueId || null,
+        githubIssueNumber || null,
+        githubRepo || null,
+        githubIssueUrl || null,
+        source || 'manual',
+      ]
+    );
+    return res.rows[0];
+  }
   const res = await pool.query(
     'INSERT INTO social_tasks (title, description, target_platform, task_link, deadline, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
     [title, description, targetPlatform, taskLink, deadline, createdBy]
@@ -81,7 +111,7 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
          NOT EXISTS (SELECT 1 FROM task_assignments WHERE task_id = st.id AND deleted_at IS NULL)
          OR st.id IN (SELECT task_id FROM task_assignments WHERE user_id = $${params.length} AND deleted_at IS NULL)
          OR st.created_by = $${params.length}
-       )`
+      )`
     );
   }
 
@@ -90,18 +120,29 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
     where.push(`st.deadline <= $${params.length}`);
   }
 
-  if (filters.department_id) {
+  if (
+    filters.department_id &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      filters.department_id
+    )
+  ) {
     params.push(filters.department_id);
+    const pIdx = params.length;
     where.push(
       `(
-         st.created_by IN (SELECT id FROM users WHERE department_id = $${params.length} AND deleted_at IS NULL)
+         st.created_by IN (SELECT id FROM users WHERE department_id = $${pIdx}::uuid AND deleted_at IS NULL)
          OR st.id IN (
            SELECT ta.task_id FROM task_assignments ta 
            JOIN users u ON u.id = ta.user_id 
-           WHERE u.department_id = $${params.length} AND ta.deleted_at IS NULL
+           WHERE u.department_id = $${pIdx}::uuid AND ta.deleted_at IS NULL
          )
-       )`
+      )`
     );
+  }
+
+  if (filters.source) {
+    params.push(filters.source);
+    where.push(`st.source = $${params.length}`);
   }
 
   const whereSql = `WHERE ${where.join(' AND ')}`;
@@ -249,6 +290,14 @@ async function getProof(proofId) {
   return res.rows[0] || null;
 }
 
+async function getTaskById(taskId) {
+  const res = await pool.query(
+    `SELECT * FROM social_tasks WHERE id = $1 AND deleted_at IS NULL`,
+    [taskId]
+  );
+  return res.rows[0] || null;
+}
+
 async function updateTask(
   taskId,
   { title, description, targetPlatform, taskLink, deadline }
@@ -259,7 +308,8 @@ async function updateTask(
          description = COALESCE($2, description),
          target_platform = COALESCE($3, target_platform),
          task_link = COALESCE($4, task_link),
-         deadline = COALESCE($5, deadline)
+         deadline = COALESCE($5, deadline),
+         last_synced_at = NOW()
      WHERE id = $6 AND deleted_at IS NULL
      RETURNING *`,
     [title, description, targetPlatform, taskLink, deadline, taskId]
@@ -295,6 +345,7 @@ async function deleteProofImage(imageId) {
 
 module.exports = {
   createTask,
+  getTaskById,
   updateTask,
   deleteTask,
   assignTask,

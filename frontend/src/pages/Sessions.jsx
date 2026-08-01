@@ -10,13 +10,25 @@ import {
   CalendarClock,
 } from 'lucide-react';
 import api from '../lib/axios';
-import { PageHeader, Card, Btn, EmptyState, Spinner } from '../components/ui';
-
+import {
+  PageHeader,
+  Card,
+  Btn,
+  EmptyState,
+  Spinner,
+  ApiErrorState,
+} from '../components/ui';
 export default function Sessions() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const { data: sessions, isLoading } = useQuery({
+  const {
+    data: sessions,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['sessions'],
     queryFn: () => api.get('/sessions/me').then((res) => res.data),
   });
@@ -25,9 +37,15 @@ export default function Sessions() {
   const [revokingId, setRevokingId] = useState(null);
 
   const revokeMut = useMutation({
-    mutationFn: (sessionId) => api.delete(`/sessions/me/${sessionId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    mutationFn: (session) => api.delete(`/sessions/me/${session.sessionId}`),
+    onSuccess: (_, session) => {
+      if (session.isCurrent) {
+        const store = useAuthStore.getState();
+        store.logout();
+        navigate('/login', { replace: true });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      }
     },
     onSettled: () => {
       setRevokingId(null);
@@ -112,6 +130,13 @@ export default function Sessions() {
 
       {isLoading ? (
         <Spinner />
+      ) : isError ? (
+        <ApiErrorState
+          error={error}
+          title="Failed to load sessions"
+          fallback="Unable to fetch your active sessions."
+          onRetry={refetch}
+        />
       ) : !sessions?.length ? (
         <EmptyState
           icon="💻"
@@ -148,10 +173,7 @@ export default function Sessions() {
                     <p className="text-xs text-gray-400">Expires: N/A</p>
                   )}
                 </div>
-                <Btn
-                  variant="outline"
-                  onClick={() => revokeMut.mutate(s.sessionId)}
-                >
+                <Btn variant="outline" onClick={() => revokeMut.mutate(s)}>
                   Revoke
                 </Btn>
               </Card>

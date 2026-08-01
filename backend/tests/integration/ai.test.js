@@ -24,6 +24,7 @@ describe('AI Chat Integration Tests (#498)', () => {
       'X-CSRF-Token': cookies['csrf-token'] || csrfToken,
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
+      Origin: 'http://localhost:5173',
       ...extra,
     };
   }
@@ -252,7 +253,7 @@ describe('AI Chat Integration Tests (#498)', () => {
           email: uniqueEmail,
           password: 'TLPassword123!',
           role: 'TL',
-          fullName: 'TL Rate Limit Test',
+          full_name: 'TL Rate Limit Test',
         },
       });
       expect(regRes.statusCode).toBe(201);
@@ -344,7 +345,7 @@ describe('AI Chat Integration Tests (#498)', () => {
           email: uniqueEmail,
           password: 'TLPassword123!',
           role: 'TL',
-          fullName: 'TL Size Limit Test',
+          full_name: 'TL Size Limit Test',
         },
       });
       expect(regRes.statusCode).toBe(201);

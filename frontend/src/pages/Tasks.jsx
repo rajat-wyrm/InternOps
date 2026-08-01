@@ -19,12 +19,20 @@ import {
   Building2,
   CalendarCheck,
   Star,
+  GitPullRequest as GithubIcon,
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import CreateTaskForm from '../components/CreateTaskForm';
 import CustomSelect from '../components/CustomSelect';
-import { Card, Btn, Badge, EmptyState, Spinner } from '../components/ui';
+import {
+  Card,
+  Btn,
+  Badge,
+  EmptyState,
+  Spinner,
+  ApiErrorState,
+} from '../components/ui';
 
 const PLATFORM_ICON = {
   LinkedIn: <Briefcase className="w-5 h-5" />,
@@ -36,14 +44,21 @@ const PLATFORM_ICON = {
 
 const overdue = (d) => new Date(d) < new Date();
 
-export default function Tasks() {
-  const { deptId } = useParams();
+export default function Tasks({
+  isProjectView = false,
+  deptId: propDeptId,
+  roster = [],
+} = {}) {
+  const { deptId: routeDeptId } = useParams();
+  const deptId = propDeptId || routeDeptId;
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [selectedProofTaskId, setSelectedProofTaskId] = useState(null);
   const [notification, setNotification] = useState(null);
   const [filterDeptId, setFilterDeptId] = useState(deptId || '');
+
+  const activeDeptId = deptId || filterDeptId;
 
   useEffect(() => {
     if (deptId) setFilterDeptId(deptId);
@@ -91,18 +106,23 @@ export default function Tasks() {
     enabled: isAdmin,
   });
 
-  const activeDepartment = departments.find(
-    (d) => d.id === (deptId || filterDeptId)
-  );
+  const activeDepartment = departments.find((d) => d.id === activeDeptId);
 
-  const { data: tasks, isLoading } = useQuery({
-    queryKey: ['tasks', deptId || filterDeptId],
+  const {
+    data: tasks,
+    isLoading,
+    isError: tasksIsError,
+    error: tasksError,
+    refetch: refetchTasks,
+  } = useQuery({
+    queryKey: ['tasks', activeDeptId],
     queryFn: () =>
       api
         .get('/tasks', {
-          params: { department_id: deptId || filterDeptId || undefined },
+          params: { department_id: activeDeptId || undefined },
         })
         .then((res) => res.data),
+    retry: 1,
   });
 
   const { data: proofs, refetch: refetchProofs } = useQuery({
@@ -221,7 +241,6 @@ export default function Tasks() {
       showNotification(errorMsg);
     },
     onSettled: () => {
-      // Always restore the Delete button after success or failure.
       setDeletingProofId(null);
     },
   });
@@ -246,6 +265,13 @@ export default function Tasks() {
       showNotification(err.response?.data?.error || 'Delete failed'),
   });
 
+  const syncToGithubMutation = useMutation({
+    mutationFn: (taskId) => api.post(`/github/sync-task/${taskId}`),
+    onSuccess: () => showNotification('Task synced to GitHub'),
+    onError: (err) =>
+      showNotification(err.response?.data?.error || 'Sync to GitHub failed'),
+  });
+
   const deleteImageMutation = useMutation({
     mutationFn: (imageId) => api.delete(`/proofs/images/${imageId}`),
     onSuccess: () => {
@@ -263,7 +289,7 @@ export default function Tasks() {
       showNotification(
         'You can only upload up to 5 images at a time. Only the first 5 images were kept.'
       );
-      files = files.slice(0, 5); // Take max 5 files
+      files = files.slice(0, 5);
     }
 
     for (const file of files) {
@@ -284,7 +310,7 @@ export default function Tasks() {
   return (
     <div className="animate-fade-in-up">
       {/* Admin Department Navigation Context Banner */}
-      {isAdmin && (deptId || filterDeptId) && (
+      {isAdmin && activeDeptId && !isProjectView && (
         <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-indigo-500/20 animate-fade-in">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
@@ -350,35 +376,37 @@ export default function Tasks() {
       )}
 
       {/* Professional Header Block */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/60 text-violet-600 dark:text-violet-300 flex items-center justify-center shadow-sm">
-            <Target className="w-6 h-6" />
+      {!isProjectView && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/60 text-violet-600 dark:text-violet-300 flex items-center justify-center shadow-sm">
+              <Target className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800 dark:text-white tracking-tight">
+                Social Media Tasks
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                Campaigns & proof verification
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white tracking-tight">
-              Social Media Tasks
-            </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              Campaigns & proof verification
-            </p>
-          </div>
-        </div>
 
-        {canCreateTask && (
-          <Btn onClick={() => setShowForm((s) => !s)}>
-            {showForm ? (
-              <span className="flex items-center gap-1">
-                <X className="w-4 h-4" /> Cancel
-              </span>
-            ) : (
-              <span className="flex items-center gap-1">
-                <Plus className="w-4 h-4" /> Create task
-              </span>
-            )}
-          </Btn>
-        )}
-      </div>
+          {canCreateTask && (
+            <Btn onClick={() => setShowForm((s) => !s)}>
+              {showForm ? (
+                <span className="flex items-center gap-1">
+                  <X className="w-4 h-4" /> Cancel
+                </span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <Plus className="w-4 h-4" /> Create task
+                </span>
+              )}
+            </Btn>
+          )}
+        </div>
+      )}
 
       {showForm && canCreateTask && (
         <div className="mb-5 animate-fade-in-up">
@@ -395,6 +423,13 @@ export default function Tasks() {
             />
           ))}
         </div>
+      ) : tasksIsError ? (
+        <ApiErrorState
+          error={tasksError}
+          title="Failed to load tasks"
+          fallback="Unable to load tasks for this department. Please try again."
+          onRetry={refetchTasks}
+        />
       ) : !tasks?.length ? (
         <EmptyState
           icon={<Target className="w-12 h-12 text-gray-400" />}
@@ -437,6 +472,39 @@ export default function Tasks() {
                           <Badge color={isOverdue ? 'red' : 'green'}>
                             {isOverdue ? 'Overdue' : 'Active'}
                           </Badge>
+                        )}
+
+                        {t.source === 'github' && (
+                          <>
+                            <a
+                              href={t.github_issue_url || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-900 text-white dark:bg-gray-700 dark:text-gray-100 hover:bg-gray-700 dark:hover:bg-gray-600 transition"
+                              title={`Issue #${t.github_issue_number || ''}`}
+                            >
+                              <GithubIcon className="w-3 h-3" />
+                              {t.github_issue_number
+                                ? `#${t.github_issue_number}`
+                                : 'GitHub'}
+                            </a>
+                            {canManageTask && (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition disabled:opacity-50"
+                                title="Sync task changes to GitHub"
+                                disabled={syncToGithubMutation.isPending}
+                                onClick={() =>
+                                  syncToGithubMutation.mutate(t.id)
+                                }
+                              >
+                                <GithubIcon className="w-3 h-3" />
+                                {syncToGithubMutation.isPending
+                                  ? 'Syncing...'
+                                  : 'Sync'}
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
 
@@ -497,7 +565,48 @@ export default function Tasks() {
                       )}
                     </div>
 
-                    {t.description && (
+                    {t.source === 'github' &&
+                      t.github_labels &&
+                      (() => {
+                        const meta =
+                          typeof t.github_labels === 'string'
+                            ? JSON.parse(t.github_labels)
+                            : t.github_labels;
+                        const author = meta?.author;
+                        const avatar = meta?.authorAvatar;
+                        const commentCount = meta?.commentCount;
+                        return (
+                          <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                            {avatar && (
+                              <img
+                                src={avatar}
+                                alt={author}
+                                className="w-5 h-5 rounded-full"
+                              />
+                            )}
+                            {author && (
+                              <span className="font-medium">{author}</span>
+                            )}
+                            {commentCount !== undefined && (
+                              <span className="flex items-center gap-1">
+                                <MessageCircle className="w-3.5 h-3.5" />
+                                {commentCount} comment
+                                {commentCount !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            <a
+                              href={t.github_issue_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 hover:underline"
+                            >
+                              View on GitHub
+                            </a>
+                          </div>
+                        );
+                      })()}
+
+                    {t.description && t.source !== 'github' && (
                       <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
                         {t.description}
                       </p>
@@ -800,7 +909,9 @@ export default function Tasks() {
                                     .replace(/\\/g, '/')
                                     .replace(/^\/+/, '');
                                   const base = (
-                                    import.meta.env.VITE_API_BASE_URL || ''
+                                    import.meta.env.VITE_API_URL ||
+                                    import.meta.env.VITE_API_BASE_URL ||
+                                    ''
                                   ).replace(/\/+$/, '');
                                   const src = base
                                     ? `${base}/${normalized}`
@@ -852,6 +963,31 @@ export default function Tasks() {
                             >
                               {p.status}
                             </Badge>
+
+                            <div
+                              className="flex flex-wrap items-center gap-1.5 mt-2"
+                              aria-label="Reported engagement actions"
+                            >
+                              {p.did_comment && (
+                                <Badge color="blue">Comment</Badge>
+                              )}
+
+                              {p.did_repost && (
+                                <Badge color="purple">Repost</Badge>
+                              )}
+
+                              {p.did_share && (
+                                <Badge color="green">Share</Badge>
+                              )}
+
+                              {!p.did_comment &&
+                                !p.did_repost &&
+                                !p.did_share && (
+                                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                                    No action data recorded
+                                  </span>
+                                )}
+                            </div>
 
                             <p className="text-slate-500 dark:text-slate-400 mt-2 truncate w-full">
                               Intern:{' '}

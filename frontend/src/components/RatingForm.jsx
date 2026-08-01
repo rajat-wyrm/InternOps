@@ -7,11 +7,11 @@ import { Card, Btn, Textarea } from './ui';
 import RatingSuggestionCard from './RatingSuggestionCard';
 import CustomSelect from './CustomSelect';
 
-export default function RatingForm() {
+export default function RatingForm({ roster, departmentId: propDeptId }) {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'ADMIN';
-  const [departmentId, setDepartmentId] = useState('');
+  const [departmentId, setDepartmentId] = useState(propDeptId || '');
   const [userId, setUserId] = useState('');
   const [score, setScore] = useState(10);
   const [remarks, setRemarks] = useState('');
@@ -24,11 +24,13 @@ export default function RatingForm() {
   const { data: reports = [] } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
+    enabled: !roster,
   });
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
+    enabled: !roster,
   });
 
   const { data: suggestion, isLoading: suggestionLoading } = useQuery({
@@ -72,11 +74,12 @@ export default function RatingForm() {
     mutationFn: (data) => api.post('/ratings', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ratings'] });
+      queryClient.invalidateQueries({ queryKey: ['memberHistory'] });
       setError('');
       setMsg('✓ Rating submitted');
       setRemarks('');
       setUserId('');
-      setDepartmentId('');
+      setDepartmentId(propDeptId || '');
       setScore(10);
       setTimeout(() => setMsg(''), 2000);
     },
@@ -91,18 +94,28 @@ export default function RatingForm() {
     })),
   ];
 
-  const memberOptions = [
-    {
-      value: '',
-      label: departmentId ? 'Select member...' : 'Select department first...',
-    },
-    ...reports
-      .filter((u) => u.department_id === departmentId)
-      .map((u) => ({
-        value: u.id,
-        label: u.full_name || u.email,
-      })),
-  ];
+  const memberOptions = roster
+    ? [
+        { value: '', label: 'Select member...' },
+        ...roster.map((u) => ({
+          value: u.id,
+          label: `${u.full_name || u.email} (${u.role})`,
+        })),
+      ]
+    : [
+        {
+          value: '',
+          label: departmentId
+            ? 'Select member...'
+            : 'Select department first...',
+        },
+        ...reports
+          .filter((u) => u.department_id === departmentId)
+          .map((u) => ({
+            value: u.id,
+            label: `${u.full_name || u.email} (${u.role})`,
+          })),
+      ];
 
   // Dynamically extract the name or email of the selected team member
   const selectedUserLabel =
@@ -220,21 +233,23 @@ export default function RatingForm() {
       />
 
       <form onSubmit={handleFormSubmit} className="space-y-5">
-        <div>
-          <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-            Department
-          </label>
+        {!roster && (
+          <div>
+            <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+              Department
+            </label>
 
-          <CustomSelect
-            value={departmentId}
-            onChange={handleDepartmentChange}
-            options={departmentOptions}
-            placeholder="Select department..."
-            className="w-full"
-            disabled={rateMutation.isPending}
-            searchable={true}
-          />
-        </div>
+            <CustomSelect
+              value={departmentId}
+              onChange={handleDepartmentChange}
+              options={departmentOptions}
+              placeholder="Select department..."
+              className="w-full"
+              disabled={rateMutation.isPending}
+              searchable={true}
+            />
+          </div>
+        )}
 
         <div>
           <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
@@ -246,10 +261,14 @@ export default function RatingForm() {
             onChange={setUserId}
             options={memberOptions}
             placeholder={
-              departmentId ? 'Select member...' : 'Select department first...'
+              roster
+                ? 'Select member...'
+                : departmentId
+                  ? 'Select member...'
+                  : 'Select department first...'
             }
             className="w-full"
-            disabled={rateMutation.isPending || !departmentId}
+            disabled={rateMutation.isPending || (!roster && !departmentId)}
             searchable={true}
           />
         </div>

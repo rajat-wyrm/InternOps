@@ -13,15 +13,36 @@ async function noticesRoutes(fastify) {
   fastify.get(
     '/notices',
     {
-      schema: { tags: ['Notices'], description: 'Get all notices (admin)' },
+      schema: {
+        tags: ['Notices'],
+        description: 'Get all notices (admin)',
+
+        querystring: {
+          type: 'object',
+          properties: {
+            page: {
+              type: 'integer',
+              minimum: 1,
+              default: 1,
+            },
+            limit: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 100,
+              default: 50,
+            },
+          },
+        },
+      },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
     async (req, reply) => {
       try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
-        const result = await repo.getAllNotices({ page, limit });
-        return reply.send(result);
+        const notices = await repo.getAllNotices({
+          page: req.query.page,
+          limit: req.query.limit,
+        });
+        return reply.send(notices);
       } catch (err) {
         // If the notices table does not yet exist (migration pending on production)
         // return an empty list with 503 rather than crashing with 500.
@@ -187,7 +208,9 @@ async function noticesRoutes(fastify) {
         resourceId: deleted.id,
         ...extractRequestInfo(req),
       };
-      return reply.status(204).send();
+      return reply.status(200).send({
+        success: true,
+      });
     }
   );
 }

@@ -118,14 +118,23 @@ GROQ_API_KEY=your-groq-key
 **Run database migrations and seed data:**
 
 ```bash
+# Run from within backend/
 npm run migrate   # creates all tables
 npm run seed      # inserts the default admin user
+
+# OR run from the project root using workspaces:
+npm run migrate --workspace=backend
+npm run seed --workspace=backend
 ```
 
 **Start the development server:**
 
 ```bash
+# Run from within backend/
 npm run dev       # hot-reloads via node --watch
+
+# OR run from the project root using workspaces:
+npm run dev --workspace=backend
 ```
 
 The API will be available at `http://localhost:5000`.  
@@ -158,7 +167,11 @@ VITE_API_BASE_URL=http://localhost:5000
 **Start the Vite dev server:**
 
 ```bash
+# Run from within frontend/
 npm run dev
+
+# OR run from the project root using workspaces:
+npm run dev --workspace=frontend
 ```
 
 The app will be available at `http://localhost:5173`.

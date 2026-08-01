@@ -61,16 +61,18 @@ afterAll(async () => {
   await app.close();
 });
 
-// Clear brute-force state before each test so failed login attempts in one
-// test cannot accumulate into a lockout that breaks the next test.
+// Clear brute-force state and password reset attempts before each test so
+// state from one test does not leak into the next.
 beforeEach(async () => {
   await clearLoginAttempts();
+  await clearPasswordResetAttempts();
 });
 
 function authHeaders(extra) {
   return {
     'X-CSRF-Token': csrfToken,
     'Content-Type': 'application/json',
+    Origin: 'http://localhost:5173',
     ...extra,
   };
 }
@@ -79,6 +81,7 @@ function inject(method, url, opts = {}) {
   return app.inject({
     method,
     url,
+    remoteAddress: opts.remoteAddress,
     cookies: { ...cookies, ...(opts.cookies || {}) },
     headers: authHeaders(opts.headers),
     payload: opts.payload,
@@ -260,8 +263,7 @@ describe('Auth Integration Tests', () => {
   });
 
   describe('CSRF Protection', () => {
-    it('should reject POST without CSRF header', async () => {
-      // No csrf-token cookie and no X-CSRF-Token header — must 403.
+    it('should allow POST with bearer auth even without a CSRF header', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/v1/departments',
@@ -269,7 +271,18 @@ describe('Auth Integration Tests', () => {
           Authorization: `Bearer ${freshAccessToken}`,
           'Content-Type': 'application/json',
         },
-        payload: { name: 'Test' },
+        payload: { name: 'TestBearer_' + Date.now() },
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('should reject POST when origin is not in the trusted allow-list', async () => {
+      const res = await inject('POST', '/api/v1/departments', {
+        headers: {
+          Authorization: `Bearer ${freshAccessToken}`,
+          Origin: 'https://evil.example',
+        },
+        payload: { name: 'TestDept_' + Date.now() },
       });
       expect(res.statusCode).toBe(403);
     });
@@ -311,11 +324,48 @@ describe('Auth Integration Tests', () => {
       .toString(36)
       .slice(2, 8)}@example.com`;
 
+    function resetRouteIp(suffix) {
+      return `10.250.${runId % 250}.${suffix}`;
+    }
+
     it('should accept forgot-password request for unknown email without leaking', async () => {
       const res = await inject('POST', '/api/v1/auth/forgot-password', {
         payload: { email: resetEmail },
+        remoteAddress: resetRouteIp(11),
       });
       expect(res.statusCode).toBe(200);
+    });
+
+    it('should enforce rate limiting per email and return consistent response', async () => {
+      await resetSeededAdminPassword();
+      await clearPasswordResetAttempts();
+      const sendSpy = jest.spyOn(emailService, 'sendPasswordReset');
+      sendSpy.mockClear();
+
+      // First request (should succeed and call email service)
+      const res1 = await inject('POST', '/api/v1/auth/forgot-password', {
+        payload: { email: SEEDED_ADMIN_EMAIL },
+        remoteAddress: resetRouteIp(12),
+      });
+      expect(res1.statusCode).toBe(200);
+      expect(JSON.parse(res1.body).message).toBe(
+        'If that email exists, a reset link has been sent.'
+      );
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+
+      // Second request (should hit rate limit, return 200, but NOT call email service again)
+      const res2 = await inject('POST', '/api/v1/auth/forgot-password', {
+        payload: { email: SEEDED_ADMIN_EMAIL },
+        remoteAddress: resetRouteIp(12),
+      });
+      expect(res2.statusCode).toBe(200);
+      expect(JSON.parse(res2.body).message).toBe(
+        'If that email exists, a reset link has been sent.'
+      );
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+
+      await clearPasswordResetAttempts();
+      sendSpy.mockRestore();
     });
 
     it('should reject reset with invalid token', async () => {
@@ -324,6 +374,46 @@ describe('Auth Integration Tests', () => {
       });
       expect(res.statusCode).toBe(400);
     });
+
+    it('should allow only one reset attempt per token under concurrent requests', async () => {
+      await resetSeededAdminPassword();
+
+      const sendSpy = jest.spyOn(emailService, 'sendPasswordReset');
+      try {
+        const forgotRes = await inject('POST', '/api/v1/auth/forgot-password', {
+          payload: { email: SEEDED_ADMIN_EMAIL },
+          remoteAddress: resetRouteIp(14),
+        });
+        expect(forgotRes.statusCode).toBe(200);
+
+        expect(sendSpy).toHaveBeenCalled();
+        const resetToken = sendSpy.mock.calls[sendSpy.mock.calls.length - 1][1];
+
+        const requests = Array.from({ length: 10 }, (_, index) =>
+          inject('POST', '/api/v1/auth/reset-password', {
+            payload: {
+              token: resetToken,
+              newPassword: `ConcurrentPassword${index}@123!`,
+            },
+          })
+        );
+
+        const responses = await Promise.all(requests);
+        const successCount = responses.filter(
+          (res) => res.statusCode === 200
+        ).length;
+        const failureCount = responses.filter(
+          (res) => res.statusCode === 400
+        ).length;
+
+        expect(successCount).toBe(1);
+        expect(failureCount).toBe(9);
+      } finally {
+        sendSpy.mockRestore();
+        await resetSeededAdminPassword();
+        await login();
+      }
+    }, 30000);
 
     it('should revoke all refresh tokens and Redis cache on password reset', async () => {
       await resetSeededAdminPassword();
@@ -337,6 +427,7 @@ describe('Auth Integration Tests', () => {
 
         const forgotRes = await inject('POST', '/api/v1/auth/forgot-password', {
           payload: { email: SEEDED_ADMIN_EMAIL },
+          remoteAddress: resetRouteIp(13),
         });
         expect(forgotRes.statusCode).toBe(200);
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Video,
@@ -24,7 +24,19 @@ import {
 import CustomDatePicker from '../components/CustomDatePicker';
 import CustomTimePicker from '../components/CustomTimePicker';
 
-export default function Meetings() {
+function isSafeUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return ['https:', 'http:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+export default function Meetings({
+  isProjectView = false,
+  deptId,
+  roster = [],
+} = {}) {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
 
@@ -36,10 +48,19 @@ export default function Meetings() {
     meetingUrl: '',
     startTime: '',
     endTime: '',
-    departmentId: '',
+    departmentId: isProjectView ? deptId : '',
   });
   const [attendees, setAttendees] = useState([]);
-  const [filterDepartmentId, setFilterDepartmentId] = useState('');
+  const [filterDepartmentId, setFilterDepartmentId] = useState(
+    isProjectView ? deptId : ''
+  );
+
+  useEffect(() => {
+    if (isProjectView) {
+      setFilterDepartmentId(deptId || '');
+      setForm((f) => ({ ...f, departmentId: deptId || '' }));
+    }
+  }, [isProjectView, deptId]);
 
   const canCreate = ['ADMIN', 'SENIOR_TL', 'TL'].includes(user?.role);
 
@@ -73,13 +94,13 @@ export default function Meetings() {
   } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
-    enabled: canCreate,
+    enabled: canCreate && !isProjectView,
   });
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
-    enabled: canCreate,
+    enabled: canCreate && !isProjectView,
   });
 
   const createMutation = useMutation({
@@ -94,7 +115,7 @@ export default function Meetings() {
         meetingUrl: '',
         startTime: '',
         endTime: '',
-        departmentId: '',
+        departmentId: isProjectView ? deptId : '',
       });
       setAttendees([]);
     },
@@ -115,47 +136,82 @@ export default function Meetings() {
     createMutation.mutate({ ...form, attendeeIds: attendees });
   };
 
+  const effectiveTeam = isProjectView ? roster : team;
+
   return (
     <div className="animate-fade-in-up">
       {/* Professional Header Block */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60 text-blue-600 dark:text-blue-300 flex items-center justify-center shadow-sm">
-            <Video className="w-6 h-6" />
+      {isProjectView ? (
+        <div className="flex justify-between items-center mb-5">
+          <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
+            Project Meetings
+          </h3>
+          {canCreate && (
+            <Btn
+              onClick={() => setShowForm((s) => !s)}
+              className="rounded-2xl px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600"
+            >
+              {showForm ? 'Cancel' : 'Schedule Meeting'}
+            </Btn>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60 text-blue-600 dark:text-blue-300 flex items-center justify-center shadow-sm">
+              <Video className="w-6 h-6" />
+            </div>
+
+            <div>
+              <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-blue-600 dark:text-blue-300 font-extrabold mb-1">
+                Team Sync
+              </p>
+
+              <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                Meetings
+              </h1>
+
+              <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
+                Schedule and track team meetings
+              </p>
+            </div>
           </div>
 
-          <div>
-            <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-blue-600 dark:text-blue-300 font-extrabold mb-1">
-              Team Sync
-            </p>
+          <div className="flex items-center gap-3">
+            {!isProjectView && user?.role === 'ADMIN' && (
+              <select
+                value={filterDepartmentId}
+                onChange={(e) => setFilterDepartmentId(e.target.value)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm"
+              >
+                <option value="">All Departments</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            )}
 
-            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Meetings
-            </h1>
-
-            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
-              Schedule and track team meetings
-            </p>
+            {canCreate && (
+              <Btn
+                onClick={() => setShowForm((s) => !s)}
+                className="rounded-2xl px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
+              >
+                {showForm ? (
+                  <span className="flex items-center gap-2">
+                    <X className="w-4 h-4" /> Cancel
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Plus className="w-4 h-4" /> Schedule meeting
+                  </span>
+                )}
+              </Btn>
+            )}
           </div>
         </div>
-
-        {canCreate && (
-          <Btn
-            onClick={() => setShowForm((s) => !s)}
-            className="rounded-2xl px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
-          >
-            {showForm ? (
-              <span className="flex items-center gap-2">
-                <X className="w-4 h-4" /> Cancel
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Plus className="w-4 h-4" /> Schedule meeting
-              </span>
-            )}
-          </Btn>
-        )}
-      </div>
+      )}
 
       {showForm && (
         <Card className="p-5 md:p-6 mb-6 animate-fade-in-up border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
@@ -203,32 +259,34 @@ export default function Meetings() {
                 disabled={createMutation.isPending}
               />
             </div>
-            <div>
-              <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-                Department
-                <span className="normal-case font-medium text-slate-400">
-                  {' '}
-                  (optional)
-                </span>
-              </label>
+            {!isProjectView && (
+              <div>
+                <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                  Department
+                  <span className="normal-case font-medium text-slate-400">
+                    {' '}
+                    (optional)
+                  </span>
+                </label>
 
-              <select
-                value={form.departmentId}
-                onChange={(e) =>
-                  setForm({ ...form, departmentId: e.target.value })
-                }
-                disabled={createMutation.isPending}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm"
-              >
-                <option value="">No specific department</option>
+                <select
+                  value={form.departmentId}
+                  onChange={(e) =>
+                    setForm({ ...form, departmentId: e.target.value })
+                  }
+                  disabled={createMutation.isPending}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm"
+                >
+                  <option value="">No specific department</option>
 
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
@@ -283,14 +341,14 @@ export default function Meetings() {
               />
             )}
 
-            {team.length > 0 && !teamIsError && (
+            {effectiveTeam.length > 0 && !teamIsError && (
               <div className="pt-1">
                 <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
                   Attendees ({attendees.length} selected)
                 </label>
 
                 <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto p-3 bg-slate-50 dark:bg-slate-800/70 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  {team.map((m) => (
+                  {effectiveTeam.map((m) => (
                     <button
                       type="button"
                       key={m.id}
@@ -353,86 +411,105 @@ export default function Meetings() {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {meetings.map((m) => (
-            <Card
-              key={m.id}
-              className="p-5 md:p-6 card-hover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none group"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 border border-blue-100 dark:border-blue-900/60 flex items-center justify-center shrink-0">
-                    <Video className="w-5 h-5" />
-                  </div>
+          {meetings.map((m) => {
+            const meetingLink = m.meetingUrl || m.meeting_url;
+            const isDeletingThisMeeting =
+              deleteMutation.isPending && deleteMutation.variables === m.id;
 
-                  <div className="min-w-0">
-                    <h3 className="font-extrabold text-slate-900 dark:text-white leading-tight truncate">
-                      {m.title}
-                    </h3>
+            const isDeleteErrorForThisMeeting =
+              deleteMutation.isError && deleteMutation.variables === m.id;
 
-                    <div className="mt-2">
-                      <Badge color="blue" className="font-bold">
-                        {new Date(m.meeting_date).toLocaleDateString(
-                          undefined,
-                          {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                          }
-                        )}
-                      </Badge>
+            return (
+              <Card
+                key={m.id}
+                className="p-5 md:p-6 card-hover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none group"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 border border-blue-100 dark:border-blue-900/60 flex items-center justify-center shrink-0">
+                      <Video className="w-5 h-5" />
+                    </div>
+
+                    <div className="min-w-0">
+                      <h3 className="font-extrabold text-slate-900 dark:text-white leading-tight truncate">
+                        {m.title}
+                      </h3>
+
+                      <div className="mt-2">
+                        <Badge color="blue" className="font-bold">
+                          {new Date(m.meeting_date).toLocaleDateString(
+                            undefined,
+                            {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                            }
+                          )}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
+
+                  {m.created_by === user?.id && (
+                    <button
+                      onClick={() => deleteMutation.mutate(m.id)}
+                      disabled={isDeletingThisMeeting}
+                      className="text-slate-300 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
+                      title="Delete meeting"
+                    >
+                      {isDeletingThisMeeting ? (
+                        <span className="text-xs">Deleting...</span>
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
                 </div>
 
-                {m.created_by === user?.id && (
-                  <button
-                    onClick={() => deleteMutation.mutate(m.id)}
-                    disabled={deleteMutation.isPending}
-                    className="text-slate-300 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
-                    title="Delete meeting"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                {isDeleteErrorForThisMeeting && (
+                  <div className="mt-4">
+                    <ApiErrorState
+                      error={deleteMutation.error}
+                      title="Failed to delete meeting"
+                      fallback="Unable to delete meeting. Please try again."
+                    />
+                  </div>
                 )}
-              </div>
 
-              {deleteMutation.isError && (
-                <div className="mt-4">
-                  <ApiErrorState
-                    error={deleteMutation.error}
-                    title="Failed to delete meeting"
-                    fallback="Unable to delete meeting. Please try again."
-                  />
+                {m.description && (
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mt-4 leading-relaxed bg-slate-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    {m.description}
+                  </p>
+                )}
+
+                {meetingLink && (
+                  <div className="mt-4">
+                    {isSafeUrl(meetingLink) ? (
+                      <a
+                        href={meetingLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 underline"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        Join Meeting
+                      </a>
+                    ) : (
+                      <span className="text-xs text-rose-500 font-medium">
+                        Invalid or unsafe meeting link
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+                  {m.start_time || 'TBD'}
+                  {m.end_time ? ` – ${m.end_time}` : ''}
                 </div>
-              )}
-
-              {m.description && (
-                <p className="text-sm text-slate-600 dark:text-slate-300 mt-4 leading-relaxed bg-slate-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  {m.description}
-                </p>
-              )}
-
-              {m.meetingUrl && (
-                <div className="mt-4">
-                  <a
-                    href={m.meetingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 underline"
-                  >
-                    <ExternalLink className="w-4 h-4"></ExternalLink>
-                    Join Meeting
-                  </a>
-                </div>
-              )}
-
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
-                {m.start_time || 'TBD'}
-                {m.end_time ? ` – ${m.end_time}` : ''}
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

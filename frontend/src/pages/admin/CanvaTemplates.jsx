@@ -19,9 +19,14 @@ import {
   useTemplates,
   useCreateTemplate,
   useDeleteTemplate,
+  useSeedTemplates,
 } from '../../hooks/useCertificates';
 
-export default function CanvaTemplates() {
+function colorsFor(template) {
+  return template.colorScheme || template.template_data?.colorScheme;
+}
+
+function CanvaTemplates() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTemplate, setNewTemplate] = useState({
     name: '',
@@ -64,6 +69,7 @@ export default function CanvaTemplates() {
   const importMutation = useCanvaImport();
   const createMutation = useCreateTemplate();
   const deleteMutation = useDeleteTemplate();
+  const seedMutation = useSeedTemplates();
 
   const isConnected = canvaStatus?.connected;
 
@@ -111,7 +117,7 @@ export default function CanvaTemplates() {
 
   const handleSeedDefaults = async () => {
     try {
-      await createMutation.mutateAsync({ seed: true });
+      await seedMutation.mutateAsync({});
       refetchTemplates();
     } catch (error) {
       console.error('Failed to seed templates:', error);
@@ -283,7 +289,7 @@ export default function CanvaTemplates() {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleSeedDefaults}
-                disabled={createMutation.isPending}
+                disabled={seedMutation.isPending}
                 className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
               >
                 <Palette className="w-4 h-4" />
@@ -337,16 +343,18 @@ export default function CanvaTemplates() {
 
                     {/* Color Scheme Preview */}
                     <div className="flex items-center gap-1">
-                      {template.colorScheme?.slice(0, 5).map((color, index) => (
-                        <div
-                          key={index}
-                          className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
-                          style={{ backgroundColor: color }}
-                        />
-                      ))}
-                      {template.colorScheme?.length > 5 && (
+                      {colorsFor(template)
+                        ?.slice(0, 5)
+                        .map((color, index) => (
+                          <div
+                            key={index}
+                            className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                      {colorsFor(template)?.length > 5 && (
                         <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
-                          +{template.colorScheme.length - 5}
+                          +{colorsFor(template).length - 5}
                         </span>
                       )}
                     </div>
@@ -507,3 +515,5 @@ export default function CanvaTemplates() {
     </div>
   );
 }
+
+export default CanvaTemplates;

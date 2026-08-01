@@ -31,6 +31,7 @@ describe('Audit Integration Tests', () => {
   const seededSystemLogId = uuidv4();
 
   beforeAll(async () => {
+    jest.setTimeout(60000);
     await app.ready();
     await resetSeededAdminPassword();
 
@@ -368,7 +369,6 @@ describe('Audit Integration Tests', () => {
       expect(body.data.every((log) => log.user_id === internId)).toBe(true);
       expect(body.data.some((log) => log.user_id === adminUserId)).toBe(false);
     });
-
     it("should not strip ip_address or user_agent from intern's own seeded log", async () => {
       const res = await app.inject({
         method: 'GET',

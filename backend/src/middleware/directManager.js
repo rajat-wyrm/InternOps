@@ -7,7 +7,7 @@ function directManagerValidation(field = 'user_id') {
     const {
       rows: [user],
     } = await pool.query(
-      'SELECT id, role, manager_id FROM users WHERE id = $1',
+      'SELECT id, role, manager_id FROM users WHERE id = $1 AND deleted_at IS NULL',
       [target]
     );
     if (!user) return reply.status(404).send({ error: 'User not found' });

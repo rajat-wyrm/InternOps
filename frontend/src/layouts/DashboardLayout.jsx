@@ -25,9 +25,10 @@ import {
   Sparkles,
   Zap,
   ToggleRight,
+  GitPullRequest,
 } from 'lucide-react';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
@@ -50,10 +51,25 @@ const nav = [
     icon: Users,
     allowedRoles: MANAGER_ROLES,
   },
-  { path: '/attendance', label: 'Attendance', icon: CalendarCheck },
-  { path: '/ratings', label: 'Ratings', icon: Star },
+  {
+    path: '/attendance',
+    label: 'Attendance',
+    icon: CalendarCheck,
+    excludedRoles: ADMIN_ONLY_ROLES,
+  },
+  {
+    path: '/ratings',
+    label: 'Ratings',
+    icon: Star,
+    excludedRoles: ADMIN_ONLY_ROLES,
+  },
   { path: '/tasks', label: 'Tasks', icon: Target },
-  { path: '/meetings', label: 'Meetings', icon: Video },
+  {
+    path: '/meetings',
+    label: 'Meetings',
+    icon: Video,
+    excludedRoles: ADMIN_ONLY_ROLES,
+  },
   { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/profile', label: 'Profile', icon: User },
   { path: '/sessions', label: 'Sessions', icon: Shield },
@@ -147,12 +163,20 @@ const adminNav = [
     icon: ToggleRight,
     allowedRoles: ADMIN_ONLY_ROLES,
   },
+  {
+    path: '/github-sync',
+    label: 'GitHub Sync',
+    icon: GitPullRequest,
+    allowedRoles: ADMIN_ONLY_ROLES,
+    featureFlag: 'GITHUB_ISSUE_SYNC',
+  },
 ];
 
 const FULL_LOGO_SRC = '/UptoSkills.webp';
 const MINI_LOGO_SRC = '/Uptoskills_log_fevicon.png';
 
 function canShowNavItem(item, role, flags) {
+  if (item.excludedRoles && item.excludedRoles.includes(role)) return false;
   if (!item.allowedRoles) {
     if (item.featureFlag) return flags[item.featureFlag] === true;
     return true;
@@ -161,6 +185,36 @@ function canShowNavItem(item, role, flags) {
   if (item.featureFlag) return flags[item.featureFlag] === true;
   return true;
 }
+
+const NavLink = memo(({ n, active, collapsed, onLinkClick }) => {
+  const Icon = n.icon;
+
+  return (
+    <Link
+      to={n.path}
+      title={collapsed ? n.label : undefined}
+      aria-label={n.label}
+      onClick={onLinkClick}
+      className={`group relative flex items-center gap-3 rounded-2xl text-sm font-bold transition-all duration-200
+        ${collapsed ? 'justify-center px-0 py-3' : 'px-3 py-2.5'}
+        ${
+          active
+            ? 'bg-white text-indigo-700 shadow-lg shadow-indigo-950/20'
+            : 'text-indigo-100/90 hover:bg-white/10 hover:text-white hover:translate-x-1'
+        }`}
+    >
+      <Icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2.5 : 2} />
+      {!collapsed && <span className="whitespace-nowrap">{n.label}</span>}
+      {!collapsed && active && (
+        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600" />
+      )}
+      {collapsed && active && (
+        <span className="absolute right-1.5 w-1.5 h-6 rounded-full bg-white/80" />
+      )}
+    </Link>
+  );
+});
+NavLink.displayName = 'NavLink';
 
 export default function DashboardLayout() {
   const loc = useLocation();
@@ -204,9 +258,14 @@ export default function DashboardLayout() {
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }, [dark]);
 
-  const visibleNav = nav.filter((item) => canShowNavItem(item, role, flags));
-  const visibleAdminNav = adminNav.filter((item) =>
-    canShowNavItem(item, role, flags)
+  const visibleNav = useMemo(
+    () => nav.filter((item) => canShowNavItem(item, role, flags)),
+    [role, flags]
+  );
+
+  const visibleAdminNav = useMemo(
+    () => adminNav.filter((item) => canShowNavItem(item, role, flags)),
+    [role, flags]
   );
 
   const allItems = [...visibleNav, ...visibleAdminNav];
@@ -225,47 +284,18 @@ export default function DashboardLayout() {
     });
   }, [loc.pathname]);
 
-  const saveSidebarScroll = () => {
+  const saveSidebarScroll = useCallback(() => {
     if (sidebarNavRef.current) {
       sessionStorage.setItem(
         SIDEBAR_KEY,
         String(sidebarNavRef.current.scrollTop)
       );
     }
-  };
+  }, []);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
-  };
-
-  const NavLink = ({ n }) => {
-    const active = loc.pathname === n.path;
-    const Icon = n.icon;
-
-    return (
-      <Link
-        to={n.path}
-        title={collapsed ? n.label : undefined}
-        onClick={saveSidebarScroll}
-        className={`group relative flex items-center gap-3 rounded-2xl text-sm font-bold transition-all duration-200
-          ${collapsed ? 'justify-center px-0 py-3' : 'px-3 py-2.5'}
-          ${
-            active
-              ? 'bg-white text-indigo-700 shadow-lg shadow-indigo-950/20'
-              : 'text-indigo-100/90 hover:bg-white/10 hover:text-white hover:translate-x-1'
-          }`}
-      >
-        <Icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2.5 : 2} />
-        {!collapsed && <span className="whitespace-nowrap">{n.label}</span>}
-        {!collapsed && active && (
-          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600" />
-        )}
-        {collapsed && active && (
-          <span className="absolute right-1.5 w-1.5 h-6 rounded-full bg-white/80" />
-        )}
-      </Link>
-    );
   };
 
   return (
@@ -302,7 +332,13 @@ export default function DashboardLayout() {
           className="flex-1 overflow-y-auto overflow-x-hidden px-3 space-y-1.5 pb-6"
         >
           {visibleNav.map((n) => (
-            <NavLink key={n.path} n={n} />
+            <NavLink
+              key={n.path}
+              n={n}
+              active={loc.pathname === n.path}
+              collapsed={collapsed}
+              onLinkClick={saveSidebarScroll}
+            />
           ))}
           {visibleAdminNav.length > 0 && (
             <>
@@ -323,7 +359,12 @@ export default function DashboardLayout() {
 
                 return (
                   <div key={n.path} className="space-y-1">
-                    <NavLink n={n} />
+                    <NavLink
+                      n={n}
+                      active={loc.pathname === n.path}
+                      collapsed={collapsed}
+                      onLinkClick={saveSidebarScroll}
+                    />
                     {isDeptNav && activeDeptId && (
                       <div
                         className={`space-y-1 ${collapsed ? 'pl-0' : 'pl-4'} animate-fade-in`}
@@ -338,6 +379,7 @@ export default function DashboardLayout() {
                               : 'text-indigo-200/80 hover:bg-white/10 hover:text-white'
                           }`}
                           title="Department Attendance"
+                          onClick={saveSidebarScroll}
                         >
                           <CalendarCheck className="w-4 h-4 shrink-0" />
                           {!collapsed && <span>Attendance</span>}
@@ -353,6 +395,7 @@ export default function DashboardLayout() {
                               : 'text-indigo-200/80 hover:bg-white/10 hover:text-white'
                           }`}
                           title="Department Ratings"
+                          onClick={saveSidebarScroll}
                         >
                           <Star className="w-4 h-4 shrink-0" />
                           {!collapsed && <span>Ratings</span>}
@@ -368,6 +411,7 @@ export default function DashboardLayout() {
                               : 'text-indigo-200/80 hover:bg-white/10 hover:text-white'
                           }`}
                           title="Department Tasks"
+                          onClick={saveSidebarScroll}
                         >
                           <Target className="w-4 h-4 shrink-0" />
                           {!collapsed && <span>Tasks</span>}

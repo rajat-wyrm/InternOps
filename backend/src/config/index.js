@@ -76,17 +76,13 @@ function buildRedisConfig() {
 }
 
 function resolveRefreshSecret() {
-  const independent = process.env.JWT_REFRESH_SECRET;
-  if (independent && independent.trim() !== '') return independent;
+  const secret = process.env.JWT_REFRESH_SECRET;
 
-  if (process.env.NODE_ENV !== 'test') {
-    log.warn(
-      'JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
-    );
+  if (!secret || secret.trim() === '') {
+    throw new Error('JWT_REFRESH_SECRET is not configured');
   }
-  return process.env.JWT_SECRET
-    ? `${process.env.JWT_SECRET}_refresh`
-    : undefined;
+
+  return secret;
 }
 
 const envSchema = z.object({
@@ -144,6 +140,10 @@ module.exports = {
       parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) ||
       (process.env.NODE_ENV === 'test' ? 10000 : 50),
     timeWindow: process.env.RATE_LIMIT_TIME_WINDOW || '1 minute',
+    passwordResetCooldownMs:
+      parseInt(process.env.PASSWORD_RESET_COOLDOWN_MS, 10) || 5 * 60 * 1000,
+    passwordResetHourlyMax:
+      parseInt(process.env.PASSWORD_RESET_HOURLY_MAX, 10) || 5,
   },
   email: {
     host: process.env.SMTP_HOST,
@@ -158,5 +158,10 @@ module.exports = {
     rateLimitPerRecipient: parseInt(process.env.EMAIL_RATE_LIMIT, 10) || 5,
     rateLimitWindowMs: parseInt(process.env.EMAIL_RATE_WINDOW, 10) || 60000,
     bounceCheckEnabled: process.env.EMAIL_BOUNCE_CHECK === 'true',
+  },
+  websocket: {
+    maxUnauthenticatedConnections:
+      parseInt(process.env.MAX_UNAUTHENTICATED_WEBSOCKET_CONNECTIONS, 10) || 20,
+    authTimeoutMs: parseInt(process.env.WEBSOCKET_AUTH_TIMEOUT_MS, 10) || 5000,
   },
 };

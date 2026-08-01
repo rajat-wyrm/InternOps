@@ -8,6 +8,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import api from '../lib/axios';
 import {
@@ -166,64 +167,84 @@ export default function Notifications() {
         />
       ) : (
         <div className="space-y-3">
-          {items.map((n) => (
-            <Card
-              key={n.id}
-              className={`p-5 flex items-start gap-4 transition-all duration-300 border ${
-                n.read
-                  ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:hover:shadow-none'
-                  : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-100 dark:border-indigo-900/60 shadow-sm'
-              }`}
-            >
-              <div
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
+          {items.map((n) => {
+            const isMarkingThisNotification =
+              markReadMut.isPending && markReadMut.variables === n.id;
+            const isDeletingThisNotification =
+              deleteMut.isPending && deleteMut.variables === n.id;
+
+            return (
+              <Card
+                key={n.id}
+                className={`p-5 flex items-start gap-4 transition-all duration-300 border ${
                   n.read
-                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700'
-                    : 'bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white'
+                    ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:hover:shadow-none'
+                    : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-100 dark:border-indigo-900/60 shadow-sm'
                 }`}
               >
-                <Bell className="w-5 h-5" />
-              </div>
-
-              <div className="flex-1 min-w-0 pt-0.5">
-                <p
-                  className={`text-sm leading-relaxed ${
+                <div
+                  className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
                     n.read
-                      ? 'text-slate-700 dark:text-slate-300'
-                      : 'text-slate-900 dark:text-white font-bold'
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700'
+                      : 'bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white'
                   }`}
                 >
-                  {n.message}
-                </p>
+                  <Bell className="w-5 h-5" />
+                </div>
 
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium flex items-center gap-1.5">
-                  {timeAgo(n.created_at)}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0 pt-1">
-                {!n.read && (
-                  <button
-                    onClick={() => handleMarkRead(n.id)}
-                    disabled={markReadMut.isPending}
-                    className="text-indigo-600 dark:text-indigo-300 text-xs font-extrabold hover:text-indigo-800 dark:hover:text-indigo-200 transition-colors flex items-center gap-1 disabled:opacity-60"
+                <div className="flex-1 min-w-0 pt-0.5">
+                  <p
+                    className={`text-sm leading-relaxed ${
+                      n.read
+                        ? 'text-slate-700 dark:text-slate-300'
+                        : 'text-slate-900 dark:text-white font-bold'
+                    }`}
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    Mark read
-                  </button>
-                )}
+                    {n.message}
+                  </p>
 
-                <button
-                  onClick={() => handleDelete(n.id)}
-                  disabled={deleteMut.isPending}
-                  className="text-slate-400 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-all disabled:opacity-60"
-                  title="Delete notification"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </Card>
-          ))}
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium flex items-center gap-1.5">
+                    {timeAgo(n.created_at)}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 pt-1">
+                  {!n.read && (
+                    <button
+                      onClick={() => handleMarkRead(n.id)}
+                      disabled={isMarkingThisNotification}
+                      className="text-indigo-600 dark:text-indigo-300 text-xs font-extrabold hover:text-indigo-800 dark:hover:text-indigo-200 transition-colors flex items-center gap-1 disabled:opacity-60"
+                    >
+                      {isMarkingThisNotification ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Marking...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          Mark read
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => handleDelete(n.id)}
+                    disabled={isDeletingThisNotification}
+                    className="text-slate-400 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-all disabled:opacity-60"
+                    title="Delete notification"
+                  >
+                    {isDeletingThisNotification ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 
