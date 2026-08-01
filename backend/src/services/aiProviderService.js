@@ -73,6 +73,7 @@ function isProviderOpen(name) {
 
   return true;
 }
+
 function recordSuccess(name) {
   failureState.delete(name);
 }
