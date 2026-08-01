@@ -1,5 +1,4 @@
 const { z } = require('zod');
-const logger = require('../logger');
 
 const REQUIRED_VARS = ['JWT_SECRET', 'DATABASE_URL', 'NODE_ENV'];
 const OPTIONAL_VARS = ['PORT', 'CORS_ORIGIN', 'REDIS_URL'];
@@ -17,7 +16,7 @@ function validateEnv() {
   }
 
   if (process.env.JWT_SECRET === 'change_this_secret_in_production') {
-    logger.error(
+    console.error(
       '❌ CRITICAL ERROR: JWT_SECRET is set to the default insecure value.'
     );
     process.exit(1);
@@ -26,8 +25,6 @@ function validateEnv() {
   const missingRequired = [];
   const missingOptional = [];
 
-  // In production the refresh secret must be an independent high-entropy value,
-  // not derived from JWT_SECRET. Outside production a derived fallback is allowed.
   const requiredVars =
     process.env.NODE_ENV === 'production'
       ? [...REQUIRED_VARS, 'JWT_REFRESH_SECRET']
@@ -46,9 +43,9 @@ function validateEnv() {
   }
 
   if (missingOptional.length > 0) {
-    logger.warn('⚠️ Missing optional environment variables:');
+    console.warn('⚠️ Missing optional environment variables:');
     for (const key of missingOptional) {
-      logger.warn(`  • ${key}`);
+      console.warn(`  • ${key}`);
     }
   }
 
@@ -63,16 +60,16 @@ function validateEnv() {
 
   if (missingRequired.length > 0 || typeErrors.length > 0) {
     if (missingRequired.length > 0) {
-      logger.error('❌ Missing required environment variables:');
+      console.error('❌ Missing required environment variables:');
       for (const key of missingRequired) {
-        logger.error(`  • ${key}`);
+        console.error(`  • ${key}`);
       }
     }
 
     if (typeErrors.length > 0) {
-      logger.error('❌ Invalid environment variable types:');
+      console.error('❌ Invalid environment variable types:');
       for (const err of typeErrors) {
-        logger.error(`  • ${err}`);
+        console.error(`  • ${err}`);
       }
     }
 
@@ -84,7 +81,10 @@ function validateEnv() {
   let isDbUrlValid = false;
   try {
     const parsed = new URL(dbUrl);
-    if (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') {
+    if (
+      parsed.protocol === 'postgres:' ||
+      parsed.protocol === 'postgresql:'
+    ) {
       isDbUrlValid = true;
     }
   } catch (err) {
@@ -92,8 +92,8 @@ function validateEnv() {
   }
 
   if (!isDbUrlValid) {
-    logger.error('❌ Invalid environment variable format:');
-    logger.error(
+    console.error('❌ Invalid environment variable format:');
+    console.error(
       'DATABASE_URL must be a valid PostgreSQL connection string starting with postgres:// or postgresql://'
     );
     process.exit(1);
