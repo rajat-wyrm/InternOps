@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const logger = require('./logger');
+const logger = require('../logger');
 
 const REQUIRED_VARS = ['JWT_SECRET', 'DATABASE_URL', 'NODE_ENV'];
 
