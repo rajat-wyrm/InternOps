@@ -67,10 +67,11 @@ class Settings(BaseSettings):
     DEEPSEEK_MODEL: Optional[str] = None
     HUGGINGFACE_MODEL: Optional[str] = None
 
-    # Host/Port/Redis configs
+    # Host/Port/Redis/DB configs
     AI_SERVICE_HOST: str = "0.0.0.0"
     AI_SERVICE_PORT: int = 8000
     REDIS_URL: Optional[str] = None
+    DATABASE_URL: Optional[str] = None
 
     @field_validator("PRIMARY_AI_PROVIDER", mode="before")
     @classmethod
@@ -210,3 +211,4 @@ HUGGINGFACE_MODEL = settings.HUGGINGFACE_MODEL
 AI_SERVICE_HOST = settings.AI_SERVICE_HOST
 AI_SERVICE_PORT = settings.AI_SERVICE_PORT
 REDIS_URL = settings.REDIS_URL
+DATABASE_URL = settings.DATABASE_URL
