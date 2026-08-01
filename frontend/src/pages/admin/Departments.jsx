@@ -223,7 +223,7 @@ export default function Departments() {
               </div>
 
               {/* Department Sub-sections for Admin Hierarchy */}
-              <div 
+              <div
                 className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 flex-wrap"
                 onClick={(e) => e.stopPropagation()}
               >
