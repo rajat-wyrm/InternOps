@@ -81,10 +81,7 @@ function validateEnv() {
   let isDbUrlValid = false;
   try {
     const parsed = new URL(dbUrl);
-    if (
-      parsed.protocol === 'postgres:' ||
-      parsed.protocol === 'postgresql:'
-    ) {
+    if (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') {
       isDbUrlValid = true;
     }
   } catch (err) {
