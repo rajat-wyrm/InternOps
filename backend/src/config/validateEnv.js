@@ -35,9 +35,7 @@ function validateEnv() {
   }
 
   if (process.env.JWT_SECRET === 'change_this_secret_in_production') {
-    logger.error(
-      'JWT_SECRET is set to the default insecure value.'
-    );
+    logger.error('JWT_SECRET is set to the default insecure value.');
     process.exit(1);
   }
 
@@ -103,10 +101,7 @@ function validateEnv() {
 
   try {
     const parsed = new URL(dbUrl);
-    if (
-      parsed.protocol === 'postgres:' ||
-      parsed.protocol === 'postgresql:'
-    ) {
+    if (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') {
       isDbUrlValid = true;
     }
   } catch (err) {

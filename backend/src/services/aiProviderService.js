@@ -72,7 +72,8 @@ function isProviderOpen(name) {
   }
 
   return true;
-}function recordSuccess(name) {
+}
+function recordSuccess(name) {
   failureState.delete(name);
 }
 
@@ -206,11 +207,11 @@ function buildPrompt(messages = []) {
   }));
   const totalChars = trimmed.reduce((sum, m) => sum + m.content.length, 0);
 
-if (totalChars > MAX_TOTAL_CHARS) {
-  throw new Error('Prompt too long');
-}
+  if (totalChars > MAX_TOTAL_CHARS) {
+    throw new Error('Prompt too long');
+  }
 
-return trimmed.map((m) => `${m.role}: ${m.content}`).join('\n');
+  return trimmed.map((m) => `${m.role}: ${m.content}`).join('\n');
 }
 
 async function callOpenAICompatible({

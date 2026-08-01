@@ -78,10 +78,7 @@ function setupCronJobs() {
 
                 const relative = path.relative(uploadsRoot, filePath);
 
-                if (
-                  relative.startsWith('..') ||
-                  path.isAbsolute(relative)
-                ) {
+                if (relative.startsWith('..') || path.isAbsolute(relative)) {
                   jobLogger.error(
                     {
                       recordId: row.id,
