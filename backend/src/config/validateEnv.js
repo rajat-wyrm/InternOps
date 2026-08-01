@@ -1,20 +1,37 @@
 const { z } = require('zod');
 
 const REQUIRED_VARS = ['JWT_SECRET', 'DATABASE_URL', 'NODE_ENV'];
-const OPTIONAL_VARS = ['PORT', 'CORS_ORIGIN', 'REDIS_URL'];
+
+const OPTIONAL_VARS = ['REDIS_URL', 'GOOGLE_CLIENT_ID', 'EMAIL_API_KEY'];
 
 const envSchema = z.object({
-  JWT_SECRET: z.string().min(1),
-  DATABASE_URL: z.string().min(1),
-  NODE_ENV: z.enum(['development', 'production', 'test']),
-  JWT_REFRESH_SECRET: z.string().min(1).optional(),
+  PORT: z.string().regex(/^\d+$/, 'PORT must be a valid integer').optional(),
+  SMTP_PORT: z
+    .string()
+    .regex(/^\d+$/, 'SMTP_PORT must be a valid integer')
+    .optional(),
+  MAX_FILE_SIZE: z
+    .string()
+    .regex(/^\d+$/, 'MAX_FILE_SIZE must be a valid integer')
+    .optional(),
+  AI_TIMEOUT: z
+    .string()
+    .regex(/^\d+$/, 'AI_TIMEOUT must be a valid integer')
+    .optional(),
+  PASSWORD_RESET_COOLDOWN_MS: z
+    .string()
+    .regex(/^\d+$/, 'PASSWORD_RESET_COOLDOWN_MS must be a valid integer')
+    .optional(),
+  PASSWORD_RESET_HOURLY_MAX: z
+    .string()
+    .regex(/^\d+$/, 'PASSWORD_RESET_HOURLY_MAX must be a valid integer')
+    .optional(),
 });
 
 function validateEnv() {
   if (process.env.NODE_ENV === 'test') {
     return;
   }
-
   if (process.env.JWT_SECRET === 'change_this_secret_in_production') {
     console.error(
       '❌ CRITICAL ERROR: JWT_SECRET is set to the default insecure value.'
@@ -25,19 +42,23 @@ function validateEnv() {
   const missingRequired = [];
   const missingOptional = [];
 
+  // In production the refresh secret must be an independent high-entropy value,
+  // not derived from JWT_SECRET. Outside production a derived fallback is allowed.
   const requiredVars =
     process.env.NODE_ENV === 'production'
       ? [...REQUIRED_VARS, 'JWT_REFRESH_SECRET']
       : REQUIRED_VARS;
 
   for (const key of requiredVars) {
-    if (!process.env[key] || !process.env[key].trim()) {
+    const val = process.env[key];
+    if (val === undefined || val === null || String(val).trim() === '') {
       missingRequired.push(key);
     }
   }
 
   for (const key of OPTIONAL_VARS) {
-    if (!process.env[key] || !process.env[key].trim()) {
+    const val = process.env[key];
+    if (val === undefined || val === null || String(val).trim() === '') {
       missingOptional.push(key);
     }
   }
@@ -45,13 +66,12 @@ function validateEnv() {
   if (missingOptional.length > 0) {
     console.warn('⚠️ Missing optional environment variables:');
     for (const key of missingOptional) {
-      console.warn(`  • ${key}`);
+      console.warn(`   • ${key}`);
     }
   }
 
   const schemaResult = envSchema.safeParse(process.env);
   const typeErrors = [];
-
   if (!schemaResult.success) {
     for (const issue of schemaResult.error.issues) {
       typeErrors.push(`${issue.path.join('.')}: ${issue.message}`);
@@ -62,14 +82,13 @@ function validateEnv() {
     if (missingRequired.length > 0) {
       console.error('❌ Missing required environment variables:');
       for (const key of missingRequired) {
-        console.error(`  • ${key}`);
+        console.error(`   • ${key}`);
       }
     }
-
     if (typeErrors.length > 0) {
       console.error('❌ Invalid environment variable types:');
       for (const err of typeErrors) {
-        console.error(`  • ${err}`);
+        console.error(`   • ${err}`);
       }
     }
 
@@ -91,7 +110,7 @@ function validateEnv() {
   if (!isDbUrlValid) {
     console.error('❌ Invalid environment variable format:');
     console.error(
-      'DATABASE_URL must be a valid PostgreSQL connection string starting with postgres:// or postgresql://'
+      '   • DATABASE_URL must be a valid PostgreSQL connection string starting with postgres:// or postgresql://'
     );
     process.exit(1);
   }
