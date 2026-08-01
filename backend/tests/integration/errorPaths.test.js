@@ -109,6 +109,7 @@ describe('API error-path integration tests', () => {
         authorization: `Bearer ${token}`,
         'x-csrf-token': csrfToken,
         'content-type': `multipart/form-data; boundary=${boundary}`,
+        origin: 'http://localhost:5173',
       },
       payload: multipartBody(boundary, 'too-large.png', pngWithOversizePayload),
     });

@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CalendarCheck, Star, Video, Target } from 'lucide-react';
+import {
+  ArrowLeft,
+  CalendarCheck,
+  Star,
+  Video,
+  Target,
+  Users,
+} from 'lucide-react';
 import api from '../../lib/axios';
 import {
   PageHeader,
@@ -93,7 +100,7 @@ export default function ProjectDetailPage() {
         <PageHeader
           title={lead?.lead_name || 'Project Detail'}
           subtitle={`${department?.name || 'Department'} · roster, attendance, ratings, meetings, and tasks`}
-          icon="👥"
+          icon={<Users className="w-6 h-6" />}
         />
       </div>
 
