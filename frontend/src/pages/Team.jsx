@@ -588,7 +588,7 @@ function MemberDetail({ memberId, onClose }) {
   });
 
   const {
-    data: member,
+    data: fetchedMember,
     isLoading,
     isError: memberIsError,
     error: memberError,
@@ -596,7 +596,10 @@ function MemberDetail({ memberId, onClose }) {
   } = useQuery({
     queryKey: ['teamMember', memberId],
     queryFn: () => api.get(`/team/members/${memberId}`).then((res) => res.data),
+    enabled: !!memberId,
   });
+
+  const member = fetchedMember || teamMembers.find((m) => m.id === memberId);
 
   useEffect(() => {
     if (member) {
@@ -609,13 +612,13 @@ function MemberDetail({ memberId, onClose }) {
         year_of_study: member.year_of_study || '',
         position: member.position || '',
         joining_date: member.joining_date
-          ? member.joining_date.slice(0, 10)
+          ? String(member.joining_date).slice(0, 10)
           : '',
         internship_status: member.internship_status || 'ACTIVE',
         notes: member.notes || '',
       });
     }
-  }, [member]);
+  }, [memberId, member]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['teamMember', memberId] });
@@ -705,7 +708,7 @@ function MemberDetail({ memberId, onClose }) {
         className="w-full max-w-md bg-slate-50 dark:bg-slate-950 h-full overflow-auto shadow-2xl border-l border-slate-200 dark:border-slate-700"
         onClick={(e) => e.stopPropagation()}
       >
-        {memberIsError ? (
+        {memberIsError && !member ? (
           <div className="p-6">
             <ApiErrorState
               error={memberError}
@@ -714,7 +717,7 @@ function MemberDetail({ memberId, onClose }) {
               onRetry={refetchMember}
             />
           </div>
-        ) : isLoading || !form ? (
+        ) : (!member || !form) && isLoading ? (
           <div className="p-6 text-slate-600 dark:text-slate-300">
             Loading member...
           </div>

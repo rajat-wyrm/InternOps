@@ -142,6 +142,13 @@ async function verifyCertificate(token) {
     return null;
   }
 
+  if (cert.status !== 'generated') {
+    return {
+      valid: false,
+      reason: 'Certificate has not been issued',
+    };
+  }
+
   if (cert.revoked_at) {
     return {
       valid: false,
@@ -177,6 +184,12 @@ async function deleteCertificate(id) {
   }
 
   return repo.deleteCertificate(id);
+}
+
+async function revokeCertificate(id, reason = null) {
+  const cert = await repo.getCertificateById(id);
+  if (!cert) return null;
+  return repo.revokeCertificate(id, reason);
 }
 
 // ============================================================
@@ -547,7 +560,9 @@ async function quickGenerate(data, userId) {
 }
 
 function formatDate(dateStr) {
+  if (!dateStr) return 'N/A';
   const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return String(dateStr);
   const months = [
     'January',
     'February',
@@ -577,6 +592,7 @@ module.exports = {
   getCertificate,
   verifyCertificate,
   deleteCertificate,
+  revokeCertificate,
   startBulkGeneration,
   processBulkGeneration,
   getBulkJobStatus,

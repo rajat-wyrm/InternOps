@@ -23,6 +23,16 @@ const MAGIC_BYTES = {
   'image/gif': [[0x47, 0x49, 0x46, 0x38]],
 };
 
+const projectRoot = path.resolve(__dirname, '..', '..', '..');
+const uploadsRoot = path.resolve(projectRoot, config.uploadDir);
+
+function isValidUploadPath(dbSavedPath) {
+  if (!dbSavedPath) return true;
+  const absolutePath = path.resolve(projectRoot, dbSavedPath);
+  const relative = path.relative(uploadsRoot, absolutePath);
+  return !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
 function detectMimeFromBuffer(buf) {
   if (!buf || buf.length < 4) return null;
   for (const [mime, signatures] of Object.entries(MAGIC_BYTES)) {
@@ -266,6 +276,22 @@ async function routes(fastify) {
         return reply.status(404).send({ error: 'Proof not found' });
       }
 
+      if (proof.image_path && !isValidUploadPath(proof.image_path)) {
+        return reply
+          .status(400)
+          .send({ error: 'Directory traversal attempt detected' });
+      }
+
+      if (proof.images && proof.images.length > 0) {
+        for (const img of proof.images) {
+          if (!isValidUploadPath(img)) {
+            return reply
+              .status(400)
+              .send({ error: 'Directory traversal attempt detected' });
+          }
+        }
+      }
+
       await repo.deleteProof(req.params.id);
 
       // Delete legacy image if it exists
@@ -306,6 +332,12 @@ async function routes(fastify) {
       const image = await repo.getProofImage(req.params.imageId);
       if (!image) {
         return reply.status(404).send({ error: 'Image not found' });
+      }
+
+      if (image.image_path && !isValidUploadPath(image.image_path)) {
+        return reply
+          .status(400)
+          .send({ error: 'Directory traversal attempt detected' });
       }
 
       await repo.deleteProofImage(req.params.imageId);

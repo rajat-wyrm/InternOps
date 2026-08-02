@@ -32,7 +32,7 @@ class GeminiProvider(BaseAIProvider):
     def __init__(
         self,
         api_key: str,
-        model_name: str = "gemini-2.5-flash",
+        model_name: str = "gemini-2.0-flash",
         timeout: float = 15.0,
     ):
         super().__init__(api_key=api_key, model_name=model_name)
@@ -85,8 +85,9 @@ class GeminiProvider(BaseAIProvider):
             try:
                 async with client.stream("POST", url, json=payload) as response:
                     if response.status_code == 429:
+                        body = await response.aread()
                         raise ProviderRateLimitError(
-                            "Gemini rate limit or quota exceeded",
+                            f"Gemini rate limit: {body.decode(errors='replace')}",
                             self.provider_name,
                             status_code=429,
                         )

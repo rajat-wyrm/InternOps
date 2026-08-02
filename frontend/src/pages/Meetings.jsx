@@ -341,14 +341,14 @@ export default function Meetings({
               />
             )}
 
-            {team.length > 0 && !teamIsError && (
+            {effectiveTeam.length > 0 && !teamIsError && (
               <div className="pt-1">
                 <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
                   Attendees ({attendees.length} selected)
                 </label>
 
                 <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto p-3 bg-slate-50 dark:bg-slate-800/70 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  {team.map((m) => (
+                  {effectiveTeam.map((m) => (
                     <button
                       type="button"
                       key={m.id}
@@ -411,92 +411,105 @@ export default function Meetings({
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {meetings.map((m) => (
-            <Card
-              key={m.id}
-              className="p-5 md:p-6 card-hover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none group"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 border border-blue-100 dark:border-blue-900/60 flex items-center justify-center shrink-0">
-                    <Video className="w-5 h-5" />
-                  </div>
+          {meetings.map((m) => {
+            const meetingLink = m.meetingUrl || m.meeting_url;
+            const isDeletingThisMeeting =
+              deleteMutation.isPending && deleteMutation.variables === m.id;
 
-                  <div className="min-w-0">
-                    <h3 className="font-extrabold text-slate-900 dark:text-white leading-tight truncate">
-                      {m.title}
-                    </h3>
+            const isDeleteErrorForThisMeeting =
+              deleteMutation.isError && deleteMutation.variables === m.id;
 
-                    <div className="mt-2">
-                      <Badge color="blue" className="font-bold">
-                        {new Date(m.meeting_date).toLocaleDateString(
-                          undefined,
-                          {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                          }
-                        )}
-                      </Badge>
+            return (
+              <Card
+                key={m.id}
+                className="p-5 md:p-6 card-hover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none group"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 border border-blue-100 dark:border-blue-900/60 flex items-center justify-center shrink-0">
+                      <Video className="w-5 h-5" />
+                    </div>
+
+                    <div className="min-w-0">
+                      <h3 className="font-extrabold text-slate-900 dark:text-white leading-tight truncate">
+                        {m.title}
+                      </h3>
+
+                      <div className="mt-2">
+                        <Badge color="blue" className="font-bold">
+                          {new Date(m.meeting_date).toLocaleDateString(
+                            undefined,
+                            {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                            }
+                          )}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {m.created_by === user?.id && (
-                  <button
-                    onClick={() => deleteMutation.mutate(m.id)}
-                    disabled={deleteMutation.isPending}
-                    className="text-slate-300 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
-                    title="Delete meeting"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-
-              {deleteMutation.isError && (
-                <div className="mt-4">
-                  <ApiErrorState
-                    error={deleteMutation.error}
-                    title="Failed to delete meeting"
-                    fallback="Unable to delete meeting. Please try again."
-                  />
-                </div>
-              )}
-
-              {m.description && (
-                <p className="text-sm text-slate-600 dark:text-slate-300 mt-4 leading-relaxed bg-slate-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-                  {m.description}
-                </p>
-              )}
-
-              {m.meetingUrl && (
-                <div className="mt-4">
-                  {isSafeUrl(m.meetingUrl) ? (
-                    <a
-                      href={m.meetingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 underline"
+                  {m.created_by === user?.id && (
+                    <button
+                      onClick={() => deleteMutation.mutate(m.id)}
+                      disabled={isDeletingThisMeeting}
+                      className="text-slate-300 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
+                      title="Delete meeting"
                     >
-                      <ExternalLink className="w-4 h-4"></ExternalLink>
-                      Join Meeting
-                    </a>
-                  ) : (
-                    <span className="text-xs text-rose-500 font-medium">
-                      Invalid or unsafe meeting link
-                    </span>
+                      {isDeletingThisMeeting ? (
+                        <span className="text-xs">Deleting...</span>
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
                   )}
                 </div>
-              )}
 
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
-                {m.start_time || 'TBD'}
-                {m.end_time ? ` – ${m.end_time}` : ''}
-              </div>
-            </Card>
-          ))}
+                {isDeleteErrorForThisMeeting && (
+                  <div className="mt-4">
+                    <ApiErrorState
+                      error={deleteMutation.error}
+                      title="Failed to delete meeting"
+                      fallback="Unable to delete meeting. Please try again."
+                    />
+                  </div>
+                )}
+
+                {m.description && (
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mt-4 leading-relaxed bg-slate-50 dark:bg-slate-800/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    {m.description}
+                  </p>
+                )}
+
+                {meetingLink && (
+                  <div className="mt-4">
+                    {isSafeUrl(meetingLink) ? (
+                      <a
+                        href={meetingLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 underline"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        Join Meeting
+                      </a>
+                    ) : (
+                      <span className="text-xs text-rose-500 font-medium">
+                        Invalid or unsafe meeting link
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+                  {m.start_time || 'TBD'}
+                  {m.end_time ? ` – ${m.end_time}` : ''}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
