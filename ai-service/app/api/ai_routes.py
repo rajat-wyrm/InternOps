@@ -2,12 +2,12 @@
 AI routes — Python/FastAPI port of ai_routes.js
 
 Split to match ai-service/app's layout (api/ + core/ + models/ + providers/):
-  - app/models/ai.py         -> request/response schemas
-  - app/core/auth.py          -> get_current_user (STUB)
-  - app/core/rbac.py           -> require_roles (STUB)
+  - app/models/ai.py          -> request/response schemas
+  - app/core/auth.py           -> get_current_user (STUB)
+  - app/core/rbac.py            -> require_roles (STUB)
   - app/core/rate_limit.py      -> enforce_rate_limit (STUB)
-  - app/core/usage.py            -> daily usage tracking (STUB)
-  - app/providers/*                -> base/gemini/openai adapters (real, from #1421)
+  - app/core/usage.py             -> daily usage tracking (STUB)
+  - app/providers/*                 -> base/gemini/openai adapters (real, from #1421)
   - app/providers/registry.py     -> provider selection (get_provider), added here
 
 `call_provider` below flattens the message list into a single prompt
@@ -38,9 +38,12 @@ from ..models.ai import (
     UsageResponse,
 )
 from ..providers.base import AIProviderError, ProviderAPIError, ProviderRateLimitError
+from ..providers.orchestrator import ai_orchestrator, get_circuit_breaker
 from ..providers.registry import get_configured_providers_health, get_provider
+from ..core.security import sanitize_prompt
 
 router = APIRouter(prefix="/ai", tags=["AI"])
+
 
 MAX_MESSAGES = 32
 MAX_MESSAGE_CHARS = 4000
@@ -66,18 +69,34 @@ def _messages_to_prompt(messages: List[dict]) -> str:
 
 
 async def call_provider(user_id: str, messages: List[dict]) -> ProviderResult:
-    provider = get_provider()
     prompt = _messages_to_prompt(messages)
-    content = await provider.generate_text(prompt)
+    content, provider_name = await ai_orchestrator.generate_text_with_fallback(prompt)
     return ProviderResult(
-        provider=provider.provider_name,
+        provider=provider_name,
         cached=False,  # TODO(caching): no caching layer wired up yet
         content=content,
     )
 
 
-def get_provider_health() -> list:
-    return get_configured_providers_health()
+async def get_provider_health() -> list:
+    raw_health = get_configured_providers_health()
+    report = []
+    for p in raw_health:
+        name = p["name"]
+        cb = get_circuit_breaker(name)
+        available = p["available"]
+        last_error = p.get("lastError") or {}
+        
+        if await cb.is_open():
+            available = False
+            last_error = {"message": f"Circuit breaker open. Cooldown until {datetime.fromtimestamp(cb.disabled_until).isoformat() if cb.disabled_until else 'unknown'}"}
+            
+        report.append({
+            "name": name,
+            "available": available,
+            "lastError": last_error if last_error else None
+        })
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +114,7 @@ async def chat(
     current_user: User = Depends(get_current_user),
     _rate_limited: None = Depends(enforce_rate_limit),
 ):
-    # TODO(sanitize): run body through a real sanitizer once one exists
-    # (JS used a sanitizationMiddleware ahead of the handler)
-
+    
     final_messages: List[dict] = []
 
     if body.messages:
@@ -144,6 +161,15 @@ async def chat(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Message content cannot be empty",
+        )
+
+    try:
+        for msg in final_messages:
+            msg["content"] = sanitize_prompt(msg["content"])
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
 
     usage = await get_today_usage(current_user.id)
@@ -198,7 +224,7 @@ async def health():
             status="healthy" if p["available"] else "unhealthy",
             lastErrorMessage=(p.get("lastError") or {}).get("message"),
         )
-        for p in get_provider_health()
+        for p in await get_provider_health()
     ]
     return HealthResponse(providers=providers)
 

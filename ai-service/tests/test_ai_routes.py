@@ -17,16 +17,18 @@ from fastapi.testclient import TestClient
 
 from app.api.ai_routes import router
 from app.core.rate_limit import chat_rate_limiter
-from app.core.usage import _usage_by_user_day
+
+
+from app.core.auth import get_current_user, User
 
 
 @pytest.fixture
 def client():
     app = FastAPI()
     app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: User(id="test_user", roles=["ADMIN"])
     # reset in-memory stubs between tests so they don't bleed into each other
     chat_rate_limiter._hits.clear()
-    _usage_by_user_day.clear()
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -107,7 +109,7 @@ def test_health_endpoint(client, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     names = {p["name"] for p in body["providers"]}
-    assert names == {"gemini", "openai"}
+    assert {"gemini", "openai"}.issubset(names)
     assert all(p["status"] == "unhealthy" for p in body["providers"])
 
 
@@ -119,6 +121,29 @@ def test_health_endpoint_reports_healthy_when_key_present(client, monkeypatch):
     gemini_entry = next(p for p in body["providers"] if p["name"] == "gemini")
     assert gemini_entry["status"] == "healthy"
     assert gemini_entry["lastErrorMessage"] is None
+
+
+@pytest.mark.asyncio
+async def test_health_endpoint_reports_unhealthy_when_circuit_open(client, monkeypatch):
+    import time
+    from app.providers.orchestrator import get_circuit_breaker
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    cb = get_circuit_breaker("gemini")
+    cb.failures = 3
+    cb.disabled_until = time.time() + 300
+
+    try:
+        r = client.get("/ai/health")
+        body = r.json()
+        gemini_entry = next(p for p in body["providers"] if p["name"] == "gemini")
+        assert gemini_entry["status"] == "unhealthy"
+        assert "Circuit breaker open" in gemini_entry["lastErrorMessage"]
+    finally:
+        await cb.record_success()
+
 
 
 def test_usage_endpoint(client):

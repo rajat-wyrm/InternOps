@@ -334,6 +334,30 @@ export default function App() {
                 </RoleGuard>
               }
             />
+            <Route
+              path="departments/:deptId/attendance"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <Attendance />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="departments/:deptId/ratings"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <Ratings />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="departments/:deptId/tasks"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <Tasks />
+                </RoleGuard>
+              }
+            />
 
             <Route
               path="audit"

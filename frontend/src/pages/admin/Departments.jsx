@@ -204,7 +204,8 @@ export default function Departments() {
 
                 <button
                   disabled={deletingId === d.id || deleteMut.isPending}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (confirm(`Delete department "${d.name}"?`)) {
                       setDeletingId(d.id);
                       deleteMut.mutate(d.id);
@@ -222,7 +223,10 @@ export default function Departments() {
               </div>
 
               {/* Department Sub-sections for Admin Hierarchy */}
-              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 flex-wrap">
+              <div
+                className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 flex-wrap"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <Link
                   to={`/admin/departments/${d.id}/attendance`}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition"

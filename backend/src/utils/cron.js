@@ -3,6 +3,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const pool = require('../config/db');
 const pLimit = require('p-limit');
+const logger = require('../logger');
 
 let cleanupRunning = false;
 let reminderRunning = false;
@@ -11,58 +12,57 @@ const CONCURRENCY = 20;
 const BATCH_SIZE = 500;
 
 const emailService = require('../services/email');
-function scheduleSafeCronJob(schedule, jobName, task) {
-  cron.schedule(schedule, () => {
-    Promise.resolve()
-      .then(task)
-      .catch((err) => {
-        console.error(
-          JSON.stringify({
-            job: jobName,
-            err: err.message,
-            stack: err.stack,
-          }),
-          'Unhandled cron job rejection'
-        );
-      });
-  });
-}
+
 function setupCronJobs() {
   try {
-    scheduleSafeCronJob('0 * * * *', 'proof-image-cleanup', async () => {
+    cron.schedule('0 * * * *', async () => {
+      // Create a child logger for this cron execution
+      const jobLogger = logger.child({
+        correlationId: `cron-${Date.now()}`,
+        job: 'proof-image-cleanup',
+      });
+
       if (cleanupRunning) {
-        console.warn(
-          JSON.stringify({
-            job: 'proof-image-cleanup',
-            message: 'Cleanup already running. Skipping...',
-          })
-        );
+        jobLogger.warn('Cleanup already running. Skipping...');
         return;
       }
 
       cleanupRunning = true;
-
-      const jobName = 'proof-image-cleanup';
       const startTime = Date.now();
 
-      console.info(
-        JSON.stringify({
-          job: jobName,
+      jobLogger.info(
+        {
           startedAt: new Date(startTime),
-        }),
+        },
         'Cron job started'
       );
 
       try {
         const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
         const uploadsRoot = path.resolve(__dirname, '..', '..', 'uploads');
 
         let totalProcessed = 0;
         let filesDeleted = 0;
         let totalUpdated = 0;
 
-        const processRows = async (rows, options) => {
+        while (true) {
+          const { rows } = await pool.query(
+            `
+            SELECT id, image_path
+            FROM proof_submissions
+            WHERE status = 'VERIFIED'
+              AND verified_at < $1
+              AND image_path IS NOT NULL
+            ORDER BY id
+            LIMIT $2
+            `,
+            [cutoff, BATCH_SIZE]
+          );
+
+          if (rows.length === 0) break;
+
+          totalProcessed += rows.length;
+
           const deletedIds = [];
           const limit = pLimit(CONCURRENCY);
 
@@ -79,8 +79,12 @@ function setupCronJobs() {
                 const relative = path.relative(uploadsRoot, filePath);
 
                 if (relative.startsWith('..') || path.isAbsolute(relative)) {
-                  console.error(
-                    `Invalid path for record ${row.id}: ${row.image_path}`
+                  jobLogger.error(
+                    {
+                      recordId: row.id,
+                      imagePath: row.image_path,
+                    },
+                    'Invalid image path'
                   );
                   return;
                 }
@@ -90,8 +94,12 @@ function setupCronJobs() {
                   filesDeleted++;
                 } catch (err) {
                   if (err.code !== 'ENOENT') {
-                    console.error(
-                      `Failed deleting ${row.image_path}: ${err.message}`
+                    jobLogger.error(
+                      {
+                        err,
+                        imagePath: row.image_path,
+                      },
+                      'Failed deleting image'
                     );
                     return;
                   }
@@ -104,94 +112,45 @@ function setupCronJobs() {
 
           results.forEach((result) => {
             if (result.status === 'rejected') {
-              console.error(result.reason);
+              jobLogger.error(
+                { err: result.reason },
+                'Promise rejected while processing cleanup'
+              );
             }
           });
 
           if (deletedIds.length > 0) {
-            await pool.query(options.updateSql, [deletedIds]);
-            totalUpdated += deletedIds.length;
-          }
-        };
-
-        while (true) {
-          const { rows } = await pool.query(
-            `
-            SELECT id, image_path
-            FROM proof_submissions
-           WHERE status = 'VERIFIED'
-            AND verified_at < $1
-            AND image_path IS NOT NULL
-            ORDER BY id
-            LIMIT $2
-            `,
-            [cutoff, BATCH_SIZE]
-          );
-
-          if (rows.length === 0) break;
-
-          totalProcessed += rows.length;
-          await processRows(rows, {
-            updateSql: `
+            await pool.query(
+              `
               UPDATE proof_submissions
               SET image_path = NULL
               WHERE id = ANY($1::int[])
-            `,
-          });
+              `,
+              [deletedIds]
+            );
+
+            totalUpdated += deletedIds.length;
+          }
 
           if (rows.length < BATCH_SIZE) {
             break;
           }
         }
 
-        while (true) {
-          const { rows } = await pool.query(
-            `
-            SELECT pi.id, pi.image_path
-            FROM proof_images pi
-            JOIN proof_submissions ps ON ps.id = pi.proof_id
-           WHERE ps.status = 'VERIFIED'
-             AND ps.verified_at < $1
-             AND pi.deleted_at IS NULL
-           ORDER BY pi.id
-           LIMIT $2
-            `,
-            [cutoff, BATCH_SIZE]
-          );
-
-          if (rows.length === 0) break;
-
-          totalProcessed += rows.length;
-          await processRows(rows, {
-            updateSql: `
-              UPDATE proof_images
-              SET deleted_at = NOW()
-              WHERE id = ANY($1::int[])
-            `,
-          });
-
-          if (rows.length < BATCH_SIZE) {
-            break;
-          }
-        }
-
-        console.info(
-          JSON.stringify({
-            job: jobName,
+        jobLogger.info(
+          {
             durationMs: Date.now() - startTime,
             recordsProcessed: totalProcessed,
             filesDeleted,
             databaseRowsUpdated: totalUpdated,
-          }),
+          },
           'Cron job completed'
         );
       } catch (err) {
-        console.error(
-          JSON.stringify({
-            job: jobName,
-            err: err.message,
-            stack: err.stack,
-          }),
+        jobLogger.error(
+          {
+            err,
+          },
           'Cron job failed'
         );
       } finally {
@@ -199,27 +158,25 @@ function setupCronJobs() {
       }
     });
 
-    scheduleSafeCronJob('5 * * * *', 'deadline-reminder', async () => {
+    cron.schedule('5 * * * *', async () => {
+      // Create a child logger for this cron execution
+      const jobLogger = logger.child({
+        correlationId: `cron-${Date.now()}`,
+        job: 'deadline-reminder',
+      });
+
       if (reminderRunning) {
-        console.warn(
-          JSON.stringify({
-            job: 'deadline-reminder',
-            message: 'Reminder job already running. Skipping...',
-          })
-        );
+        jobLogger.warn('Reminder job already running. Skipping...');
         return;
       }
 
       reminderRunning = true;
-
-      const jobName = 'deadline-reminder';
       const startTime = Date.now();
 
-      console.info(
-        JSON.stringify({
-          job: jobName,
+      jobLogger.info(
+        {
           startedAt: new Date(startTime),
-        }),
+        },
         'Cron job started'
       );
 
@@ -248,12 +205,11 @@ function setupCronJobs() {
         );
 
         if (pendingTasks.length === 0) {
-          console.info(
-            JSON.stringify({
-              job: jobName,
+          jobLogger.info(
+            {
               durationMs: Date.now() - startTime,
               remindersSent: 0,
-            }),
+            },
             'Cron job completed'
           );
           return;
@@ -273,7 +229,7 @@ function setupCronJobs() {
           deadlineHourMap.get(key).interns.push({
             id: row.intern_id,
             email: row.email,
-            full_name: row.full_name,
+            fullName: row.full_name,
           });
         }
 
@@ -294,19 +250,19 @@ function setupCronJobs() {
             try {
               await emailService.sendNotification(intern.email, {
                 title: 'Deadline Reminder',
-                message: `Hi ${intern.full_name || 'there'}, the task "${task.taskTitle}" has a deadline ${deadlineText}. Please submit your proof before the deadline passes to ensure your work is counted.`,
+                message: `Hi ${intern.fullName || 'there'}, the task "${task.taskTitle}" has a deadline ${deadlineText}. Please submit your proof before the deadline passes to ensure your work is counted.`,
                 actionUrl: `${appUrl}/tasks`,
                 actionText: 'Submit Proof',
               });
+
               remindersSent++;
             } catch (err) {
-              console.error(
-                JSON.stringify({
-                  job: jobName,
+              jobLogger.error(
+                {
+                  err,
                   taskId: task.taskId,
                   internId: intern.id,
-                  err: err.message,
-                }),
+                },
                 'Failed to send reminder email'
               );
             }
@@ -326,22 +282,19 @@ function setupCronJobs() {
           );
         }
 
-        console.info(
-          JSON.stringify({
-            job: jobName,
+        jobLogger.info(
+          {
             durationMs: Date.now() - startTime,
             tasksWithPendingSubmissions: deadlineHourMap.size,
             remindersSent,
-          }),
+          },
           'Cron job completed'
         );
       } catch (err) {
-        console.error(
-          JSON.stringify({
-            job: jobName,
-            err: err.message,
-            stack: err.stack,
-          }),
+        jobLogger.error(
+          {
+            err,
+          },
           'Cron job failed'
         );
       } finally {
@@ -349,12 +302,10 @@ function setupCronJobs() {
       }
     });
   } catch (err) {
-    console.error(
-      JSON.stringify({
-        job: 'cron-initialization',
-        err: err.message,
-        stack: err.stack,
-      }),
+    logger.error(
+      {
+        err,
+      },
       'Failed to initialize cron jobs'
     );
   }

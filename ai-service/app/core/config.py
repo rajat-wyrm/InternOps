@@ -1,9 +1,13 @@
 import os
 import warnings
+import logging
 from typing import Any, List, Optional
 from dotenv import load_dotenv
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Setup module logger
+logger = logging.getLogger(__name__)
 
 # Load .env file using dotenv to ensure os.environ is populated
 load_dotenv()
@@ -19,7 +23,7 @@ RATE_LIMIT_PER_MINUTE = int(
 SUPPORTED_PROVIDERS = {"gemini", "groq", "openai", "anthropic", "deepseek", "huggingface"}
 
 DEFAULT_MODELS = {
-    "gemini": "gemini-2.5-flash",
+    "gemini": "gemini-2.0-flash",
     "groq": "llama-3.3-70b-versatile",
     "openai": "gpt-4o-mini",
     "anthropic": "claude-3-5-sonnet-latest",
@@ -91,7 +95,40 @@ class Settings(BaseSettings):
     # Host/Port/Redis configs
     AI_SERVICE_HOST: str = "0.0.0.0"
     AI_SERVICE_PORT: int = 8000
+    DATABASE_URL: Optional[str] = None
     REDIS_URL: Optional[str] = None
+
+    # Circuit Breaker Configuration
+    AI_PROVIDER_FAILURE_LIMIT: int = 3
+    AI_PROVIDER_COOLDOWN_MS: float = 300000.0
+
+    @field_validator("AI_PROVIDER_FAILURE_LIMIT", mode="before")
+    @classmethod
+    def validate_failure_limit(cls, v):
+        if isinstance(v, str):
+            try:
+                v = int(v)
+            except ValueError:
+                raise ValueError("AI_PROVIDER_FAILURE_LIMIT must be a valid integer")
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise ValueError("AI_PROVIDER_FAILURE_LIMIT must be a number")
+        if v <= 0:
+            raise ValueError("AI_PROVIDER_FAILURE_LIMIT must be greater than 0")
+        return int(v)
+
+    @field_validator("AI_PROVIDER_COOLDOWN_MS", mode="before")
+    @classmethod
+    def validate_cooldown_ms(cls, v):
+        if isinstance(v, str):
+            try:
+                v = float(v)
+            except ValueError:
+                raise ValueError("AI_PROVIDER_COOLDOWN_MS must be a valid number")
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise ValueError("AI_PROVIDER_COOLDOWN_MS must be a number")
+        if v <= 0:
+            raise ValueError("AI_PROVIDER_COOLDOWN_MS must be greater than 0")
+        return float(v)
 
     @field_validator("PRIMARY_AI_PROVIDER", mode="before")
     @classmethod
@@ -174,10 +211,13 @@ class Settings(BaseSettings):
             if _is_valid_key(fb_key):
                 active_fallbacks.append(fb)
             else:
-                warnings.warn(
-                    f"Fallback provider '{fb}' lacks a valid API key ({fb_key_attr}). It will be skipped from the active fallback chain.",
-                    RuntimeWarning
+                warning_msg = (
+                    f"Fallback provider '{fb}' lacks a valid API key ({fb_key_attr}). "
+                    "It will be skipped from the active fallback chain."
                 )
+                warnings.warn(warning_msg, RuntimeWarning)
+                logger.warning(warning_msg)
+
         self.ACTIVE_FALLBACK_PROVIDERS = active_fallbacks
 
         # 4. Model Overrides & Defaults for Active Providers Only
@@ -188,12 +228,26 @@ class Settings(BaseSettings):
             if not model_val or not model_val.strip():
                 # Apply default model
                 setattr(self, model_attr, DEFAULT_MODELS[provider])
+            
             # Raise error if active provider still cannot resolve to a usable model
             resolved_model = getattr(self, model_attr, None)
             if not resolved_model or not resolved_model.strip():
                 raise ValueError(
                     f"Model validation failed: Active provider '{provider}' has no resolved model."
                 )
+
+        # 5. Cross-validate adapter availability — fail fast at startup if a
+        #    configured provider has no matching adapter implementation rather
+        #    than letting it surface as a runtime error on the first request.
+        from app.providers.registry import has_adapter
+        for provider in active_providers:
+            if not has_adapter(provider):
+                raise ValueError(
+                    f"Startup validation failed: No provider adapter implemented "
+                    f"for '{provider}'. Ensure a matching adapter exists in "
+                    f"app/providers/ and is registered in the provider registry."
+                )
+
         return self
 
     def get_provider_key(self, provider: str) -> str:
@@ -249,4 +303,8 @@ JWT_SECRET = settings.JWT_SECRET
 
 AI_SERVICE_HOST = settings.AI_SERVICE_HOST
 AI_SERVICE_PORT = settings.AI_SERVICE_PORT
+DATABASE_URL = settings.DATABASE_URL
 REDIS_URL = settings.REDIS_URL
+
+AI_PROVIDER_FAILURE_LIMIT = settings.AI_PROVIDER_FAILURE_LIMIT
+AI_PROVIDER_COOLDOWN_MS = settings.AI_PROVIDER_COOLDOWN_MS

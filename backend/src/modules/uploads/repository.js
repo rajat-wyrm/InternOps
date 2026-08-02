@@ -18,7 +18,7 @@ async function deleteFile(dbSavedPath) {
   const relative = path.relative(uploadsRoot, absolutePath);
 
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error('Invalid upload path');
+    throw new Error('Directory traversal attempt detected');
   }
 
   try {

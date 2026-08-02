@@ -159,53 +159,6 @@ The file is organized into the following sections:
 
 Copy `backend/.env.example` to `.env` and replace the example values with your own credentials before starting the application.
 
-### 2. Setup Backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env
-# Fill in your DB credentials and secrets
-npm run migrate
-npm run seed
-npm run dev
-```
-
----
-
-### 3. Setup AI Service
-
-```bash
-cd ai-service
-python -m venv .venv
-# Activate the virtual environment
-pip install -r requirements.txt
-cp .env.example .env
-# Fill in your AI API keys
-```
-
----
-
-### 4. Setup Frontend
-
-```bash
-cd frontend
-npm install
-cp .env.example .env
-# Fill in your VITE_API_BASE_URL
-npm run dev
-```
-
----
-
-## 🌐 Access the Application
-
-Open your browser and go to:
-
-```
-http://localhost:5173
-```
-
 ---
 
 ## 📁 Project Structure
@@ -239,7 +192,10 @@ InternOps/
 
 ### AI Service (`cd ai-service`)
 
-(Python environment) Activate your virtual environment and run the main entry point to start the service.
+| Command                                   | Description                          |
+| ----------------------------------------- | ------------------------------------ |
+| `python -m uvicorn app.main:app --reload` | Start the FastAPI development server |
+| `pytest`                                  | Run the Python test suite            |
 
 ---
 

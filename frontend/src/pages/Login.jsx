@@ -163,6 +163,8 @@ export default function Login() {
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={loginMut.isPending}
                     required
+                    autoComplete="email"
+                    placeholder="Enter your email"
                     aria-describedby={error ? 'login-error' : undefined}
                     aria-invalid={!!error}
                     className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
@@ -186,6 +188,8 @@ export default function Login() {
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={loginMut.isPending}
                     required
+                    autoComplete="current-password"
+                    placeholder="Enter your password"
                     aria-describedby={error ? 'login-error' : undefined}
                     aria-invalid={!!error}
                     className="w-full pl-12 pr-12 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
