@@ -5,6 +5,7 @@ const { generateQRCodeDataURL } = require('./qr');
 const { DEFAULT_TEMPLATES } = require('./templates');
 const path = require('path');
 const fs = require('fs');
+const pLimit = require('p-limit');
 
 const UPLOAD_DIR = path.join(
   __dirname,
@@ -237,7 +238,6 @@ async function startBulkGeneration(data, userId) {
 }
 
 async function processBulkGeneration(jobId, initialData, userId, pLimiter) {
-  const pLimit = require('p-limit');
   const limit = pLimiter || pLimit(5);
 
   const job = await repo.getBulkJobById(jobId);
@@ -284,6 +284,16 @@ async function processBulkGeneration(jobId, initialData, userId, pLimiter) {
 
   const tasks = itemsToProcess.map((item) =>
     limit(async () => {
+      // Prevent duplicate certificate generation on crash recovery if certificate_id is already assigned
+      if (item.certificate_id) {
+        await repo
+          .updateBulkJobItem(item.id, { status: 'generated' })
+          .catch(() => {});
+        generated++;
+        await updateProgress();
+        return;
+      }
+
       const certData =
         typeof item.row_data === 'string'
           ? JSON.parse(item.row_data)

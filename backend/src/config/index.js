@@ -15,13 +15,23 @@ function buildRedisConfig() {
   const explicitPassword = process.env.REDIS_PASSWORD;
 
   if (explicitHost) {
+    const isLocalHost =
+      explicitHost === 'localhost' ||
+      explicitHost === '127.0.0.1' ||
+      explicitHost === 'redis';
+
+    const useTls =
+      process.env.REDIS_TLS !== undefined
+        ? process.env.REDIS_TLS === 'true'
+        : !isLocalHost;
+
     return {
       enabled: true,
       host: explicitHost,
       port: explicitPort,
       username: explicitUsername,
       password: explicitPassword || undefined,
-      tls: process.env.REDIS_TLS === 'true',
+      tls: useTls,
     };
   }
 

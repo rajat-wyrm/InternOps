@@ -420,15 +420,6 @@ if (process.env.NODE_ENV !== 'test') {
   githubSyncOrchestrator.initialize();
 }
 
-// start the BullMQ worker (will run in-process)
-if (process.env.NODE_ENV !== 'test') {
-  try {
-    require('./services/queue/bulkWorker');
-  } catch (err) {
-    app.log.error({ err }, 'Failed to start bulk worker');
-  }
-}
-
 const bulkJobQueue = require('./services/bulkJobQueue');
 
 const start = async () => {
