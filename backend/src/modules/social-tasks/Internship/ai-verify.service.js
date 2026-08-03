@@ -29,22 +29,21 @@ try {
 const genAI = new GoogleGenerativeAI(config.ai.geminiKey);
 
 async function verifyClaim({ content, claimedActions }) {
-
   if (!content || !content.trim()) {
-    return claimedActions.map(action => ({
+    return claimedActions.map((action) => ({
       action,
-      confidence: "unverifiable",
+      confidence: 'unverifiable',
       supports: false,
-      notes: "No content available to verify."
+      notes: 'No content available to verify.',
     }));
   }
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: 'gemini-2.5-flash',
     generationConfig: {
-        temperature: 0
-    }
-});
-const prompt = `
+      temperature: 0,
+    },
+  });
+  const prompt = `
 ${claimPrompt.CLAIM_VERIFICATION_SYSTEM_PROMPT}
 
 Example:
@@ -58,33 +57,31 @@ Claimed Actions:
 ${JSON.stringify(claimedActions)}
 `.trim();
 
-const start = Date.now();
-let result;
+  const start = Date.now();
+  let result;
 
-try {
-  result = await model.generateContent(prompt);
+  try {
+    result = await model.generateContent(prompt);
 
-  const duration = Date.now() - start;
+    const duration = Date.now() - start;
 
-  if (typeof metrics.recordLatency === 'function') {
-    metrics.recordLatency('ai_service', duration);
+    if (typeof metrics.recordLatency === 'function') {
+      metrics.recordLatency('ai_service', duration);
+    }
+
+    if (
+      result?.response?.usageMetadata?.totalTokenCount &&
+      typeof metrics.recordTokenUsage === 'function'
+    ) {
+      metrics.recordTokenUsage(result.response.usageMetadata.totalTokenCount);
+    }
+  } catch (err) {
+    if (typeof metrics.recordError === 'function') {
+      metrics.recordError('ai_service');
+    }
+
+    throw err;
   }
-
-  if (
-    result?.response?.usageMetadata?.totalTokenCount &&
-    typeof metrics.recordTokenUsage === 'function'
-  ) {
-    metrics.recordTokenUsage(
-      result.response.usageMetadata.totalTokenCount
-    );
-  }
-} catch (err) {
-  if (typeof metrics.recordError === 'function') {
-    metrics.recordError('ai_service');
-  }
-
-  throw err;
-}
 }
 
 module.exports = {
