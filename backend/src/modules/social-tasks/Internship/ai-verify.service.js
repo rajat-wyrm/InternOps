@@ -82,6 +82,35 @@ ${JSON.stringify(claimedActions)}
 
     throw err;
   }
+
+  if (
+    result?.response?.usageMetadata?.totalTokenCount &&
+    typeof metrics.recordTokenUsage === 'function'
+  ) {
+    metrics.recordTokenUsage(
+      result.response.usageMetadata.totalTokenCount
+    );
+  }
+} catch (err) {
+  if (typeof metrics.recordError === 'function') {
+    metrics.recordError('ai_service');
+  }
+
+  throw err;
+}
+const raw = result.response.text();
+const parsed = clean_and_parse_json(raw);
+
+if (!parsed.results || !Array.isArray(parsed.results)) {
+    return claimedActions.map(action => ({
+        action,
+        confidence: 'unverifiable',
+        supports: false,
+        notes: 'Unable to parse AI response.'
+    }));
+}
+
+return parsed.results;
 }
 
 module.exports = {
