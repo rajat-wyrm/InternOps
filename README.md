@@ -188,7 +188,7 @@ InternOps/
 | ----------------- | --------------------------------- |
 | `npm run dev`     | Start the Vite development server |
 | `npm run build`   | Build the production application  |
-| `npm run preview` | Preview the production build .    |
+| `npm run preview` | Preview the production build      |
 
 ### AI Service (`cd ai-service`)
 
