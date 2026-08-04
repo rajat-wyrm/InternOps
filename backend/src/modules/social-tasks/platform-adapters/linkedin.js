@@ -1,4 +1,4 @@
-const { findBlocksByClass, stripTags } = require('./mini-html');
+const cheerio = require('cheerio');
 const { parseCount } = require('./parse-count');
 
 const DOMAIN = 'linkedin.com';
@@ -7,11 +7,6 @@ const DOMAIN = 'linkedin.com';
  * Parse a saved LinkedIn post page and extract whatever is visible
  * without auth. Never throws — on missing/unexpected markup it
  * returns null fields instead of failing the caller.
- *
- * No external HTML-parsing library is used on purpose (zero install
- * footprint) — see ./mini-html for the small regex-based helper this
- * relies on. It assumes reasonably well-formed markup, matching what
- * a saved page fetch would produce.
  *
  * @param {string} rawHtml
  * @returns {{ text: string | null, visibleSignals: {
@@ -36,41 +31,36 @@ function parse(rawHtml) {
     return result;
   }
 
-  let posts;
+  let $;
   try {
-    posts = findBlocksByClass(rawHtml, 'div', 'feed-shared-update-v2');
+    $ = cheerio.load(rawHtml);
   } catch {
     return result;
   }
 
-  if (!posts || posts.length === 0) {
+  const post = $('.feed-shared-update-v2').first();
+  if (post.length === 0) {
     return result;
   }
 
-  const post = posts[0].inner;
-
-  const textBlock = findBlocksByClass(post, 'span', 'break-words')[0];
-  const postText = textBlock ? stripTags(textBlock.inner) : '';
+  const postText = post.find('.feed-shared-update-v2__description .break-words').first().text().trim();
   result.text = postText || null;
 
-  const reactionBlock = findBlocksByClass(post, 'span', 'social-details-social-counts__reactions-count')[0];
-  result.visibleSignals.reactionCount = parseCount(reactionBlock ? stripTags(reactionBlock.inner) : null);
+  const reactionText = post.find('.social-details-social-counts__reactions-count').first().text().trim();
+  result.visibleSignals.reactionCount = parseCount(reactionText);
 
-  const commentBlock = findBlocksByClass(post, 'li', 'social-details-social-counts__comments')[0];
-  const commentText = commentBlock ? stripTags(commentBlock.inner) : '';
-  result.visibleSignals.commentCount = parseCount(commentText ? commentText.split(' ')[0] : null);
+  const commentText = post.find('.social-details-social-counts__comments').first().text().trim();
+  result.visibleSignals.commentCount = parseCount(commentText.split(' ')[0]);
 
-  const shareBlock = findBlocksByClass(post, 'li', 'social-details-social-counts__shares')[0];
-  const shareText = shareBlock ? stripTags(shareBlock.inner) : '';
-  result.visibleSignals.shareCount = parseCount(shareText ? shareText.split(' ')[0] : null);
+  const shareText = post.find('.social-details-social-counts__shares').first().text().trim();
+  result.visibleSignals.shareCount = parseCount(shareText.split(' ')[0]);
 
-  const commentBodyBlocks = findBlocksByClass(post, 'span', 'comments-comment-item__main-content');
-  for (const block of commentBodyBlocks) {
-    const commentBody = stripTags(block.inner);
+  post.find('.comments-comment-item__main-content').each((_, el) => {
+    const commentBody = $(el).text().trim();
     if (commentBody) {
       result.visibleSignals.comments.push(commentBody);
     }
-  }
+  });
 
   return result;
 }
