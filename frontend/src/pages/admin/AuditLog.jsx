@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ScrollText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ScrollText, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import api from '../../lib/axios';
 import { Table, Badge, Spinner } from '../../components/ui';
 
@@ -12,14 +12,36 @@ function actionColor(a = '') {
   return 'gray';
 }
 
+const ACTION_TYPES = [
+  { value: '', label: 'All Actions' },
+  { value: 'CREATE', label: 'Create' },
+  { value: 'UPDATE', label: 'Update' },
+  { value: 'DELETE', label: 'Delete' },
+  { value: 'LOGIN', label: 'Login' },
+  { value: 'SUSPEND', label: 'Suspend' },
+];
+
 export default function AuditLog() {
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [action, setAction] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const limit = 50;
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['auditLogs', page],
-    queryFn: () =>
-      api.get(`/audit?page=${page}&limit=${limit}`).then((res) => res.data),
+    queryKey: ['auditLogs', page, search, action, startDate, endDate],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('page', page);
+      params.set('limit', limit);
+      if (search) params.set('search', search);
+      if (action) params.set('action', action);
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
+      return api.get(`/audit?${params.toString()}`).then((res) => res.data);
+    },
     refetchInterval: 60000,
     refetchIntervalInBackground: false,
   });
@@ -27,6 +49,20 @@ export default function AuditLog() {
   const logs = data?.data || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / limit);
+
+  function applySearch() {
+    setPage(1);
+    setSearch(searchInput.trim());
+  }
+
+  function resetFilters() {
+    setSearchInput('');
+    setSearch('');
+    setAction('');
+    setStartDate('');
+    setEndDate('');
+    setPage(1);
+  }
 
   return (
     <div className="animate-fade-in-up">
@@ -52,6 +88,91 @@ export default function AuditLog() {
           </div>
         </div>
       </div>
+
+      {/* Filter Controls */}
+      <div className="flex flex-wrap items-end gap-3 mb-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
+        <div className="flex-1 min-w-[220px]">
+          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+            Search by name or email
+          </label>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && applySearch()}
+              placeholder="e.g. jane@example.com"
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+            Action type
+          </label>
+          <select
+            value={action}
+            onChange={(e) => {
+              setAction(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            {ACTION_TYPES.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+            From
+          </label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+            To
+          </label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => {
+              setEndDate(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        <button
+          onClick={applySearch}
+          className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition"
+        >
+          Apply
+        </button>
+
+        <button
+          onClick={resetFilters}
+          className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+        >
+          Reset
+        </button>
+      </div>
+
       {isError ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
           <h3 className="text-lg font-semibold text-red-700">
