@@ -1,261 +1,156 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ScrollText, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import api from '../../lib/axios';
-import { Table, Badge, Spinner } from '../../components/ui';
+const auth = require('../../middleware/auth');
+const pool = require('../../config/db');
+const { z } = require('zod');
+const { toSchema } = require('../../utils/schemaHelper');
+const rbac = require('../../middleware/rbac');
+const repo = require('./repository');
 
-function actionColor(a = '') {
-  if (a.includes('DELETE') || a.includes('SUSPEND')) return 'red';
-  if (a.includes('CREATE') || a.includes('LOGIN')) return 'green';
-  if (a.includes('UPDATE') || a.includes('RATING') || a.includes('ATTENDANCE'))
-    return 'blue';
-  return 'gray';
-}
+// Whitelist of allowed filter keys → qualified column names.
+// Prevents SQL injection if filter keys ever become user-controllable.
+const AUDIT_COLUMN_MAP = {
+  userId: 'al.user_id',
+  resourceType: 'al.resource_type',
+  action: 'al.action',
+};
 
-const ACTION_TYPES = [
-  { value: '', label: 'All Actions' },
-  { value: 'CREATE', label: 'Create' },
-  { value: 'UPDATE', label: 'Update' },
-  { value: 'DELETE', label: 'Delete' },
-  { value: 'LOGIN', label: 'Login' },
-  { value: 'SUSPEND', label: 'Suspend' },
-];
+const auditQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  userId: z.string().uuid().optional(),
+  resourceType: z.string().trim().max(100).optional(),
+  action: z.string().trim().max(100).optional(),
+  search: z.string().trim().max(200).optional(),
+  startDate: z.string().trim().max(40).optional(),
+  endDate: z.string().trim().max(40).optional(),
+});
 
-export default function AuditLog() {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
-  const [action, setAction] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const limit = 50;
-
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['auditLogs', page, search, action, startDate, endDate],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      params.set('page', page);
-      params.set('limit', limit);
-      if (search) params.set('search', search);
-      if (action) params.set('action', action);
-      if (startDate) params.set('startDate', startDate);
-      if (endDate) params.set('endDate', endDate);
-      return api.get(`/audit?${params.toString()}`).then((res) => res.data);
+async function routes(fastify) {
+  fastify.get(
+    '/',
+    {
+      preHandler: [auth],
+      schema: {
+        tags: ['Audit'],
+        description: 'Get audit logs',
+        querystring: toSchema(auditQuerySchema),
+      },
     },
-    refetchInterval: 60000,
-    refetchIntervalInBackground: false,
-  });
+    async (req, reply) => {
+      const parsed = auditQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Invalid query parameters',
+          details: parsed.error.issues,
+        });
+      }
 
-  const logs = data?.data || [];
-  const total = data?.total || 0;
-  const totalPages = Math.ceil(total / limit);
+      const {
+        page,
+        limit,
+        userId,
+        resourceType,
+        action,
+        search,
+        startDate,
+        endDate,
+      } = parsed.data;
+      const offset = (page - 1) * limit;
 
-  function applySearch() {
-    setPage(1);
-    setSearch(searchInput.trim());
-  }
+      const conditions = [];
+      const params = [];
 
-  function resetFilters() {
-    setSearchInput('');
-    setSearch('');
-    setAction('');
-    setStartDate('');
-    setEndDate('');
-    setPage(1);
-  }
+      if (req.user.role === 'ADMIN') {
+        if (userId) {
+          params.push(userId);
+          conditions.push(`${AUDIT_COLUMN_MAP.userId} = $${params.length}`);
+        }
+      } else {
+        params.push(req.user.id);
+        conditions.push(`${AUDIT_COLUMN_MAP.userId} = $${params.length}`);
+      }
 
-  return (
-    <div className="animate-fade-in-up">
-      {/* Professional Header Block */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
-            <ScrollText className="w-6 h-6" />
-          </div>
+      if (resourceType) {
+        params.push(resourceType);
+        conditions.push(`${AUDIT_COLUMN_MAP.resourceType} = $${params.length}`);
+      }
 
-          <div>
-            <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-indigo-600 dark:text-indigo-300 font-extrabold mb-1">
-              Security Trail
-            </p>
+      if (action) {
+        params.push(`%${action}%`);
+        conditions.push(`${AUDIT_COLUMN_MAP.action} ILIKE $${params.length}`);
+      }
 
-            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Audit Log
-            </h1>
+      if (search) {
+        params.push(`%${search}%`);
+        const searchIdx1 = params.length;
+        params.push(`%${search}%`);
+        const searchIdx2 = params.length;
+        conditions.push(
+          `(u.email ILIKE $${searchIdx1} OR u.full_name ILIKE $${searchIdx2})`
+        );
+      }
 
-            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
-              Immutable trail of sensitive system actions
-            </p>
-          </div>
-        </div>
-      </div>
+      if (startDate) {
+        params.push(startDate);
+        conditions.push(`al.created_at >= $${params.length}`);
+      }
 
-      {/* Filter Controls */}
-      <div className="flex flex-wrap items-end gap-3 mb-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
-        <div className="flex-1 min-w-[220px]">
-          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
-            Search by name or email
-          </label>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && applySearch()}
-              placeholder="e.g. jane@example.com"
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-        </div>
+      if (endDate) {
+        params.push(endDate);
+        conditions.push(`al.created_at <= $${params.length}`);
+      }
 
-        <div>
-          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
-            Action type
-          </label>
-          <select
-            value={action}
-            onChange={(e) => {
-              setAction(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            {ACTION_TYPES.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
+      const whereClause = conditions.length
+        ? `WHERE ${conditions.join(' AND ')}`
+        : '';
 
-        <div>
-          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
-            From
-          </label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => {
-              setStartDate(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
+      // Fetch total matching records for pagination.
+      // Only join the users table when actually needed (search filter),
+      // to avoid unnecessary overhead on large audit_logs tables.
+      const countJoin = search ? 'LEFT JOIN users u ON al.user_id = u.id' : '';
+      const totalResult = await pool.query(
+        `SELECT COUNT(*) FROM audit_logs al ${countJoin} ${whereClause}`,
+        params
+      );
+      const total = Number(totalResult.rows[0].count);
 
-        <div>
-          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
-            To
-          </label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => {
-              setEndDate(e.target.value);
-              setPage(1);
-            }}
-            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
+      // Fetch matching data
+      const dataParams = [...params, limit, offset];
+      const limitIndex = dataParams.length - 1;
+      const offsetIndex = dataParams.length;
 
-        <button
-          onClick={applySearch}
-          className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition"
-        >
-          Apply
-        </button>
+      const logs = await pool.query(
+        `
+      SELECT al.*, u.full_name AS actor_name, u.email AS actor_email
+      FROM audit_logs al
+      LEFT JOIN users u ON al.user_id = u.id
+      ${whereClause}
+      ORDER BY al.created_at DESC
+      LIMIT $${limitIndex} OFFSET $${offsetIndex}
+      `,
+        dataParams
+      );
 
-        <button
-          onClick={resetFilters}
-          className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-        >
-          Reset
-        </button>
-      </div>
+      // Strip ip_address and user_agent for non-admins if the log is not their own
+      const data = logs.rows.map((row) => {
+        if (req.user.role !== 'ADMIN' && row.user_id !== req.user.id) {
+          const { ip_address, user_agent, ...rest } = row;
+          return {
+            ...rest,
+            ip_address: null,
+            user_agent: null,
+          };
+        }
+        return row;
+      });
 
-      {isError ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-          <h3 className="text-lg font-semibold text-red-700">
-            Failed to load audit logs
-          </h3>
-
-          <button
-            onClick={() => refetch()}
-            className="mt-4 px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
-          >
-            Retry
-          </button>
-        </div>
-      ) : isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner />
-        </div>
-      ) : (
-        <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
-          <Table head={['Time', 'Actor', 'Action', 'Resource', 'Details']}>
-            {logs?.map((log, index) => (
-              <tr
-                key={log.id}
-                className={`transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
-                  index % 2 === 0
-                    ? 'bg-white dark:bg-slate-900'
-                    : 'bg-slate-50/50 dark:bg-slate-800/35'
-                } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
-              >
-                <td className="p-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap font-medium">
-                  {new Date(log.created_at).toLocaleString()}
-                </td>
-
-                <td className="p-4 text-xs font-mono text-slate-600 dark:text-slate-300 max-w-[240px] truncate">
-                  {log.actor_email
-                    ? `${log.actor_name || ''} (${log.actor_email})`
-                    : log.user_id
-                      ? log.user_id.substring(0, 8) + '…'
-                      : 'system'}
-                </td>
-
-                <td className="p-4">
-                  <Badge color={actionColor(log.action)}>{log.action}</Badge>
-                </td>
-
-                <td className="p-4 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                  {log.resource_type}
-                  {log.resource_id
-                    ? `/${log.resource_id.substring(0, 8)}…`
-                    : ''}
-                </td>
-
-                <td className="p-4 text-xs text-slate-500 dark:text-slate-400 max-w-[240px] truncate">
-                  {log.details ? JSON.stringify(log.details) : '—'}
-                </td>
-              </tr>
-            ))}
-          </Table>
-        </div>
-      )}
-
-      {/* Modernized Pagination */}
-      <div className="flex items-center justify-center gap-2 mt-8">
-        <button
-          className="flex items-center gap-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          disabled={page === 1}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-        >
-          <ChevronLeft className="w-4 h-4" /> Prev
-        </button>
-
-        <div className="px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-sm font-extrabold border border-indigo-100 dark:border-indigo-900/60">
-          Page {page} of {totalPages || 1}
-        </div>
-
-        <button
-          className="flex items-center gap-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          Next <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-    </div>
+      return {
+        data,
+        total,
+        page,
+        limit,
+      };
+    }
   );
 }
+
+module.exports = routes;

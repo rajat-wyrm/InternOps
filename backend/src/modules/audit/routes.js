@@ -81,8 +81,11 @@ async function routes(fastify) {
 
       if (search) {
         params.push(`%${search}%`);
+        const searchIdx1 = params.length;
+        params.push(`%${search}%`);
+        const searchIdx2 = params.length;
         conditions.push(
-          `(u.email ILIKE $${params.length} OR u.full_name ILIKE $${params.length})`
+          `(u.email ILIKE $${searchIdx1} OR u.full_name ILIKE $${searchIdx2})`
         );
       }
 
@@ -101,8 +104,9 @@ async function routes(fastify) {
         : '';
 
       // Fetch total matching records for pagination
+      const countJoin = search ? 'LEFT JOIN users u ON al.user_id = u.id' : '';
       const totalResult = await pool.query(
-        `SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON al.user_id = u.id ${whereClause}`,
+        `SELECT COUNT(*) FROM audit_logs al ${countJoin} ${whereClause}`,
         params
       );
       const total = Number(totalResult.rows[0].count);
