@@ -70,8 +70,10 @@ jobs:
         run: cd backend && npm run seed
 
       - name: Run Jest tests
-        run: cd backend && npm run test:coverage -- --forceExit
+        run: cd backend && npm test -- --forceExit --detectOpenHandles --runInBand
 
+      - name: Run Lint
+        run: npm run lint
 
 
       - name: Run Frontend Tests

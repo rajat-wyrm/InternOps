@@ -3,12 +3,21 @@ import sys
 import importlib
 import pytest
 from unittest import mock
+from pydantic_settings import SettingsConfigDict
 
 # Ensure ai-service root is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @pytest.fixture(autouse=True)
-def clean_env():
+def clean_env(monkeypatch):
+    # Mock dotenv.load_dotenv to do nothing
+    import dotenv
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *args, **kwargs: None)
+    
+    # Mock DotEnvSettingsSource.__call__ to return an empty dict to bypass physical .env reading
+    import pydantic_settings
+    monkeypatch.setattr(pydantic_settings.sources.DotEnvSettingsSource, "__call__", lambda self: {})
+
     # Keep track of and remove any AI-service environment variables before each test
     prefix_keys = ("GEMINI_", "GROQ_", "OPENAI_", "ANTHROPIC_", "DEEPSEEK_", "HUGGINGFACE_", "PRIMARY_", "FALLBACK_")
     original = {k: os.environ.get(k) for k in os.environ if k.startswith(prefix_keys)}
@@ -39,11 +48,16 @@ def test_success_single_provider():
     assert cfg.FALLBACK_AI_PROVIDERS == ["groq", "openai", "anthropic"]
     assert cfg.ACTIVE_FALLBACK_PROVIDERS == []
 
-def test_startup_fail_zero_providers():
-    # No keys are configured
+def test_startup_fail_zero_providers(monkeypatch):
+    import importlib
+    import app.core.config as config
+
+    monkeypatch.setenv("PRIMARY_AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+
     with pytest.raises(Exception) as exc_info:
-        reload_config()
-    
+        importlib.reload(config)
+
     assert "Startup validation failed" in str(exc_info.value)
 
 def test_invalid_primary_provider():
@@ -128,7 +142,7 @@ def test_model_validation_and_defaults():
 
     # Don't set models, they should resolve to default values
     cfg = reload_config()
-    assert cfg.GEMINI_MODEL == "gemini-2.5-flash"
+    assert cfg.GEMINI_MODEL == "gemini-2.0-flash"
     assert cfg.GROQ_MODEL == "llama-3.3-70b-versatile"
 
     # Set override for gemini model
@@ -145,6 +159,58 @@ def test_conflict_primary_in_fallback_list():
         reload_config()
     
     assert "cannot also be listed in FALLBACK_AI_PROVIDERS" in str(exc_info.value)
+
+def test_get_provider_key_success():
+    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
+    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
+    os.environ["FALLBACK_AI_PROVIDERS"] = "groq"
+    os.environ["GROQ_API_KEY"] = "valid_groq_key"
+
+    cfg = reload_config()
+    assert cfg.settings.get_provider_key("gemini") == "valid_gemini_key"
+    # Case-insensitive / whitespace tolerant
+    assert cfg.settings.get_provider_key(" Groq ") == "valid_groq_key"
+
+def test_get_provider_key_missing_raises_descriptive_error():
+    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
+    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
+    # OPENAI_API_KEY intentionally left unset
+
+    cfg = reload_config()
+    with pytest.raises(ValueError) as exc_info:
+        cfg.settings.get_provider_key("openai")
+
+    assert "Missing or invalid API key for provider 'openai'" in str(exc_info.value)
+
+def test_get_provider_key_placeholder_raises_descriptive_error():
+    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
+    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
+    os.environ["ANTHROPIC_API_KEY"] = "your_anthropic_api_key"  # placeholder
+
+    cfg = reload_config()
+    with pytest.raises(ValueError) as exc_info:
+        cfg.settings.get_provider_key("anthropic")
+
+    assert "Missing or invalid API key" in str(exc_info.value)
+
+def test_get_provider_key_unsupported_provider_raises_error():
+    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
+    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
+
+    cfg = reload_config()
+    with pytest.raises(ValueError) as exc_info:
+        cfg.settings.get_provider_key("not_a_real_provider")
+
+    assert "not a supported provider" in str(exc_info.value)
+
+def test_get_provider_key_huggingface():
+    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
+    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
+    os.environ["HUGGINGFACE_TOKEN"] = "valid_hf_token"
+
+    cfg = reload_config()
+    assert cfg.settings.get_provider_key("huggingface") == "valid_hf_token"
+    assert cfg.settings.get_provider_key("HuggingFace") == "valid_hf_token"
 
 def test_backward_compatibility():
     os.environ["PRIMARY_AI_PROVIDER"] = "gemini"

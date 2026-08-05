@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Upload, Download, CheckCircle, XCircle } from 'lucide-react';
+import Papa from 'papaparse';
 import api from '../../lib/axios';
 
 const ROLES = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
@@ -10,14 +11,32 @@ John Doe,john@example.com,TempPass@123,INTERN
 Jane Smith,jane@example.com,TempPass@123,TL`;
 
 function parseCsv(text) {
-  const [headerLine, ...lines] = text.trim().split('\n');
-  const headers = headerLine.split(',').map((h) => h.trim());
-  return lines
-    .filter((l) => l.trim())
-    .map((line) => {
-      const values = line.split(',').map((v) => v.trim());
-      return Object.fromEntries(headers.map((h, i) => [h, values[i] || '']));
+  const normalized = String(text || '').replace(/\uFEFF/g, '');
+  const parsed = Papa.parse(normalized, {
+    header: true,
+    skipEmptyLines: 'greedy',
+    transformHeader: (header) =>
+      String(header || '')
+        .trim()
+        .toLowerCase(),
+  });
+
+  if (parsed.errors && parsed.errors.length > 0) {
+    const fatal = parsed.errors.find(
+      (error) => error.type === 'Delimiter' || error.type === 'Quotes'
+    );
+    if (fatal) {
+      throw new Error(`Invalid CSV format: ${fatal.message}`);
+    }
+  }
+
+  return parsed.data.map((row) => {
+    const normalRow = {};
+    Object.entries(row).forEach(([key, value]) => {
+      normalRow[key.trim()] = typeof value === 'string' ? value.trim() : value;
     });
+    return normalRow;
+  });
 }
 
 function UserRow({ row }) {

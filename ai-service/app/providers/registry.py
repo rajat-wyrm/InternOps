@@ -7,18 +7,9 @@ inside the adapters themselves, so the adapters stay focused purely on
 "how do I talk to this vendor."
 
 Env vars:
-  AI_PROVIDER       - "gemini" (default) or "openai"
-  GEMINI_API_KEY     - required if using gemini
-  OPENAI_API_KEY      - required if using openai
-  GEMINI_MODEL         - optional override (defaults to GeminiProvider's default)
-  OPENAI_MODEL          - optional override (defaults to OpenAIProvider's default)
-
-TODO(providers): no fallback-to-secondary-provider logic yet (e.g. if
-gemini's key is missing/rate-limited, try openai) — every call currently
-uses a single configured provider. TODO(providers): no instance caching/
-pooling — a fresh adapter is built per call, which is fine for now since
-the adapters are lightweight (just holds an api_key + model_name + opens
-an httpx.AsyncClient per request), but worth revisiting under load.
+  AI_PROVIDER       - "gemini" (default) or any supported provider name
+  <PROVIDER>_API_KEY - required for each provider (HUGGINGFACE uses _TOKEN)
+  <PROVIDER>_MODEL   - optional override (defaults to adapter's default)
 """
 
 import os
@@ -27,20 +18,36 @@ from typing import Dict, Optional, Type
 from app.providers.base import AIProviderError, BaseAIProvider
 from app.providers.gemini import GeminiProvider
 from app.providers.openai import OpenAIProvider
+from app.providers.groq import GroqProvider
+from app.providers.anthropic import AnthropicProvider
+from app.providers.deepseek import DeepSeekProvider
+from app.providers.huggingface import HuggingFaceProvider
 
 _PROVIDER_CLASSES: Dict[str, Type[BaseAIProvider]] = {
     "gemini": GeminiProvider,
     "openai": OpenAIProvider,
+    "groq": GroqProvider,
+    "anthropic": AnthropicProvider,
+    "deepseek": DeepSeekProvider,
+    "huggingface": HuggingFaceProvider,
 }
 
 _API_KEY_ENV_VAR: Dict[str, str] = {
     "gemini": "GEMINI_API_KEY",
     "openai": "OPENAI_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "huggingface": "HUGGINGFACE_TOKEN",
 }
 
 _MODEL_ENV_VAR: Dict[str, str] = {
     "gemini": "GEMINI_MODEL",
     "openai": "OPENAI_MODEL",
+    "groq": "GROQ_MODEL",
+    "anthropic": "ANTHROPIC_MODEL",
+    "deepseek": "DEEPSEEK_MODEL",
+    "huggingface": "HUGGINGFACE_MODEL",
 }
 
 
@@ -75,6 +82,11 @@ def get_provider(name: Optional[str] = None) -> BaseAIProvider:
     error handling rather than catching it here.
     """
     return _build_provider(name or os.environ.get("AI_PROVIDER", "gemini"))
+
+
+def has_adapter(name: str) -> bool:
+    """Check whether a provider adapter class is registered for the given name."""
+    return name.lower() in _PROVIDER_CLASSES
 
 
 def get_configured_providers_health() -> list:

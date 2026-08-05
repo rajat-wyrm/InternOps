@@ -96,16 +96,38 @@ async function loadMigrations(dir) {
 
 async function migrate(migrationsDir) {
   const dir = migrationsDir || path.resolve(__dirname, '../../migrations');
+
   const migrations = await loadMigrations(dir);
 
   let client;
+  let lockAcquired = false;
   try {
     client = await pool.connect();
-
     log.info('Waiting for migration lock...');
-    await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_ID]);
-    log.info('Migration lock acquired');
 
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const { rows } = await client.query(
+        'SELECT pg_try_advisory_lock($1) AS acquired',
+        [MIGRATION_LOCK_ID]
+      );
+
+      if (rows[0]?.acquired) {
+        lockAcquired = true;
+        break;
+      }
+
+      if (attempt === MAX_RETRIES) {
+        throw new Error(
+          'Could not acquire migration lock after multiple attempts. Another migration may be in progress.'
+        );
+      }
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, RETRY_DELAY_MS * attempt)
+      );
+    }
+
+    log.info('Migration lock acquired');
     await client.query('BEGIN');
 
     await client.query(`
@@ -122,11 +144,19 @@ async function migrate(migrationsDir) {
       )
     `);
 
-    // Handle historical renames automatically so they do not run again
+    // Handle historical renames automatically so they do not run again.
+    // Load the current applied-name set once so repeated migration checks do
+    // not trigger a round-trip per file.
     const { rows: appliedRows } = await client.query(
       'SELECT name FROM _migrations'
     );
-    const appliedNames = new Set(appliedRows.map((r) => r.name));
+    const appliedNames = new Set(appliedRows.map((row) => row.name));
+    const { rows: checksumRows } = await client.query(
+      'SELECT name, sha256 FROM _migration_checksums'
+    );
+    const checksumByName = new Map(
+      checksumRows.map((row) => [row.name, row.sha256])
+    );
 
     for (const [oldName, newName] of Object.entries(MIGRATION_RENAMES)) {
       if (appliedNames.has(oldName)) {
@@ -143,6 +173,12 @@ async function migrate(migrationsDir) {
             'UPDATE _migration_checksums SET name = $1 WHERE name = $2',
             [newName, oldName]
           );
+          appliedNames.delete(oldName);
+          appliedNames.add(newName);
+          if (checksumByName.has(oldName)) {
+            checksumByName.set(newName, checksumByName.get(oldName));
+            checksumByName.delete(oldName);
+          }
         } else {
           // If both exist (cleanup edge case), delete the redundant old record
           await client.query('DELETE FROM _migrations WHERE name = $1', [
@@ -152,6 +188,8 @@ async function migrate(migrationsDir) {
             'DELETE FROM _migration_checksums WHERE name = $1',
             [oldName]
           );
+          appliedNames.delete(oldName);
+          checksumByName.delete(oldName);
         }
       }
     }
@@ -159,12 +197,12 @@ async function migrate(migrationsDir) {
     for (const migration of migrations) {
       const { name, sql, checksum } = migration;
 
-      const alreadyApplied = await client.query(
+      const appliedRow = await client.query(
         'SELECT 1 FROM _migrations WHERE name = $1',
         [name]
       );
 
-      if (alreadyApplied.rowCount > 0) {
+      if (appliedRow.rowCount > 0) {
         const stored = await client.query(
           'SELECT sha256 FROM _migration_checksums WHERE name = $1',
           [name]
@@ -200,6 +238,8 @@ async function migrate(migrationsDir) {
           'INSERT INTO _migration_checksums (name, sha256) VALUES ($1, $2)',
           [name, checksum]
         );
+        appliedNames.add(name);
+        checksumByName.set(name, checksum);
       } catch (execErr) {
         throw new Error(
           `Migration failed in file "${name}": ${execErr.message}\nSQL:\n${sql.substring(0, 500)}...`
@@ -217,10 +257,12 @@ async function migrate(migrationsDir) {
     log.error({ err: e }, 'Migration error');
     throw e;
   } finally {
-    if (client) {
+    if (client && lockAcquired) {
       await client
         .query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_ID])
         .catch(() => {});
+    }
+    if (client) {
       client.release();
     }
   }

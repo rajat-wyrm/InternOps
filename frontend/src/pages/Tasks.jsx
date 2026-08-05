@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Target,
@@ -15,12 +16,23 @@ import {
   X,
   Trash2,
   Pencil,
+  Building2,
+  CalendarCheck,
+  Star,
   GitPullRequest as GithubIcon,
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import CreateTaskForm from '../components/CreateTaskForm';
-import { Card, Btn, Badge, EmptyState, Spinner } from '../components/ui';
+import CustomSelect from '../components/CustomSelect';
+import {
+  Card,
+  Btn,
+  Badge,
+  EmptyState,
+  Spinner,
+  ApiErrorState,
+} from '../components/ui';
 
 const PLATFORM_ICON = {
   LinkedIn: <Briefcase className="w-5 h-5" />,
@@ -32,12 +44,26 @@ const PLATFORM_ICON = {
 
 const overdue = (d) => new Date(d) < new Date();
 
-export default function Tasks() {
+export default function Tasks({
+  isProjectView = false,
+  deptId: propDeptId,
+  roster = [],
+} = {}) {
+  const { deptId: routeDeptId } = useParams();
+  const deptId = propDeptId || routeDeptId;
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [selectedProofTaskId, setSelectedProofTaskId] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [filterDeptId, setFilterDeptId] = useState(deptId || '');
+
+  const activeDeptId = deptId || filterDeptId;
+
+  useEffect(() => {
+    if (deptId) setFilterDeptId(deptId);
+  }, [deptId]);
+
   const [draftFiles, setDraftFiles] = useState({
     taskId: null,
     files: [],
@@ -67,15 +93,36 @@ export default function Tasks() {
   const [editForm, setEditForm] = useState({});
   const [deletingTaskId, setDeletingTaskId] = useState(null);
 
+  const isAdmin = user?.role === 'ADMIN';
   const canCreateTask = ['ADMIN', 'SENIOR_TL'].includes(user?.role);
   const canManageTask = ['ADMIN', 'SENIOR_TL'].includes(user?.role);
   const canVerify = ['ADMIN', 'CAPTAIN', 'TL', 'SENIOR_TL'].includes(
     user?.role
   );
 
-  const { data: tasks, isLoading } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => api.get('/tasks').then((res) => res.data),
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/departments').then((res) => res.data),
+    enabled: isAdmin,
+  });
+
+  const activeDepartment = departments.find((d) => d.id === activeDeptId);
+
+  const {
+    data: tasks,
+    isLoading,
+    isError: tasksIsError,
+    error: tasksError,
+    refetch: refetchTasks,
+  } = useQuery({
+    queryKey: ['tasks', activeDeptId],
+    queryFn: () =>
+      api
+        .get('/tasks', {
+          params: { department_id: activeDeptId || undefined },
+        })
+        .then((res) => res.data),
+    retry: 1,
   });
 
   const { data: proofs, refetch: refetchProofs } = useQuery({
@@ -194,7 +241,6 @@ export default function Tasks() {
       showNotification(errorMsg);
     },
     onSettled: () => {
-      // Always restore the Delete button after success or failure.
       setDeletingProofId(null);
     },
   });
@@ -243,7 +289,7 @@ export default function Tasks() {
       showNotification(
         'You can only upload up to 5 images at a time. Only the first 5 images were kept.'
       );
-      files = files.slice(0, 5); // Take max 5 files
+      files = files.slice(0, 5);
     }
 
     for (const file of files) {
@@ -263,6 +309,60 @@ export default function Tasks() {
 
   return (
     <div className="animate-fade-in-up">
+      {/* Admin Department Navigation Context Banner */}
+      {isAdmin && activeDeptId && !isProjectView && (
+        <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-indigo-500/20 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs uppercase font-extrabold tracking-wider text-indigo-300">
+                  Department Context
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/30 text-indigo-200">
+                  Admin Scope
+                </span>
+              </div>
+              <h2 className="text-lg font-extrabold text-white">
+                {activeDepartment?.name || 'Department View'}
+              </h2>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+            <Link
+              to={
+                deptId
+                  ? `/admin/departments/${deptId}/attendance`
+                  : '/attendance'
+              }
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-indigo-100 transition"
+            >
+              Attendance
+            </Link>
+            <Link
+              to={deptId ? `/admin/departments/${deptId}/ratings` : '/ratings'}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-indigo-100 transition"
+            >
+              Ratings
+            </Link>
+            <Link
+              to={deptId ? `/admin/departments/${deptId}/tasks` : '/tasks'}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-500 text-white shadow-sm"
+            >
+              Tasks
+            </Link>
+            <Link
+              to="/admin/departments"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-indigo-200 transition ml-auto md:ml-2"
+            >
+              Change Department
+            </Link>
+          </div>
+        </div>
+      )}
       {notification && (
         <div className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-200 flex items-center justify-between shadow-sm animate-fade-in">
           <span className="font-semibold text-sm">{notification}</span>
@@ -276,35 +376,37 @@ export default function Tasks() {
       )}
 
       {/* Professional Header Block */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/60 text-violet-600 dark:text-violet-300 flex items-center justify-center shadow-sm">
-            <Target className="w-6 h-6" />
+      {!isProjectView && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/60 text-violet-600 dark:text-violet-300 flex items-center justify-center shadow-sm">
+              <Target className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800 dark:text-white tracking-tight">
+                Social Media Tasks
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                Campaigns & proof verification
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white tracking-tight">
-              Social Media Tasks
-            </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              Campaigns & proof verification
-            </p>
-          </div>
-        </div>
 
-        {canCreateTask && (
-          <Btn onClick={() => setShowForm((s) => !s)}>
-            {showForm ? (
-              <span className="flex items-center gap-1">
-                <X className="w-4 h-4" /> Cancel
-              </span>
-            ) : (
-              <span className="flex items-center gap-1">
-                <Plus className="w-4 h-4" /> Create task
-              </span>
-            )}
-          </Btn>
-        )}
-      </div>
+          {canCreateTask && (
+            <Btn onClick={() => setShowForm((s) => !s)}>
+              {showForm ? (
+                <span className="flex items-center gap-1">
+                  <X className="w-4 h-4" /> Cancel
+                </span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <Plus className="w-4 h-4" /> Create task
+                </span>
+              )}
+            </Btn>
+          )}
+        </div>
+      )}
 
       {showForm && canCreateTask && (
         <div className="mb-5 animate-fade-in-up">
@@ -321,6 +423,13 @@ export default function Tasks() {
             />
           ))}
         </div>
+      ) : tasksIsError ? (
+        <ApiErrorState
+          error={tasksError}
+          title="Failed to load tasks"
+          fallback="Unable to load tasks for this department. Please try again."
+          onRetry={refetchTasks}
+        />
       ) : !tasks?.length ? (
         <EmptyState
           icon={<Target className="w-12 h-12 text-gray-400" />}
@@ -854,6 +963,31 @@ export default function Tasks() {
                             >
                               {p.status}
                             </Badge>
+
+                            <div
+                              className="flex flex-wrap items-center gap-1.5 mt-2"
+                              aria-label="Reported engagement actions"
+                            >
+                              {p.did_comment && (
+                                <Badge color="blue">Comment</Badge>
+                              )}
+
+                              {p.did_repost && (
+                                <Badge color="purple">Repost</Badge>
+                              )}
+
+                              {p.did_share && (
+                                <Badge color="green">Share</Badge>
+                              )}
+
+                              {!p.did_comment &&
+                                !p.did_repost &&
+                                !p.did_share && (
+                                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                                    No action data recorded
+                                  </span>
+                                )}
+                            </div>
 
                             <p className="text-slate-500 dark:text-slate-400 mt-2 truncate w-full">
                               Intern:{' '}
