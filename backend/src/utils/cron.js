@@ -13,30 +13,23 @@ const BATCH_SIZE = 500;
 
 const emailService = require('../services/email');
 
-function setupCronJobs() {
-  try {
-    cron.schedule('0 * * * *', async () => {
-      // Create a child logger for this cron execution
-      const jobLogger = logger.child({
-        correlationId: `cron-${Date.now()}`,
-        job: 'proof-image-cleanup',
+function scheduleSafeCronJob(schedule, jobName, task) {
+  cron.schedule(schedule, () => {
+    Promise.resolve()
+      .then(task)
+      .catch((err) => {
+        const errorObj = err instanceof Error ? err : new Error(String(err));
+        console.error(
+          JSON.stringify({
+            job: jobName,
+            message: 'Unhandled cron job rejection',
+            err: errorObj.message,
+            stack: errorObj.stack,
+          })
+        );
       });
-
-      if (cleanupRunning) {
-        jobLogger.warn('Cleanup already running. Skipping...');
-        return;
-      }
-
-      cleanupRunning = true;
-      const startTime = Date.now();
-
-      jobLogger.info(
-        {
-          startedAt: new Date(startTime),
-        },
-        'Cron job started'
-      );
-
+  });
+}
       try {
         const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const uploadsRoot = path.resolve(__dirname, '..', '..', 'uploads');
@@ -158,7 +151,7 @@ function setupCronJobs() {
       }
     });
 
-    cron.schedule('5 * * * *', async () => {
+    scheduleSafeCronJob('5 * * * *', 'deadline-reminder', async () => {
       // Create a child logger for this cron execution
       const jobLogger = logger.child({
         correlationId: `cron-${Date.now()}`,
