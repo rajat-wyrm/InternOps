@@ -43,16 +43,32 @@ function parse(rawHtml) {
     return result;
   }
 
-  const postText = post.find('.feed-shared-update-v2__description .break-words').first().text().trim();
+  const postText = post
+    .find('.feed-shared-update-v2__description .break-words')
+    .first()
+    .text()
+    .trim();
   result.text = postText || null;
 
-  const reactionText = post.find('.social-details-social-counts__reactions-count').first().text().trim();
+  const reactionText = post
+    .find('.social-details-social-counts__reactions-count')
+    .first()
+    .text()
+    .trim();
   result.visibleSignals.reactionCount = parseCount(reactionText);
 
-  const commentText = post.find('.social-details-social-counts__comments').first().text().trim();
+  const commentText = post
+    .find('.social-details-social-counts__comments')
+    .first()
+    .text()
+    .trim();
   result.visibleSignals.commentCount = parseCount(commentText.split(' ')[0]);
 
-  const shareText = post.find('.social-details-social-counts__shares').first().text().trim();
+  const shareText = post
+    .find('.social-details-social-counts__shares')
+    .first()
+    .text()
+    .trim();
   result.visibleSignals.shareCount = parseCount(shareText.split(' ')[0]);
 
   post.find('.comments-comment-item__main-content').each((_, el) => {

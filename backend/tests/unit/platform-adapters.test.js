@@ -3,8 +3,12 @@ const path = require('path');
 
 const twitterAdapter = require('../../src/modules/social-tasks/platform-adapters/twitter');
 const linkedinAdapter = require('../../src/modules/social-tasks/platform-adapters/linkedin');
-const { getAdapterForDomain } = require('../../src/modules/social-tasks/platform-adapters');
-const { parseCount } = require('../../src/modules/social-tasks/platform-adapters/parse-count');
+const {
+  getAdapterForDomain,
+} = require('../../src/modules/social-tasks/platform-adapters');
+const {
+  parseCount,
+} = require('../../src/modules/social-tasks/platform-adapters/parse-count');
 
 const FIXTURES_DIR = path.join(
   __dirname,
@@ -77,7 +81,9 @@ describe('twitter adapter', () => {
     const html = loadFixture('twitter', 'post-with-comments.html');
     const result = twitterAdapter.parse(html);
 
-    expect(result.text).toBe('Sharing our Q3 roadmap today — feedback welcome!');
+    expect(result.text).toBe(
+      'Sharing our Q3 roadmap today — feedback welcome!'
+    );
     expect(result.visibleSignals.comments).toEqual([
       'Looks great, congrats on the launch!',
       'Any plans to expand to mobile?',
@@ -110,7 +116,7 @@ describe('linkedin adapter', () => {
     const result = linkedinAdapter.parse(html);
 
     expect(result.text).toBe(
-      "Thrilled to share that our team just closed out a great quarter. Grateful for everyone who made it happen."
+      'Thrilled to share that our team just closed out a great quarter. Grateful for everyone who made it happen.'
     );
     expect(result.visibleSignals.reactionCount).toBe(312);
     expect(result.visibleSignals.commentCount).toBe(18);

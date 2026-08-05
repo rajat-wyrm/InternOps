@@ -46,19 +46,37 @@ function parse(rawHtml) {
   // The first tweet article on the page is the main post; any
   // subsequent ones (marked data-reply) are visible public replies.
   const mainArticle = articles.first();
-  const mainText = mainArticle.find('[data-testid="tweetText"]').first().text().trim();
+  const mainText = mainArticle
+    .find('[data-testid="tweetText"]')
+    .first()
+    .text()
+    .trim();
   result.text = mainText || null;
 
   const likeLabel = mainArticle.find('[data-testid="like"]').attr('aria-label');
-  const replyLabel = mainArticle.find('[data-testid="reply"]').attr('aria-label');
-  const repostLabel = mainArticle.find('[data-testid="retweet"]').attr('aria-label');
+  const replyLabel = mainArticle
+    .find('[data-testid="reply"]')
+    .attr('aria-label');
+  const repostLabel = mainArticle
+    .find('[data-testid="retweet"]')
+    .attr('aria-label');
 
-  result.visibleSignals.likeCount = parseCount(likeLabel && likeLabel.split(' ')[0]);
-  result.visibleSignals.replyCount = parseCount(replyLabel && replyLabel.split(' ')[0]);
-  result.visibleSignals.repostCount = parseCount(repostLabel && repostLabel.split(' ')[0]);
+  result.visibleSignals.likeCount = parseCount(
+    likeLabel && likeLabel.split(' ')[0]
+  );
+  result.visibleSignals.replyCount = parseCount(
+    replyLabel && replyLabel.split(' ')[0]
+  );
+  result.visibleSignals.repostCount = parseCount(
+    repostLabel && repostLabel.split(' ')[0]
+  );
 
   articles.slice(1).each((_, el) => {
-    const replyText = $(el).find('[data-testid="tweetText"]').first().text().trim();
+    const replyText = $(el)
+      .find('[data-testid="tweetText"]')
+      .first()
+      .text()
+      .trim();
     if (replyText) {
       result.visibleSignals.comments.push(replyText);
     }
