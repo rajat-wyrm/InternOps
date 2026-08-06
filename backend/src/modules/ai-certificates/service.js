@@ -1,5 +1,7 @@
 const path = require('path');
 const fs = require('fs');
+const logger = require('../../logger.js');
+const metrics = require('../../utils/metrics');
 
 // ============================================================
 // Helper: Call Python AI server (using native fetch)
@@ -8,23 +10,42 @@ const fs = require('fs');
 const PYTHON_SERVER_URL =
   process.env.PYTHON_AI_SERVER_URL || 'http://localhost:8080';
 
-async function callPythonEndpoint(endpoint, data, method = 'POST') {
-  const url = `${PYTHON_SERVER_URL}${endpoint}`;
-  const options = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(30000),
-  };
+async function generateContent(data) {
+  try {
+    return await callPythonEndpoint('/api/generate-content', data);
+  } catch (error) {
+    logger.warn(
+      {
+        err: error,
+        endpoint: '/api/generate-content',
+      },
+      'Python AI server failed, falling back to aiProviderService'
+    );
 
-  if (method !== 'GET' && method !== 'HEAD') {
-    options.body = JSON.stringify(data);
-  }
+    const aiProvider = require('../../services/aiProviderService');
+    const prompt = `Generate ${data.content_type} content with ${data.tone} tone...`;
 
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    throw new Error(`Python server returned ${response.status}`);
+    try {
+      const result = await aiProvider.generate(prompt);
+
+      return {
+        status: 'success',
+        generated_text: result,
+        _fallback_tier: 'ai_provider',
+      };
+    } catch (aiError) {
+      logger.error(
+        { err: aiError },
+        'All AI generation paths failed, returning static fallback content'
+      );
+
+      return {
+        status: 'degraded',
+        generated_text: `This is a professional ${data.content_type} with a ${data.tone} tone.`,
+        _fallback_tier: 'static',
+      };
+    }
   }
-  return response.json();
 }
 
 // ============================================================
@@ -42,17 +63,17 @@ async function validateCertificate(data) {
     });
     return result;
   } catch (error) {
-    // Fallback to basic validation if Python server is not available
+    logger.error(
+      { err: aiError },
+      'All AI generation paths failed, returning static fallback content'
+    );
+
+    metrics.recordAIFallback('/api/generate-content', 'static');
+
     return {
-      status: 'success',
-      text: `${data.name} from ${data.company} - ${data.achievement}`,
-      font_size: 40,
-      cleaned: {
-        name: data.name,
-        company: data.company,
-        achievement: data.achievement,
-        date: data.date,
-      },
+      status: 'degraded',
+      statement: `This is a professional ${data.content_type} with a ${data.tone} tone.`,
+      _fallback_tier: 'static',
     };
   }
 }
@@ -71,26 +92,15 @@ async function generateAchievementStatement(data) {
     });
     return result;
   } catch (error) {
-    // Fallback to AI provider service
-    const aiProvider = require('../../services/aiProviderService');
+    logger.warn(
+      {
+        err: error,
+        endpoint: '/api/generate-text',
+      },
+      'Python AI server failed, falling back to aiProviderService'
+    );
 
-    const prompt = `Generate a professional achievement statement for:
-Recipient: ${data.recipient_name}
-Recognition Type: ${data.recognition_type}
-Achievement: ${data.core_achievement}
-Tone: ${data.desired_tone}
-
-Provide a concise, professional achievement statement (2-3 sentences).`;
-
-    try {
-      const result = await aiProvider.generate(prompt);
-      return { status: 'success', statement: result };
-    } catch (aiError) {
-      return {
-        status: 'success',
-        statement: `This certificate is awarded to ${data.recipient_name} in recognition of their outstanding ${data.core_achievement}.`,
-      };
-    }
+    metrics.recordAIFallback('/api/generate-text', 'python');
   }
 }
 
@@ -115,9 +125,16 @@ Provide well-structured content appropriate for a certificate.`;
       const result = await aiProvider.generate(prompt);
       return { status: 'success', generated_text: result };
     } catch (aiError) {
+      logger.error(
+        { err: aiError },
+        'All AI generation paths failed, returning static fallback content'
+      );
+
+      metrics.recordAIFallback('/api/generate-text', 'static');
       return {
-        status: 'success',
-        generated_text: `This is a professional ${data.content_type} with a ${data.tone} tone.`,
+        status: 'degraded',
+        statement: `This is a professional ${data.content_type} with a ${data.tone} tone.`,
+        _fallback_tier: 'static',
       };
     }
   }
@@ -160,9 +177,21 @@ Which template would be most appropriate? Return just the template name.`;
         top_3: templates.slice(0, 3),
       };
     } catch (aiError) {
+      logger.warn(
+        {
+          err: error,
+          endpoint: '/api/generate-text',
+        },
+        'Python AI server failed, falling back to aiProviderService'
+      );
+
+      metrics.recordAIFallback('/api/generate-text', 'python');
+
+      const aiProvider = require('../../services/aiProviderService');
       return {
-        best_match: templates[0],
-        top_3: templates.slice(0, 3),
+        status: 'degraded',
+        statement: `This is a professional ${data.content_type} with a ${data.tone} tone.`,
+        _fallback_tier: 'static',
       };
     }
   }
@@ -247,6 +276,15 @@ async function runFullPipeline(data) {
     });
     return result;
   } catch (error) {
+    logger.warn(
+      {
+        err: error,
+        endpoint: '/api/pipeline',
+      },
+      'Python AI server failed, falling back to step-by-step processing'
+    );
+
+    metrics.recordAIFallback('/api/pipeline', 'python');
     // Fallback to step-by-step processing
     const validation = await validateCertificate({
       name: data.name,
@@ -351,6 +389,16 @@ async function startBulkAIGeneration(data, userId) {
 
       results.generated++;
     } catch (err) {
+      logger.warn(
+        {
+          err: error,
+          endpoint: '/api/pipeline',
+        },
+        'Python AI server failed, falling back to step-by-step processing'
+      );
+
+      metrics.recordAIFallback('/api/pipeline', 'python');
+
       await repo.createBulkJobItem({
         bulk_job_id: job.id,
         recipient_name: certData.recipient_name,
@@ -500,6 +548,15 @@ Return ONLY a JSON object with keys: "title", "body", "closing", "language". No 
       .trim();
     return { language: data.language, ...JSON.parse(cleanText) };
   } catch {
+    logger.warn(
+      {
+        err: error,
+        endpoint: '/api/pipeline',
+      },
+      'Python AI server failed, falling back to step-by-step processing'
+    );
+
+    metrics.recordAIFallback('/api/pipeline', 'python');
     return {
       language: data.language,
       title: `Certificate of ${data.certificate_type || 'Achievement'}`,

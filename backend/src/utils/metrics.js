@@ -1,4 +1,9 @@
 const client = require('prom-client');
+const aiFallbackCounter = new client.Counter({
+  name: 'ai_fallback_total',
+  help: 'Number of times the AI service fell back from the Python server',
+  labelNames: ['endpoint', 'tier'],
+});
 
 client.collectDefaultMetrics();
 
@@ -25,6 +30,12 @@ const aiTokenUsage = new client.Counter({
   name: 'ai_service_token_usage_total',
   help: 'Total tokens consumed by the AI service provider',
   labelNames: ['service'],
+});
+
+const aiFallbackCounter = new client.Counter({
+  name: 'ai_fallback_total',
+  help: 'Number of times the AI service fell back from the Python server',
+  labelNames: ['endpoint', 'tier'],
 });
 
 const aiServiceErrors = new client.Counter({
@@ -62,6 +73,10 @@ function recordTokenUsage(tokens) {
   }
 }
 
+function recordAIFallback(endpoint, tier) {
+  aiFallbackCounter.labels(endpoint, tier).inc();
+}
+
 function recordError(serviceName) {
   aiServiceErrors.labels(serviceName).inc();
 }
@@ -72,6 +87,7 @@ module.exports = {
   observeHttpRequest,
   recordLatency,
   recordTokenUsage,
+  recordAIFallback,
   recordError,
   metricsEndpoint: async (req, reply) => {
     reply.type('text/plain');
