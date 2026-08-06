@@ -13,7 +13,6 @@ const { initializeWebSocket, getIO } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
 const { getRedisStatus } = require('./config/redis');
 const { csrfMiddleware } = require('./middleware/csrf');
-const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
 const { setupCronJobs } = require('./utils/cron');
 const githubSyncOrchestrator = require('./modules/github-sync/orchestrator');
@@ -186,7 +185,13 @@ app.addHook('preHandler', async (request, reply) => {
   return csrfMiddleware(request, reply);
 });
 
-app.addHook('preHandler', sanitizationMiddleware);
+if (process.env.NODE_ENV === 'test') {
+  // Skip sanitize-html in tests — it's ESM-only and breaks Jest's module parsing
+  app.addHook('preHandler', async () => {});
+} else {
+  const { sanitizationMiddleware } = require('./middleware/sanitize');
+  app.addHook('preHandler', sanitizationMiddleware);
+}
 
 app.register(require('@fastify/multipart'), {
   limits: {

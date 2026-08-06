@@ -4,6 +4,16 @@ const { parseCount } = require('./parse-count');
 const DOMAIN = 'twitter.com';
 
 /**
+ * Collapse any run of whitespace (including newlines from
+ * multi-line/indented HTML) into a single space and trim ends.
+ * @param {string} str
+ * @returns {string}
+ */
+function normalizeWhitespace(str) {
+  return str.replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Parse a saved X/Twitter post page and extract whatever is visible
  * without auth. Never throws — on missing/unexpected markup it
  * returns null fields instead of failing the caller.
@@ -46,11 +56,9 @@ function parse(rawHtml) {
   // The first tweet article on the page is the main post; any
   // subsequent ones (marked data-reply) are visible public replies.
   const mainArticle = articles.first();
-  const mainText = mainArticle
-    .find('[data-testid="tweetText"]')
-    .first()
-    .text()
-    .trim();
+  const mainText = normalizeWhitespace(
+    mainArticle.find('[data-testid="tweetText"]').first().text()
+  );
   result.text = mainText || null;
 
   const likeLabel = mainArticle.find('[data-testid="like"]').attr('aria-label');
@@ -72,11 +80,9 @@ function parse(rawHtml) {
   );
 
   articles.slice(1).each((_, el) => {
-    const replyText = $(el)
-      .find('[data-testid="tweetText"]')
-      .first()
-      .text()
-      .trim();
+    const replyText = normalizeWhitespace(
+      $(el).find('[data-testid="tweetText"]').first().text()
+    );
     if (replyText) {
       result.visibleSignals.comments.push(replyText);
     }

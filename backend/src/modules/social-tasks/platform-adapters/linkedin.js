@@ -4,6 +4,16 @@ const { parseCount } = require('./parse-count');
 const DOMAIN = 'linkedin.com';
 
 /**
+ * Collapse any run of whitespace (including newlines from
+ * multi-line/indented HTML) into a single space and trim ends.
+ * @param {string} str
+ * @returns {string}
+ */
+function normalizeWhitespace(str) {
+  return str.replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Parse a saved LinkedIn post page and extract whatever is visible
  * without auth. Never throws — on missing/unexpected markup it
  * returns null fields instead of failing the caller.
@@ -43,11 +53,9 @@ function parse(rawHtml) {
     return result;
   }
 
-  const postText = post
-    .find('.feed-shared-update-v2__description .break-words')
-    .first()
-    .text()
-    .trim();
+  const postText = normalizeWhitespace(
+    post.find('.feed-shared-update-v2__description .break-words').first().text()
+  );
   result.text = postText || null;
 
   const reactionText = post
@@ -72,7 +80,7 @@ function parse(rawHtml) {
   result.visibleSignals.shareCount = parseCount(shareText.split(' ')[0]);
 
   post.find('.comments-comment-item__main-content').each((_, el) => {
-    const commentBody = $(el).text().trim();
+    const commentBody = normalizeWhitespace($(el).text());
     if (commentBody) {
       result.visibleSignals.comments.push(commentBody);
     }
