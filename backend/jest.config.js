@@ -49,4 +49,10 @@ module.exports = {
   moduleNameMapper: {
     '^../../../ai-service/(.*)$': '<rootDir>/tests/__mocks__/ai-service/$1',
   },
+
+  // sanitize-html depends on htmlparser2, which ships an ESM-only build.
+  // Jest ignores node_modules for transformation by default — this
+  // carves out an exception so those two packages get transpiled to
+  // CommonJS via babel-jest instead of failing to parse.
+  transformIgnorePatterns: ['node_modules/(?!(sanitize-html|htmlparser2)/)'],
 };

@@ -185,13 +185,8 @@ app.addHook('preHandler', async (request, reply) => {
   return csrfMiddleware(request, reply);
 });
 
-if (process.env.NODE_ENV === 'test') {
-  // Skip sanitize-html in tests — it's ESM-only and breaks Jest's module parsing
-  app.addHook('preHandler', async () => {});
-} else {
-  const { sanitizationMiddleware } = require('./middleware/sanitize');
-  app.addHook('preHandler', sanitizationMiddleware);
-}
+const { sanitizationMiddleware } = require('./middleware/sanitize');
+app.addHook('preHandler', sanitizationMiddleware);
 
 app.register(require('@fastify/multipart'), {
   limits: {

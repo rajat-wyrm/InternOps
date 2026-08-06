@@ -1,5 +1,14 @@
 // Basic input sanitization for common injection patterns
-const sanitizeHtml = require('sanitize-html');
+// sanitize-html is lazy-loaded (see getSanitizeHtml below) rather than
+// required at module load time, so requiring this file — e.g. from
+// app.js or a test file — never triggers Jest to parse the package.
+let _sanitizeHtml;
+function getSanitizeHtml() {
+  if (!_sanitizeHtml) {
+    _sanitizeHtml = require('sanitize-html');
+  }
+  return _sanitizeHtml;
+}
 
 const ENTITY_DECODE_MAP = {
   '&amp;': '&',
@@ -118,6 +127,7 @@ function isPlainObject(val) {
 }
 
 function sanitizeString(val, isSafeField) {
+  const sanitizeHtml = getSanitizeHtml();
   if (isSafeField) {
     return sanitizeHtml(val, {
       allowedTags: [],
