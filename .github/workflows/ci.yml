@@ -70,6 +70,8 @@ jobs:
         run: cd backend && npm run seed
 
       - name: Run Jest tests
+        env:
+          NODE_OPTIONS: --experimental-vm-modules
         run: cd backend && npm test -- --forceExit --detectOpenHandles --runInBand
 
       - name: Run Lint
