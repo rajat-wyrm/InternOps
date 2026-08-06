@@ -1,0 +1,27 @@
+<!-- Synthetic fixture: post plus two visible public replies. -->
+<html>
+  <body>
+    <article data-testid="tweet">
+      <div data-testid="User-Name">
+        <span>Sample Account</span>
+        <span>@sample_account</span>
+      </div>
+      <div data-testid="tweetText">
+        <span>Sharing our Q3 roadmap today — feedback welcome!</span>
+      </div>
+      <div data-testid="reply" aria-label="2 Replies">2</div>
+      <div data-testid="retweet" aria-label="5 reposts">5</div>
+      <div data-testid="like" aria-label="40 Likes">40</div>
+    </article>
+    <article data-testid="tweet" data-reply="true">
+      <div data-testid="tweetText">
+        <span>Looks great, congrats on the launch!</span>
+      </div>
+    </article>
+    <article data-testid="tweet" data-reply="true">
+      <div data-testid="tweetText">
+        <span>Any plans to expand to mobile?</span>
+      </div>
+    </article>
+  </body>
+</html>

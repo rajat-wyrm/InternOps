@@ -51,6 +51,7 @@
     "*": "prettier --write --ignore-unknown"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
     "sonner": "^2.0.7"
   }
 }
