@@ -15,6 +15,18 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: .
     env_file:
@@ -24,10 +36,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 5000
       DATABASE_URL: postgresql://internops:internops123@postgres:5432/internops
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_TLS: 'false'
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
     volumes:
       - ./uploads:/app/uploads
@@ -35,3 +52,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

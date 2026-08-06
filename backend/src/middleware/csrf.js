@@ -3,6 +3,7 @@ const config = require('../config');
 const { verifyAccessToken } = require('../utils/tokens');
 const SESSION_COOKIE = 'csrf-sid';
 const TOKEN_COOKIE = 'csrf-token';
+const ONE_DAY_IN_SECONDS = 24 * 60 * 60;
 
 function getSecret() {
   const secret = config.jwt?.secret;
@@ -92,7 +93,11 @@ function isTrustedRequestOrigin(request) {
   const candidates = [originHeader, refererHeader].filter(Boolean);
 
   if (!candidates.length) {
-    return false;
+    request.log?.warn(
+      { url: request.url, method: request.method },
+      'CSRF: no Origin or Referer header present — relying on CSRF token and bearer validation'
+    );
+    return true;
   }
 
   const trustedOrigins = new Set(getTrustedOrigins());
@@ -139,8 +144,9 @@ function writeSession(reply, sessionId, userId = null) {
   reply.setCookie(SESSION_COOKIE, signed, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
+    maxAge: ONE_DAY_IN_SECONDS, // 24 hours
   });
 }
 
@@ -158,8 +164,9 @@ function rotateAndSetCsrf(request, reply, userId = null) {
   reply.setCookie(TOKEN_COOKIE, csrfToken, {
     httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
+    maxAge: ONE_DAY_IN_SECONDS, // 24 hours
   });
 
   return csrfToken;
@@ -210,8 +217,9 @@ function generateToken(request, reply) {
   reply.setCookie('csrf-token', token, {
     httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
+    maxAge: ONE_DAY_IN_SECONDS,
   });
 
   return token;
@@ -223,6 +231,7 @@ const EXEMPT = [
   '/api/v1/auth/logout',
   '/api/v1/auth/forgot-password',
   '/api/v1/auth/reset-password',
+  '/api/v1/github/webhook',
   '/docs',
   '/docs/json',
 ];

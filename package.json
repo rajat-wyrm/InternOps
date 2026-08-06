@@ -13,7 +13,7 @@
   },
   "scripts": {
     "test": "npm run test --workspace=backend",
-    "dev": "concurrently \"npm run dev --workspace=frontend\" \"npm run dev --workspace=backend\"",
+    "dev": "concurrently \"npm run dev --workspace=frontend\" \"npm run dev --workspace=backend\" \"cd ai-service && uv run python main.py\"",
     "lint": "npm run lint --workspaces --if-present",
     "format": "prettier --write .",
     "clean": "rimraf node_modules && npm run clean --workspaces --if-present",
@@ -38,7 +38,10 @@
   },
   "homepage": "https://github.com/rajat-wyrm/InternOps#readme",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "concurrently": "^10.0.3",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.9.5",

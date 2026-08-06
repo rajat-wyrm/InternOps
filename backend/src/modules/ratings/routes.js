@@ -11,13 +11,16 @@ const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const { send: sendNotification } = require('../notifications/repository');
 const { z } = require('zod');
 const suggestionRoutes = require('./suggestion.routes');
+const overallService = require('./overall.service');
 
 module.exports = async function ratingsRoutes(fastify) {
   await fastify.register(suggestionRoutes);
+
   // Submit a rating for someone in your team (immutable history row).
   fastify.post(
     '/',
     {
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
       schema: { tags: ['Ratings'], description: 'Submit a rating' },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'), sanitize],
     },
@@ -49,6 +52,7 @@ module.exports = async function ratingsRoutes(fastify) {
         score,
         remarks || null
       );
+
       req.auditOnResponse = {
         userId: req.user.id,
         ...extractRequestInfo(req),
@@ -57,10 +61,12 @@ module.exports = async function ratingsRoutes(fastify) {
         resourceId: rating.id,
         details: { target: rated_user_id, score },
       };
+
       await sendNotification(
         rated_user_id,
         `You received a new rating: ${score}/10.`
       ).catch(() => {});
+
       await notifyUser(rating.rated_user_id, 'rating-received', {
         rating,
       }).catch(() => {});
@@ -68,15 +74,66 @@ module.exports = async function ratingsRoutes(fastify) {
       return reply.status(201).send(rating);
     }
   );
+
   // View a user's rating history (must be self or within hierarchy).
   fastify.get(
     '/:userId',
     {
-      schema: { tags: ['Ratings'], description: 'Get rating history' },
+      schema: {
+        tags: ['Ratings'],
+        description: 'Get rating history',
+      },
       preHandler: [auth, ownership('userId')],
     },
     async (req) => {
-      return repo.getRatings(req.params.userId);
+      const { userId } = z
+        .object({ userId: z.string().uuid() })
+        .parse(req.params);
+      return repo.getRatings(userId);
+    }
+  );
+
+  // View overall performance summary
+  fastify.get(
+    '/:userId/overall-summary',
+    {
+      schema: {
+        tags: ['Ratings'],
+        description: 'Get overall performance summary',
+      },
+      preHandler: [auth, ownership('userId')],
+    },
+    async (req, reply) => {
+      const { userId } = z
+        .object({
+          userId: z.string().uuid(),
+        })
+        .parse(req.params);
+      try {
+        return await overallService.generateOverallSummary(userId);
+      } catch (error) {
+        return reply.status(500).send({
+          error: 'Failed to generate overall summary',
+        });
+      }
+    }
+  );
+
+  // View ratings for all users in a department (Admin / Manager)
+  fastify.get(
+    '/department/:deptId',
+    {
+      schema: {
+        tags: ['Ratings'],
+        description: 'Get ratings for a department',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')],
+    },
+    async (req) => {
+      const { deptId } = z
+        .object({ deptId: z.string().uuid() })
+        .parse(req.params);
+      return repo.getRatingsByDepartment(deptId);
     }
   );
 };

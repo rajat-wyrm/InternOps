@@ -25,16 +25,10 @@ import {
   Sparkles,
   Zap,
   ToggleRight,
+  GitPullRequest,
 } from 'lucide-react';
 
-import {
-  useState,
-  useEffect,
-  useRef,
-  Suspense,
-  memo,
-  useCallback,
-} from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
@@ -61,15 +55,20 @@ const nav = [
     path: '/attendance',
     label: 'Attendance',
     icon: CalendarCheck,
-    excludeRoles: ['ADMIN'],
+    excludedRoles: ADMIN_ONLY_ROLES,
   },
-  { path: '/ratings', label: 'Ratings', icon: Star, excludeRoles: ['ADMIN'] },
-  { path: '/tasks', label: 'Tasks', icon: Target, excludeRoles: ['ADMIN'] },
+  {
+    path: '/ratings',
+    label: 'Ratings',
+    icon: Star,
+    excludedRoles: ADMIN_ONLY_ROLES,
+  },
+  { path: '/tasks', label: 'Tasks', icon: Target },
   {
     path: '/meetings',
     label: 'Meetings',
     icon: Video,
-    excludeRoles: ['ADMIN'],
+    excludedRoles: ADMIN_ONLY_ROLES,
   },
   { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/profile', label: 'Profile', icon: User },
@@ -164,15 +163,20 @@ const adminNav = [
     icon: ToggleRight,
     allowedRoles: ADMIN_ONLY_ROLES,
   },
+  {
+    path: '/github-sync',
+    label: 'GitHub Sync',
+    icon: GitPullRequest,
+    allowedRoles: ADMIN_ONLY_ROLES,
+    featureFlag: 'GITHUB_ISSUE_SYNC',
+  },
 ];
 
 const FULL_LOGO_SRC = '/UptoSkills.webp';
 const MINI_LOGO_SRC = '/Uptoskills_log_fevicon.png';
 
 function canShowNavItem(item, role, flags) {
-  if (item.excludeRoles && item.excludeRoles.includes(role)) {
-    return false;
-  }
+  if (item.excludedRoles && item.excludedRoles.includes(role)) return false;
   if (!item.allowedRoles) {
     if (item.featureFlag) return flags[item.featureFlag] === true;
     return true;
@@ -210,6 +214,7 @@ const NavLink = memo(({ n, active, collapsed, onLinkClick }) => {
     </Link>
   );
 });
+NavLink.displayName = 'NavLink';
 
 export default function DashboardLayout() {
   const loc = useLocation();
@@ -241,7 +246,7 @@ export default function DashboardLayout() {
     queryFn: () => api.get('/users/me').then((r) => r.data),
   });
 
-  const displayName = me?.full_name || user?.full_name || user?.email;
+  const displayName = me?.full_name || user?.fullName || user?.email;
   const avatarUrl = me?.avatar_url || null;
 
   useEffect(() => {
@@ -253,9 +258,14 @@ export default function DashboardLayout() {
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }, [dark]);
 
-  const visibleNav = nav.filter((item) => canShowNavItem(item, role, flags));
-  const visibleAdminNav = adminNav.filter((item) =>
-    canShowNavItem(item, role, flags)
+  const visibleNav = useMemo(
+    () => nav.filter((item) => canShowNavItem(item, role, flags)),
+    [role, flags]
+  );
+
+  const visibleAdminNav = useMemo(
+    () => adminNav.filter((item) => canShowNavItem(item, role, flags)),
+    [role, flags]
   );
 
   const allItems = [...visibleNav, ...visibleAdminNav];
@@ -340,15 +350,77 @@ export default function DashboardLayout() {
               {collapsed && (
                 <div className="my-3 mx-3 border-t border-white/10" />
               )}
-              {visibleAdminNav.map((n) => (
-                <NavLink
-                  key={n.path}
-                  n={n}
-                  active={loc.pathname === n.path}
-                  collapsed={collapsed}
-                  onLinkClick={saveSidebarScroll}
-                />
-              ))}
+              {visibleAdminNav.map((n) => {
+                const isDeptNav = n.path === '/departments';
+                const deptMatch = loc.pathname.match(
+                  /\/(?:admin\/)?departments\/([^/]+)/
+                );
+                const activeDeptId = deptMatch ? deptMatch[1] : null;
+
+                return (
+                  <div key={n.path} className="space-y-1">
+                    <NavLink
+                      n={n}
+                      active={loc.pathname === n.path}
+                      collapsed={collapsed}
+                      onLinkClick={saveSidebarScroll}
+                    />
+                    {isDeptNav && activeDeptId && (
+                      <div
+                        className={`space-y-1 ${collapsed ? 'pl-0' : 'pl-4'} animate-fade-in`}
+                      >
+                        <Link
+                          to={`/admin/departments/${activeDeptId}/attendance`}
+                          className={`flex items-center gap-2 rounded-xl text-xs font-bold transition-all py-2 ${
+                            collapsed ? 'justify-center px-0' : 'px-3'
+                          } ${
+                            loc.pathname.includes('/attendance')
+                              ? 'bg-white/20 text-white shadow-sm'
+                              : 'text-indigo-200/80 hover:bg-white/10 hover:text-white'
+                          }`}
+                          title="Department Attendance"
+                          onClick={saveSidebarScroll}
+                        >
+                          <CalendarCheck className="w-4 h-4 shrink-0" />
+                          {!collapsed && <span>Attendance</span>}
+                        </Link>
+
+                        <Link
+                          to={`/admin/departments/${activeDeptId}/ratings`}
+                          className={`flex items-center gap-2 rounded-xl text-xs font-bold transition-all py-2 ${
+                            collapsed ? 'justify-center px-0' : 'px-3'
+                          } ${
+                            loc.pathname.includes('/ratings')
+                              ? 'bg-white/20 text-white shadow-sm'
+                              : 'text-indigo-200/80 hover:bg-white/10 hover:text-white'
+                          }`}
+                          title="Department Ratings"
+                          onClick={saveSidebarScroll}
+                        >
+                          <Star className="w-4 h-4 shrink-0" />
+                          {!collapsed && <span>Ratings</span>}
+                        </Link>
+
+                        <Link
+                          to={`/admin/departments/${activeDeptId}/tasks`}
+                          className={`flex items-center gap-2 rounded-xl text-xs font-bold transition-all py-2 ${
+                            collapsed ? 'justify-center px-0' : 'px-3'
+                          } ${
+                            loc.pathname.includes('/tasks')
+                              ? 'bg-white/20 text-white shadow-sm'
+                              : 'text-indigo-200/80 hover:bg-white/10 hover:text-white'
+                          }`}
+                          title="Department Tasks"
+                          onClick={saveSidebarScroll}
+                        >
+                          <Target className="w-4 h-4 shrink-0" />
+                          {!collapsed && <span>Tasks</span>}
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </>
           )}
         </nav>
@@ -437,18 +509,7 @@ export default function DashboardLayout() {
           </div>
         </header>
         <main className="flex-1 overflow-auto p-5 sm:p-6">
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center min-h-[50vh] w-full">
-                <div className="relative w-12 h-12 animate-fade-in">
-                  <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-white/5"></div>
-                  <div className="absolute inset-0 rounded-full border-4 border-t-transparent border-r-transparent border-indigo-600 dark:border-indigo-400 animate-spin"></div>
-                </div>
-              </div>
-            }
-          >
-            <Outlet />
-          </Suspense>
+          <Outlet />
         </main>
       </div>
 
