@@ -1,120 +1,90 @@
-﻿const pool = require('../../config/db');
+﻿// backend/src/modules/users/repository.js
 
-async function listUsersByRole(role) {
-  return pool.query(
-    'SELECT id,email,role,full_name,suspended FROM users WHERE deleted_at IS NULL AND role=$1',
-    [role]
-  );
-}
-
-async function listUsersPaginated({
-  role,
-  suspended,
-  search,
-  page,
-  limit,
-  offset,
-}) {
-  const where = ['deleted_at IS NULL'];
-  const params = [];
-
-  if (search) {
-    params.push(`%${search}%`);
-    where.push(
-      `(full_name ILIKE $${params.length} OR email ILIKE $${params.length})`
-    );
+class UserRepository {
+  constructor(db) {
+    this.db = db; // Database pool from config/db
   }
 
-  if (role) {
-    params.push(role);
-    where.push(`role = $${params.length}`);
+  async findPaginated({ page, limit, search, sortBy, sortOrder }) {
+    const offset = (page - 1) * limit;
+    let whereClause = '';
+    const params = [];
+
+    // Build WHERE clause for search
+    if (search) {
+      whereClause = `WHERE (u.name ILIKE $1 OR u.email ILIKE $1)`;
+      params.push(`%${search}%`);
+    }
+
+    // Whitelist allowed sort columns to prevent SQL injection
+    const allowedSortColumns = ['name', 'created_at', 'last_login'];
+    const orderColumn = allowedSortColumns.includes(sortBy)
+      ? sortBy
+      : 'created_at';
+    const orderDirection = sortOrder === 'desc' ? 'DESC' : 'ASC';
+
+    // Get total count for pagination metadata
+    const countQuery = `SELECT COUNT(*) as total FROM users u ${whereClause}`;
+    const totalResult = await this.db.query(countQuery, params);
+    const total = parseInt(totalResult.rows[0].total, 10);
+
+    // Get paginated and sorted data
+    const dataQuery = `
+      SELECT u.id, u.name, u.email, u.role, u.created_at, u.last_login
+      FROM users u
+      ${whereClause}
+      ORDER BY ${orderColumn} ${orderDirection}
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `;
+    const dataParams = [...params, limit, offset];
+    const dataResult = await this.db.query(dataQuery, dataParams);
+
+    return {
+      data: dataResult.rows,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
-  if (typeof suspended === 'boolean') {
-    params.push(suspended);
-    where.push(`suspended = $${params.length}`);
+  async findById(id) {
+    const query = 'SELECT * FROM users WHERE id = $1';
+    const result = await this.db.query(query, [id]);
+    return result.rows[0] || null;
   }
 
-  const whereSql = `WHERE ${where.join(' AND ')}`;
+  async create(userData) {
+    const { name, email, password, role = 'INTERN' } = userData;
+    const query = `
+      INSERT INTO users (name, email, password, role, created_at)
+      VALUES ($1, $2, $3, $4, NOW())
+      RETURNING id, name, email, role, created_at
+    `;
+    const result = await this.db.query(query, [name, email, password, role]);
+    return result.rows[0];
+  }
 
-  const dataSql = `
-    SELECT id, email, role, full_name, suspended, avatar_url, created_at
-    FROM users
-    ${whereSql}
-    ORDER BY created_at DESC
-    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-  `;
+  async update(id, updates) {
+    const { name, email, role } = updates;
+    const query = `
+      UPDATE users 
+      SET name = COALESCE($1, name), 
+          email = COALESCE($2, email), 
+          role = COALESCE($3, role),
+          updated_at = NOW()
+      WHERE id = $4
+      RETURNING id, name, email, role, created_at, updated_at
+    `;
+    const result = await this.db.query(query, [name, email, role, id]);
+    return result.rows[0] || null;
+  }
 
-  const countSql = `
-    SELECT COUNT(*)::int AS total
-    FROM users
-    ${whereSql}
-  `;
-
-  const [dataRes, countRes] = await Promise.all([
-    pool.query(dataSql, [...params, limit, offset]),
-    pool.query(countSql, params),
-  ]);
-
-  return {
-    data: dataRes.rows,
-    total: countRes.rows[0].total,
-    page,
-    limit,
-  };
+  async delete(id) {
+    const query = 'DELETE FROM users WHERE id = $1 RETURNING id';
+    const result = await this.db.query(query, [id]);
+    return result.rows[0] || null;
+  }
 }
 
-async function getUserById(id) {
-  return pool.query(
-    `SELECT id, email, role, full_name, suspended, avatar_url, created_at,
-            department_id, phone, college, course, year_of_study, position,
-            joining_date, internship_status, location, notes
-     FROM users WHERE id=$1 AND deleted_at IS NULL`,
-    [id]
-  );
-}
-
-async function suspendUser(id) {
-  await pool.query(
-    'UPDATE users SET suspended=TRUE, updated_at=NOW() WHERE id=$1',
-    [id]
-  );
-}
-
-async function activateUser(id) {
-  await pool.query(
-    'UPDATE users SET suspended=FALSE, updated_at=NOW() WHERE id=$1',
-    [id]
-  );
-}
-
-async function softDeleteUser(id) {
-  await pool.query(
-    'UPDATE users SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1',
-    [id]
-  );
-}
-
-async function countOtherActiveAdmins(id) {
-  const result = await pool.query(
-    `SELECT COUNT(*)::int AS total
-     FROM users
-     WHERE role = 'ADMIN'
-       AND suspended = FALSE
-       AND deleted_at IS NULL
-       AND id != $1`,
-    [id]
-  );
-
-  return result.rows[0].total;
-}
-
-module.exports = {
-  listUsersByRole,
-  listUsersPaginated,
-  getUserById,
-  suspendUser,
-  activateUser,
-  softDeleteUser,
-  countOtherActiveAdmins,
-};
+module.exports = UserRepository;
