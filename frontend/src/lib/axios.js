@@ -94,23 +94,25 @@ function notifyGlobalApiError(err) {
     return;
   }
 
-const status = err.response.status;
-const serverMessage = getApiErrorMessage(err.response.data);
+  const status = err.response.status;
+  const serverMessage = getApiErrorMessage(err.response.data);
 
-const statusMessages = {
-  400: 'Invalid request. Please check your input and try again.',
-  401: 'Your session has expired. Please sign in again.',
-  403: 'You do not have permission to perform this action.',
-  404: 'The requested resource was not found.',
-  429: 'Too many requests. Please wait a moment and try again.',
-};
+  const statusMessages = {
+    400: 'Invalid request. Please check your input and try again.',
+    401: 'Your session has expired. Please sign in again.',
+    403: 'You do not have permission to perform this action.',
+    404: 'The requested resource was not found.',
+    429: 'Too many requests. Please wait a moment and try again.',
+  };
 
-const message =
-  status >= 500
-    ? 'Something went wrong on our side. Please try again later.'
-    : statusMessages[status] || serverMessage || 'Request failed. Please try again.';
+  const message =
+    status >= 500
+      ? 'Something went wrong on our side. Please try again later.'
+      : statusMessages[status] ||
+        serverMessage ||
+        'Request failed. Please try again.';
 
-toast.error(message);
+  toast.error(message);
 }
 
 // The backend's CSRF guard requires the X-CSRF-Token header on mutating

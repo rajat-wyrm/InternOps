@@ -358,16 +358,16 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Validation error'
     );
-return reply.status(400).send({
-  success: false,
-  message: 'Validation failed',
-  code: 'VALIDATION_ERROR',
-  details: error.validation.map((v) => ({
-    path: v.instancePath || v.dataPath,
-    message: v.message,
-    keyword: v.keyword,
-  })),
-});
+    return reply.status(400).send({
+      success: false,
+      message: 'Validation failed',
+      code: 'VALIDATION_ERROR',
+      details: error.validation.map((v) => ({
+        path: v.instancePath || v.dataPath,
+        message: v.message,
+        keyword: v.keyword,
+      })),
+    });
   }
 
   if (error.name === 'ZodError' || Array.isArray(error.issues)) {
@@ -385,12 +385,12 @@ return reply.status(400).send({
       },
       'Zod validation error'
     );
-return reply.status(400).send({
-  success: false,
-  message: 'Validation failed',
-  code: 'VALIDATION_ERROR',
-  details: error.issues || [],
-});
+    return reply.status(400).send({
+      success: false,
+      message: 'Validation failed',
+      code: 'VALIDATION_ERROR',
+      details: error.issues || [],
+    });
   }
 
   const statusCode = error.statusCode || 500;
