@@ -12,7 +12,10 @@
 8. [Email Pipeline](#8-email-pipeline)
 9. [File Upload Flow](#9-file-upload-flow)
 10. [Database Migration](#10-database-migration)
-11. [Folder Structure](#11-folder-structure)
+11. [Feature Flags](#11-feature-flags)
+12. [AI Service](#12-ai-service)
+13. [GitHub Issue Sync](#13-github-issue-sync)
+14. [Folder Structure](#14-folder-structure)
 
 ---
 
@@ -25,6 +28,7 @@ InternOps is implemented as a split front-end / back-end application.
 - Database: PostgreSQL stores application data and migration metadata.
 - Authentication: JWT access and refresh tokens are used for session management.
 - WebSocket: Socket.IO is used for real-time notifications and user-specific channels.
+- AI Service: A standalone Python API handles LLM operations and integrations.
 - Email service: nodemailer-backed service loads templates and sends emails with retry and bounce handling.
 - File uploads: Fastify multipart upload with MIME and magic-byte validation, then stored on disk and recorded in PostgreSQL.
 
@@ -327,8 +331,43 @@ This structure ensures migrations are deterministic and prevents a modified migr
 
 ---
 
-## 11. Folder Structure
+## 11. Feature Flags
 
+InternOps uses a hybrid feature flag system for safe feature rollouts.
+
+- **Config Defaults**: Base flag rules (e.g. `enabled`, `rollout_pct`, `allowed_roles`) are hardcoded in `backend/src/modules/feature-flags/flags.config.js`.
+- **Database Overrides**: Operators can dynamically override flags at runtime using the `feature_flags` table (acting as kill-switches or dynamic toggles).
+- **Evaluation Order**: Database `enabled` check -> `rollout_pct` -> `allowed_roles` -> Config defaults.
+
+This allows deploying unstable features behind a flag and disabling them instantly in production if issues arise.
+
+---
+
+## 12. AI Service
+
+The AI architecture is decoupled from the main Node.js backend.
+
+- **Stack**: Built with Python 3.10+ and FastAPI.
+- **Responsibility**: Manages LLM integrations (Gemini, Groq) and handles compute-heavy prompt processing.
+- **Communication**: The Node.js backend communicates with the Python service over internal REST API calls.
+- **Caching**: AI responses can be cached via Redis to reduce API costs.
+
+---
+
+## 13. GitHub Issue Sync
+
+The `github_sync` module provides a two-way synchronization between InternOps tasks and GitHub Issues.
+
+- **Orchestrator**: Acts as the central brain managing polling and webhooks.
+- **Webhooks**: Fastify listens for incoming GitHub payloads, parsing them and updating local `social_tasks` asynchronously.
+- **Sync Logs**: Every sync attempt is recorded in `github_sync_log` for auditing and retry logic.
+- **Database Alignment**: New columns on `social_tasks` (like `github_issue_id` and `last_synced_at`) map local task states tightly to remote repository issues.
+
+---
+
+## 14. Folder Structure
+
+- `ai-service/` — Standalone Python AI API.
 - `backend/src/modules/` — feature-specific route, service, and repository code.
 - `backend/src/middleware/` — request-level middleware for auth, RBAC, CSRF, ownership, sanitization, and feature flags.
 - `backend/src/services/` — shared services such as email and AI provider integration.

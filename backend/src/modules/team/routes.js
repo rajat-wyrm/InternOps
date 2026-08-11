@@ -472,6 +472,58 @@ async function routes(fastify) {
       }
     }
   );
+
+  // Reset password of a member (within hierarchy).
+  fastify.patch(
+    '/members/:id/password',
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id'), sanitize],
+      schema: {
+        tags: ['Team'],
+        description: 'Update member password',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+        body: {
+          type: 'object',
+          required: ['password'],
+          properties: {
+            password: { type: 'string', minLength: 8 },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { password } = z
+        .object({ password: z.string().min(8) })
+        .parse(req.body);
+
+      const before = await repo.getMemberById(req.params.id);
+      if (!before) return reply.status(404).send({ error: 'Member not found' });
+
+      // Prevent changing own password here
+      if (req.params.id === req.user.id) {
+        return reply.status(400).send({
+          error:
+            'Please use the profile settings page to change your own password.',
+        });
+      }
+
+      const argon2 = require('argon2');
+      const hash = await argon2.hash(password);
+
+      const authRepo = require('../auth/repository');
+      await authRepo.updatePassword(req.params.id, hash);
+
+      await createAuditLog({
+        userId: req.user.id,
+        action: 'MEMBER_PASSWORD_CHANGED',
+        resourceType: 'user',
+        resourceId: req.params.id,
+        ...extractRequestInfo(req),
+      });
+
+      return { message: 'Password updated successfully' };
+    }
+  );
 }
 
 module.exports = routes;

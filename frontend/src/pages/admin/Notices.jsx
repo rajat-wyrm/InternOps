@@ -171,9 +171,9 @@ export default function Notices() {
 
   const notices = Array.isArray(noticesData)
     ? noticesData
-    : noticesData?.notices || [];
+    : noticesData?.data || [];
   // Backend se humein list mil rahi hai, toh array length se total items calculate kar lete hain
-  const totalNotices = noticesData?.count || notices.length || 0;
+  const totalNotices = noticesData?.total || notices.length || 0;
 
   const createMut = useMutation({
     mutationFn: (body) => api.post('/notices', body),

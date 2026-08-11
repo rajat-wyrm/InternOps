@@ -33,10 +33,10 @@ class OpenAIProvider(BaseAIProvider):
         self.timeout = timeout
         self.base_url = "https://api.openai.com/v1/chat/completions"
 
-    async def generate_text(self, prompt: str, temperature: float = 0.7, **kwargs) -> str:
+    async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
         payload = {
             "model": self.model_name,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,  # Pass the list directly!
             "temperature": temperature,
         }
         response_data = await self._send_request(payload)

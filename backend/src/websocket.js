@@ -37,10 +37,69 @@ function scheduleAuthTimeout(engineSocket, clientIp) {
 
 function initializeWebSocket(server, logger) {
   log = logger;
+
+  const corsOriginOption = Array.isArray(config.corsOrigin)
+    ? config.corsOrigin
+    : typeof config.corsOrigin === 'string' && config.corsOrigin.includes(',')
+      ? config.corsOrigin.split(',').map((o) => o.trim())
+      : config.corsOrigin;
+
   io = new Server(server, {
     cors: {
-      origin: config.corsOrigin,
+      origin: corsOriginOption,
       credentials: true,
+    },
+    allowRequest: (req, callback) => {
+      const url = new URL(req.url, 'http://localhost');
+      let token =
+        url.searchParams.get('token') ||
+        (req.headers.authorization &&
+        req.headers.authorization.startsWith('Bearer ')
+          ? req.headers.authorization.split(' ')[1]
+          : null);
+
+      if (!token && req.headers['sec-websocket-protocol']) {
+        try {
+          const protocols = req.headers['sec-websocket-protocol']
+            .split(',')
+            .map((p) => p.trim());
+          const jwtPattern = /^[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/;
+          const foundToken = protocols.find(
+            (p) => typeof p === 'string' && jwtPattern.test(p)
+          );
+          if (foundToken) {
+            token = foundToken;
+          }
+        } catch (err) {
+          log?.warn({ err }, 'Error parsing sec-websocket-protocol header');
+        }
+      }
+
+      if (token) {
+        try {
+          verifyAccessToken(token);
+        } catch (err) {
+          log?.warn(
+            {
+              err,
+              clientIp:
+                req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+            },
+            'WebSocket handshake authentication failed: invalid token'
+          );
+          return callback(new Error('Unauthorized'), false);
+        }
+      } else {
+        log?.warn(
+          {
+            clientIp:
+              req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+          },
+          'WebSocket handshake authentication failed: missing token'
+        );
+        return callback(new Error('Unauthorized'), false);
+      }
+      callback(null, true);
     },
   });
 
@@ -75,7 +134,34 @@ function initializeWebSocket(server, logger) {
 
   io.use((socket, next) => {
     const engineSocket = socket.conn;
-    const rawToken = socket.handshake?.auth?.token;
+    let rawToken =
+      socket.handshake?.auth?.token ||
+      socket.handshake?.query?.token ||
+      (socket.handshake?.headers?.authorization &&
+      socket.handshake.headers.authorization.startsWith('Bearer ')
+        ? socket.handshake.headers.authorization.split(' ')[1]
+        : null);
+
+    if (!rawToken && socket.handshake?.headers?.['sec-websocket-protocol']) {
+      try {
+        const protocols = socket.handshake.headers['sec-websocket-protocol']
+          .split(',')
+          .map((p) => p.trim());
+        const jwtPattern = /^[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/;
+        const foundToken = protocols.find(
+          (p) => typeof p === 'string' && jwtPattern.test(p)
+        );
+        if (foundToken) {
+          rawToken = foundToken;
+        }
+      } catch (err) {
+        log?.warn(
+          { err },
+          'Error parsing sec-websocket-protocol header in io.use'
+        );
+      }
+    }
+
     const token = typeof rawToken === 'string' ? rawToken : '';
     const clientIp =
       socket.handshake?.headers?.['x-forwarded-for'] ||
@@ -126,10 +212,26 @@ function initializeWebSocket(server, logger) {
       return;
     }
 
+    // Attach error listener to prevent process crashes
+    socket.on('error', (err) => {
+      log?.error({ err, userId: socket.userId }, 'WebSocket connection error');
+      socket.disconnect(true);
+    });
+
+    if (socket.conn) {
+      socket.conn.on('error', (err) => {
+        log?.error(
+          { err, userId: socket.userId },
+          'Underlying socket connection error'
+        );
+        socket.disconnect(true);
+      });
+    }
+
     socket.join(`user_${socket.userId}`);
     socket.on('disconnect', () => {
       cleanupPendingConnection(socket.conn);
-      log.info({ socketId: socket.id }, 'Client disconnected');
+      log?.info({ socketId: socket.id }, 'Client disconnected');
     });
   });
   return io;

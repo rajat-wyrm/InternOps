@@ -10,13 +10,25 @@ import {
   CalendarClock,
 } from 'lucide-react';
 import api from '../lib/axios';
-import { PageHeader, Card, Btn, EmptyState, Spinner } from '../components/ui';
-
+import {
+  PageHeader,
+  Card,
+  Btn,
+  EmptyState,
+  Spinner,
+  ApiErrorState,
+} from '../components/ui';
 export default function Sessions() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const { data: sessions, isLoading } = useQuery({
+  const {
+    data: sessions,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['sessions'],
     queryFn: () => api.get('/sessions/me').then((res) => res.data),
   });
@@ -118,6 +130,13 @@ export default function Sessions() {
 
       {isLoading ? (
         <Spinner />
+      ) : isError ? (
+        <ApiErrorState
+          error={error}
+          title="Failed to load sessions"
+          fallback="Unable to fetch your active sessions."
+          onRetry={refetch}
+        />
       ) : !sessions?.length ? (
         <EmptyState
           icon="💻"

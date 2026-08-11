@@ -2,16 +2,16 @@
 AI routes — Python/FastAPI port of ai_routes.js
 
 Split to match ai-service/app's layout (api/ + core/ + models/ + providers/):
-  - app/models/ai.py         -> request/response schemas
-  - app/core/auth.py          -> get_current_user (STUB)
-  - app/core/rbac.py           -> require_roles (STUB)
+  - app/models/ai.py          -> request/response schemas
+  - app/core/auth.py           -> get_current_user (STUB)
+  - app/core/rbac.py            -> require_roles (STUB)
   - app/core/rate_limit.py      -> enforce_rate_limit (STUB)
-  - app/core/usage.py            -> daily usage tracking (STUB)
-  - app/providers/*                -> base/gemini/openai adapters (real, from #1421)
+  - app/core/usage.py             -> daily usage tracking (STUB)
+  - app/providers/*                 -> base/gemini/openai adapters (real, from #1421)
   - app/providers/registry.py     -> provider selection (get_provider), added here
 
 `call_provider` below flattens the message list into a single prompt
-(see `_messages_to_prompt`) since BaseAIProvider.generate_text() doesn't
+(see `_messages_to_prompt`) since BaseAIProvider.generate_chat() doesn't
 support multi-turn history yet, then calls the configured adapter for real.
 """
 
@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from ..core.auth import User, get_current_user
 from ..core.rate_limit import enforce_rate_limit
 from ..core.rbac import require_roles
+from ..core.cache import cache_key, get_or_set
 from ..core.usage import (
     DAILY_AI_LIMIT,
     get_daily_usage_report,
@@ -38,9 +39,14 @@ from ..models.ai import (
     UsageResponse,
 )
 from ..providers.base import AIProviderError, ProviderAPIError, ProviderRateLimitError
-from ..providers.registry import get_configured_providers_health, get_provider
+from ..providers.orchestrator import ai_orchestrator, get_circuit_breaker
+from ..providers.registry import get_configured_providers_health
+from ..core.security import sanitize_prompt
+
+import json
 
 router = APIRouter(prefix="/ai", tags=["AI"])
+
 
 MAX_MESSAGES = 32
 MAX_MESSAGE_CHARS = 4000
@@ -50,34 +56,58 @@ MAX_TOTAL_CHARS = 32000
 BODY_LIMIT_BYTES = 2 * 1024 * 1024
 
 
-def _messages_to_prompt(messages: List[dict]) -> str:
-    """Flatten a chat-style message list into a single prompt string.
 
-    TODO(providers): BaseAIProvider.generate_text() takes a single prompt,
-    not a multi-turn message list — the adapters don't have native
-    chat/history support yet. This is a simple, intentionally-lossy
-    workaround (roles become text labels, no real conversation structure)
-    until the provider interface grows multi-turn support.
-    """
-    role_labels = {"user": "User", "assistant": "Assistant", "system": "System"}
-    return "\n\n".join(
-        f"{role_labels.get(m['role'], m['role'])}: {m['content']}" for m in messages
-    )
 
 
 async def call_provider(user_id: str, messages: List[dict]) -> ProviderResult:
-    provider = get_provider()
-    prompt = _messages_to_prompt(messages)
-    content = await provider.generate_text(prompt)
+    temperature = 0.7
+
+    # Serialize messages for the cache key
+    messages_json = json.dumps(messages)
+
+    key = cache_key(
+        provider="orchestrator",
+        model="fallback",
+        prompt=messages_json,
+        temperature=temperature,
+    )
+
+    async def compute():
+        return await ai_orchestrator.generate_chat_with_fallback(messages)
+
+    (content, provider_name), cached = await get_or_set(
+        key=key,
+        compute=compute,
+    )
+
     return ProviderResult(
-        provider=provider.provider_name,
-        cached=False,  # TODO(caching): no caching layer wired up yet
+        provider=provider_name,
+        cached=cached,
         content=content,
     )
 
+   
 
-def get_provider_health() -> list:
-    return get_configured_providers_health()
+
+async def get_provider_health() -> list:
+    raw_health = get_configured_providers_health()
+    report = []
+    for p in raw_health:
+        name = p["name"]
+        cb = get_circuit_breaker(name)
+        available = p["available"]
+        last_error = p.get("lastError") or {}
+        
+        if await cb.is_open():
+            available = False
+            last_error = {"message": f"Circuit breaker open. Cooldown until {datetime.fromtimestamp(cb.disabled_until).isoformat() if cb.disabled_until else 'unknown'}"}
+            
+        report.append({
+            "name": name,
+            "available": available,
+            "lastError": last_error if last_error else None
+        })
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +125,7 @@ async def chat(
     current_user: User = Depends(get_current_user),
     _rate_limited: None = Depends(enforce_rate_limit),
 ):
-    # TODO(sanitize): run body through a real sanitizer once one exists
-    # (JS used a sanitizationMiddleware ahead of the handler)
-
+    
     final_messages: List[dict] = []
 
     if body.messages:
@@ -120,7 +148,7 @@ async def chat(
 
     if len(final_messages) > MAX_MESSAGES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="Too many messages",
         )
 
@@ -129,14 +157,14 @@ async def chat(
         content = msg["content"] or ""
         if len(content) > MAX_MESSAGE_CHARS:
             raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail="Message exceeds maximum length",
             )
         total_chars += len(content)
 
     if total_chars > MAX_TOTAL_CHARS:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="Prompt too long",
         )
 
@@ -144,6 +172,15 @@ async def chat(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Message content cannot be empty",
+        )
+
+    try:
+        for msg in final_messages:
+            msg["content"] = sanitize_prompt(msg["content"])
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
 
     usage = await get_today_usage(current_user.id)
@@ -159,7 +196,7 @@ async def chat(
         return ChatResponse(
             provider=result.provider, cached=result.cached, content=result.content
         )
-    except ProviderRateLimitError:
+    except ProviderRateLimitError as error:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="AI provider rate limit exceeded",
@@ -167,22 +204,21 @@ async def chat(
     except ProviderAPIError as error:
         if error.status_code == 413:
             raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail="AI provider response too large",
             )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI service unavailable",
+            detail="AI provider service unavailable"
         )
-    except AIProviderError:
+    except AIProviderError as error:
         # Covers ProviderTimeoutError, and any AIProviderError raised
         # directly by the registry (e.g. missing API key config).
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="AI service unavailable",
         )
-
-
+        
 # ---------------------------------------------------------------------------
 # GET /ai/health
 # ---------------------------------------------------------------------------
@@ -199,7 +235,7 @@ async def health():
             status="healthy" if p["available"] else "unhealthy",
             lastErrorMessage=(p.get("lastError") or {}).get("message"),
         )
-        for p in get_provider_health()
+        for p in await get_provider_health()
     ]
     return HealthResponse(providers=providers)
 

@@ -1,4 +1,4 @@
-﻿const auth = require('../../middleware/auth');
+const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const uptoskillsService = require('./service');
 
@@ -6,10 +6,11 @@ async function routes(fastify) {
   fastify.get(
     '/sync-status',
     {
-      preHandler: [auth, rbac('ADMIN')],
+      preHandler: [auth, rbac(['ADMIN'])],
       schema: {
         tags: ['Uptoskills'],
         description: 'Get uptoskills sync status',
+        hide: true,
       },
     },
     async (request, reply) => {

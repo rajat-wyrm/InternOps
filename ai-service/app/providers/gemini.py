@@ -1,12 +1,4 @@
-"""Adapter for Google Gemini REST API.
-
-Mirrors the guardrails used in the Node `aiProviderService.js` reference:
-request timeout, streamed response with a byte-size cap (instead of
-buffering the full body via `.json()`), and vendor-error -> domain-error
-mapping (429 -> rate limit, other non-2xx -> API error, network/timeout ->
-timeout error).
-"""
-
+import asyncio
 import json
 import os
 from typing import Any, Dict
@@ -24,6 +16,17 @@ from app.providers.base import (
 # provider adapters here use the same default so behavior is consistent
 # across both services).
 MAX_RESPONSE_BYTES = int(os.environ.get("AI_MAX_RESPONSE_BYTES", 2 * 1024 * 1024))
+MAX_MESSAGES = 32
+MAX_MESSAGE_CHARS = 4000
+
+
+def _build_prompt(messages: list[dict]) -> str:
+    parts = []
+    for msg in messages[:MAX_MESSAGES]:
+        role = msg.get("role", "user")
+        content = str(msg.get("content", ""))[:MAX_MESSAGE_CHARS]
+        parts.append(f"{role.capitalize()}: {content}")
+    return "\n".join(parts)
 
 
 class GeminiProvider(BaseAIProvider):
@@ -32,7 +35,7 @@ class GeminiProvider(BaseAIProvider):
     def __init__(
         self,
         api_key: str,
-        model_name: str = "gemini-2.5-flash",
+        model_name: str = "gemini-2.0-flash",
         timeout: float = 15.0,
     ):
         super().__init__(api_key=api_key, model_name=model_name)
@@ -42,9 +45,17 @@ class GeminiProvider(BaseAIProvider):
             f"{self.model_name}:generateContent"
         )
 
-    async def generate_text(self, prompt: str, temperature: float = 0.7, **kwargs) -> str:
+    async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
+        contents = []
+        for msg in messages:
+            role = "model" if msg["role"] == "assistant" else "user"
+            contents.append({
+                "role": role,
+                "parts": [{"text": msg["content"]}]
+            })
+            
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
+            "contents": contents,
             "generationConfig": {"temperature": temperature},
         }
         response_data = await self._send_request(payload)
@@ -85,8 +96,9 @@ class GeminiProvider(BaseAIProvider):
             try:
                 async with client.stream("POST", url, json=payload) as response:
                     if response.status_code == 429:
+                        body = await response.aread()
                         raise ProviderRateLimitError(
-                            "Gemini rate limit or quota exceeded",
+                            f"Gemini rate limit: {body.decode(errors='replace')}",
                             self.provider_name,
                             status_code=429,
                         )
@@ -122,3 +134,13 @@ class GeminiProvider(BaseAIProvider):
             return json.loads(b"".join(chunks))
         except json.JSONDecodeError as e:
             raise ProviderAPIError(f"Gemini returned invalid JSON: {e}", self.provider_name)
+
+
+async def call_gemini(messages: list[dict]) -> str:
+    """
+    Send messages to Gemini API using the new GeminiProvider REST adapter.
+    """
+    from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
+    prompt = _build_prompt(messages)
+    provider = GeminiProvider(api_key=GEMINI_API_KEY, model_name=GEMINI_MODEL)
+    return await provider.generate_chat(prompt)

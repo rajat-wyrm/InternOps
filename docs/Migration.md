@@ -14,7 +14,11 @@ Migrations run as an explicit, separate step — never automatically on
 application startup.
 
 ```bash
+# From inside backend/ folder
 npm run migrate
+
+# OR from project root using npm workspaces
+npm run migrate --workspace=backend
 ```
 
 In production (via Docker), this is run automatically by
@@ -64,6 +68,16 @@ npm run migrate
 Never edit an already-applied migration file directly. The checksum
 check in `migrate.js` will throw an error if the file content no
 longer matches what was recorded when it was applied.
+
+If you intentionally edited a historical migration and need to forcibly bypass the checksum error, you can use the fix command:
+
+```bash
+# From inside backend/ folder
+npm run migrate:fix
+
+# OR from project root
+npm run migrate:fix --workspace=backend
+```
 
 ---
 

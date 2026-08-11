@@ -12,10 +12,10 @@ const SEEDED_ADMIN_PASSWORD = 'Admin@123';
 module.exports = async function globalTeardown() {
   try {
     const hash = await argon2.hash(SEEDED_ADMIN_PASSWORD);
-    await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [
-      hash,
-      SEEDED_ADMIN_EMAIL,
-    ]);
+    await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE lower(email) = lower($2)',
+      [hash, SEEDED_ADMIN_EMAIL]
+    );
     await pool.query('DELETE FROM password_reset_attempts');
   } catch (err) {
     console.error('[jest teardown] failed to reset admin state:', err.message);

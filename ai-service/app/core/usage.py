@@ -6,30 +6,21 @@ resets on restart.
 """
 
 import os
-from collections import defaultdict
-from datetime import datetime, timezone
+from app.repositories.ai_repository import (
+    get_today_usage as repo_get_today_usage,
+    increment_usage as repo_increment_usage,
+    get_daily_usage_report as repo_get_daily_usage_report,
+)
 
 DAILY_AI_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "50"))  # TODO(config): pull from real settings
 
-_usage_by_user_day: dict = defaultdict(int)
-
-
-def _today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
-
-
 async def get_today_usage(user_id: str) -> int:
-    return _usage_by_user_day[(user_id, _today())]
+    return await repo_get_today_usage(user_id)
 
 
 async def increment_usage(user_id: str) -> None:
-    _usage_by_user_day[(user_id, _today())] += 1
+    await repo_increment_usage(user_id)
 
 
 async def get_daily_usage_report() -> list:
-    today = _today()
-    return [
-        {"userId": uid, "count": count}
-        for (uid, day), count in _usage_by_user_day.items()
-        if day == today
-    ]
+    return await repo_get_daily_usage_report()

@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { reportClientError } from '../lib/errorReporter';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -13,7 +14,10 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+
     this.setState({ errorInfo });
+
+    reportClientError(error, errorInfo);
   }
 
   handleReload = () => window.location.reload();

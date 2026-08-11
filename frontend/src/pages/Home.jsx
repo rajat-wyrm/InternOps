@@ -253,7 +253,7 @@ function InternHome({ user }) {
   } = useQuery({
     queryKey: ['internHome', user?.id],
     queryFn: async () => {
-      const [att, ratings] = await Promise.all([
+      const [attResult, ratingsResult] = await Promise.allSettled([
         api
           .get(
             `/attendance/${user.id}/stats?month=${
@@ -264,7 +264,16 @@ function InternHome({ user }) {
         api.get(`/ratings/${user.id}`).then((r) => r.data),
       ]);
 
-      return { att, ratings };
+      const att = attResult.status === 'fulfilled' ? attResult.value : null;
+      const attError =
+        attResult.status === 'rejected' ? attResult.reason : null;
+
+      const ratings =
+        ratingsResult.status === 'fulfilled' ? ratingsResult.value : null;
+      const ratingsError =
+        ratingsResult.status === 'rejected' ? ratingsResult.reason : null;
+
+      return { att, attError, ratings, ratingsError };
     },
     enabled: !!user,
   });
@@ -286,14 +295,21 @@ function InternHome({ user }) {
     );
   }
 
-  const att = stats?.att || [];
-  const ratings = stats?.ratings || [];
+  const att = stats?.att;
+  const attError = stats?.attError;
+  const ratings = stats?.ratings;
+  const attData = Array.isArray(att) ? att : [];
+  const ratingsData = Array.isArray(ratings) ? ratings : [];
 
-  const avg = ratings.length
-    ? (ratings.reduce((a, r) => a + r.score, 0) / ratings.length).toFixed(1)
+  const avg = ratingsData.length
+    ? (
+        ratingsData.reduce((a, r) => a + r.score, 0) / ratingsData.length
+      ).toFixed(1)
     : '—';
 
-  const present = att.find((s) => s.status === 'PRESENT')?.count || 0;
+  const present = att
+    ? attData.find((s) => s.status === 'PRESENT')?.count || 0
+    : '—';
 
   return (
     <div className="animate-fade-in-up text-slate-900 dark:text-white">
@@ -325,7 +341,7 @@ function InternHome({ user }) {
 
         <StatCard
           label="My avg rating"
-          value={avg}
+          value={ratings !== null ? avg : '—'}
           sub="out of 10"
           icon="⭐"
           gradient="from-amber-400 to-orange-500"
@@ -333,7 +349,7 @@ function InternHome({ user }) {
 
         <StatCard
           label="Total ratings"
-          value={ratings.length}
+          value={ratings !== null ? ratingsData.length : '—'}
           icon="📊"
           gradient="from-indigo-500 to-blue-600"
         />
@@ -352,7 +368,13 @@ function InternHome({ user }) {
             </p>
           </div>
 
-          {att.length === 0 ? (
+          {attError ? (
+            <ApiErrorState
+              error={attError}
+              title="Failed to load attendance records"
+              fallback="Unable to load attendance records. Please try again."
+            />
+          ) : attData.length === 0 ? (
             <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-center py-8 px-4">
               <p className="text-slate-800 dark:text-white font-extrabold">
                 No records yet
@@ -364,7 +386,7 @@ function InternHome({ user }) {
             </div>
           ) : (
             <div className="space-y-2">
-              {att.map((s) => (
+              {attData.map((s) => (
                 <div
                   key={s.status}
                   className="flex justify-between items-center text-sm py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70"
