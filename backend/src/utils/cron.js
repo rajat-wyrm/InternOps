@@ -30,6 +30,23 @@ function scheduleSafeCronJob(schedule, jobName, task) {
       });
   });
 }
+
+function setupCronJobs() {
+  try {
+    scheduleSafeCronJob('0 * * * *', 'proof-image-cleanup', async () => {
+      const jobLogger = logger.child({
+        correlationId: `cron-${Date.now()}`,
+        job: 'proof-image-cleanup',
+      });
+
+      if (cleanupRunning) {
+        jobLogger.warn('Cleanup already running. Skipping...');
+        return;
+      }
+
+      cleanupRunning = true;
+      const startTime = Date.now();
+
       try {
         const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const uploadsRoot = path.resolve(__dirname, '..', '..', 'uploads');
