@@ -89,12 +89,15 @@ function resolveRefreshSecret() {
   const secret = process.env.JWT_REFRESH_SECRET;
 
   if (!secret || secret.trim() === '') {
-    throw new Error('JWT_REFRESH_SECRET is not configured');
+    console.warn(
+      '[Config] JWT_REFRESH_SECRET is not configured. Using derived secret from JWT_SECRET.'
+    );
+
+    return `${process.env.JWT_SECRET}_refresh`;
   }
 
   return secret;
 }
-
 const envSchema = z.object({
   PORT: z.coerce.number().default(5000),
 });

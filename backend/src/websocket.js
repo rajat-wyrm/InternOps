@@ -37,9 +37,16 @@ function scheduleAuthTimeout(engineSocket, clientIp) {
 
 function initializeWebSocket(server, logger) {
   log = logger;
+
+  const corsOriginOption = Array.isArray(config.corsOrigin)
+    ? config.corsOrigin
+    : typeof config.corsOrigin === 'string' && config.corsOrigin.includes(',')
+      ? config.corsOrigin.split(',').map((o) => o.trim())
+      : config.corsOrigin;
+
   io = new Server(server, {
     cors: {
-      origin: config.corsOrigin,
+      origin: corsOriginOption,
       credentials: true,
     },
     allowRequest: (req, callback) => {

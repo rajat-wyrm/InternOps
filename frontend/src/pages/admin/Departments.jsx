@@ -45,11 +45,15 @@ export default function Departments() {
 
   const createMut = useMutation({
     mutationFn: (n) => api.post('/departments', { name: n }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setName('');
       setError('');
       setShowAddForm(false);
       inv();
+      const newDept = res.data?.department ?? res.data;
+      if (newDept?.id) {
+        navigate(`/departments/${newDept.id}/projects`);
+      }
     },
     onError: (err) =>
       setError(err.response?.data?.error || 'Failed to create department'),

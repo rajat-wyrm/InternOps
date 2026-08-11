@@ -23,12 +23,29 @@ from app.core.auth import get_current_user, User
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    import app.core.rate_limit as rate_limit_module
+
+    class FakeRedis:
+        """Minimal in-memory stand-in for redis.asyncio.Redis, just for tests."""
+
+        def __init__(self):
+            self.counts = {}
+
+        async def incr(self, key):
+            self.counts[key] = self.counts.get(key, 0) + 1
+            return self.counts[key]
+
+        async def expire(self, key, seconds):
+            pass
+
+    # Force the limiter to use our fake client instead of a real Redis connection.
+    fake_redis = FakeRedis()
+    monkeypatch.setattr(rate_limit_module, "get_redis_client", lambda: fake_redis)
+
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: User(id="test_user", roles=["ADMIN"])
-    # reset in-memory stubs between tests so they don't bleed into each other
-    chat_rate_limiter._hits.clear()
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -143,7 +160,6 @@ async def test_health_endpoint_reports_unhealthy_when_circuit_open(client, monke
         assert "Circuit breaker open" in gemini_entry["lastErrorMessage"]
     finally:
         await cb.record_success()
-
 
 
 def test_usage_endpoint(client):

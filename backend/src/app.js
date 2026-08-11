@@ -11,7 +11,7 @@ const pool = require('./config/db');
 const metrics = require('./utils/metrics');
 const { initializeWebSocket, getIO } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
-const { getRedisStatus } = require('./config/redis');
+const { getRedisStatus, getRedisClient } = require('./config/redis');
 const { csrfMiddleware } = require('./middleware/csrf');
 const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
@@ -32,38 +32,39 @@ const app = Fastify({
 });
 
 // Layer 1: Register monitoring routes BEFORE global middleware to ensure observability
-preHandler: ([
-  auth,
-  rbac('ADMIN'),
-  async (req, reply) => {
-    const authHeader = req.headers.authorization;
-    const expectedToken = `Bearer ${process.env.METRICS_TOKEN}`;
+app.get(
+  '/metrics',
+  {
+    preHandler: [
+      auth,
+      rbac('ADMIN'),
+      async (req, reply) => {
+        const authHeader = req.headers.authorization;
+        const expectedToken = `Bearer ${process.env.METRICS_TOKEN}`;
 
-    if (authHeader !== expectedToken) {
-      return reply.status(404).send();
-    }
-  },
-],
-  app.get(
-    '/health',
-    {
-      config: {
-        rateLimit: false,
+        if (authHeader !== expectedToken) {
+          return reply.status(404).send();
+        }
       },
+    ],
+    config: {
+      rateLimit: false,
     },
-    async (req, reply) => {
-      const redisStatus = getRedisStatus();
-      if (process.env.NODE_ENV === 'test') {
-        return reply.send({ status: 'ok' });
-      }
-      if (redisStatus === 'disconnected') {
-        return reply
-          .status(503)
-          .send({ status: 'degraded', redis: 'disconnected' });
-      }
-      return reply.send({ status: 'ok' });
-    }
-  ));
+  },
+  metrics.metricsEndpoint
+);
+
+app.get(
+  '/health',
+  {
+    config: {
+      rateLimit: false,
+    },
+  },
+  async (req, reply) => {
+    return reply.send({ status: 'ok' });
+  }
+);
 
 app.get(
   '/health/db',
@@ -280,6 +281,9 @@ if (process.env.NODE_ENV !== 'test') {
 
 app.register(require('./routes'), { prefix: '/api/v1' });
 app.register(require('./routes.v2'), { prefix: '/api/v2' });
+app.register(require('./modules/github-sync/routes'), {
+  prefix: '/api/v1/github',
+});
 
 app.get('/', async (req, reply) => {
   reply.redirect('/api-docs');
@@ -424,6 +428,7 @@ const start = async () => {
     });
     initializeWebSocket(app.server, app.log);
     await bulkJobQueue.init();
+    await getRedisClient();
     app.log.info(
       { port: config.port },
       `Server listening on port ${config.port}`

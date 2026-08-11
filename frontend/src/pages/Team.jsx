@@ -576,6 +576,7 @@ function MemberDetail({ memberId, onClose }) {
   const [error, setError] = useState('');
   const [newRole, setNewRole] = useState('');
   const [newManager, setNewManager] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
   const {
     data: teamMembers = [],
@@ -672,6 +673,21 @@ function MemberDetail({ memberId, onClose }) {
     },
     onError: (err) =>
       setError(err.response?.data?.error || 'Failed to reassign manager'),
+  });
+
+  const passwordMut = useMutation({
+    mutationFn: (password) =>
+      api.patch(`/team/members/${memberId}/password`, { password }),
+    onSuccess: () => {
+      setMessage('Password updated successfully');
+      setError('');
+      setNewPassword('');
+      setTimeout(() => setMessage(''), 2500);
+    },
+    onError: (err) => {
+      setError(err.response?.data?.error || 'Failed to update password');
+      setMessage('');
+    },
   });
 
   const pct = member ? attendancePct(member) : null;
@@ -1018,6 +1034,35 @@ function MemberDetail({ memberId, onClose }) {
                         Reassign
                       </button>
                     </div>
+                  </Field>
+
+                  <Field label="Reset Password">
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        placeholder="Enter new password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-2.5 flex-1 rounded-2xl text-sm"
+                      />
+
+                      <button
+                        onClick={() => passwordMut.mutate(newPassword)}
+                        disabled={
+                          passwordMut.isPending ||
+                          !newPassword ||
+                          newPassword.length < 8
+                        }
+                        className="px-3 py-2 rounded-2xl bg-indigo-600 text-white text-sm font-bold disabled:opacity-50 shrink-0"
+                      >
+                        {passwordMut.isPending ? 'Updating...' : 'Reset'}
+                      </button>
+                    </div>
+                    {newPassword && newPassword.length < 8 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        Password must be at least 8 characters.
+                      </p>
+                    )}
                   </Field>
                 </div>
               )}

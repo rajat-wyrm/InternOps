@@ -78,6 +78,10 @@ module.exports = async function routes(fastify, opts) {
     prefix: '/reports/export',
   });
   fastify.register(require('./modules/ai/routes'), { prefix: '/ai' });
+  fastify.register(require('./modules/onboarding/routes'), {
+    prefix: '/onboarding',
+  });
+
   fastify.register(require('./modules/uptoskills/routes'), {
     prefix: '/uptoskills',
   });

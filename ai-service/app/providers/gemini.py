@@ -1,12 +1,4 @@
-"""Adapter for Google Gemini REST API.
-
-Mirrors the guardrails used in the Node `aiProviderService.js` reference:
-request timeout, streamed response with a byte-size cap (instead of
-buffering the full body via `.json()`), and vendor-error -> domain-error
-mapping (429 -> rate limit, other non-2xx -> API error, network/timeout ->
-timeout error).
-"""
-
+import asyncio
 import json
 import os
 from typing import Any, Dict
@@ -24,6 +16,17 @@ from app.providers.base import (
 # provider adapters here use the same default so behavior is consistent
 # across both services).
 MAX_RESPONSE_BYTES = int(os.environ.get("AI_MAX_RESPONSE_BYTES", 2 * 1024 * 1024))
+MAX_MESSAGES = 32
+MAX_MESSAGE_CHARS = 4000
+
+
+def _build_prompt(messages: list[dict]) -> str:
+    parts = []
+    for msg in messages[:MAX_MESSAGES]:
+        role = msg.get("role", "user")
+        content = str(msg.get("content", ""))[:MAX_MESSAGE_CHARS]
+        parts.append(f"{role.capitalize()}: {content}")
+    return "\n".join(parts)
 
 
 class GeminiProvider(BaseAIProvider):
@@ -123,3 +126,13 @@ class GeminiProvider(BaseAIProvider):
             return json.loads(b"".join(chunks))
         except json.JSONDecodeError as e:
             raise ProviderAPIError(f"Gemini returned invalid JSON: {e}", self.provider_name)
+
+
+async def call_gemini(messages: list[dict]) -> str:
+    """
+    Send messages to Gemini API using the new GeminiProvider REST adapter.
+    """
+    from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
+    prompt = _build_prompt(messages)
+    provider = GeminiProvider(api_key=GEMINI_API_KEY, model_name=GEMINI_MODEL)
+    return await provider.generate_text(prompt)
