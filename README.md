@@ -130,6 +130,25 @@ The file is organized into the following sections:
 
 Copy `backend/.env.example` to `.env` and replace the example values with your own credentials before starting the application.
 
+### Redis
+
+Redis is **optional for local development**.
+
+When Redis is available, Redis-dependent features such as distributed rate limiting, session caching, and WebSocket coordination are enabled.
+
+If Redis is unavailable, the backend continues running in **degraded mode**. The application logs the affected features clearly at startup and uses fallback behavior where supported.
+
+Degraded features may include:
+
+- Rate limiting may use in-memory storage.
+- Session caching may be disabled or use fallback storage.
+- WebSocket coordination may run in local/in-process mode.
+
+For Redis-enabled environments, configure:
+
+````env
+REDIS_URL=rediss://default:<your-token>@<your-endpoint>:6379
+
 ### 2. Setup Backend
 
 ```bash
@@ -140,7 +159,7 @@ cp .env.example .env
 npm run migrate
 npm run seed
 npm run dev
-```
+````
 
 ---
 

@@ -1,15 +1,26 @@
 require('dotenv').config();
+
 const validateEnv = require('./config/validateEnv');
 validateEnv();
+
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
+
 const config = require('./config');
 const pool = require('./config/db');
 const metrics = require('./utils/metrics');
+
 const { initializeWebSocket, getIO } = require('./websocket');
+
 const noticesRoutes = require('./modules/notices/routes');
-const { getRedisStatus } = require('./config/redis');
+
+const {
+  getRedisStatus,
+  initializeRedis,
+  closeRedis,
+} = require('./config/redis');
+
 const authenticate = require('./middleware/auth');
 const rbac = require('./middleware/rbac');
 const { csrfMiddleware } = require('./middleware/csrf');
@@ -19,18 +30,34 @@ const { setupCronJobs } = require('./utils/cron');
 
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
+
   logger:
     config.nodeEnv === 'development'
       ? {
-          transport: { target: 'pino-pretty' },
+          transport: {
+            target: 'pino-pretty',
+          },
           level: process.env.LOG_LEVEL || 'info',
         }
-      : { level: process.env.LOG_LEVEL || 'info' },
+      : {
+          level: process.env.LOG_LEVEL || 'info',
+        },
+
   bodyLimit: 1048576,
+
   genReqId: () => uuidv4(),
 });
 
-// Layer 1: Register monitoring routes BEFORE global middleware to ensure observability
+/*
+|--------------------------------------------------------------------------
+| Monitoring Routes
+|--------------------------------------------------------------------------
+| These routes are registered before global middleware so that
+| observability endpoints remain available even when other services
+| are degraded.
+|--------------------------------------------------------------------------
+*/
+
 app.get(
   '/metrics',
   {
@@ -50,15 +77,37 @@ app.get(
   },
   async (req, reply) => {
     const redisStatus = getRedisStatus();
+
+    // Tests should always receive a simple healthy response.
     if (process.env.NODE_ENV === 'test') {
-      return reply.send({ status: 'ok' });
+      return reply.send({
+        status: 'ok',
+      });
     }
+
+    /*
+     * Redis is optional.
+     *
+     * Therefore Redis being disabled should NOT make the
+     * application unhealthy.
+     *
+     * Redis being configured but disconnected means the
+     * application is running in degraded mode.
+     */
     if (redisStatus === 'disconnected') {
-      return reply.status(503).send({ status: 'degraded' });
+      return reply.status(503).send({
+        status: 'degraded',
+        redis: redisStatus,
+      });
     }
-    return reply.send({ status: 'ok' });
+
+    return reply.send({
+      status: 'ok',
+      redis: redisStatus,
+    });
   }
 );
+
 app.get(
   '/health/db',
   {
@@ -69,12 +118,13 @@ app.get(
   async (req, reply) => {
     try {
       await pool.query('SELECT 1');
-      reply.send({
+
+      return reply.send({
         status: 'ok',
         db: 'connected',
       });
     } catch {
-      reply.status(503).send({
+      return reply.status(503).send({
         status: 'error',
         db: 'disconnected',
       });
@@ -90,26 +140,55 @@ app.get(
     },
   },
   async (req, reply) => {
-    const checks = { db: false, redis: false };
+    const checks = {
+      db: false,
+      redis: false,
+    };
+
+    // Database check
     try {
       await pool.query('SELECT 1');
       checks.db = true;
     } catch {}
+
+    // Redis check
     const redisStatus = getRedisStatus();
+
+    /*
+     * Redis is optional.
+     *
+     * These states are considered acceptable:
+     * - connected
+     * - disabled
+     *
+     * Only configured-but-unavailable Redis is degraded.
+     */
     checks.redis =
       process.env.NODE_ENV === 'test' ||
       redisStatus === 'connected' ||
       redisStatus === 'disabled';
+
     const healthy = checks.db && checks.redis;
-    reply
-      .status(healthy ? 200 : 503)
-      .send({ status: healthy ? 'healthy' : 'degraded', checks });
+
+    return reply.status(healthy ? 200 : 503).send({
+      status: healthy ? 'healthy' : 'degraded',
+
+      checks,
+
+      redisStatus,
+    });
   }
 );
 
+/*
+|--------------------------------------------------------------------------
+| CORS
+|--------------------------------------------------------------------------
+*/
+
 app.register(require('@fastify/cors'), {
   origin: (origin, cb) => {
-    // In development mode, allow any localhost or 127.0.0.1 port
+    // Development: allow localhost / 127.0.0.1
     if (config.nodeEnv !== 'production') {
       if (
         !origin ||
@@ -131,10 +210,19 @@ app.register(require('@fastify/cors'), {
 
     return cb(new Error('Not allowed by CORS'), false);
   },
+
   credentials: true,
+
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 });
+
+/*
+|--------------------------------------------------------------------------
+| Security
+|--------------------------------------------------------------------------
+*/
 
 app.register(require('@fastify/helmet'), {
   contentSecurityPolicy: {
@@ -150,28 +238,73 @@ app.register(require('@fastify/helmet'), {
   },
 });
 
+/*
+|--------------------------------------------------------------------------
+| Compression
+|--------------------------------------------------------------------------
+*/
+
 app.register(require('@fastify/compress'), {
   global: true,
   encodings: ['gzip', 'deflate', 'br'],
 });
 
-//  Register once globally — no Redis dependency
+/*
+|--------------------------------------------------------------------------
+| Rate Limiting
+|--------------------------------------------------------------------------
+|
+| IMPORTANT:
+| The current rate limiter is intentionally left unchanged here.
+|
+| It currently uses Fastify's default in-memory store.
+| We will modify this separately after app.js.
+|
+*/
+
 app.register(require('@fastify/rate-limit'), {
   global: true,
   max: config.rateLimit.globalMax,
   timeWindow: config.rateLimit.timeWindow,
 });
 
+/*
+|--------------------------------------------------------------------------
+| Cookies
+|--------------------------------------------------------------------------
+*/
+
 app.register(require('@fastify/cookie'));
+
+/*
+|--------------------------------------------------------------------------
+| CSRF
+|--------------------------------------------------------------------------
+*/
+
 app.addHook('preHandler', async (request, reply) => {
-  const path = request.routerPath ?? request.routeOptions?.url;
-  if (path === '/api/v1/auth/logout') return;
+  const routePath = request.routerPath ?? request.routeOptions?.url;
+
+  if (routePath === '/api/v1/auth/logout') {
+    return;
+  }
 
   return csrfMiddleware(request, reply);
 });
-// Sanitize all string fields in body, query, and params using sanitize-html
-// (allowlist of zero tags) to prevent XSS. Runs after body parsing.
+
+/*
+|--------------------------------------------------------------------------
+| Sanitization
+|--------------------------------------------------------------------------
+*/
+
 app.addHook('preHandler', sanitizationMiddleware);
+
+/*
+|--------------------------------------------------------------------------
+| Multipart
+|--------------------------------------------------------------------------
+*/
 
 app.register(require('@fastify/multipart'), {
   limits: {
@@ -179,10 +312,23 @@ app.register(require('@fastify/multipart'), {
   },
 });
 
+/*
+|--------------------------------------------------------------------------
+| Static Files
+|--------------------------------------------------------------------------
+*/
+
 app.register(require('@fastify/static'), {
   root: path.join(__dirname, '..', config.uploadDir),
+
   prefix: '/uploads/',
 });
+
+/*
+|--------------------------------------------------------------------------
+| Swagger
+|--------------------------------------------------------------------------
+*/
 
 if (process.env.NODE_ENV !== 'test') {
   app.register(require('@fastify/swagger'), {
@@ -193,14 +339,20 @@ if (process.env.NODE_ENV !== 'test') {
         description:
           'All business routes are versioned under /api/v1/. Future breaking changes will be introduced under /api/v2/ alongside the existing version.',
       },
+
       servers: [
-        { url: '/api/v1', description: 'Current stable API (v1)' },
+        {
+          url: '/api/v1',
+          description: 'Current stable API (v1)',
+        },
+
         {
           url: '/api/v2',
           description:
             'Next API version (v2) — see CONTRIBUTING.md for migration guide',
         },
       ],
+
       components: {
         securitySchemes: {
           bearerAuth: {
@@ -210,6 +362,7 @@ if (process.env.NODE_ENV !== 'test') {
           },
         },
       },
+
       security: [
         {
           bearerAuth: [],
@@ -219,10 +372,12 @@ if (process.env.NODE_ENV !== 'test') {
   });
 
   const authMiddleware = require('./middleware/auth');
+
   const rbac = require('./middleware/rbac');
 
   app.register(require('@fastify/swagger-ui'), {
     routePrefix: '/api-docs',
+
     uiHooks: {
       onRequest: function (request, reply, next) {
         authMiddleware(request, reply)
@@ -236,24 +391,38 @@ if (process.env.NODE_ENV !== 'test') {
     },
   });
 
-  // Dynamically ensure all routes have complete schema definitions (including response schemas)
+  /*
+  |--------------------------------------------------------------------------
+  | Route Schema Defaults
+  |--------------------------------------------------------------------------
+  */
+
   app.addHook('onRoute', (routeOptions) => {
-    // Only apply to our business API routes
-    if (!routeOptions.url.startsWith('/api/')) return;
+    if (!routeOptions.url.startsWith('/api/')) {
+      return;
+    }
 
     routeOptions.schema = routeOptions.schema || {};
+
     if (!routeOptions.schema.response) {
       routeOptions.schema.response = {
         200: {
           description: 'Successful response',
         },
+
         400: {
           description: 'Validation error',
+
           type: 'object',
+
           properties: {
-            error: { type: 'string' },
+            error: {
+              type: 'string',
+            },
+
             details: {
               type: 'array',
+
               items: {
                 type: 'object',
                 additionalProperties: true,
@@ -261,44 +430,75 @@ if (process.env.NODE_ENV !== 'test') {
             },
           },
         },
+
         401: {
           description: 'Unauthorized',
+
           type: 'object',
-          properties: { error: { type: 'string' } },
+
+          properties: {
+            error: {
+              type: 'string',
+            },
+          },
         },
+
         500: {
           description: 'Internal Server Error',
+
           type: 'object',
-          properties: { error: { type: 'string' } },
+
+          properties: {
+            error: {
+              type: 'string',
+            },
+          },
         },
       };
     }
   });
 }
 
-// ---- API routes (delegated to dedicated router factory) ----
-// v1 — stable; all existing clients target this prefix.
-app.register(require('./routes'), { prefix: '/api/v1' });
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+*/
 
-// v2 — introduced alongside v1 so both are served concurrently.
-// Breaking changes land here; v1 receives Deprecation+Sunset headers
-// via the onSend hook in routes.js once V1_DEPRECATED=true is set.
-app.register(require('./routes.v2'), { prefix: '/api/v2' });
+app.register(require('./routes'), {
+  prefix: '/api/v1',
+});
+
+app.register(require('./routes.v2'), {
+  prefix: '/api/v2',
+});
+
+/*
+|--------------------------------------------------------------------------
+| Root / Fallback
+|--------------------------------------------------------------------------
+*/
 
 app.get('/', async (req, reply) => {
-  reply.redirect('/api-docs');
+  return reply.redirect('/api-docs');
 });
 
 app.get('/fallback', async (req, reply) => {
-  reply.type('text/html').send(`
-    <html>
-      <body style="font-family:sans-serif;padding:2em">
-        <h1>InternOps API</h1>
-        <a href="/api-docs">Swagger Docs</a>
-      </body>
-    </html>
-  `);
+  return reply.type('text/html').send(`
+        <html>
+          <body style="font-family:sans-serif;padding:2em">
+            <h1>InternOps API</h1>
+            <a href="/api-docs">Swagger Docs</a>
+          </body>
+        </html>
+      `);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Monitoring Hooks
+|--------------------------------------------------------------------------
+*/
 
 app.addHook('onRequest', metrics.trackActiveRequests);
 
@@ -320,24 +520,39 @@ app.addHook('onRequest', async (request) => {
 app.addHook('onResponse', async (request, reply) => {
   metrics.observeHttpRequest(request, reply, request.startTime);
 
-  if (!request?.auditOnResponse) return;
+  if (!request?.auditOnResponse) {
+    return;
+  }
 
-  // Only emit audit log for successful responses (status codes 2xx)
+  /*
+   * Only emit audit log for successful
+   * 2xx responses.
+   */
   if (reply.statusCode >= 200 && reply.statusCode < 300) {
     try {
       await createAuditLog(request.auditOnResponse);
     } catch (err) {
       request.log.error(
-        { err, audit: request.auditOnResponse },
+        {
+          err,
+          audit: request.auditOnResponse,
+        },
         'Failed to write deferred audit log'
       );
     }
   }
 });
 
+/*
+|--------------------------------------------------------------------------
+| Error Handler
+|--------------------------------------------------------------------------
+*/
+
 app.setErrorHandler((error, request, reply) => {
-  // Fastify AJV validation errors from schema.body / params / querystring.
-  // These are safe to return as structured client-facing validation errors.
+  /*
+   * Fastify AJV validation errors.
+   */
   if (error.validation) {
     request.log.warn(
       {
@@ -353,18 +568,23 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Validation error'
     );
+
     return reply.status(400).send({
       error: 'Validation error',
+
       details: error.validation.map((v) => ({
         path: v.instancePath || v.dataPath,
+
         message: v.message,
+
         keyword: v.keyword,
       })),
     });
   }
 
-  // Zod validation errors.
-  // Return validation details, but do not expose stack traces or internal debug info.
+  /*
+   * Zod validation errors.
+   */
   if (error.name === 'ZodError' || Array.isArray(error.issues)) {
     request.log.warn(
       {
@@ -380,16 +600,21 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Zod validation error'
     );
+
     return reply.status(400).send({
       error: 'Validation error',
+
       details: error.issues || [],
     });
   }
 
-  // Preserve safe messages for explicit HTTP/client errors and AppError instances.
-  // Hide internal details for unexpected server errors.
+  /*
+   * Preserve safe client-facing errors.
+   */
   const statusCode = error.statusCode || 500;
+
   const isClientError = statusCode >= 400 && statusCode < 500;
+
   const isOperational = error.isOperational === true;
 
   const clientMessage =
@@ -421,72 +646,239 @@ app.setErrorHandler((error, request, reply) => {
   });
 });
 
+/*
+|--------------------------------------------------------------------------
+| Cron Jobs
+|--------------------------------------------------------------------------
+*/
+
 if (process.env.NODE_ENV !== 'test') {
   setupCronJobs();
 }
 
+/*
+|--------------------------------------------------------------------------
+| Application Startup
+|--------------------------------------------------------------------------
+*/
+
 const start = async () => {
   try {
+    /*
+     * ---------------------------------------------------------------
+     * Redis initialization
+     * ---------------------------------------------------------------
+     *
+     * Redis is OPTIONAL.
+     *
+     * We initialize it before the server starts so that all
+     * Redis-dependent modules can know whether Redis is available.
+     */
+    const redisResult = await initializeRedis();
+
+    /*
+     * Redis connected successfully.
+     */
+    if (redisResult.available) {
+      app.log.info(
+        {
+          redisStatus: redisResult.status,
+        },
+        'Redis available. Redis-dependent features are enabled.'
+      );
+    }
+
+    /*
+     * Redis is disabled or unavailable.
+     *
+     * The application MUST NOT crash.
+     *
+     * Instead, clearly tell the developer what is degraded.
+     */
+    else {
+      app.log.warn(
+        {
+          redisStatus: redisResult.status,
+
+          degradedFeatures: [
+            'Rate limiting may use memory storage',
+            'Session cache may be disabled or use fallback storage',
+            'WebSocket coordination may run in local/in-process mode',
+          ],
+        },
+        'Redis unavailable. Application is running in degraded mode.'
+      );
+    }
+
+    /*
+     * ---------------------------------------------------------------
+     * Start HTTP server
+     * ---------------------------------------------------------------
+     */
+
     await app.listen({
       port: config.port,
       host: config.host,
     });
+
+    /*
+     * ---------------------------------------------------------------
+     * Initialize WebSocket
+     * ---------------------------------------------------------------
+     *
+     * The WebSocket module will later check Redis availability
+     * and decide whether to use Redis coordination or local mode.
+     */
     initializeWebSocket(app.server, app.log);
+
+    /*
+     * Final startup message.
+     */
     app.log.info(
-      { port: config.port },
+      {
+        port: config.port,
+
+        host: config.host,
+
+        redisStatus: getRedisStatus(),
+      },
       `Server listening on port ${config.port}`
     );
   } catch (err) {
-    app.log.error(err);
+    app.log.error(
+      {
+        err,
+      },
+      'Failed to start server'
+    );
+
     process.exit(1);
   }
 };
 
+/*
+|--------------------------------------------------------------------------
+| Graceful Shutdown
+|--------------------------------------------------------------------------
+*/
+
 const SHUTDOWN_TIMEOUT = 20000;
 
 const gracefulShutdown = async (signal) => {
-  app.log.info({ signal }, `Received ${signal}, shutting down gracefully...`);
+  app.log.info(
+    {
+      signal,
+    },
+    `Received ${signal}, shutting down gracefully...`
+  );
 
   const forceShutdown = setTimeout(() => {
     console.error('Shutdown timed out. Forcing exit.');
+
     process.exit(1);
   }, SHUTDOWN_TIMEOUT);
 
   try {
-    // Stop accepting new requests and finish in-flight requests
+    /*
+     * Stop accepting new requests
+     * and finish in-flight requests.
+     */
     await app.close();
 
-    // Close WebSocket server if initialized
+    /*
+     * Close WebSocket server.
+     */
     try {
       const io = getIO();
+
       if (io) {
         app.log.info('Closing WebSocket server...');
-        await new Promise((resolve) => io.close(resolve));
+
+        await new Promise((resolve) => {
+          io.close(resolve);
+        });
+
         app.log.info('WebSocket server closed');
       }
     } catch (wsErr) {
-      app.log.warn({ err: wsErr }, 'Error closing WebSocket server');
+      app.log.warn(
+        {
+          err: wsErr,
+        },
+        'Error closing WebSocket server'
+      );
     }
 
-    // Close database pool connections
-    await pool.end();
+    /*
+     * Close database connections.
+     */
+    try {
+      await pool.end();
+
+      app.log.info('Database connection pool closed');
+    } catch (dbErr) {
+      app.log.warn(
+        {
+          err: dbErr,
+        },
+        'Error closing database connection pool'
+      );
+    }
+
+    /*
+     * Close Redis connection.
+     */
+    try {
+      await closeRedis();
+
+      app.log.info('Redis connection closed');
+    } catch (redisErr) {
+      app.log.warn(
+        {
+          err: redisErr,
+        },
+        'Error closing Redis connection'
+      );
+    }
 
     clearTimeout(forceShutdown);
+
     app.log.info('Cleanup completed. Exiting now.');
+
     if (process.env.NODE_ENV !== 'test') {
       process.exit(0);
     }
   } catch (err) {
-    app.log.error({ err }, 'Error during shutdown');
+    app.log.error(
+      {
+        err,
+      },
+      'Error during shutdown'
+    );
+
     clearTimeout(forceShutdown);
+
     if (process.env.NODE_ENV !== 'test') {
       process.exit(1);
     }
   }
 };
 
+/*
+|--------------------------------------------------------------------------
+| Process Signals
+|--------------------------------------------------------------------------
+*/
+
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+/*
+|--------------------------------------------------------------------------
+| Start Application
+|--------------------------------------------------------------------------
+*/
 
 if (require.main === module) {
   start();

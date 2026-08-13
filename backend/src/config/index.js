@@ -9,6 +9,33 @@ const log = pino(
 );
 
 function buildRedisConfig() {
+  const redisUrl = process.env.REDIS_URL;
+
+  // Preferred: use a complete Redis connection URL.
+  if (redisUrl) {
+    try {
+      const url = new URL(redisUrl);
+
+      return {
+        enabled: true,
+        host: url.hostname,
+        port: parseInt(url.port, 10) || 6379,
+        username: decodeURIComponent(url.username || 'default'),
+        password: decodeURIComponent(url.password),
+        tls: url.protocol === 'rediss:',
+      };
+    } catch {
+      return {
+        enabled: false,
+        host: null,
+        port: 6379,
+        username: 'default',
+        password: null,
+        tls: true,
+      };
+    }
+  }
+
   const restUrl = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
