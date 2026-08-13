@@ -303,6 +303,150 @@ async function routes(fastify) {
       }
     }
   );
+
+  // GET /anomalies - Retrieve anomalies for a manager
+  fastify.get(
+    '/anomalies',
+    {
+      schema: {
+        tags: ['Attendance'],
+        description: 'Get attendance anomaly flags for team members',
+      },
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+    },
+    async (req, reply) => {
+      try {
+        const schema = z.object({
+          intern_id: z.string().uuid().optional(),
+          flag_type: z.string().optional(),
+          viewed: z
+            .string()
+            .optional()
+            .transform((val) => {
+              if (val === 'true') return true;
+              if (val === 'false') return false;
+              return undefined;
+            }),
+        });
+
+        const parsed = schema.safeParse(req.query);
+        if (!parsed.success) {
+          return reply.status(400).send({
+            error: 'Validation failed',
+            details: parsed.error.issues,
+          });
+        }
+
+        const isAdmin = req.user.role === 'ADMIN';
+        const anomalies = await repo.getAnomalies(
+          req.user.id,
+          isAdmin,
+          parsed.data
+        );
+        return anomalies;
+      } catch (err) {
+        req.log.error(err, 'Error in GET /attendance/anomalies');
+        return reply.status(500).send({ error: 'Internal server error' });
+      }
+    }
+  );
+
+  // POST /anomalies/:id/view - Mark anomaly as viewed by a manager
+  fastify.post(
+    '/anomalies/:id/view',
+    {
+      schema: {
+        tags: ['Attendance'],
+        description: 'Mark an attendance anomaly flag as viewed',
+      },
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+    },
+    async (req, reply) => {
+      try {
+        const { id } = req.params;
+        const isAdmin = req.user.role === 'ADMIN';
+
+        // Mark viewed and retrieve updated record
+        const anomaly = await repo.markAnomalyViewed(id, req.user.id, isAdmin);
+
+        // Log audit log event using audit repository
+        const audit = require('../audit/repository');
+        if (audit && typeof audit.logEvent === 'function') {
+          await audit.logEvent({
+            userId: req.user.id,
+            action: 'ATTENDANCE_ANOMALY_VIEWED',
+            resourceType: 'attendance_anomaly',
+            resourceId: id,
+            details: {
+              intern_id: anomaly.intern_id,
+              flag_type: anomaly.flag_type,
+              reason: anomaly.reason,
+            },
+          });
+        }
+
+        return anomaly;
+      } catch (err) {
+        req.log.error(err, 'Error in POST /attendance/anomalies/:id/view');
+        if (
+          err.message.includes('Access denied') ||
+          err.message.includes('not in your hierarchy')
+        ) {
+          return reply.status(403).send({ error: err.message });
+        }
+        if (err.message.includes('not found')) {
+          return reply.status(404).send({ error: err.message });
+        }
+        return reply.status(500).send({ error: 'Internal server error' });
+      }
+    }
+  );
+
+  // POST /anomalies/analyze - Manually trigger AI analysis job on FastAPI
+  fastify.post(
+    '/anomalies/analyze',
+    {
+      schema: {
+        tags: ['Attendance'],
+        description: 'Trigger AI attendance anomaly analysis',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
+    },
+    async (req, reply) => {
+      try {
+        const config = require('../../config');
+        const { generateAccessToken } = require('../../utils/tokens');
+
+        const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+        const serviceToken = generateAccessToken({
+          id: req.user.id,
+          role: req.user.role,
+          department_id: req.user.department_id,
+        });
+
+        const response = await fetch(
+          `${baseUrl}/api/v1/attendance/anomalies/analyze`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${serviceToken}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`FastAPI service returned status ${response.status}`);
+        }
+
+        const data = await response.json();
+        return reply.status(202).send(data);
+      } catch (err) {
+        req.log.error(err, 'Error in POST /attendance/anomalies/analyze');
+        return reply.status(503).send({ error: 'AI service unavailable' });
+      }
+    }
+  );
 }
 
 module.exports = routes;
