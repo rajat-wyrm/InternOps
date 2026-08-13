@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { CalendarCheck } from 'lucide-react';
-import api from '../lib/axios';
-import useAuthStore from '../store/auth';
+import { useEffect, useState } from 'react';
 import AttendanceMarkForm from '../components/AttendanceMarkForm';
 import BulkAttendanceForm from '../components/BulkAttendanceForm';
 import CustomSelect from '../components/CustomSelect';
 import { ApiErrorState } from '../components/ui';
+import api from '../lib/axios';
+import useAuthStore from '../store/auth';
 
 const STATUS_BADGE = {
   PRESENT:
@@ -203,8 +203,9 @@ export default function Attendance({
           </div>
         ) : (
           <>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
-              <table className="w-full text-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
+             <div className="overflow-x-auto">
+                 <table className="w-full text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
                   <tr>
                     <th className="px-6 py-4 font-extrabold">Date</th>
@@ -249,7 +250,7 @@ export default function Attendance({
                 </tbody>
               </table>
             </div>
-
+          </div>    
             <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
               <span>
                 {total} record{total === 1 ? '' : 's'} · page {page} of{' '}
