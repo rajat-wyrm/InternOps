@@ -3,7 +3,6 @@ const { z } = require('zod');
 const templateCreateSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
-  colorScheme: z.array(z.string()).optional().default([]),
   template_data: z
     .object({
       background: z.string().optional(),
@@ -17,6 +16,7 @@ const templateCreateSchema = z.object({
       height: z.number().optional(),
     })
     .default({}),
+  colorScheme: z.array(z.string()).optional(),
   thumbnail_url: z.string().url().optional(),
   canva_design_id: z.string().optional(),
 });

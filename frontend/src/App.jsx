@@ -36,6 +36,7 @@ const CanvaTemplates = lazy(() => import('./pages/admin/CanvaTemplates'));
 const AICertificates = lazy(() => import('./pages/admin/AICertificates'));
 const QuickGenerate = lazy(() => import('./pages/admin/QuickGenerate'));
 const FeatureFlags = lazy(() => import('./pages/admin/FeatureFlags'));
+const GithubSync = lazy(() => import('./pages/admin/GithubSync'));
 const ProjectsPage = lazy(() => import('./pages/admin/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/admin/ProjectDetailPage'));
 
@@ -286,6 +287,14 @@ export default function App() {
               }
             />
             <Route
+              path="admin/departments"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <Departments />
+                </RoleGuard>
+              }
+            />
+            <Route
               path="departments/:deptId/projects"
               element={
                 <RoleGuard allowedRoles={['ADMIN']}>
@@ -301,6 +310,31 @@ export default function App() {
                 </RoleGuard>
               }
             />
+            <Route
+              path="admin/departments/:deptId/attendance"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <Attendance />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/departments/:deptId/ratings"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <Ratings />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/departments/:deptId/tasks"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <Tasks />
+                </RoleGuard>
+              }
+            />
+
             <Route
               path="audit"
               element={
@@ -356,6 +390,14 @@ export default function App() {
               element={
                 <RoleGuard allowedRoles={['ADMIN']}>
                   <FeatureFlags />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="github-sync"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <GithubSync />
                 </RoleGuard>
               }
             />

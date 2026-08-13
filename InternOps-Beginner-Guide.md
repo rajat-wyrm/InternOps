@@ -42,6 +42,7 @@ Before touching anything, know these words:
 | **Clone**             | Downloading a copy of a repo from GitHub onto your computer.                                              |
 | **Node.js**           | A program that lets JavaScript run outside a browser — needed to run this project's backend and frontend. |
 | **npm**               | Comes bundled with Node.js. It downloads and manages the code "packages" (libraries) a project needs.     |
+| **Python**            | Required for the new standalone AI Service, managing LLM integrations and logic.                          |
 | **Branch**            | A separate, isolated line of work in Git so you don't mess up the main code while making changes.         |
 | **Commit**            | A saved snapshot of your changes, with a message describing what you did.                                 |
 | **Push**              | Uploading your commits from your computer to GitHub.                                                      |
@@ -52,8 +53,9 @@ InternOps itself is a workforce-management platform with:
 
 - **Backend**: Node.js + Fastify + PostgreSQL
 - **Frontend**: React + Vite + TailwindCSS
+- **AI Service**: Python + FastAPI/LLM Integrations
 
-You don't need to understand all of that yet — just know there are two folders, `backend` and `frontend`, and each is set up separately.
+You don't need to understand all of that yet — just know there are three folders, `backend`, `frontend`, and `ai-service`, and each is set up separately.
 
 ---
 
@@ -83,6 +85,29 @@ npm -v
 ```
 
 You should see version numbers like `v20.11.0` and `10.2.4`. If you see "command not found," restart your terminal, and if that fails, restart your computer.
+
+---
+
+## 2.5 Installing Python
+
+The project uses Python for its AI Service.
+
+### Windows / macOS
+
+1. Go to https://www.python.org/downloads/
+2. Download the latest version (e.g., Python 3.10 or newer).
+3. Run the installer. **CRITICAL FOR WINDOWS**: Check the box that says "Add Python to PATH" before clicking Install.
+4. Finish the install.
+
+### Verify it worked
+
+Open your terminal and type:
+
+```bash
+python --version
+```
+
+(If that fails, try `python3 --version`). You should see something like `Python 3.12.2`.
 
 ---
 
@@ -246,6 +271,7 @@ You now have a full local copy of the project, linked to both your fork and the 
 ```
 InternOps/
 ├── .github/workflows/     # CI/CD automation (GitHub Actions)
+├── ai-service/             # Standalone Python AI Service
 ├── backend/                # Node.js + Fastify + PostgreSQL API
 ├── frontend/                # React + Vite + TailwindCSS UI
 ├── Dockerfile
@@ -256,7 +282,7 @@ InternOps/
 └── README.md
 ```
 
-As a beginner, you'll spend most of your time inside either `backend/` or `frontend/`, depending on what you're assigned.
+As a beginner, you'll spend most of your time inside `backend/`, `frontend/`, or `ai-service/`, depending on what you're assigned.
 
 ---
 
@@ -349,13 +375,21 @@ DATABASE_URL=postgresql://username:password@ep-something-123456.us-east-2.aws.ne
 Once `DATABASE_URL` in `.env` is correct, from `backend/`:
 
 ```bash
+# Run from inside backend/
 npm run migrate
+
+# OR from project root using workspaces:
+npm run migrate --workspace=backend
 ```
 
 This creates all the necessary tables. It's safe to run more than once — it skips anything already applied.
 
 ```bash
+# Run from inside backend/
 npm run seed
+
+# OR from project root:
+npm run seed --workspace=backend
 ```
 
 This creates a default admin account: `admin@internops.com` / `Admin@123` (for local testing only).
@@ -369,8 +403,12 @@ This creates a default admin account: `admin@internops.com` / `Admin@123` (for l
 ### Start the backend
 
 ```bash
+# Run from inside backend/
 cd backend
 npm run dev
+
+# OR run from the project root using workspaces:
+npm run dev --workspace=backend
 ```
 
 This starts the API server (auto-restarts when you save a file). Visit `http://localhost:5000/docs` to see the Swagger API documentation.
@@ -378,13 +416,48 @@ This starts the API server (auto-restarts when you save a file). Visit `http://l
 ### Start the frontend (in a **separate** terminal window)
 
 ```bash
+# Run from inside frontend/
 cd frontend
 npm run dev
+
+# OR run from the project root:
+npm run dev --workspace=frontend
 ```
 
 This gives you a local URL (usually `http://localhost:5173`) to view the app in your browser.
 
 > Keep both terminals open while working — closing them stops the servers.
+
+### Start the AI Service (in a **third** terminal window)
+
+```bash
+cd ai-service
+```
+
+Create a virtual environment (one-time setup):
+
+```bash
+python -m venv .venv
+```
+
+Activate it:
+
+- Windows: `.venv\Scripts\activate`
+- macOS/Linux: `source .venv/bin/activate`
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Set up `.env`:
+
+```bash
+cp .env.example .env
+```
+
+Add your AI keys inside `.env` to test the AI features locally. Then, run the entry point command to start the AI API.
 
 ---
 

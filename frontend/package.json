@@ -9,18 +9,23 @@
     "preview": "vite preview",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "doctor": "npx -y react-doctor@0.9.2 . --verbose --no-telemetry",
+    "doctor:score": "npx -y react-doctor@0.9.2 . --score"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.51.0",
     "axios": "^1.7.2",
     "jwt-decode": "^4.0.0",
     "lucide-react": "^1.21.0",
+    "papaparse": "^5.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.24.0",
+    "recharts": "^3.10.1",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
+    "zod": "^4.4.3",
     "zustand": "^4.5.4"
   },
   "devDependencies": {

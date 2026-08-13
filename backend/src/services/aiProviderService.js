@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { LRUCache } = require('lru-cache');
+const { GoogleGenAI } = require('@google/genai');
 const config = require('../config');
 const { getRedisClient } = require('../config/redis');
 
@@ -49,7 +50,8 @@ function isPlaceholder(value) {
 
 function getProviderOrder() {
   return (
-    process.env.AI_PROVIDER_ORDER || 'groq,openai,gemini,deepseek,huggingface'
+    process.env.AI_PROVIDER_ORDER ||
+    'gemini,fastapi,groq,openai,deepseek,huggingface'
   )
     .split(',')
     .map((p) => p.trim().toLowerCase())
@@ -331,33 +333,16 @@ async function callDeepSeek(messages) {
 
 async function callGemini(messages) {
   const prompt = buildPrompt(messages);
+  const key = config.ai.geminiKey || '';
+  const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
-  const response = await fetchWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${
-      process.env.GEMINI_MODEL || 'gemini-1.5-flash'
-    }:generateContent?key=${config.ai.geminiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-      }),
-    }
-  );
+  const ai = new GoogleGenAI({ apiKey: key });
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: prompt,
+  });
 
-  if (!response.ok) {
-    throw new Error(`gemini failed with status ${response.status}`);
-  }
-
-  const data = await parseJsonResponseWithLimit(response, 'gemini');
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text = response.text;
 
   if (!text) {
     throw new Error('gemini returned empty response');
@@ -403,7 +388,33 @@ async function callHuggingFace(messages) {
   return text;
 }
 
+async function callFastAPI(messages) {
+  const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+  const response = await fetchWithTimeout(`${baseUrl}/api/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ messages }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`fastapi service failed with status ${response.status}`);
+  }
+
+  const data = await parseJsonResponseWithLimit(response, 'fastapi');
+  if (!data || !data.content) {
+    throw new Error('fastapi service returned empty response');
+  }
+
+  return data.content;
+}
+
 const providerRegistry = {
+  fastapi: {
+    key: () => config.ai.fastapiUrl || 'http://localhost:8000',
+    call: callFastAPI,
+  },
   groq: {
     key: () => config.ai.groqKey,
     call: callGroq,

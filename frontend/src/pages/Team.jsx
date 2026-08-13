@@ -576,6 +576,7 @@ function MemberDetail({ memberId, onClose }) {
   const [error, setError] = useState('');
   const [newRole, setNewRole] = useState('');
   const [newManager, setNewManager] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
   const {
     data: teamMembers = [],
@@ -588,7 +589,7 @@ function MemberDetail({ memberId, onClose }) {
   });
 
   const {
-    data: member,
+    data: fetchedMember,
     isLoading,
     isError: memberIsError,
     error: memberError,
@@ -596,7 +597,10 @@ function MemberDetail({ memberId, onClose }) {
   } = useQuery({
     queryKey: ['teamMember', memberId],
     queryFn: () => api.get(`/team/members/${memberId}`).then((res) => res.data),
+    enabled: !!memberId,
   });
+
+  const member = fetchedMember || teamMembers.find((m) => m.id === memberId);
 
   useEffect(() => {
     if (member) {
@@ -609,13 +613,13 @@ function MemberDetail({ memberId, onClose }) {
         year_of_study: member.year_of_study || '',
         position: member.position || '',
         joining_date: member.joining_date
-          ? member.joining_date.slice(0, 10)
+          ? String(member.joining_date).slice(0, 10)
           : '',
         internship_status: member.internship_status || 'ACTIVE',
         notes: member.notes || '',
       });
     }
-  }, [member]);
+  }, [memberId, member]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['teamMember', memberId] });
@@ -671,6 +675,21 @@ function MemberDetail({ memberId, onClose }) {
       setError(err.response?.data?.error || 'Failed to reassign manager'),
   });
 
+  const passwordMut = useMutation({
+    mutationFn: (password) =>
+      api.patch(`/team/members/${memberId}/password`, { password }),
+    onSuccess: () => {
+      setMessage('Password updated successfully');
+      setError('');
+      setNewPassword('');
+      setTimeout(() => setMessage(''), 2500);
+    },
+    onError: (err) => {
+      setError(err.response?.data?.error || 'Failed to update password');
+      setMessage('');
+    },
+  });
+
   const pct = member ? attendancePct(member) : null;
 
   const editStatusOptions = STATUS_OPTIONS.map((s) => ({
@@ -705,7 +724,7 @@ function MemberDetail({ memberId, onClose }) {
         className="w-full max-w-md bg-slate-50 dark:bg-slate-950 h-full overflow-auto shadow-2xl border-l border-slate-200 dark:border-slate-700"
         onClick={(e) => e.stopPropagation()}
       >
-        {memberIsError ? (
+        {memberIsError && !member ? (
           <div className="p-6">
             <ApiErrorState
               error={memberError}
@@ -714,7 +733,7 @@ function MemberDetail({ memberId, onClose }) {
               onRetry={refetchMember}
             />
           </div>
-        ) : isLoading || !form ? (
+        ) : (!member || !form) && isLoading ? (
           <div className="p-6 text-slate-600 dark:text-slate-300">
             Loading member...
           </div>
@@ -1015,6 +1034,35 @@ function MemberDetail({ memberId, onClose }) {
                         Reassign
                       </button>
                     </div>
+                  </Field>
+
+                  <Field label="Reset Password">
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        placeholder="Enter new password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-2.5 flex-1 rounded-2xl text-sm"
+                      />
+
+                      <button
+                        onClick={() => passwordMut.mutate(newPassword)}
+                        disabled={
+                          passwordMut.isPending ||
+                          !newPassword ||
+                          newPassword.length < 8
+                        }
+                        className="px-3 py-2 rounded-2xl bg-indigo-600 text-white text-sm font-bold disabled:opacity-50 shrink-0"
+                      >
+                        {passwordMut.isPending ? 'Updating...' : 'Reset'}
+                      </button>
+                    </div>
+                    {newPassword && newPassword.length < 8 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        Password must be at least 8 characters.
+                      </p>
+                    )}
                   </Field>
                 </div>
               )}
@@ -1560,9 +1608,14 @@ export default function Team() {
         </div>
       )}
 
-      {selected && (
-        <MemberDetail memberId={selected} onClose={() => setSelected(null)} />
-      )}
+      {selected &&
+        createPortal(
+          <MemberDetail
+            memberId={selected}
+            onClose={() => setSelected(null)}
+          />,
+          document.body
+        )}
 
       {adding && <AddMemberModal onClose={() => setAdding(false)} />}
     </div>
