@@ -124,26 +124,52 @@ async function revokeSession(sessionId, userId) {
   return redisSuccess || pgRes.rowCount > 0;
 }
 
+function isRetryableDatabaseError(err) {
+  const message = err?.message || '';
+  return (
+    err?.code === '57P01' ||
+    err?.code === '08006' ||
+    err?.code === '08001' ||
+    message.includes('terminated unexpectedly') ||
+    message.includes('Connection terminated unexpectedly') ||
+    message.includes('server closed the connection unexpectedly') ||
+    message.includes('connection terminated')
+  );
+}
+
 // ─── revokeAllUserSessions ───────────────────────────────────────────────────
 // WHY: Postgres is the source of truth and must always commit the revocation,
 // even if Redis is unreachable. Redis cleanup is deliberately kept OUTSIDE
 // the Postgres transaction and wrapped in its own try/catch so a Redis
 // failure can never roll back — or block — the Postgres revocation (#507).
 async function revokeAllUserSessions(userId) {
-  // 1. Postgres UPDATE first inside a transaction — must succeed
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(
-      'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
-      [userId]
-    );
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
+  let lastError;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query('BEGIN');
+      await client.query(
+        'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
+        [userId]
+      );
+      await client.query('COMMIT');
+      break;
+    } catch (err) {
+      lastError = err;
+      if (client) {
+        await client.query('ROLLBACK').catch(() => {});
+      }
+      if (!isRetryableDatabaseError(err) || attempt === 3) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    } finally {
+      if (client) {
+        client.release();
+      }
+    }
   }
 
   // 2. Redis cleanup (best-effort)
@@ -165,6 +191,10 @@ async function revokeAllUserSessions(userId) {
       `Failed to clean up Redis sessions for user ${userId} in revokeAllUserSessions:`,
       err
     );
+  }
+
+  if (lastError) {
+    throw lastError;
   }
 }
 

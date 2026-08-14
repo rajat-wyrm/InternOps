@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Users, UserRound, X } from 'lucide-react';
+import { ArrowLeft, Users, UserRound, X, Building2 } from 'lucide-react';
 import api from '../../lib/axios';
 import {
   PageHeader,
@@ -102,7 +102,7 @@ export default function ProjectsPage() {
               : 'Department Projects'
           }
           subtitle="Pick a project lead to inspect the roster, attendance, and ratings."
-          icon="🏢"
+          icon={<Building2 className="w-6 h-6" />}
           actions={
             <Btn
               onClick={() => {

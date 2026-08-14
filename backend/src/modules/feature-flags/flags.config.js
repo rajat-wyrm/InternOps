@@ -51,6 +51,11 @@ const FLAGS = {
     description: 'Meeting recording upload and playback support',
     rolloutPct: 100,
   },
+  GITHUB_ISSUE_SYNC: {
+    defaultEnabled: false,
+    description: 'GitHub issue sync — auto-create tasks from GitHub issues',
+    rolloutPct: 100,
+  },
 };
 
 module.exports = FLAGS;

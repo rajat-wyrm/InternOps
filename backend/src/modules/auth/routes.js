@@ -201,7 +201,7 @@ async function routes(fastify) {
       reply.setCookie('refreshToken', result.refreshToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: isProduction ? 'strict' : 'lax',
+        sameSite: isProduction ? 'none' : 'lax',
         path: '/api/v1/auth/refresh',
       });
 
@@ -254,7 +254,7 @@ async function routes(fastify) {
       reply.setCookie('refreshToken', tokens.refreshToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: isProduction ? 'strict' : 'lax',
+        sameSite: isProduction ? 'none' : 'lax',
         path: '/api/v1/auth/refresh',
       });
 
