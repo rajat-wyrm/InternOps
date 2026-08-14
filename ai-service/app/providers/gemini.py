@@ -45,9 +45,17 @@ class GeminiProvider(BaseAIProvider):
             f"{self.model_name}:generateContent"
         )
 
-    async def generate_text(self, prompt: str, temperature: float = 0.7, **kwargs) -> str:
+    async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
+        contents = []
+        for msg in messages:
+            role = "model" if msg["role"] == "assistant" else "user"
+            contents.append({
+                "role": role,
+                "parts": [{"text": msg["content"]}]
+            })
+            
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
+            "contents": contents,
             "generationConfig": {"temperature": temperature},
         }
         response_data = await self._send_request(payload)
@@ -135,4 +143,4 @@ async def call_gemini(messages: list[dict]) -> str:
     from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
     prompt = _build_prompt(messages)
     provider = GeminiProvider(api_key=GEMINI_API_KEY, model_name=GEMINI_MODEL)
-    return await provider.generate_text(prompt)
+    return await provider.generate_chat(prompt)

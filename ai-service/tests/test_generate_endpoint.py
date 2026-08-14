@@ -27,7 +27,7 @@ def test_generate_endpoint_success(client, monkeypatch):
     async def mock_generate(*args, **kwargs):
         return "Generated response", "mock-gemini"
 
-    monkeypatch.setattr(ai_orchestrator, "generate_text_with_fallback", mock_generate)
+    monkeypatch.setattr(ai_orchestrator, "generate_chat_with_fallback", mock_generate)
 
     # Test with 'prompt' key
     r = client.post("/generate", json={"prompt": "Write a poem"})
@@ -50,7 +50,7 @@ def test_generate_endpoint_rate_limit(client, monkeypatch):
     async def mock_generate(*args, **kwargs):
         raise ProviderRateLimitError("Rate limit hit", "mock-provider", status_code=429)
 
-    monkeypatch.setattr(ai_orchestrator, "generate_text_with_fallback", mock_generate)
+    monkeypatch.setattr(ai_orchestrator, "generate_chat_with_fallback", mock_generate)
 
     r = client.post("/generate", json={"prompt": "Write a poem"})
     assert r.status_code == 429
@@ -61,7 +61,7 @@ def test_generate_endpoint_api_error_413(client, monkeypatch):
     async def mock_generate(*args, **kwargs):
         raise ProviderAPIError("Oversized response", "mock-provider", status_code=413)
 
-    monkeypatch.setattr(ai_orchestrator, "generate_text_with_fallback", mock_generate)
+    monkeypatch.setattr(ai_orchestrator, "generate_chat_with_fallback", mock_generate)
 
     r = client.post("/generate", json={"prompt": "Write a poem"})
     assert r.status_code == 413
@@ -72,7 +72,7 @@ def test_generate_endpoint_generic_provider_error(client, monkeypatch):
     async def mock_generate(*args, **kwargs):
         raise AIProviderError("Connection error", "mock-provider")
 
-    monkeypatch.setattr(ai_orchestrator, "generate_text_with_fallback", mock_generate)
+    monkeypatch.setattr(ai_orchestrator, "generate_chat_with_fallback", mock_generate)
 
     r = client.post("/generate", json={"prompt": "Write a poem"})
     assert r.status_code == 503

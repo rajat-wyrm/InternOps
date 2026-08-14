@@ -4,9 +4,11 @@ const {
 const auth = require('../../middleware/auth');
 const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
+const aiService = require('./ai.service');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
 const service = require('./service');
+const pLimit = require('p-limit');
 
 async function routes(fastify) {
   // Submit proof (intern only)
@@ -98,8 +100,58 @@ async function routes(fastify) {
         params: toSchema(z.object({ taskId: z.string() })),
       },
     },
-    async (req) => {
-      return repo.getProofsByTask(req.params.taskId);
+    async (req, reply) => {
+      try {
+        const task = await repo.getTaskById(req.params.taskId);
+        if (!task) {
+          return reply.status(404).send({ error: 'Task not found' });
+        }
+        const proofs = await repo.getProofsByTask(req.params.taskId);
+
+        const limit = pLimit(3);
+
+        const results = await Promise.all(
+          proofs.map((p) =>
+            limit(async () => {
+              const submissionData = {
+                ...p,
+                target_platform: task?.target_platform,
+                task_link: task?.task_link,
+                title: task?.title,
+                description: task?.description,
+              };
+
+              try {
+                const ai = await aiService.generateTaskSummary(
+                  submissionData,
+                  req.user.id
+                );
+
+                return {
+                  ...p,
+                  aiSummary: ai.summary,
+                  consistencyFlag: ai.consistencyFlag,
+                };
+              } catch (err) {
+                req.log.error(
+                  err,
+                  'Failed to generate AI summary for proof: ' + p.id
+                );
+                return {
+                  ...p,
+                  aiSummary: null,
+                  consistencyFlag: 'needs_review',
+                };
+              }
+            })
+          )
+        );
+
+        return results;
+      } catch (err) {
+        req.log.error(err, 'Error in GET /proofs/task/:taskId');
+        return reply.status(500).send({ error: 'Internal server error' });
+      }
     }
   );
 

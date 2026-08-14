@@ -36,7 +36,13 @@ class HuggingFaceProvider(BaseAIProvider):
         self.timeout = timeout
         self.base_url = "https://api-inference.huggingface.co/models"
 
-    async def generate_text(self, prompt: str, temperature: float = 0.7, **kwargs) -> str:
+    async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
+        # Flatten messages into a single prompt for HF
+        role_labels = {"user": "User", "assistant": "Assistant", "system": "System"}
+        prompt = "\n\n".join(
+            f"{role_labels.get(m['role'], m['role'])}: {m['content']}" for m in messages
+        )
+        
         payload = {
             "inputs": prompt,
             "parameters": {
@@ -47,7 +53,6 @@ class HuggingFaceProvider(BaseAIProvider):
         }
         response_data = await self._send_request(payload)
         try:
-            # HF Inference API returns: [{ "generated_text": "..." }]
             if isinstance(response_data, list) and len(response_data) > 0:
                 return response_data[0]["generated_text"].strip()
             raise KeyError("Empty response array from Hugging Face")

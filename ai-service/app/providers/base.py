@@ -48,13 +48,13 @@ class BaseAIProvider(ABC):
         return self.__class__.__name__.removesuffix("Provider").lower()
 
     @abstractmethod
-    async def generate_text(
+    async def generate_chat(
         self,
-        prompt: str,
+        messages: list[dict],
         temperature: float = 0.7,
         **kwargs,
     ) -> str:
-        """Generate unstructured text output from the provider."""
+        """Generate text output from a structured conversation history."""
         pass
 
     @abstractmethod

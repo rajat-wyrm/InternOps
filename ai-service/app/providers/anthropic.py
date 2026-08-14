@@ -36,16 +36,21 @@ class AnthropicProvider(BaseAIProvider):
         self.timeout = timeout
         self.base_url = "https://api.anthropic.com/v1/messages"
 
-    async def generate_text(self, prompt: str, temperature: float = 0.7, **kwargs) -> str:
+    async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
+        system_prompts = [m["content"] for m in messages if m.get("role") == "system"]
+        anthropic_messages = [m for m in messages if m.get("role") != "system"]
+                
         payload = {
             "model": self.model_name,
-            "max_tokens": kwargs.get("max_tokens", DEFAULT_MAX_TOKENS),
-            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": kwargs.get("max_tokens", 4096),
+            "messages": anthropic_messages,
             "temperature": temperature,
         }
+        if system_prompts:
+            payload["system"] = "\n".join(system_prompts).strip()
+            
         response_data = await self._send_request(payload)
         try:
-            # Anthropic returns: { content: [{ type: "text", text: "..." }] }
             return response_data["content"][0]["text"].strip()
         except (KeyError, IndexError) as e:
             raise ProviderAPIError(

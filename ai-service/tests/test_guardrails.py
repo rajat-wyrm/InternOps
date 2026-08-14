@@ -35,7 +35,7 @@ def test_sanitize_prompt_strips_whitespace():
     assert result == "hello there"
 
 
-def test_chat_endpoint_rejects_injection_attempt():
+def test_chat_endpoint_rejects_injection_attempt(monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from app.api.ai_routes import router
@@ -44,8 +44,19 @@ def test_chat_endpoint_rejects_injection_attempt():
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: User(id="test_user", roles=["ADMIN"])
-    from app.core.rate_limit import chat_rate_limiter
-    chat_rate_limiter._hits.clear()
+    
+    import app.core.rate_limit as rate_limit_module
+    class FakeRedis:
+        def __init__(self):
+            self.counts = {}
+        async def incr(self, key):
+            self.counts[key] = self.counts.get(key, 0) + 1
+            return self.counts[key]
+        async def expire(self, key, seconds):
+            pass
+    fake_redis = FakeRedis()
+    monkeypatch.setattr(rate_limit_module, "get_redis_client", lambda: fake_redis)
+
     client = TestClient(app, raise_server_exceptions=False)
 
     r = client.post(

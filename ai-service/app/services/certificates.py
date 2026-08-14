@@ -13,7 +13,7 @@ async def generate_certificate_design(task: str):
             model_name=settings.GEMINI_MODEL,
         )
 
-        response = await provider.generate_text(prompt)
+        response = await provider.generate_chat([{"role": "user", "content": prompt}])
 
         return response
 

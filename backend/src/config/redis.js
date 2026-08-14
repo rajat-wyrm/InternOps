@@ -25,6 +25,7 @@ function buildRedisClientOptions() {
 
   const options = {
     username: redisConfig.username || 'default',
+    password: redisConfig.password || undefined,
     socket: {
       host: redisConfig.host,
       port: redisConfig.port || 6379,
@@ -33,7 +34,6 @@ function buildRedisClientOptions() {
       reconnectStrategy: false,
     },
   };
-
   if (redisConfig.password) {
     options.password = redisConfig.password;
   }

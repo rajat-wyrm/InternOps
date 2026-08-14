@@ -20,6 +20,8 @@ import {
   CalendarCheck,
   Star,
   GitPullRequest as GithubIcon,
+  Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
@@ -890,173 +892,204 @@ export default function Tasks({
                       proofs.map((p) => (
                         <div
                           key={p.id}
-                          className="flex flex-col md:flex-row items-start md:items-center gap-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 w-full"
+                          className="flex flex-col gap-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 w-full"
                         >
-                          {(() => {
-                            const images =
-                              p.images && p.images.length > 0
-                                ? p.images
-                                : p.image_path
-                                  ? [{ image_path: p.image_path }]
-                                  : [];
-                            if (!images.length) return null;
+                          <div className="flex flex-col md:flex-row items-start md:items-center gap-3 w-full">
+                            {(() => {
+                              const images =
+                                p.images && p.images.length > 0
+                                  ? p.images
+                                  : p.image_path
+                                    ? [{ image_path: p.image_path }]
+                                    : [];
+                              if (!images.length) return null;
 
-                            return (
-                              <div className="flex gap-2 overflow-x-auto max-w-[200px] md:max-w-[300px]">
-                                {images.map((imgObj, i) => {
-                                  const imgPath = imgObj.image_path || imgObj;
-                                  const normalized = imgPath
-                                    .replace(/\\/g, '/')
-                                    .replace(/^\/+/, '');
-                                  const base = (
-                                    import.meta.env.VITE_API_URL ||
-                                    import.meta.env.VITE_API_BASE_URL ||
-                                    ''
-                                  ).replace(/\/+$/, '');
-                                  const src = base
-                                    ? `${base}/${normalized}`
-                                    : `/${normalized}`;
-                                  return (
-                                    <div
-                                      key={i}
-                                      className="relative group shrink-0"
-                                    >
-                                      <img
-                                        src={src}
-                                        alt="proof"
-                                        className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer hover:opacity-80 transition"
-                                        onClick={() =>
-                                          window.open(src, '_blank')
-                                        }
-                                        onError={(e) => {
-                                          e.currentTarget.style.visibility =
-                                            'hidden';
-                                        }}
-                                      />
-                                      {user?.role === 'ADMIN' && imgObj.id && (
-                                        <button
-                                          type="button"
-                                          className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-sm hover:bg-red-600"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            deleteImageMutation.mutate(
-                                              imgObj.id
-                                            );
+                              return (
+                                <div className="flex gap-2 overflow-x-auto max-w-[200px] md:max-w-[300px]">
+                                  {images.map((imgObj, i) => {
+                                    const imgPath = imgObj.image_path || imgObj;
+                                    const normalized = imgPath
+                                      .replace(/\\/g, '/')
+                                      .replace(/^\/+/, '');
+                                    const base = (
+                                      import.meta.env.VITE_API_URL ||
+                                      import.meta.env.VITE_API_BASE_URL ||
+                                      ''
+                                    ).replace(/\/+$/, '');
+                                    const src = base
+                                      ? `${base}/${normalized}`
+                                      : `/${normalized}`;
+                                    return (
+                                      <div
+                                        key={i}
+                                        className="relative group shrink-0"
+                                      >
+                                        <img
+                                          src={src}
+                                          alt="proof"
+                                          className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer hover:opacity-80 transition"
+                                          onClick={() =>
+                                            window.open(src, '_blank')
+                                          }
+                                          onError={(e) => {
+                                            e.currentTarget.style.visibility =
+                                              'hidden';
                                           }}
-                                          title="Delete this image"
-                                        >
-                                          <X className="w-3 h-3" />
-                                        </button>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })()}
+                                        />
+                                        {user?.role === 'ADMIN' &&
+                                          imgObj.id && (
+                                            <button
+                                              type="button"
+                                              className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-sm hover:bg-red-600"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                deleteImageMutation.mutate(
+                                                  imgObj.id
+                                                );
+                                              }}
+                                              title="Delete this image"
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
 
-                          <div className="flex-1 min-w-[120px] w-full md:w-auto text-xs overflow-hidden">
-                            <Badge
-                              color={
-                                p.status === 'VERIFIED' ? 'green' : 'yellow'
-                              }
-                            >
-                              {p.status}
-                            </Badge>
+                            <div className="flex-1 min-w-[120px] w-full md:w-auto text-xs overflow-hidden">
+                              <Badge
+                                color={
+                                  p.status === 'VERIFIED' ? 'green' : 'yellow'
+                                }
+                              >
+                                {p.status}
+                              </Badge>
 
-                            <div
-                              className="flex flex-wrap items-center gap-1.5 mt-2"
-                              aria-label="Reported engagement actions"
-                            >
-                              {p.did_comment && (
-                                <Badge color="blue">Comment</Badge>
-                              )}
-
-                              {p.did_repost && (
-                                <Badge color="purple">Repost</Badge>
-                              )}
-
-                              {p.did_share && (
-                                <Badge color="green">Share</Badge>
-                              )}
-
-                              {!p.did_comment &&
-                                !p.did_repost &&
-                                !p.did_share && (
-                                  <span className="text-xs text-slate-400 dark:text-slate-500">
-                                    No action data recorded
-                                  </span>
+                              <div
+                                className="flex flex-wrap items-center gap-1.5 mt-2"
+                                aria-label="Reported engagement actions"
+                              >
+                                {p.did_comment && (
+                                  <Badge color="blue">Comment</Badge>
                                 )}
+
+                                {p.did_repost && (
+                                  <Badge color="purple">Repost</Badge>
+                                )}
+
+                                {p.did_share && (
+                                  <Badge color="green">Share</Badge>
+                                )}
+
+                                {!p.did_comment &&
+                                  !p.did_repost &&
+                                  !p.did_share && (
+                                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                                      No action data recorded
+                                    </span>
+                                  )}
+                              </div>
+
+                              <p className="text-slate-500 dark:text-slate-400 mt-2 truncate w-full">
+                                Intern:{' '}
+                                {p.intern_name ||
+                                  p.intern_email ||
+                                  `${p.intern_id.slice(0, 8)}…`}
+                              </p>
                             </div>
 
-                            <p className="text-slate-500 dark:text-slate-400 mt-2 truncate w-full">
-                              Intern:{' '}
-                              {p.intern_name ||
-                                p.intern_email ||
-                                `${p.intern_id.slice(0, 8)}…`}
-                            </p>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0 md:ml-auto">
-                            {canVerify && p.status === 'PENDING' && (
-                              <Btn
-                                variant="success"
-                                className="rounded-2xl"
-                                onClick={() =>
-                                  verifyMutation.mutate({
-                                    proofId: p.id,
-                                    taskId: t.id,
-                                  })
-                                }
-                                disabled={verifyMutation.isPending}
-                              >
-                                <span className="flex items-center gap-1">
-                                  <CheckCircle className="w-4 h-4" />
-                                  {verifyMutation.isPending
-                                    ? 'Verifying...'
-                                    : 'Verify'}
-                                </span>
-                              </Btn>
-                            )}
-
-                            {user?.role === 'ADMIN' &&
-                              (deletingProofId === p.id ? (
-                                <div className="flex items-center gap-2 animate-fade-in">
-                                  <Btn
-                                    variant="outline"
-                                    className="rounded-2xl py-1 px-3 text-xs"
-                                    onClick={() => setDeletingProofId(null)}
-                                  >
-                                    Cancel
-                                  </Btn>
-                                  <Btn
-                                    variant="danger"
-                                    className="rounded-2xl py-1 px-3 text-xs bg-red-500 hover:bg-red-600 text-white border-transparent"
-                                    onClick={() =>
-                                      deleteMutation.mutate({
-                                        proofId: p.id,
-                                        taskId: t.id,
-                                      })
-                                    }
-                                    disabled={deleteMutation.isPending}
-                                  >
-                                    {deleteMutation.isPending
-                                      ? 'Deleting...'
-                                      : 'Confirm'}
-                                  </Btn>
-                                </div>
-                              ) : (
+                            <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0 md:ml-auto">
+                              {canVerify && p.status === 'PENDING' && (
                                 <Btn
-                                  variant="outline"
-                                  className="rounded-2xl text-red-500 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                  onClick={() => setDeletingProofId(p.id)}
+                                  variant="success"
+                                  className="rounded-2xl"
+                                  onClick={() =>
+                                    verifyMutation.mutate({
+                                      proofId: p.id,
+                                      taskId: t.id,
+                                    })
+                                  }
+                                  disabled={verifyMutation.isPending}
                                 >
                                   <span className="flex items-center gap-1">
-                                    <Trash2 className="w-4 h-4" /> Delete
+                                    <CheckCircle className="w-4 h-4" />
+                                    {verifyMutation.isPending
+                                      ? 'Verifying...'
+                                      : 'Verify'}
                                   </span>
                                 </Btn>
-                              ))}
+                              )}
+
+                              {user?.role === 'ADMIN' &&
+                                (deletingProofId === p.id ? (
+                                  <div className="flex items-center gap-2 animate-fade-in">
+                                    <Btn
+                                      variant="outline"
+                                      className="rounded-2xl py-1 px-3 text-xs"
+                                      onClick={() => setDeletingProofId(null)}
+                                    >
+                                      Cancel
+                                    </Btn>
+                                    <Btn
+                                      variant="danger"
+                                      className="rounded-2xl py-1 px-3 text-xs bg-red-500 hover:bg-red-600 text-white border-transparent"
+                                      onClick={() =>
+                                        deleteMutation.mutate({
+                                          proofId: p.id,
+                                          taskId: t.id,
+                                        })
+                                      }
+                                      disabled={deleteMutation.isPending}
+                                    >
+                                      {deleteMutation.isPending
+                                        ? 'Deleting...'
+                                        : 'Confirm'}
+                                    </Btn>
+                                  </div>
+                                ) : (
+                                  <Btn
+                                    variant="outline"
+                                    className="rounded-2xl text-red-500 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                    onClick={() => setDeletingProofId(p.id)}
+                                  >
+                                    <span className="flex items-center gap-1">
+                                      <Trash2 className="w-4 h-4" /> Delete
+                                    </span>
+                                  </Btn>
+                                ))}
+                            </div>
                           </div>
+
+                          {p.aiSummary && (
+                            <div className="border-t border-slate-200/60 dark:border-slate-700/50 pt-2.5 mt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[11px] text-slate-600 dark:text-slate-300">
+                              <div className="flex items-start gap-2 max-w-full sm:max-w-[70%]">
+                                <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+                                <div className="space-y-0.5">
+                                  <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block sm:inline mr-1">
+                                    AI Summary:
+                                  </span>
+                                  <span>{p.aiSummary.summary}</span>
+                                </div>
+                              </div>
+                              <div className="shrink-0 flex items-center">
+                                {p.aiSummary.consistencyFlag ===
+                                'needs_review' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-bold border border-amber-200/50 dark:border-amber-900/40 shadow-sm animate-pulse">
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                                    Needs Review
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200/50 dark:border-emerald-900/40 shadow-sm">
+                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                                    Consistent
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))
                     )}

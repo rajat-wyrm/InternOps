@@ -20,6 +20,7 @@ class RateLimiter:
         self.requests_per_minute = requests_per_minute
         # Local fallback if Redis is unavailable
         self.history: Dict[str, List[float]] = {}
+        self._hits = self.history
 
     async def check_rate_limit(
         self,
@@ -78,3 +79,6 @@ class RateLimiter:
         self.history[client_id] = timestamps
 
 ai_rate_limiter = RateLimiter()
+
+# Backward-compatible name used by existing tests
+chat_rate_limiter = ai_rate_limiter

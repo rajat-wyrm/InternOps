@@ -33,6 +33,7 @@ def get_redis_client():
 class RateLimiter:
     def __init__(self, max_per_minute: int):
         self.max_per_minute = max_per_minute
+        self._hits = {}
 
     async def check(self, key: str) -> None:
         client = get_redis_client()
