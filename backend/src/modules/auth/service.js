@@ -1,3 +1,4 @@
+const argon2 = require('argon2');
 const { UnauthorizedError } = require('../../utils/errors');
 const repo = require('./repository');
 const {
@@ -121,8 +122,6 @@ async function login(email, password, ip, userAgent) {
   const user = await repo.findByEmail(email);
 
   if (!user || user.suspended) {
-    const argon2 = require('argon2');
-
     await argon2.verify(DUMMY_HASH, password).catch(() => {});
 
     await recordLoginAttempt(email, ip, false).catch(() => {});

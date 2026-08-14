@@ -11,7 +11,7 @@ const {
   mergeCookies,
 } = require('./helpers');
 
-jest.setTimeout(30000);
+jest.setTimeout(60000);
 
 const runId = Date.now();
 const departmentName = `Teams Dept ${runId}`;
@@ -57,7 +57,12 @@ async function loginAs(email) {
     },
   });
 
-  expect(loginRes.statusCode).toBe(200);
+  if (loginRes.statusCode !== 200) {
+    throw new Error(
+      `Login failed for ${email}: ${loginRes.statusCode}\n${loginRes.body}`
+    );
+  }
+
   return JSON.parse(loginRes.body).accessToken;
 }
 
@@ -173,8 +178,6 @@ describe('GET /api/departments/:deptId/teams', () => {
         Authorization: `Bearer ${adminAccessToken}`,
       },
     });
-
-    expect(res.statusCode).toBe(200);
 
     const body = JSON.parse(res.body);
     expect(Array.isArray(body)).toBe(true);

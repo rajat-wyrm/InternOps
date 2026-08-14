@@ -298,6 +298,7 @@ async function runFullPipeline(data) {
 
 async function startBulkAIGeneration(data, userId) {
   const repo = require('../certificates/repository');
+  const pLimit = require('p-limit');
 
   const job = await repo.createBulkJob(
     {
@@ -306,82 +307,96 @@ async function startBulkAIGeneration(data, userId) {
       send_email: data.send_email,
       email_subject: data.email_subject,
       email_body: data.email_body,
+      status: 'processing',
     },
     userId
   );
 
-  const results = { generated: 0, failed: 0, errors: [] };
+  const initialItems = data.certificates.map((certData) => ({
+    bulk_job_id: job.id,
+    recipient_name: certData.recipient_name,
+    recipient_email: certData.recipient_email,
+    row_data: certData,
+    status: 'pending',
+  }));
 
-  for (const certData of data.certificates) {
-    try {
-      // Generate AI content for each certificate
-      const aiContent = await generateAchievementStatement({
-        recipient_name: certData.recipient_name,
-        recognition_type: certData.certificate_type || 'achievement',
-        core_achievement: certData.achievement || 'Outstanding performance',
-        desired_tone: certData.tone || 'Professional',
-      });
+  const createdDbItems = await repo.createBulkJobItemsBatch(initialItems);
 
-      const cert = await require('../certificates/service').generateCertificate(
-        {
-          template_id: data.template_id,
+  const limit = pLimit(5);
+  let generated = 0;
+  let failed = 0;
+  const errors = [];
+
+  const tasks = createdDbItems.map((dbItem, index) =>
+    limit(async () => {
+      const certData = data.certificates[index] || dbItem.row_data;
+      try {
+        const aiContent = await generateAchievementStatement({
           recipient_name: certData.recipient_name,
-          recipient_email: certData.recipient_email,
-          title: certData.title || 'Certificate of Achievement',
-          body: aiContent.statement,
-          issuer: certData.issuer,
-          certificate_type: certData.certificate_type || 'achievement',
-          metadata: {
-            ...certData.metadata,
-            ai_generated: true,
-            ai_statement: aiContent.statement,
-          },
-        },
-        userId
-      );
+          recognition_type: certData.certificate_type || 'achievement',
+          core_achievement: certData.achievement || 'Outstanding performance',
+          desired_tone: certData.tone || 'Professional',
+        });
 
-      await repo.createBulkJobItem({
-        bulk_job_id: job.id,
-        certificate_id: cert.data.id,
-        recipient_name: certData.recipient_name,
-        recipient_email: certData.recipient_email,
-        row_data: certData,
-        status: 'generated',
-      });
+        const cert =
+          await require('../certificates/service').generateCertificate(
+            {
+              template_id: data.template_id,
+              recipient_name: certData.recipient_name,
+              recipient_email: certData.recipient_email,
+              title: certData.title || 'Certificate of Achievement',
+              body: aiContent.statement,
+              issuer: certData.issuer,
+              certificate_type: certData.certificate_type || 'achievement',
+              metadata: {
+                ...certData.metadata,
+                ai_generated: true,
+                ai_statement: aiContent.statement,
+              },
+            },
+            userId
+          );
 
-      results.generated++;
-    } catch (err) {
-      await repo.createBulkJobItem({
-        bulk_job_id: job.id,
-        recipient_name: certData.recipient_name,
-        recipient_email: certData.recipient_email,
-        row_data: certData,
-        status: 'failed',
-        error_message: err.message,
-      });
+        await repo.updateBulkJobItem(dbItem.id, {
+          certificate_id: cert.data.id,
+          status: 'generated',
+        });
 
-      results.failed++;
-      results.errors.push({
-        recipient: certData.recipient_name,
-        error: err.message,
-      });
-    }
-  }
+        generated++;
+      } catch (err) {
+        await repo.updateBulkJobItem(dbItem.id, {
+          status: 'failed',
+          error_message: err.message,
+        });
+
+        failed++;
+        errors.push({
+          recipient: certData.recipient_name,
+          error: err.message,
+        });
+      }
+    })
+  );
+
+  await Promise.all(tasks);
 
   await repo.updateBulkJob(job.id, {
-    status: 'completed',
-    completed_count: results.generated,
-    failed_count: results.failed,
-    error_log: results.errors,
+    status:
+      failed === createdDbItems.length && createdDbItems.length > 0
+        ? 'failed'
+        : 'completed',
+    completed_count: generated,
+    failed_count: failed,
+    error_log: errors,
     completed_at: new Date().toISOString(),
   });
 
   return {
     job_id: job.id,
     total: data.certificates.length,
-    generated: results.generated,
-    failed: results.failed,
-    errors: results.errors,
+    generated,
+    failed,
+    errors,
   };
 }
 

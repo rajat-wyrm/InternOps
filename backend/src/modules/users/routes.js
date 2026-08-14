@@ -9,6 +9,7 @@ const argon2 = require('argon2');
 const { z } = require('zod');
 const authRepo = require('../auth/repository');
 const { toSchema } = require('../../utils/schemaHelper');
+const { isValidStep } = require('../../utils/hierarchy');
 
 const listUsersQuerySchema = z.object({
   search: z.string().trim().max(100).optional(),
@@ -20,6 +21,21 @@ const listUsersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+const USER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
+
+const updateUserSchema = z
+  .object({
+    full_name: z.string().trim().min(1).max(255).optional(),
+    email: z.string().trim().email().max(255).optional(),
+    role: z.enum(USER_ROLES).optional(),
+    department_id: z.string().uuid().nullable().optional(),
+    manager_id: z.string().uuid().nullable().optional(),
+  })
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one editable field is required',
+  });
 
 const allowedAvatarExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
 
@@ -57,9 +73,8 @@ const updateProfileSchema = z.object({
   notes: z.string().optional(),
   avatar_url: z
     .string()
-    .refine((val) => isValidAvatarUrl(val), {
-      message: 'Must be a valid image URL or an internal upload path',
-    })
+    .url()
+    .regex(/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)$/i)
     .optional(),
 });
 
@@ -141,6 +156,136 @@ async function routes(fastify) {
         rows: [user],
       } = await repo.getUserById(req.params.id);
       return user || reply.status(404).send({ error: 'Not found' });
+    }
+  );
+
+  // Update user (admin only)
+  fastify.patch(
+    '/:id',
+    {
+      preHandler: [auth, rbac('ADMIN'), sanitize],
+      schema: {
+        tags: ['Users'],
+        description: 'Update user (Admin only)',
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: { id: { type: 'string', format: 'uuid' } },
+        },
+        body: {
+          type: 'object',
+          minProperties: 1,
+          additionalProperties: false,
+          properties: {
+            full_name: { type: 'string', minLength: 1, maxLength: 255 },
+            email: { type: 'string', format: 'email', maxLength: 255 },
+            role: { type: 'string', enum: USER_ROLES },
+            department_id: {
+              anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],
+            },
+            manager_id: {
+              anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }],
+            },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const parsed = updateUserSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Invalid user update',
+          details: parsed.error.issues,
+        });
+      }
+
+      const {
+        rows: [targetUser],
+      } = await repo.getUserById(req.params.id);
+
+      if (!targetUser) {
+        return reply.status(404).send({ error: 'User not found' });
+      }
+
+      const data = { ...parsed.data };
+      if (data.email !== undefined) data.email = data.email.toLowerCase();
+
+      const nextRole = data.role || targetUser.role;
+
+      if (
+        targetUser.role === 'ADMIN' &&
+        !targetUser.suspended &&
+        nextRole !== 'ADMIN'
+      ) {
+        const otherAdminCount = await repo.countOtherActiveAdmins(
+          req.params.id
+        );
+        if (otherAdminCount === 0) {
+          return reply.status(400).send({
+            error: 'Cannot demote the last active admin',
+          });
+        }
+      }
+
+      if (data.department_id) {
+        const department = await repo.getDepartmentById(data.department_id);
+        if (!department) {
+          return reply.status(400).send({ error: 'Department not found' });
+        }
+      }
+
+      if (data.manager_id !== undefined && data.manager_id !== null) {
+        if (data.manager_id === req.params.id) {
+          return reply.status(400).send({
+            error: 'A user cannot manage their own account',
+          });
+        }
+
+        const {
+          rows: [manager],
+        } = await repo.getUserById(data.manager_id);
+
+        if (!manager) {
+          return reply.status(400).send({ error: 'Manager not found' });
+        }
+
+        if (!isValidStep(manager.role, nextRole)) {
+          return reply.status(400).send({
+            error: `Invalid hierarchy: ${manager.role} cannot manage ${nextRole}`,
+          });
+        }
+      } else if (data.role !== undefined && targetUser.manager_id) {
+        const {
+          rows: [manager],
+        } = await repo.getUserById(targetUser.manager_id);
+
+        if (manager && !isValidStep(manager.role, nextRole)) {
+          return reply.status(400).send({
+            error: 'Select a valid manager when changing this user role',
+          });
+        }
+      }
+
+      try {
+        const updatedUser = await repo.updateUser(req.params.id, data);
+
+        req.auditOnResponse = {
+          userId: req.user.id,
+          action: 'USER_UPDATED',
+          resourceType: 'user',
+          resourceId: req.params.id,
+          details: { fields: Object.keys(data) },
+        };
+
+        return { message: 'User updated', user: updatedUser };
+      } catch (error) {
+        if (error.code === '23505') {
+          return reply.status(409).send({
+            error: 'A user with this email already exists',
+          });
+        }
+        throw error;
+      }
     }
   );
 

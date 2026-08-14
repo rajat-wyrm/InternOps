@@ -1,9 +1,11 @@
+const crypto = require('crypto');
 const repo = require('./repository');
 const { generateCertificatePDF } = require('./pdf');
 const { generateQRCodeDataURL } = require('./qr');
 const { DEFAULT_TEMPLATES } = require('./templates');
 const path = require('path');
 const fs = require('fs');
+const pLimit = require('p-limit');
 
 const UPLOAD_DIR = path.join(
   __dirname,
@@ -78,8 +80,13 @@ async function generateCertificate(data, userId) {
     templateData
   );
 
-  // Generate QR code for verification
-  const verifyUrl = `${process.env.APP_URL || 'http://localhost:5173'}/verify/certificate`;
+  // Generate unique verification token
+  const verificationToken = crypto.randomUUID();
+
+  // Generate verification URL
+  const verifyUrl = `${process.env.APP_URL || 'http://localhost:5173'}/verify/certificate/${verificationToken}`;
+
+  // Generate QR code
   const qrCodeUrl = await generateQRCodeDataURL(verifyUrl);
 
   // Save PDF to disk
@@ -94,6 +101,7 @@ async function generateCertificate(data, userId) {
       status: 'generated',
       pdf_path: filename,
       qr_code_url: qrCodeUrl,
+      verification_token: verificationToken,
     },
     userId
   );
@@ -103,6 +111,8 @@ async function generateCertificate(data, userId) {
     data: {
       ...cert,
       pdf_url: `/uploads/certificates/${filename}`,
+      verification_token: verificationToken,
+      verification_url: verifyUrl,
     },
   };
 }
@@ -126,6 +136,41 @@ async function getCertificate(id) {
     pdf_url: cert.pdf_path ? `/uploads/certificates/${cert.pdf_path}` : null,
   };
 }
+async function verifyCertificate(token) {
+  const cert = await repo.getCertificateByVerificationToken(token);
+
+  if (!cert) {
+    return null;
+  }
+
+  if (cert.status !== 'generated') {
+    return {
+      valid: false,
+      reason: 'Certificate has not been issued',
+    };
+  }
+
+  if (cert.revoked_at) {
+    return {
+      valid: false,
+      reason: 'Certificate has been revoked',
+      certificate: {
+        ...cert,
+        pdf_url: cert.pdf_path
+          ? `/uploads/certificates/${cert.pdf_path}`
+          : null,
+      },
+    };
+  }
+
+  return {
+    valid: true,
+    certificate: {
+      ...cert,
+      pdf_url: cert.pdf_path ? `/uploads/certificates/${cert.pdf_path}` : null,
+    },
+  };
+}
 
 async function deleteCertificate(id) {
   const cert = await repo.getCertificateById(id);
@@ -142,6 +187,12 @@ async function deleteCertificate(id) {
   return repo.deleteCertificate(id);
 }
 
+async function revokeCertificate(id, reason = null) {
+  const cert = await repo.getCertificateById(id);
+  if (!cert) return null;
+  return repo.revokeCertificate(id, reason);
+}
+
 // ============================================================
 // Bulk Generation Service
 // ============================================================
@@ -154,76 +205,187 @@ async function startBulkGeneration(data, userId) {
       send_email: data.send_email,
       email_subject: data.email_subject,
       email_body: data.email_body,
+      status: 'pending',
+      completed_count: 0,
+      failed_count: 0,
     },
     userId
   );
 
-  // Process certificates synchronously for now (can be made async with a job queue)
-  const results = { generated: 0, failed: 0, errors: [] };
+  const itemsToCreate = data.certificates.map((certData) => ({
+    bulk_job_id: job.id,
+    recipient_name: certData.recipient_name,
+    recipient_email: certData.recipient_email,
+    row_data: certData,
+    status: 'pending',
+  }));
 
-  for (const certData of data.certificates) {
-    try {
-      const cert = await generateCertificate(
-        {
-          template_id: data.template_id,
-          recipient_name: certData.recipient_name,
-          recipient_email: certData.recipient_email,
-          title: certData.title || 'Certificate of Achievement',
-          body: certData.body,
-          issuer: certData.issuer,
-          certificate_type: certData.certificate_type || 'achievement',
-          metadata: certData.metadata,
-        },
-        userId
-      );
+  await repo.createBulkJobItemsBatch(itemsToCreate);
 
-      await repo.createBulkJobItem({
-        bulk_job_id: job.id,
-        certificate_id: cert.data.id,
-        recipient_name: certData.recipient_name,
-        recipient_email: certData.recipient_email,
-        row_data: certData,
-        status: 'generated',
-      });
-
-      results.generated++;
-    } catch (err) {
-      await repo.createBulkJobItem({
-        bulk_job_id: job.id,
-        recipient_name: certData.recipient_name,
-        recipient_email: certData.recipient_email,
-        row_data: certData,
-        status: 'failed',
-        error_message: err.message,
-      });
-
-      results.failed++;
-      results.errors.push({
-        recipient: certData.recipient_name,
-        error: err.message,
-      });
-    }
-  }
-
-  // Update job status
-  await repo.updateBulkJob(job.id, {
-    status: 'completed',
-    completed_count: results.generated,
-    failed_count: results.failed,
-    error_log: results.errors,
-    completed_at: new Date().toISOString(),
-  });
+  const bulkJobQueue = require('../../services/bulkJobQueue');
+  bulkJobQueue.addJob(job.id, data, userId);
 
   return {
     success: true,
     data: {
       job_id: job.id,
       total: data.certificates.length,
-      generated: results.generated,
-      failed: results.failed,
-      errors: results.errors,
+      generated: 0,
+      failed: 0,
+      errors: [],
     },
   };
+}
+
+async function processBulkGeneration(jobId, initialData, userId, pLimiter) {
+  const limit = pLimiter || pLimit(5);
+
+  const job = await repo.getBulkJobById(jobId);
+  if (!job) return;
+
+  const dbItems = await repo.getBulkJobItems(jobId);
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const rawTemplateId = initialData?.template_id || job.template_id;
+  const templateId = uuidRegex.test(String(rawTemplateId || ''))
+    ? rawTemplateId
+    : null;
+
+  let itemsToProcess = dbItems.filter((i) => i.status === 'pending');
+
+  if (itemsToProcess.length === 0 && initialData?.certificates?.length > 0) {
+    const batch = initialData.certificates.map((certData) => ({
+      bulk_job_id: jobId,
+      recipient_name: certData.recipient_name,
+      recipient_email: certData.recipient_email,
+      row_data: certData,
+      status: 'pending',
+    }));
+    itemsToProcess = await repo.createBulkJobItemsBatch(batch);
+  }
+
+  let generated = job.completed_count || 0;
+  let failed = job.failed_count || 0;
+  const errors = [];
+  let lastProgressUpdate = Date.now();
+
+  const updateProgress = async (force = false) => {
+    const now = Date.now();
+    if (force || now - lastProgressUpdate > 300) {
+      lastProgressUpdate = now;
+      await repo
+        .updateBulkJob(jobId, {
+          completed_count: generated,
+          failed_count: failed,
+        })
+        .catch(() => {});
+    }
+  };
+
+  const tasks = itemsToProcess.map((item) =>
+    limit(async () => {
+      // Prevent duplicate certificate generation on crash recovery if certificate_id is already assigned
+      if (item.certificate_id) {
+        await repo
+          .updateBulkJobItem(item.id, { status: 'generated' })
+          .catch(() => {});
+        generated++;
+        await updateProgress();
+        return;
+      }
+
+      const certData =
+        typeof item.row_data === 'string'
+          ? JSON.parse(item.row_data)
+          : item.row_data || {
+              recipient_name: item.recipient_name,
+              recipient_email: item.recipient_email,
+            };
+
+      try {
+        let cert;
+        let lastErr;
+
+        for (let attempt = 1; attempt <= 4; attempt++) {
+          try {
+            cert = await generateCertificate(
+              {
+                template_id: templateId,
+                recipient_name: item.recipient_name || certData.recipient_name,
+                recipient_email:
+                  item.recipient_email || certData.recipient_email,
+                title: certData.title || 'Certificate of Achievement',
+                body: certData.body,
+                issuer: certData.issuer,
+                certificate_type: certData.certificate_type || 'achievement',
+                metadata: certData.metadata,
+              },
+              userId || job.created_by
+            );
+            lastErr = null;
+            break;
+          } catch (e) {
+            lastErr = e;
+            if (attempt < 4) {
+              await new Promise((r) => setTimeout(r, 200 * attempt));
+            }
+          }
+        }
+
+        if (lastErr) throw lastErr;
+
+        let updatedItem = false;
+        for (let updateAttempt = 1; updateAttempt <= 3; updateAttempt++) {
+          try {
+            await repo.updateBulkJobItem(item.id, {
+              certificate_id: cert.data.id,
+              status: 'generated',
+            });
+            updatedItem = true;
+            break;
+          } catch (updateErr) {
+            if (updateAttempt < 3) await new Promise((r) => setTimeout(r, 150));
+          }
+        }
+
+        if (updatedItem) {
+          generated++;
+        } else {
+          failed++;
+        }
+      } catch (err) {
+        await repo
+          .updateBulkJobItem(item.id, {
+            status: 'failed',
+            error_message: err.message,
+          })
+          .catch(() => {});
+        failed++;
+        errors.push({
+          recipient: item.recipient_name || 'Recipient',
+          error: err.message,
+        });
+      }
+
+      await updateProgress();
+    })
+  );
+
+  await Promise.all(tasks);
+  await updateProgress(true);
+
+  const finalStatus =
+    itemsToProcess.length > 0 && failed === itemsToProcess.length
+      ? 'failed'
+      : 'completed';
+
+  await repo.updateBulkJob(jobId, {
+    status: finalStatus,
+    completed_count: generated,
+    failed_count: failed,
+    error_log: errors.length > 0 ? errors : undefined,
+    completed_at: new Date().toISOString(),
+  });
 }
 
 async function getBulkJobStatus(id) {
@@ -326,7 +488,16 @@ async function quickGenerate(data, userId) {
   const dateRangeText = `from ${startFormatted} to ${endFormatted}`;
   const pdfBody =
     'During this period, the candidate demonstrated exemplary professional standards, technical proficiency, and significant contribution to our organizational goals.';
-  // 4. Generate PDF
+  // 4. Generate verification token
+  const verificationToken = crypto.randomUUID();
+
+  // Verification URL
+  const verifyUrl = `${process.env.APP_URL || 'http://localhost:5173'}/verify/certificate/${verificationToken}`;
+
+  // Generate QR Code
+  const qrCodeUrl = await generateQRCodeDataURL(verifyUrl);
+
+  // 5. Generate PDF
   const pdfBuffer = await generateCertificatePDF(
     {
       recipientName: data.recipient_name,
@@ -340,20 +511,21 @@ async function quickGenerate(data, userId) {
       issueDate: new Date().toISOString().slice(0, 10),
       certificateType: 'internship',
       certificateNumber,
+
+      // NEW
+      qrCode: qrCodeUrl,
+      verificationUrl: verifyUrl,
+      certificateId: verificationToken,
     },
     templateData
   );
-
-  // 5. Generate QR code
-  const verifyUrl = `${process.env.APP_URL || 'http://localhost:5173'}/verify/certificate`;
-  const qrCodeUrl = await generateQRCodeDataURL(verifyUrl);
 
   // 6. Save PDF to disk
   const filename = `cert_${certificateNumber.replace(/\//g, '-')}_${Date.now()}.pdf`;
   const filePath = path.join(UPLOAD_DIR, filename);
   fs.writeFileSync(filePath, pdfBuffer);
 
-  // 7. Save to database
+  // 7. Save certificate
   const cert = await repo.createCertificate(
     {
       template_id: data.template_id || null,
@@ -364,8 +536,11 @@ async function quickGenerate(data, userId) {
       issue_date: new Date().toISOString().slice(0, 10),
       certificate_type: 'internship',
       status: 'generated',
+
       pdf_path: filename,
       qr_code_url: qrCodeUrl,
+      verification_token: verificationToken,
+
       metadata: {
         certificate_number: certificateNumber,
         domain: data.domain,
@@ -387,12 +562,17 @@ async function quickGenerate(data, userId) {
       start_date: data.start_date,
       end_date: data.end_date,
       pdf_url: `/uploads/certificates/${filename}`,
+      verification_token: verificationToken,
+      verification_url: verifyUrl,
+      qr_code_url: qrCodeUrl,
     },
   };
 }
 
 function formatDate(dateStr) {
+  if (!dateStr) return 'N/A';
   const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return String(dateStr);
   const months = [
     'January',
     'February',
@@ -420,8 +600,11 @@ module.exports = {
   generateCertificate,
   listCertificates,
   getCertificate,
+  verifyCertificate,
   deleteCertificate,
+  revokeCertificate,
   startBulkGeneration,
+  processBulkGeneration,
   getBulkJobStatus,
   generateAIContent,
   suggestTemplate,

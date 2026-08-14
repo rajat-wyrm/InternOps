@@ -1,5 +1,13 @@
 ﻿const pool = require('../../config/db');
 
+const EDITABLE_USER_COLUMNS = new Set([
+  'full_name',
+  'email',
+  'role',
+  'department_id',
+  'manager_id',
+]);
+
 async function listUsersByRole(role) {
   return pool.query(
     'SELECT id,email,role,full_name,suspended FROM users WHERE deleted_at IS NULL AND role=$1',
@@ -38,7 +46,8 @@ async function listUsersPaginated({
   const whereSql = `WHERE ${where.join(' AND ')}`;
 
   const dataSql = `
-    SELECT id, email, role, full_name, suspended, avatar_url, created_at
+    SELECT id, email, role, full_name, suspended, avatar_url, created_at,
+           department_id, manager_id
     FROM users
     ${whereSql}
     ORDER BY created_at DESC
@@ -67,11 +76,47 @@ async function listUsersPaginated({
 async function getUserById(id) {
   return pool.query(
     `SELECT id, email, role, full_name, suspended, avatar_url, created_at,
-            department_id, phone, college, course, year_of_study, position,
+            department_id, manager_id, phone, college, course, year_of_study, position,
             joining_date, internship_status, location, notes
      FROM users WHERE id=$1 AND deleted_at IS NULL`,
     [id]
   );
+}
+
+async function getDepartmentById(id) {
+  const result = await pool.query('SELECT id FROM departments WHERE id = $1', [
+    id,
+  ]);
+
+  return result.rows[0] || null;
+}
+
+async function updateUser(id, data) {
+  const fields = [];
+  const params = [];
+
+  for (const [column, value] of Object.entries(data)) {
+    if (!EDITABLE_USER_COLUMNS.has(column)) {
+      throw new Error(`Unsupported user update field: ${column}`);
+    }
+
+    params.push(value);
+    fields.push(`${column} = $${params.length}`);
+  }
+
+  if (fields.length === 0) return null;
+
+  params.push(id);
+  const result = await pool.query(
+    `UPDATE users
+     SET ${fields.join(', ')}, updated_at = NOW()
+     WHERE id = $${params.length} AND deleted_at IS NULL
+     RETURNING id, email, role, full_name, suspended, avatar_url, created_at,
+               department_id, manager_id, updated_at`,
+    params
+  );
+
+  return result.rows[0] || null;
 }
 
 async function suspendUser(id) {
@@ -113,6 +158,8 @@ module.exports = {
   listUsersByRole,
   listUsersPaginated,
   getUserById,
+  getDepartmentById,
+  updateUser,
   suspendUser,
   activateUser,
   softDeleteUser,
