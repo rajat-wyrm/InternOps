@@ -22,6 +22,14 @@ module.exports = async function ratingsRoutes(fastify) {
     {
       config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
       schema: { tags: ['Ratings'], description: 'Submit a rating' },
+
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'), sanitize],
     },
     async (req, reply) => {
