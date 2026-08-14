@@ -144,47 +144,6 @@ Degraded features may include:
 - Session caching may be disabled or use fallback storage.
 - WebSocket coordination may run in local/in-process mode.
 
-For Redis-enabled environments, configure:
-
-````env
-REDIS_URL=rediss://default:<your-token>@<your-endpoint>:6379
-
-### 2. Setup Backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env
-# Fill in your DB credentials and secrets
-npm run migrate
-npm run seed
-npm run dev
-````
-
----
-
-### 3. Setup Frontend
-
-```bash
-cd frontend
-npm install
-cp .env.example .env
-# Fill in your VITE_API_BASE_URL
-npm run dev
-```
-
----
-
-## 🌐 Access the Application
-
-Open your browser and go to:
-
-```
-http://localhost:5173
-```
-
----
-
 ## 📁 Project Structure
 
 ```plaintext
