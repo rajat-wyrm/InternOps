@@ -3,7 +3,7 @@ from app.core.auth import User, get_current_user
 from app.core.rate_limiter import ai_rate_limiter
 from app.providers.orchestrator import ai_orchestrator
 from app.providers.base import AIProviderError, ProviderAPIError, ProviderRateLimitError
-
+from app.core.security import sanitize_prompt
 router = APIRouter()
 
 
@@ -27,9 +27,14 @@ async def generate_ai_content(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Prompt or user_input is required in payload",
         )
-
     try:
-        content, provider_name = await ai_orchestrator.generate_chat_with_fallback(prompt)
+        prompt = sanitize_prompt(prompt)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    messages = [{"role": "user", "content": prompt}]
+    try:
+        content, provider_name = await ai_orchestrator.generate_chat_with_fallback(messages)
         return {
             "status": "success",
             "provider": provider_name,

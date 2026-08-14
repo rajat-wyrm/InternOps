@@ -389,29 +389,88 @@ async function seed() {
     console.log(`  ${meetings.length} meetings`);
 
     // ============================================================
-    // ATTENDANCE
+    // ATTENDANCE & EXEMPTIONS
     // ============================================================
-    console.log('Seeding attendance...');
-    const statuses = ['PRESENT', 'ABSENT', 'HALF_DAY'];
+    console.log('Seeding attendance & exemptions...');
     let attendanceCount = 0;
     await client.query('DELETE FROM attendance');
+    await client.query('DELETE FROM attendance_exemptions');
+    await client.query('DELETE FROM attendance_anomalies');
+
+    // 1. Seed global public holiday
+    const holidayDateStr = daysAgo(10).split('T')[0];
+    await client.query(
+      'INSERT INTO attendance_exemptions (id, user_id, exemption_date, exemption_type, description) VALUES ($1, NULL, $2, $3, $4)',
+      [uuid(), holidayDateStr, 'PUBLIC_HOLIDAY', 'National Day Holiday']
+    );
+
+    const uA = users.slice(9)[0]; // Repetitive late & suspicious consistency intern
+    const uB = users.slice(9)[1]; // Unusual absences & outlier intern
+
+    // 2. Seed personal leave for uA
+    const leaveDateStr = daysAgo(15).split('T')[0];
+    await client.query(
+      'INSERT INTO attendance_exemptions (id, user_id, exemption_date, exemption_type, description) VALUES ($1, $2, $3, $4, $5)',
+      [uuid(), uA.id, leaveDateStr, 'LEAVE', 'Approved Medical Leave']
+    );
+
+    // Seed 25 days of attendance history (excluding weekends)
     for (const u of users.slice(9)) {
-      for (let d = 0; d < 5; d++) {
+      let absencesSeeded = 0;
+
+      for (let d = 0; d < 25; d++) {
+        const dateStr = daysAgo(d).split('T')[0];
+        const dt = new Date(daysAgo(d));
+        const dayOfWeek = dt.getUTCDay(); // 0 is Sunday, 6 is Saturday
+
+        if (dayOfWeek === 0 || dayOfWeek === 6) continue; // skip weekends
+        if (dateStr === holidayDateStr) continue; // skip global holiday
+        if (u.id === uA.id && dateStr === leaveDateStr) continue; // skip leave day for uA
+
+        let status = 'PRESENT';
+        let arrival_time = null;
+
+        if (u.id === uA.id) {
+          // Intern A: Always present, always exactly at 09:15:00
+          status = 'PRESENT';
+          arrival_time = '09:15:00';
+        } else if (u.id === uB.id) {
+          // Intern B: High absences (seed 8 absences out of ~18 working days)
+          if (absencesSeeded < 8 && Math.random() < 0.5) {
+            status = 'ABSENT';
+            arrival_time = null;
+            absencesSeeded++;
+          } else {
+            status = 'PRESENT';
+            // Random present time between 08:50 and 09:10
+            const minute = 50 + Math.floor(Math.random() * 20);
+            const hour = minute >= 60 ? 9 : 8;
+            const minStr = String(minute % 60).padStart(2, '0');
+            arrival_time = `0${hour}:${minStr}:00`;
+          }
+        } else {
+          // Other interns: normal behavior
+          if (Math.random() < 0.08) {
+            status = 'ABSENT';
+            arrival_time = null;
+          } else {
+            status = 'PRESENT';
+            // Random normal arrival between 08:45 and 09:05
+            const minute = 45 + Math.floor(Math.random() * 20);
+            const hour = minute >= 60 ? 9 : 8;
+            const minStr = String(minute % 60).padStart(2, '0');
+            arrival_time = `0${hour}:${minStr}:00`;
+          }
+        }
+
         await client.query(
-          'INSERT INTO attendance (id, user_id, marked_by, date, status, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
-          [
-            uuid(),
-            u.id,
-            adminId,
-            daysAgo(d).split('T')[0],
-            randomItem(statuses),
-            now,
-          ]
+          'INSERT INTO attendance (id, user_id, marked_by, date, status, arrival_time, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+          [uuid(), u.id, adminId, dateStr, status, arrival_time, now]
         );
         attendanceCount++;
       }
     }
-    console.log(`  ${attendanceCount} attendance records`);
+    console.log(`  ${attendanceCount} attendance records seeded`);
 
     // ============================================================
     // RATINGS

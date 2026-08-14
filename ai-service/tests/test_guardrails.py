@@ -44,6 +44,7 @@ def test_chat_endpoint_rejects_injection_attempt(monkeypatch):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: User(id="test_user", roles=["ADMIN"])
+    
     import app.core.rate_limit as rate_limit_module
     class FakeRedis:
         def __init__(self):
@@ -55,6 +56,7 @@ def test_chat_endpoint_rejects_injection_attempt(monkeypatch):
             pass
     fake_redis = FakeRedis()
     monkeypatch.setattr(rate_limit_module, "get_redis_client", lambda: fake_redis)
+
     client = TestClient(app, raise_server_exceptions=False)
 
     r = client.post(

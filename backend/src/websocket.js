@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const config = require('./config');
 const { verifyAccessToken } = require('./utils/tokens');
+const { isAccessTokenBlacklisted } = require('./config/redis');
 
 let io = null;
 let log = null;
@@ -132,7 +133,7 @@ function initializeWebSocket(server, logger) {
     engineSocket.on('close', () => cleanupPendingConnection(engineSocket));
   });
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const engineSocket = socket.conn;
     let rawToken =
       socket.handshake?.auth?.token ||
@@ -184,6 +185,33 @@ function initializeWebSocket(server, logger) {
       }
 
       const decoded = verifyAccessToken(token);
+
+      if (!decoded || !decoded.jti) {
+        log?.warn(
+          { clientIp },
+          'WebSocket authentication failed: missing token ID (jti)'
+        );
+
+        cleanupPendingConnection(engineSocket);
+        socket.disconnect(true);
+        return next(new Error('Authentication error'));
+      }
+
+      if (await isAccessTokenBlacklisted(decoded.jti)) {
+        log?.warn(
+          {
+            clientIp,
+            userId: decoded.id,
+            jti: decoded.jti,
+          },
+          'WebSocket authentication failed: token revoked'
+        );
+
+        cleanupPendingConnection(engineSocket);
+        socket.disconnect(true);
+        return next(new Error('Token revoked'));
+      }
+
       socket.userId = decoded.id;
       cleanupPendingConnection(engineSocket);
       next();
@@ -198,6 +226,7 @@ function initializeWebSocket(server, logger) {
         },
         'WebSocket authentication failed during token verification'
       );
+
       cleanupPendingConnection(engineSocket);
       socket.disconnect(true);
       next(new Error('Authentication error'));

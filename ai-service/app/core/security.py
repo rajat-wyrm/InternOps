@@ -1,22 +1,38 @@
 import re
+from fastapi import HTTPException, status
 
-# Block common injection patterns
 INJECTION_PATTERNS = [
     r"ignore (all )?previous instructions",
-    r"system prompt",
-    r"you are now",
-    r"<\|im_start\|>",
+    r"forget (all )?(prior|previous) (rules|prompts)",
+    r"you are now in (developer|dan|jailbreak) mode",
+    r"override (system|safety) settings",
+    r"system prompt:",
+    r"```system",
 ]
 
-def sanitize_prompt(user_input: str) -> str:
-    # 1. Check length
-    if len(user_input) > 2000:  # adjust limit
-        raise ValueError("Input too long")
-    
-    # 2. Check for injection patterns
+def sanitize_user_input(text: str, max_length: int = 2000) -> str:
+    if not text or not text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Prompt text cannot be empty."
+        )
+
+    cleaned = text.strip()
+
+    if len(cleaned) > max_length:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Prompt exceeds maximum allowed length of {max_length} characters."
+        )
+
     for pattern in INJECTION_PATTERNS:
-        if re.search(pattern, user_input, re.IGNORECASE):
-            raise ValueError("Potential prompt injection detected")
-    
-    # 3. Escape special chars if needed
-    return user_input.strip()
+        if re.search(pattern, cleaned, re.IGNORECASE):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Security Violation: Input contains forbidden system override instructions."
+            )
+
+    cleaned = cleaned.replace("```", "'''")
+    return cleaned
+
+sanitize_prompt = sanitize_user_input
