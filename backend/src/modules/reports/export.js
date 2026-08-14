@@ -27,7 +27,7 @@ function parseDateRange(query) {
 function csvCell(value) {
   const s = String(value ?? '');
   if (/^[=+\-@\t\r]/.test(s)) {
-    return `"${'"'}${s.replace(/"/g, '""')}"`;
+    return `"'${s.replace(/"/g, '""')}"`;
   }
   if (/[",\n]/.test(s)) {
     return `"${s.replace(/"/g, '""')}"`;
