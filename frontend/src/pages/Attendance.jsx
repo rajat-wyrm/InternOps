@@ -264,52 +264,52 @@ export default function Attendance({
             ) : (
               <div className="mb-5">
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
-                      <tr>
-                        <th className="px-6 py-4 font-extrabold">Date</th>
-                        <th className="px-6 py-4 font-extrabold">Status</th>
-                        <th className="px-6 py-4 font-extrabold">Remarks</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {records.map((a, index) => (
-                        <tr
-                          key={a.id}
-                          className={`transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
-                            index % 2 === 0
-                              ? 'bg-white dark:bg-slate-900'
-                              : 'bg-slate-50/50 dark:bg-slate-800/35'
-                          } hover:bg-emerald-50/40 dark:hover:bg-slate-800`}
-                        >
-                          <td className="px-6 py-4 whitespace-nowrap text-slate-700 dark:text-slate-200 font-medium">
-                            {new Date(a.date).toLocaleDateString('en-GB', {
-                              day: '2-digit',
-                              month: 'short',
-                              year: 'numeric',
-                            })}
-                          </td>
-
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold tracking-wide ${
-                                STATUS_BADGE[a.status] || ''
-                              }`}
-                            >
-                              {a.status}
-                            </span>
-                          </td>
-
-                          <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                            {a.remarks || '—'}
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                          <th className="px-6 py-4 font-extrabold">Date</th>
+                          <th className="px-6 py-4 font-extrabold">Status</th>
+                          <th className="px-6 py-4 font-extrabold">Remarks</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+
+                      <tbody>
+                        {records.map((a, index) => (
+                          <tr
+                            key={a.id}
+                            className={`transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
+                              index % 2 === 0
+                                ? 'bg-white dark:bg-slate-900'
+                                : 'bg-slate-50/50 dark:bg-slate-800/35'
+                            } hover:bg-emerald-50/40 dark:hover:bg-slate-800`}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap text-slate-700 dark:text-slate-200 font-medium">
+                              {new Date(a.date).toLocaleDateString('en-GB', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                              })}
+                            </td>
+
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold tracking-wide ${
+                                  STATUS_BADGE[a.status] || ''
+                                }`}
+                              >
+                                {a.status}
+                              </span>
+                            </td>
+
+                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
+                              {a.remarks || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
@@ -432,50 +432,50 @@ export default function Attendance({
               <>
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
                   <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
-                      <tr>
-                        <th className="px-6 py-4 font-extrabold">Date</th>
-                        <th className="px-6 py-4 font-extrabold">Status</th>
-                        <th className="px-6 py-4 font-extrabold">Remarks</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {records.map((a, index) => (
-                        <tr
-                          key={a.id}
-                          className={`transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
-                            index % 2 === 0
-                              ? 'bg-white dark:bg-slate-900'
-                              : 'bg-slate-50/50 dark:bg-slate-800/35'
-                          } hover:bg-emerald-50/40 dark:hover:bg-slate-800`}
-                        >
-                          <td className="px-6 py-4 whitespace-nowrap text-slate-700 dark:text-slate-200 font-medium">
-                            {new Date(a.date).toLocaleDateString('en-GB', {
-                              day: '2-digit',
-                              month: 'short',
-                              year: 'numeric',
-                            })}
-                          </td>
-
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold tracking-wide ${
-                                STATUS_BADGE[a.status] || ''
-                              }`}
-                            >
-                              {a.status}
-                            </span>
-                          </td>
-
-                          <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                            {a.remarks || '—'}
-                          </td>
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                          <th className="px-6 py-4 font-extrabold">Date</th>
+                          <th className="px-6 py-4 font-extrabold">Status</th>
+                          <th className="px-6 py-4 font-extrabold">Remarks</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+
+                      <tbody>
+                        {records.map((a, index) => (
+                          <tr
+                            key={a.id}
+                            className={`transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
+                              index % 2 === 0
+                                ? 'bg-white dark:bg-slate-900'
+                                : 'bg-slate-50/50 dark:bg-slate-800/35'
+                            } hover:bg-emerald-50/40 dark:hover:bg-slate-800`}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap text-slate-700 dark:text-slate-200 font-medium">
+                              {new Date(a.date).toLocaleDateString('en-GB', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                              })}
+                            </td>
+
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold tracking-wide ${
+                                  STATUS_BADGE[a.status] || ''
+                                }`}
+                              >
+                                {a.status}
+                              </span>
+                            </td>
+
+                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
+                              {a.remarks || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
@@ -507,7 +507,8 @@ export default function Attendance({
                 </div>
               </>
             ))}
-      </div>
+        </div>
       )}
-      </div>
-); }
+    </div>
+  );
+}
