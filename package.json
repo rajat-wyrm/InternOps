@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.16.0",
-    "bullmq": "^6.0.11",
+    "bullmq": "^6.1.1",
     "color-name": "^2.1.1",
     "require-directory": "^2.1.1",
     "sonner": "^2.0.7"
