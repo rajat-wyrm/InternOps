@@ -5,9 +5,11 @@ import { Link, useParams } from 'react-router-dom';
 import AttendanceMarkForm from '../components/AttendanceMarkForm';
 import BulkAttendanceForm from '../components/BulkAttendanceForm';
 import CustomSelect from '../components/CustomSelect';
+import DepartmentAttendanceSheet from '../components/department/DepartmentAttendanceSheet';
 import { ApiErrorState } from '../components/ui';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
+
 const STATUS_BADGE = {
   PRESENT:
     'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60',
@@ -36,6 +38,11 @@ export default function Attendance({
     return user?.id || '';
   });
   const [page, setPage] = useState(1);
+  const [viewAll, setViewAll] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = `${today.slice(0, 8)}01`;
+  const [sheetFrom, setSheetFrom] = useState(monthStart);
+  const [sheetTo, setSheetTo] = useState(today);
   const limit = 30;
 
   useEffect(() => {
@@ -77,13 +84,28 @@ export default function Attendance({
     enabled: isManager && !isProjectView,
   });
 
+  const {
+    data: sheetData,
+    isLoading: sheetIsLoading,
+    error: sheetError,
+    refetch: refetchSheet,
+  } = useQuery({
+    queryKey: ['departmentAttendanceSheet', deptId, sheetFrom, sheetTo],
+    queryFn: () =>
+      api
+        .get(`/attendance/department/${deptId}/sheet`, {
+          params: { from: sheetFrom, to: sheetTo },
+        })
+        .then((res) => res.data),
+    enabled: viewAll && !!deptId && !isProjectView,
+  });
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['attendance', viewUserId, page],
     queryFn: () =>
       api
         .get(`/attendance/${viewUserId}`, { params: { page, limit } })
         .then((res) => res.data),
-    enabled: !!viewUserId,
+    enabled: !!viewUserId && !viewAll,
     placeholderData: keepPreviousData,
   });
 
@@ -92,6 +114,19 @@ export default function Attendance({
   const totalPages = Math.max(Math.ceil(total / limit), 1);
 
   const effectiveTeam = isProjectView ? roster : team;
+
+  useEffect(() => {
+    if (!deptId || isProjectView || team.length === 0) return;
+
+    const selectedUserIsInDepartment = team.some(
+      (member) => member.id === viewUserId
+    );
+
+    if (!selectedUserIsInDepartment) {
+      setViewUserId(team[0].id);
+      setPage(1);
+    }
+  }, [deptId, isProjectView, team, viewUserId]);
 
   const selectedName =
     viewUserId === user?.id
@@ -226,6 +261,15 @@ export default function Attendance({
                   disabled={teamIsError}
                   searchable={true}
                 />
+                {!isProjectView && deptId && (
+                  <button
+                    type="button"
+                    onClick={() => setViewAll((current) => !current)}
+                    className="mt-3 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-emerald-700"
+                  >
+                    {viewAll ? 'Individual View' : 'View All'}
+                  </button>
+                )}
               </>
             ) : (
               <p className="text-slate-700 dark:text-slate-200 font-bold">
@@ -234,13 +278,28 @@ export default function Attendance({
             )}
           </div>
 
-          {isLoading && (
+          {viewAll && (
+            <div className="mb-5">
+              <DepartmentAttendanceSheet
+                departmentName={activeDepartment?.name}
+                data={sheetData}
+                from={sheetFrom}
+                to={sheetTo}
+                onFromChange={setSheetFrom}
+                onToChange={setSheetTo}
+                isLoading={sheetIsLoading}
+                error={sheetError}
+                onRetry={refetchSheet}
+              />
+            </div>
+          )}
+          {!viewAll && isLoading && (
             <div className="flex justify-center p-8 mb-5">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
             </div>
           )}
 
-          {isError && (
+          {!viewAll && isError && (
             <div className="mb-5">
               <ApiErrorState
                 error={error}
@@ -251,7 +310,8 @@ export default function Attendance({
             </div>
           )}
 
-          {!isLoading &&
+          {!viewAll &&
+            !isLoading &&
             !isError &&
             (records.length === 0 ? (
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400 mb-5">
@@ -395,6 +455,15 @@ export default function Attendance({
                   className="w-full max-w-sm"
                   disabled={teamIsError}
                 />
+                {!isProjectView && deptId && (
+                  <button
+                    type="button"
+                    onClick={() => setViewAll((current) => !current)}
+                    className="mt-3 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-emerald-700"
+                  >
+                    {viewAll ? 'Individual View' : 'View All'}
+                  </button>
+                )}
               </>
             ) : (
               <p className="text-slate-700 dark:text-slate-200 font-bold">
@@ -403,13 +472,28 @@ export default function Attendance({
             )}
           </div>
 
-          {isLoading && (
+          {viewAll && (
+            <div className="mb-5">
+              <DepartmentAttendanceSheet
+                departmentName={activeDepartment?.name}
+                data={sheetData}
+                from={sheetFrom}
+                to={sheetTo}
+                onFromChange={setSheetFrom}
+                onToChange={setSheetTo}
+                isLoading={sheetIsLoading}
+                error={sheetError}
+                onRetry={refetchSheet}
+              />
+            </div>
+          )}
+          {!viewAll && isLoading && (
             <div className="flex justify-center p-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
             </div>
           )}
 
-          {isError && (
+          {!viewAll && isError && (
             <ApiErrorState
               error={error}
               title="Failed to load attendance"
@@ -418,7 +502,8 @@ export default function Attendance({
             />
           )}
 
-          {!isLoading &&
+          {!viewAll &&
+            !isLoading &&
             !isError &&
             (records.length === 0 ? (
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400">

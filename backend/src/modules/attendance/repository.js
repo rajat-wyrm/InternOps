@@ -61,6 +61,68 @@ async function getAttendance(userId, { from, to, page = 1, limit = 30 } = {}) {
   return { records: res.rows, total, page: safePage, limit: safeLimit };
 }
 
+async function getDepartmentAttendanceSheet({
+  departmentId,
+  requesterId,
+  isAdmin,
+  from,
+  to,
+}) {
+  const memberScope = isAdmin
+    ? `SELECT id, full_name, email, role, department_id
+       FROM users
+       WHERE department_id = $1 AND deleted_at IS NULL`
+    : `WITH RECURSIVE visible_users AS (
+         SELECT id, full_name, email, role, department_id, manager_id, 0 AS depth
+         FROM users
+         WHERE id = $2 AND deleted_at IS NULL
+         UNION ALL
+         SELECT u.id, u.full_name, u.email, u.role, u.department_id, u.manager_id,
+                visible_users.depth + 1
+         FROM users u
+         INNER JOIN visible_users ON u.manager_id = visible_users.id
+         WHERE u.deleted_at IS NULL AND visible_users.depth < 100
+       )
+       SELECT id, full_name, email, role, department_id
+       FROM visible_users
+       WHERE department_id = $1`;
+
+  const memberParams = isAdmin ? [departmentId] : [departmentId, requesterId];
+
+  const membersResult = await pool.query(memberScope, memberParams);
+  const members = membersResult.rows;
+  const memberIds = members.map((member) => member.id);
+
+  if (memberIds.length === 0) {
+    return { members: [], dates: [], records: [] };
+  }
+
+  const recordsResult = await pool.query(
+    `SELECT a.id, a.user_id, TO_CHAR(a.date, 'YYYY-MM-DD') AS date, a.status, a.remarks,
+            a.marked_by, marker.full_name AS marked_by_name
+     FROM attendance a
+     LEFT JOIN users marker ON marker.id = a.marked_by
+     WHERE a.user_id = ANY($1::uuid[])
+       AND a.date >= $2
+       AND a.date <= $3
+       AND a.deleted_at IS NULL
+     ORDER BY a.date ASC, a.user_id ASC`,
+    [memberIds, from, to]
+  );
+
+  const datesResult = await pool.query(
+    `SELECT TO_CHAR(day, 'YYYY-MM-DD') AS date
+     FROM generate_series($1::date, $2::date, interval '1 day') AS day`,
+    [from, to]
+  );
+
+  return {
+    members,
+    dates: datesResult.rows.map((row) => row.date),
+    records: recordsResult.rows,
+  };
+}
+
 async function getMonthlyStats(userId, month, year) {
   // SARGable date-range form: avoid EXTRACT() on a date column, which would
   // force a sequential scan. With the date range we can use a btree index.
@@ -231,6 +293,7 @@ async function markAnomalyViewed(anomalyId, managerId, isAdmin) {
 module.exports = {
   markAttendance,
   getAttendance,
+  getDepartmentAttendanceSheet,
   getMonthlyStats,
   bulkMark,
   listHierarchySubordinates,

@@ -218,6 +218,62 @@ async function routes(fastify) {
     }
   );
 
+  // Department-scoped attendance sheet
+  fastify.get(
+    '/department/:deptId/sheet',
+    {
+      schema: {
+        tags: ['Attendance'],
+        description: 'Get a department attendance sheet',
+      },
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+    },
+    async (req, reply) => {
+      try {
+        const paramsSchema = z.object({ deptId: z.string().uuid() });
+        const querySchema = z
+          .object({
+            from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+            to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          })
+          .refine((value) => value.from <= value.to, {
+            message: 'from must be on or before to',
+          })
+          .refine(
+            (value) => {
+              const from = new Date(`${value.from}T00:00:00Z`);
+              const to = new Date(`${value.to}T00:00:00Z`);
+              return (to - from) / 86400000 <= 62;
+            },
+            { message: 'Date range cannot exceed 62 days' }
+          );
+
+        const parsedParams = paramsSchema.safeParse(req.params);
+        const parsedQuery = querySchema.safeParse(req.query);
+        if (!parsedParams.success || !parsedQuery.success) {
+          return reply.status(400).send({
+            error: 'Invalid attendance sheet request',
+            details: [
+              ...(parsedParams.success ? [] : parsedParams.error.issues),
+              ...(parsedQuery.success ? [] : parsedQuery.error.issues),
+            ],
+          });
+        }
+
+        return await repo.getDepartmentAttendanceSheet({
+          departmentId: parsedParams.data.deptId,
+          requesterId: req.user.id,
+          isAdmin: req.user.role === 'ADMIN',
+          from: parsedQuery.data.from,
+          to: parsedQuery.data.to,
+        });
+      } catch (err) {
+        req.log.error(err, 'Error in GET /attendance/department/:deptId/sheet');
+        return reply.status(500).send({ error: 'Internal server error' });
+      }
+    }
+  );
+
   // Get attendance for a user (with ownership check)
   fastify.get(
     '/:userId',

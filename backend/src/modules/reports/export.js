@@ -26,12 +26,16 @@ function parseDateRange(query) {
 // crafted task title cannot inject formulas (=, +, -, @, tab, CR).
 function csvCell(value) {
   const s = String(value ?? '');
+  const escaped = s.replace(/"/g, '""');
+
   if (/^[=+\-@\t\r]/.test(s)) {
-    return `"${'"'}${s.replace(/"/g, '""')}"`;
+    return `"'${escaped}"`;
   }
+
   if (/[",\n]/.test(s)) {
-    return `"${s.replace(/"/g, '""')}"`;
+    return `"${escaped}"`;
   }
+
   return s;
 }
 
@@ -116,3 +120,4 @@ async function routes(fastify) {
 }
 
 module.exports = routes;
+module.exports.csvCell = csvCell;
