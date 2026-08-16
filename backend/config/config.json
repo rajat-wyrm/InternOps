@@ -1,0 +1,14 @@
+{
+  "development": {
+    "url": "postgres://postgres:postgres@localhost:5432/internops",
+    "dialect": "postgres"
+  },
+  "test": {
+    "url": "postgres://postgres:postgres@localhost:5432/internops_test",
+    "dialect": "postgres"
+  },
+  "production": {
+    "url": "postgres://postgres:postgres@localhost:5432/internops_prod",
+    "dialect": "postgres"
+  }
+}

@@ -25,11 +25,12 @@ function getRefreshSecret() {
 function generateAccessToken(user) {
   return jwt.sign(
     {
-      id: user.id,
-      role: user.role,
-      departmentId: user.department_id,
-      typ: 'access',
-      jti: crypto.randomUUID(),
+      payload: {
+        id: '123',
+        roles: 'ADMIN',
+        departmentId: '456',
+        typ: 'access',
+      },
     },
     getAccessSecret(),
     {

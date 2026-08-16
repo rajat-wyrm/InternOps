@@ -106,29 +106,30 @@ async function getUnreadCount(userId, client = pool) {
 }
 
 async function notifyAdmin(message) {
-  const audit = require('../audit/repository'); // Lazy load
+  const audit = require('../audit/repository');
 
+  // 1. Get all admins in 1 query
   const adminRes = await pool.query(
-    `SELECT DISTINCT id
-     FROM users
-     WHERE role = 'ADMIN'
-       AND deleted_at IS NULL`
+    `SELECT DISTINCT id FROM users WHERE role = 'ADMIN' AND deleted_at IS NULL`
   );
+  if (adminRes.rows.length === 0) return;
 
-  if (adminRes.rows.length === 0) {
-    return;
-  }
+  // 2. Prepare notifications array
+  const notifications = adminRes.rows.map(({ id }) => ({
+    user_id: id,
+    message,
+  }));
 
+  // 3. SINGLE DB CALL using bulkSend - this is the #1727 fix
+  await bulkSend(notifications);
+
+  // 4. Audit log for each admin
   for (const { id: adminId } of adminRes.rows) {
-    await send(adminId, message);
-
-    if (audit && typeof audit.logEvent === 'function') {
-      await audit.logEvent({
-        userId: adminId,
-        action: 'ADMIN_NOTIFIED',
-        details: { message },
-      });
-    }
+    await audit.logEvent({
+      userId: adminId,
+      action: 'ADMIN_NOTIFIED',
+      details: { message },
+    });
   }
 }
 
