@@ -134,7 +134,7 @@ export default function BulkAttendanceForm({
   };
 
   return (
-    <>
+    <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
       <ConfirmationModal
         open={!!pendingEntries}
         title="Confirm Bulk Mark"
@@ -147,7 +147,6 @@ export default function BulkAttendanceForm({
         onCancel={() => setPendingEntries(null)}
         danger={true}
       />
-      <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
       <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
         <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center border border-blue-100 dark:border-blue-900/60">
           <span className="text-lg font-extrabold">✓</span>
@@ -336,6 +335,5 @@ export default function BulkAttendanceForm({
         </div>
       </form>
     </Card>
-    </>
   );
 }
