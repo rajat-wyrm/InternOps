@@ -138,7 +138,7 @@ export default function BulkAttendanceForm({
       <ConfirmationModal
         open={!!pendingEntries}
         title="Confirm Bulk Mark"
-        message={`This will mark ${pendingEntries?.length ?? 0} members in total (including ${remainingCount} auto-filled). Are you sure?`}
+        message={`This will mark ${pendingEntries?.length ?? 0} members in total (including ${(pendingEntries?.length ?? 0) - selectedUsers.length} auto-filled). Are you sure?`}
         confirmText="Yes, mark all"
         onConfirm={() => {
           bulkMutation.mutate({ entries: pendingEntries });
