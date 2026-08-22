@@ -67,6 +67,20 @@ async function getTeamMembers(managerId, departmentId) {
   return rows;
 }
 
+// All users across departments for ADMIN role (without recursive hierarchy filtering)
+async function getAllMembersForAdmin(departmentId) {
+  const query = `
+    SELECT ${MEMBER_COLUMNS}, 1 AS depth, ${PERFORMANCE_COLUMNS}
+    FROM users u
+    ${PERFORMANCE_JOINS}
+    WHERE u.deleted_at IS NULL
+      AND ($1::uuid IS NULL OR u.department_id = $1)
+    ORDER BY u.role, u.full_name
+  `;
+  const { rows } = await pool.query(query, [departmentId || null]);
+  return rows;
+}
+
 async function getMemberById(id) {
   const query = `
     SELECT ${MEMBER_COLUMNS}, ${PERFORMANCE_COLUMNS}
@@ -319,6 +333,7 @@ async function updateMemberManager(id, managerId) {
 
 module.exports = {
   getTeamMembers,
+  getAllMembersForAdmin,
   getMemberById,
   updateMember,
   EDITABLE_FIELDS,

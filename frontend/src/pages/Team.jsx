@@ -111,6 +111,15 @@ function Stars({ value }) {
   );
 }
 
+function getEligibility(avgRating) {
+  if (avgRating == null || avgRating === '') return null;
+  const score = Number(avgRating);
+  if (Number.isNaN(score)) return null;
+  if (score >= 1 && score < 5)
+    return { label: '🔴 Not Eligible', isEligible: false };
+  return { label: '🟢 Eligible', isEligible: true };
+}
+
 const EDIT_FIELDS = [
   { key: 'full_name', label: 'Full name' },
   { key: 'phone', label: 'Phone' },
@@ -1508,7 +1517,14 @@ export default function Team() {
                     </td>
 
                     <td className="p-4">
-                      <Stars value={m.avg_rating} />
+                      <div className="flex flex-col gap-1">
+                        <Stars value={m.avg_rating} />
+                        {getEligibility(m.avg_rating) && (
+                          <span className="text-[10px] font-extrabold">
+                            {getEligibility(m.avg_rating).label}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td className="p-4 text-slate-700 dark:text-slate-300">

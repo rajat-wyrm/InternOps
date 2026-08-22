@@ -91,6 +91,9 @@ async function routes(fastify) {
       },
     },
     async (req) => {
+      if (req.user.role === 'ADMIN') {
+        return repo.getAllMembersForAdmin(req.query?.department_id);
+      }
       return repo.getTeamMembers(req.user.id, req.query?.department_id);
     }
   );
@@ -103,7 +106,10 @@ async function routes(fastify) {
       schema: { tags: ['Team'], description: 'Export team members as CSV' },
     },
     async (req, reply) => {
-      const members = await repo.getTeamMembers(req.user.id);
+      const members =
+        req.user.role === 'ADMIN'
+          ? await repo.getAllMembersForAdmin(req.query?.department_id)
+          : await repo.getTeamMembers(req.user.id, req.query?.department_id);
       reply.header('Content-Type', 'text/csv');
       reply.header(
         'Content-Disposition',
