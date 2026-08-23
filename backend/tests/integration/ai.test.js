@@ -395,7 +395,91 @@ describe('AI Chat Integration Tests (#498)', () => {
       });
 
       // Should be rejected with error status
-      expect([503, 502, 504, 400]).toContain(res.statusCode);
+      expect([413, 503, 502, 504, 400]).toContain(res.statusCode);
+    });
+  });
+  describe('Layer 5: Atomic usage limit (concurrent requests)', () => {
+    beforeAll(async () => {
+      process.env.AI_CACHE_MAX_ENTRIES = '100';
+      process.env.AI_CHAT_RATE_LIMIT_PER_MIN = '1000'; // high, so rate limit doesn't interfere
+      process.env.AI_PROVIDER_ORDER = 'groq';
+      process.env.GROQ_API_KEY = 'test-key';
+      process.env.AI_TIMEOUT = '5000';
+      process.env.AI_CHAT_DAILY_LIMIT = '5'; // low, so it's easy to hit in a test
+
+      jest.resetModules();
+      app = require('../../src/app');
+      await app.ready();
+      await resetSeededAdminPassword();
+      const pool = require('../../src/config/db');
+      await pool.query('DELETE FROM ai_usage');
+
+      cookies = {};
+      const csrfRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/csrf-token',
+      });
+      csrfToken = JSON.parse(csrfRes.body).csrfToken;
+      mergeCookies(cookies, parseSetCookie(csrfRes.headers['set-cookie']));
+      mergeCookies(cookies, csrfRes.cookies);
+
+      await login();
+      const uniqueEmail = `tl-atomic-${Date.now()}@example.com`;
+      const regRes = await inject('POST', '/api/v1/auth/register', {
+        payload: {
+          email: uniqueEmail,
+          password: 'TLPassword123!',
+          role: 'TL',
+          full_name: 'TL Atomic Limit Test',
+        },
+      });
+      expect(regRes.statusCode).toBe(201);
+      await pool.query(
+        'UPDATE users SET email_verified = TRUE WHERE email = $1',
+        [uniqueEmail]
+      );
+
+      cookies = {};
+      const csrfRes2 = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/csrf-token',
+      });
+      csrfToken = JSON.parse(csrfRes2.body).csrfToken;
+      mergeCookies(cookies, parseSetCookie(csrfRes2.headers['set-cookie']));
+      mergeCookies(cookies, csrfRes2.cookies);
+      await login(uniqueEmail, 'TLPassword123!');
+    });
+
+    afterAll(async () => {
+      await app.close();
+      const pool = require('../../src/config/db');
+      await pool.end();
+      delete global.fetch;
+    });
+
+    it('should never allow successful requests to exceed dailyLimit under concurrent load', async () => {
+      mockProviderSuccess();
+
+      // AI_DAILY_LIMIT = 5. Fire 10 concurrent requests with unique prompts
+      // (unique prompts avoid the cache short-circuiting the usage check).
+      const requests = Array.from({ length: 10 }, (_, i) =>
+        inject('POST', '/api/v1/ai/chat', {
+          payload: { prompt: `atomic-race-${i}-${Math.random()}` },
+        })
+      );
+
+      const responses = await Promise.all(requests);
+      const succeeded = responses.filter((r) => r.statusCode === 200);
+      const limited = responses.filter((r) => r.statusCode === 429);
+
+      expect(succeeded.length).toBeLessThanOrEqual(5);
+      expect(succeeded.length + limited.length).toBe(10);
+
+      const pool = require('../../src/config/db');
+      const dbUsage = await pool.query(
+        'SELECT successful_requests FROM ai_usage WHERE usage_date = CURRENT_DATE ORDER BY successful_requests DESC LIMIT 1'
+      );
+      expect(dbUsage.rows[0]?.successful_requests || 0).toBeLessThanOrEqual(5);
     });
   });
 });

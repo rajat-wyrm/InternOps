@@ -76,8 +76,9 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Roles may be stored as a list in the token or absent (default to empty)
     roles: List[str] = payload.get("roles", [])
+    if not roles and "role" in payload:
+        roles = [payload["role"]]
     if isinstance(roles, str):
         roles = [roles]
 

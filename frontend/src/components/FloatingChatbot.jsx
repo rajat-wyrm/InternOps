@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Bot, Send, X, Sparkles, ChevronDown, RotateCcw } from 'lucide-react';
-import api from '../lib/axios';
+import api, { getAiChatErrorMessage } from '../lib/axios';
 import useAuthStore from '../store/auth';
 
 // ── Local knowledge base for instant offline answers ─────────────────────────
@@ -156,42 +156,80 @@ const QUICK_CHIPS = [
 // ── Markdown-to-JSX renderer (simple) ────────────────────────────────────────
 function renderText(text) {
   const lines = text.split('\n');
-  return lines.map((line, i) => {
+
+  // Group consecutive list items into ul/ol wrappers
+  const groups = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      const items = [];
+      while (
+        i < lines.length &&
+        (lines[i].startsWith('- ') || lines[i].startsWith('* '))
+      ) {
+        items.push(lines[i].slice(2));
+        i++;
+      }
+      groups.push({ type: 'ul', items });
+    } else if (line.match(/^\d+\. /)) {
+      const items = [];
+      while (i < lines.length && lines[i].match(/^\d+\. /)) {
+        items.push(lines[i].replace(/^\d+\. /, ''));
+        i++;
+      }
+      groups.push({ type: 'ol', items });
+    } else {
+      groups.push({ type: 'line', content: line });
+      i++;
+    }
+  }
+
+  return groups.map((group, gi) => {
+    if (group.type === 'ul') {
+      return (
+        <ul key={gi} className="ml-4 list-disc space-y-0.5 my-1">
+          {group.items.map((item, j) => (
+            <li
+              key={j}
+              className="text-xs leading-relaxed text-slate-700 dark:text-slate-300"
+            >
+              {boldify(item)}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    if (group.type === 'ol') {
+      return (
+        <ol key={gi} className="ml-4 list-decimal space-y-0.5 my-1">
+          {group.items.map((item, j) => (
+            <li
+              key={j}
+              className="text-xs leading-relaxed text-slate-700 dark:text-slate-300"
+            >
+              {boldify(item)}
+            </li>
+          ))}
+        </ol>
+      );
+    }
+    const line = group.content;
     if (line.startsWith('> ')) {
       return (
         <blockquote
-          key={i}
+          key={gi}
           className="border-l-2 border-indigo-400 pl-3 text-xs text-slate-500 dark:text-slate-400 my-1.5 italic"
         >
           {boldify(line.slice(2))}
         </blockquote>
       );
     }
-    if (line.startsWith('- ') || line.startsWith('* ')) {
-      return (
-        <li
-          key={i}
-          className="ml-4 list-disc text-xs leading-relaxed text-slate-700 dark:text-slate-300"
-        >
-          {boldify(line.slice(2))}
-        </li>
-      );
-    }
-    if (line.match(/^\d+\. /)) {
-      return (
-        <li
-          key={i}
-          className="ml-4 list-decimal text-xs leading-relaxed text-slate-700 dark:text-slate-300"
-        >
-          {boldify(line.replace(/^\d+\. /, ''))}
-        </li>
-      );
-    }
     if (line.startsWith('```') || line.trim() === '')
-      return <div key={i} className="h-1" />;
+      return <div key={gi} className="h-1" />;
     return (
       <p
-        key={i}
+        key={gi}
         className="text-xs leading-relaxed text-slate-700 dark:text-slate-300"
       >
         {boldify(line)}
@@ -233,6 +271,19 @@ function Bubble({ msg }) {
           <p className="leading-relaxed">{msg.content}</p>
         ) : (
           <div className="space-y-0.5">{renderText(msg.content)}</div>
+        )}
+        {msg.buttons && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {msg.buttons.map((button, index) => (
+              <button
+                key={index}
+                onClick={button.onClick}
+                className="px-2.5 py-1 text-[11px] font-bold border border-slate-200 dark:border-slate-700 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+              >
+                {button.label}
+              </button>
+            ))}
+          </div>
         )}
         <p
           className={`text-[10px] mt-1 ${isUser ? 'text-indigo-100/70' : 'text-slate-400 dark:text-slate-500'}`}
@@ -282,12 +333,14 @@ export default function FloatingChatbot() {
   const user = useAuthStore((s) => s.user);
   const role = user?.role || 'INTERN';
 
+  const isAllowed = ['ADMIN', 'SENIOR_TL', 'TL'].includes(role);
+
   const now = () =>
     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const addBot = useCallback(
-    (content) => {
-      const msg = { role: 'bot', content, time: now() };
+    (content, buttons = null) => {
+      const msg = { role: 'bot', content, time: now(), buttons };
       setMessages((prev) => [...prev, msg]);
       setHistory((prev) => [...prev, { role: 'assistant', content }]);
       if (!open) setUnread((n) => n + 1);
@@ -308,7 +361,12 @@ What do you need help with?`;
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (
+      messagesEndRef.current &&
+      typeof messagesEndRef.current.scrollIntoView === 'function'
+    ) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isTyping]);
 
   // Focus input when opened
@@ -345,30 +403,41 @@ What do you need help with?`;
       // 2️⃣ Fall back to AI service via backend
       try {
         const roleLabel = role.replace(/_/g, ' ');
-        const res = await api.post('/ai/chat', {
-          messages: [
-            {
-              role: 'system',
-              content: `You are the InternOps AI Assistant. The current user's role is: ${roleLabel}. Give concise, role-aware answers about InternOps platform features, permissions, and how-to guidance.`,
-            },
-            // last 6 messages for context
-            ...history.slice(-6).map((h) => ({
-              role: h.role === 'bot' ? 'assistant' : h.role,
-              content: h.content,
-            })),
-            { role: 'user', content: msg },
-          ],
-        });
+        const res = await api.post(
+          '/ai/chat',
+          {
+            messages: [
+              {
+                role: 'system',
+                content: `You are the InternOps AI Assistant. The current user's role is: ${roleLabel}. Give concise, role-aware answers about InternOps platform features, permissions, and how-to guidance.`,
+              },
+              // last 6 messages for context
+              ...history.slice(-6).map((h) => ({
+                role: h.role === 'bot' ? 'assistant' : h.role,
+                content: h.content,
+              })),
+              { role: 'user', content: msg },
+            ],
+          },
+          // The failure is already surfaced as an in-chat message below, so
+          // suppress the global error toast to avoid showing the user two
+          // separate error messages for the same failed request (#1795).
+          { _suppressGlobalError: true }
+        );
 
         const answer =
           res.data?.content ||
           "Sorry, I couldn't process that. Please try rephrasing.";
         setIsTyping(false);
         addBot(answer);
-      } catch {
+      } catch (err) {
         setIsTyping(false);
+        const { message, retryable } = getAiChatErrorMessage(err);
         addBot(
-          '⚠️ AI service is temporarily unavailable. Please try again in a moment.'
+          `⚠️ ${message}`,
+          retryable
+            ? [{ label: 'Retry', onClick: () => handleSend(msg) }]
+            : null
         );
       }
     },
@@ -392,6 +461,8 @@ What do you need help with?`;
       },
     ]);
   };
+
+  if (!isAllowed) return null;
 
   return (
     <>

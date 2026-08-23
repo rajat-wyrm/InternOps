@@ -301,6 +301,76 @@ function setupCronJobs() {
         reminderRunning = false;
       }
     });
+
+    let anomalyRunning = false;
+
+    // AI Attendance Anomaly Detection Job - Nightly at 2:00 AM
+    cron.schedule('0 2 * * *', async () => {
+      const jobLogger = logger.child({
+        correlationId: `cron-${Date.now()}`,
+        job: 'attendance-anomaly-detection',
+      });
+
+      if (anomalyRunning) {
+        jobLogger.warn('Anomaly detection job already running. Skipping...');
+        return;
+      }
+
+      anomalyRunning = true;
+      const startTime = Date.now();
+
+      jobLogger.info(
+        {
+          startedAt: new Date(startTime),
+        },
+        'Cron job started'
+      );
+
+      try {
+        const { generateAccessToken } = require('./tokens');
+        const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+
+        // System access token signed as Admin role for service-to-service call
+        const systemToken = generateAccessToken({
+          id: '00000000-0000-0000-0000-000000000000',
+          role: 'ADMIN',
+          department_id: null,
+        });
+
+        const response = await fetch(
+          `${baseUrl}/api/v1/attendance/anomalies/analyze`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${systemToken}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`FastAPI service returned status ${response.status}`);
+        }
+
+        const data = await response.json();
+        jobLogger.info(
+          {
+            durationMs: Date.now() - startTime,
+            response: data,
+          },
+          'Cron job completed'
+        );
+      } catch (err) {
+        jobLogger.error(
+          {
+            err: err.message,
+          },
+          'Cron job failed'
+        );
+      } finally {
+        anomalyRunning = false;
+      }
+    });
   } catch (err) {
     logger.error(
       {

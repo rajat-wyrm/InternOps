@@ -1,14 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  ArrowLeft,
-  CalendarCheck,
-  Star,
-  Video,
-  Target,
-  Users,
-} from 'lucide-react';
+import { ArrowLeft, CalendarCheck, Star, Users } from 'lucide-react';
 import api from '../../lib/axios';
 import {
   PageHeader,
@@ -21,8 +14,6 @@ import {
 // Import the original pages to match features exactly
 import Attendance from '../Attendance';
 import Ratings from '../Ratings';
-import Meetings from '../Meetings';
-import Tasks from '../Tasks';
 
 function SummaryPill({ label, value }) {
   return (
@@ -99,7 +90,7 @@ export default function ProjectDetailPage() {
 
         <PageHeader
           title={lead?.lead_name || 'Project Detail'}
-          subtitle={`${department?.name || 'Department'} · roster, attendance, ratings, meetings, and tasks`}
+          subtitle={`${department?.name || 'Department'} · roster, attendance, and ratings`}
           icon={<Users className="w-6 h-6" />}
         />
       </div>
@@ -152,30 +143,6 @@ export default function ProjectDetailPage() {
               <Star className="w-4 h-4" />
               Ratings
             </button>
-            <button
-              type="button"
-              onClick={() => setTab('meetings')}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl font-extrabold border transition-colors ${
-                tab === 'meetings'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-              }`}
-            >
-              <Video className="w-4 h-4" />
-              Meetings
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('tasks')}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl font-extrabold border transition-colors ${
-                tab === 'tasks'
-                  ? 'bg-purple-600 text-white border-purple-600'
-                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-              }`}
-            >
-              <Target className="w-4 h-4" />
-              Tasks
-            </button>
           </div>
 
           <div className="mt-4">
@@ -189,10 +156,6 @@ export default function ProjectDetailPage() {
             {tab === 'ratings' && (
               <Ratings isProjectView={true} deptId={deptId} roster={roster} />
             )}
-            {tab === 'meetings' && (
-              <Meetings isProjectView={true} deptId={deptId} roster={roster} />
-            )}
-            {tab === 'tasks' && <Tasks isProjectView={true} roster={roster} />}
           </div>
         </>
       )}

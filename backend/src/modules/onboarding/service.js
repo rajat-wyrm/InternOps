@@ -3,6 +3,8 @@
 const { generateAIResponse } = require('../../services/aiProviderService');
 const repo = require('./repository');
 
+const MAX_PROMPT_INPUT_CHARS = 2000;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function normalizeItem(item) {
@@ -36,6 +38,20 @@ function validateItems(items) {
  * Returns { title, role, department, items, provider, cached }.
  */
 async function generateChecklist({ userId, role, department }) {
+  if (typeof role !== 'string' || typeof department !== 'string') {
+    const err = new Error('role and department must be strings');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (
+    role.length > MAX_PROMPT_INPUT_CHARS ||
+    department.length > MAX_PROMPT_INPUT_CHARS
+  ) {
+    const err = new Error('role or department exceeds maximum length');
+    err.statusCode = 400;
+    throw err;
+  }
   const prompt = `
 Generate an onboarding checklist for a new intern.
 

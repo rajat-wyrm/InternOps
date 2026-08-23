@@ -203,3 +203,64 @@ def test_rate_limit_trips_after_configured_max(client, monkeypatch):
     )
 
     assert r.status_code == 429
+def test_chat_uses_cache_for_identical_requests(client, monkeypatch):
+    import app.api.ai_routes as ai_routes_module
+
+    calls = 0
+
+    async def fake_generate(prompt, temperature=0.7, **kwargs):
+        nonlocal calls
+        calls += 1
+        return "cached response", "fake-provider"
+
+    monkeypatch.setattr(
+    ai_routes_module.ai_orchestrator,
+    "generate_chat_with_fallback",
+    fake_generate,
+)
+
+    # Use a fake Redis-backed cache in memory.
+    cache = {}
+
+    async def fake_get_cached(key):
+        return cache.get(key)
+
+    async def fake_set_cached(key, value):
+        cache[key] = value
+
+    monkeypatch.setattr(
+        "app.core.cache.get_cached",
+        fake_get_cached,
+    )
+    monkeypatch.setattr(
+        "app.core.cache.set_cached",
+        fake_set_cached,
+    )
+
+    headers = {"x-user-id": "cache-test-user"}
+    payload = {"prompt": "same prompt"}
+
+    first = client.post(
+        "/ai/chat",
+        json=payload,
+        headers=headers,
+    )
+
+    second = client.post(
+        "/ai/chat",
+        json=payload,
+        headers=headers,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    assert first.json()["content"] == "cached response"
+    assert second.json()["content"] == "cached response"
+
+    # The provider should only be called once.
+    assert calls == 1
+
+    # First request is a cache miss, second is a cache hit.
+    assert first.json()["cached"] is False
+    assert second.json()["cached"] is True

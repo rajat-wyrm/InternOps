@@ -17,6 +17,7 @@ import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import RatingForm from '../components/RatingForm';
 import CustomSelect from '../components/CustomSelect';
+import DepartmentRatingsSheet from '../components/department/DepartmentRatingsSheet';
 
 const ROLE_LABEL = {
   SENIOR_TL: 'Senior TL',
@@ -188,6 +189,11 @@ export default function Ratings({
   const isAdmin = user?.role === 'ADMIN';
 
   const [viewDepartmentId, setViewDepartmentId] = useState(deptId || '');
+  const [viewAll, setViewAll] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const yearStart = `${today.slice(0, 4)}-01-01`;
+  const [sheetFrom, setSheetFrom] = useState(yearStart);
+  const [sheetTo, setSheetTo] = useState(today);
   const [viewUserId, setViewUserId] = useState(() => {
     if (isProjectView && roster.length > 0) {
       return roster[0].id;
@@ -207,16 +213,21 @@ export default function Ratings({
   useEffect(() => {
     if (isProjectView) {
       setViewDepartmentId(deptId || '');
+
       if (roster.length > 0) {
-        setViewUserId(roster[0].id);
+        setViewUserId((currentUserId) => currentUserId || roster[0].id);
       }
-    } else {
-      if (deptId) {
-        setViewDepartmentId(deptId);
-        setViewUserId('');
-      } else {
-        if (user?.id && !viewUserId) setViewUserId(user.id);
-      }
+
+      return;
+    }
+
+    if (deptId) {
+      setViewDepartmentId(deptId);
+      return;
+    }
+
+    if (user?.id) {
+      setViewUserId((currentUserId) => currentUserId || user.id);
     }
   }, [isProjectView, deptId, roster, user?.id]);
 
@@ -238,16 +249,33 @@ export default function Ratings({
   });
 
   const {
+    data: sheetData,
+    isLoading: sheetIsLoading,
+    error: sheetError,
+    refetch: refetchSheet,
+  } = useQuery({
+    queryKey: ['departmentRatingsSheet', activeDeptId, sheetFrom, sheetTo],
+    queryFn: () =>
+      api
+        .get(`/ratings/department/${activeDeptId}/sheet`, {
+          params: { from: sheetFrom, to: sheetTo },
+        })
+        .then((res) => res.data),
+    enabled: viewAll && !!activeDeptId && !isProjectView,
+  });
+
+  const {
     data: ratings,
     isLoading: isRatingsLoading,
     error: ratingsError,
   } = useQuery({
     queryKey: ['ratings', viewUserId],
     queryFn: () => api.get(`/ratings/${viewUserId}`).then((res) => res.data),
-    enabled: !!viewUserId,
+    enabled: !!viewUserId && !viewAll,
   });
 
   const handleViewDepartmentChange = (dId) => {
+    setViewAll(false);
     setViewDepartmentId(dId);
     if (dId) {
       setViewUserId('');
@@ -314,77 +342,25 @@ export default function Ratings({
     ? roster
     : team.filter((m) => !activeDeptId || m.department_id === activeDeptId);
 
-  // Filtered members according to search, intern status, rating (1-10), and eligibility
-  const filteredMembers = useMemo(() => {
-    let list = [...baseMembers];
+  useEffect(() => {
+    if (!deptId || isProjectView || team.length === 0) return;
 
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter((m) =>
-        [m.full_name, m.email, m.college, m.position, m.department_name].some(
-          (v) => (v || '').toLowerCase().includes(q)
-        )
-      );
-    }
-
-    if (statusFilter) {
-      list = list.filter(
-        (m) => (m.internship_status || 'ACTIVE') === statusFilter
-      );
-    }
-
-    if (ratingFilter) {
-      const targetRating = Number(ratingFilter);
-      list = list.filter((m) => {
-        if (m.avg_rating == null || m.avg_rating === '') return false;
-        const score = Number(m.avg_rating);
-        // Matches if rounded or floored score equals selected target rating (e.g. 5)
-        return (
-          Math.round(score) === targetRating ||
-          Math.floor(score) === targetRating
-        );
-      });
-    }
-
-    if (eligibilityFilter) {
-      list = list.filter((m) => {
-        const { status } = getEligibility(m.avg_rating);
-        return status === eligibilityFilter;
-      });
-    }
-
-    return list;
-  }, [baseMembers, search, statusFilter, ratingFilter, eligibilityFilter]);
-
-  // Statistics calculation
-  const stats = useMemo(() => {
-    const total = baseMembers.length;
-
-    const ratedMembers = baseMembers.filter(
-      (m) => m.avg_rating != null && m.avg_rating !== ''
+    const departmentMembers = team.filter(
+      (member) => member.department_id === deptId
     );
 
-    const eligible = baseMembers.filter(
-      (m) => getEligibility(m.avg_rating).status === 'ELIGIBLE'
-    ).length;
+    if (departmentMembers.length === 0) return;
 
-    const notEligible = baseMembers.filter(
-      (m) => getEligibility(m.avg_rating).status === 'NOT_ELIGIBLE'
-    ).length;
+    setViewUserId((currentUserId) => {
+      const selectedUserIsInDepartment = departmentMembers.some(
+        (member) => member.id === currentUserId
+      );
 
-    const highPerformers = baseMembers.filter(
-      (m) => Number(m.avg_rating || 0) >= 8
-    ).length;
-
-    const avgScore = ratedMembers.length
-      ? (
-          ratedMembers.reduce((sum, m) => sum + Number(m.avg_rating || 0), 0) /
-          ratedMembers.length
-        ).toFixed(1)
-      : null;
-
-    return { total, eligible, notEligible, highPerformers, avgScore };
-  }, [baseMembers]);
+      return selectedUserIsInDepartment
+        ? currentUserId
+        : departmentMembers[0].id;
+    });
+  }, [deptId, isProjectView, team]);
 
   const ratingUserOptions = isProjectView
     ? roster.map((m) => ({
@@ -540,90 +516,102 @@ export default function Ratings({
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setDirectoryViewMode('table')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition ${
-                  directoryViewMode === 'table'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                }`}
-              >
-                Table
-              </button>
-              <button
-                onClick={() => setDirectoryViewMode('cards')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition ${
-                  directoryViewMode === 'cards'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                }`}
-              >
-                Cards
-              </button>
+            <div className="space-y-5">
+              {isManager ? (
+                <>
+                  {!isProjectView && (
+                    <div>
+                      <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                        Department
+                      </label>
+
+                      <CustomSelect
+                        value={activeDeptId}
+                        onChange={handleViewDepartmentChange}
+                        options={departmentOptions}
+                        placeholder="All departments"
+                        className="w-full"
+                        searchable={true}
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                      Team Member
+                    </label>
+
+                    <CustomSelect
+                      value={viewUserId}
+                      onChange={setViewUserId}
+                      options={ratingUserOptions}
+                      placeholder="Select member"
+                      className="w-full"
+                      searchable={true}
+                    />
+                    {!isProjectView && activeDeptId && (
+                      <button
+                        type="button"
+                        onClick={() => setViewAll((current) => !current)}
+                        className="mt-3 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-slate-950 hover:bg-amber-400"
+                      >
+                        {viewAll ? 'Individual View' : 'View All'}
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                    Viewing:
+                  </span>
+                  <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-900/50">
+                    My ratings
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Filters Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
-            {/* Search Input */}
-            <div className="relative col-span-1 sm:col-span-2 lg:col-span-1">
-              <input
-                className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white pl-10 pr-3 py-2.5 rounded-2xl w-full text-sm focus:ring-2 focus:ring-amber-400/50 outline-none placeholder:text-slate-400"
-                placeholder="Search intern..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            </div>
-
-            {/* Department Filter */}
-            {!isProjectView && (
-              <div>
-                <CustomSelect
-                  value={activeDeptId}
-                  onChange={handleViewDepartmentChange}
-                  options={departmentOptions}
-                  placeholder="All departments"
-                  className="w-full"
-                  searchable={true}
-                />
-              </div>
-            )}
-
-            {/* Internship Status Filter */}
-            <div>
-              <CustomSelect
-                value={statusFilter}
-                onChange={setStatusFilter}
-                options={statusFilterOptions}
-                placeholder="All Statuses"
-                className="w-full"
+          {viewAll && (
+            <div className="mb-6">
+              <DepartmentRatingsSheet
+                departmentName={activeDepartment?.name}
+                data={sheetData}
+                from={sheetFrom}
+                to={sheetTo}
+                onFromChange={setSheetFrom}
+                onToChange={setSheetTo}
+                isLoading={sheetIsLoading}
+                error={sheetError}
+                onRetry={refetchSheet}
               />
             </div>
+          )}
 
-            {/* Rating Filter (1 to 10) */}
-            <div>
-              <CustomSelect
-                value={ratingFilter}
-                onChange={setRatingFilter}
-                options={ratingFilterOptions}
-                placeholder="All Ratings"
-                className="w-full"
-              />
+          {!viewAll && isLoading && (
+            <div className="flex justify-center p-8 mb-6">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
             </div>
 
-            {/* Eligibility Filter */}
-            <div>
-              <CustomSelect
-                value={eligibilityFilter}
-                onChange={setEligibilityFilter}
-                options={eligibilityFilterOptions}
-                placeholder="All Eligibility"
-                className="w-full"
-              />
+          {!viewAll && error && (
+            <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 rounded-2xl border border-red-100 dark:border-red-900/60 mb-6">
+              {error.response?.data?.error || 'Failed to load ratings'}
             </div>
-          </div>
+
+          {!viewAll && !viewUserId && !isLoading && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400 mb-6">
+              <Star className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+              <p className="font-semibold">
+                Select a team member to view their rating history.
+              </p>
+            </div>
+
+          {!viewAll &&
+            ratings &&
+            (ratings.length === 0 ? (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400 mb-6">
+                <Star className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
 
           {/* Directory Content */}
           {isTeamLoading ? (
@@ -850,6 +838,15 @@ export default function Ratings({
                       className="w-full"
                       searchable={true}
                     />
+                    {!isProjectView && activeDeptId && (
+                      <button
+                        type="button"
+                        onClick={() => setViewAll((current) => !current)}
+                        className="mt-3 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-slate-950 hover:bg-amber-400"
+                      >
+                        {viewAll ? 'Individual View' : 'View All'}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -881,30 +878,36 @@ export default function Ratings({
           </div>
         </div>
 
-        {isRatingsLoading && (
-          <div className="flex justify-center p-8 mb-6">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
-          </div>
-        )}
+          {viewAll && (
+            <div className="mb-6">
+              <DepartmentRatingsSheet
+                departmentName={activeDepartment?.name}
+                data={sheetData}
+                from={sheetFrom}
+                to={sheetTo}
+                onFromChange={setSheetFrom}
+                onToChange={setSheetTo}
+                isLoading={sheetIsLoading}
+                error={sheetError}
+                onRetry={refetchSheet}
+              />
+            </div>
+          )}
 
-        {ratingsError && (
-          <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 rounded-2xl border border-red-100 dark:border-red-900/60 mb-6">
-            {ratingsError.response?.data?.error || 'Failed to load ratings'}
-          </div>
-        )}
+          {!viewAll && isLoading && (
+            <div className="flex justify-center p-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
+            </div>
+          )}
 
-        {!viewUserId && !isRatingsLoading && (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400 mb-6">
-            <Star className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-            <p className="font-semibold">
-              Select a team member to view their detailed rating history.
-            </p>
-          </div>
-        )}
+          {!viewAll && error && (
+            <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 rounded-2xl border border-red-100 dark:border-red-900/60">
+              {error.response?.data?.error || 'Failed to load ratings'}
+            </div>
+          )}
 
-        {ratings &&
-          (ratings.length === 0 ? (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400 mb-6">
+          {!viewAll && !viewUserId && !isLoading && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400">
               <Star className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
 
               <p className="font-semibold">
@@ -912,23 +915,46 @@ export default function Ratings({
                 {selectedMemberInfo?.full_name || 'this member'} yet.
               </p>
             </div>
-          ) : (
-            <div className="space-y-3 mb-6">
-              {ratings.map((r) => (
-                <div
-                  key={r.id}
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl p-5 shadow-[0_10px_28px_rgba(15,23,42,0.05)] dark:shadow-none hover:shadow-[0_16px_38px_rgba(15,23,42,0.08)] dark:hover:shadow-none transition-all group"
-                >
-                  <div className="flex items-center justify-between gap-4 mb-3">
-                    <Stars value={r.score} />
+          )}
 
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full">
-                      {new Date(r.created_at).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </span>
+          {!viewAll &&
+            ratings &&
+            (ratings.length === 0 ? (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400">
+                <Star className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+
+                <p className="font-semibold">
+                  No ratings have been submitted yet.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {ratings.map((r) => (
+                  <div
+                    key={r.id}
+                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl p-5 shadow-[0_10px_28px_rgba(15,23,42,0.05)] dark:shadow-none hover:shadow-[0_16px_38px_rgba(15,23,42,0.08)] dark:hover:shadow-none transition-all group"
+                  >
+                    <div className="flex items-center justify-between gap-4 mb-3">
+                      <Stars value={r.score} />
+
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full">
+                        {new Date(r.created_at).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    </div>
+
+                    {r.remarks ? (
+                      <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed">
+                        {r.remarks}
+                      </p>
+                    ) : (
+                      <p className="text-slate-400 dark:text-slate-500 text-sm italic">
+                        No remarks provided.
+                      </p>
+                    )}
                   </div>
 
                   {r.remarks ? (

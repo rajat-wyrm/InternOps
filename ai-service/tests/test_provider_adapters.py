@@ -9,6 +9,7 @@ from app.providers import (
     AnthropicProvider,
     DeepSeekProvider,
     HuggingFaceProvider,
+    NvidiaProvider,
     ProviderAPIError,
     ProviderRateLimitError,
     ProviderTimeoutError,
@@ -16,10 +17,12 @@ from app.providers import (
 
 GEMINI_URL_PREFIX = "https://generativelanguage.googleapis.com/v1beta/models/"
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 HUGGINGFACE_URL_PREFIX = "https://api-inference.huggingface.co/models/"
+NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 
 
 # ===========================================================================
@@ -137,6 +140,73 @@ async def test_openai_oversized_response_raises_provider_api_error(monkeypatch):
 
     with pytest.raises(ProviderAPIError, match="exceeded"):
         await provider.generate_chat([{"role": "user", "content": "hello"}])
+
+
+# ===========================================================================
+# OpenAI: generate_image (issue #1801 -- AI-generated assignment visuals)
+# ===========================================================================
+@pytest.mark.asyncio
+@respx.mock
+async def test_openai_generate_image_returns_url():
+    respx.post(OPENAI_IMAGE_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "url": "https://example.com/generated.png",
+                        "revised_prompt": "a detailed poster about recycling",
+                    }
+                ]
+            },
+        )
+    )
+    provider = OpenAIProvider(api_key="test-key")
+
+    result = await provider.generate_image("a poster about recycling")
+
+    assert result["url"] == "https://example.com/generated.png"
+    assert result["revised_prompt"] == "a detailed poster about recycling"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_openai_generate_image_rate_limit_maps_to_provider_rate_limit_error():
+    respx.post(OPENAI_IMAGE_URL).mock(return_value=httpx.Response(429, json={"error": "quota exceeded"}))
+    provider = OpenAIProvider(api_key="test-key")
+
+    with pytest.raises(ProviderRateLimitError):
+        await provider.generate_image("a poster about recycling")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_openai_generate_image_timeout_maps_to_provider_timeout_error():
+    respx.post(OPENAI_IMAGE_URL).mock(side_effect=httpx.TimeoutException("timed out"))
+    provider = OpenAIProvider(api_key="test-key")
+
+    with pytest.raises(ProviderTimeoutError):
+        await provider.generate_image("a poster about recycling")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_openai_generate_image_server_error_maps_to_provider_api_error():
+    respx.post(OPENAI_IMAGE_URL).mock(return_value=httpx.Response(503, text="unavailable"))
+    provider = OpenAIProvider(api_key="test-key")
+
+    with pytest.raises(ProviderAPIError):
+        await provider.generate_image("a poster about recycling")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_openai_generate_image_malformed_payload_raises_provider_api_error():
+    respx.post(OPENAI_IMAGE_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+    provider = OpenAIProvider(api_key="test-key")
+
+    with pytest.raises(ProviderAPIError):
+        await provider.generate_image("a poster about recycling")
 
 
 # ===========================================================================
@@ -405,6 +475,86 @@ async def test_huggingface_oversized_response_raises_provider_api_error(monkeypa
         )
     )
     provider = HuggingFaceProvider(api_key="test-token")
+
+    with pytest.raises(ProviderAPIError, match="exceeded"):
+        await provider.generate_chat([{"role": "user", "content": "hello"}])
+
+
+# ===========================================================================
+# NVIDIA PROVIDER TESTS
+# ===========================================================================
+@pytest.mark.asyncio
+@respx.mock
+async def test_nvidia_generate_chat_success():
+    respx.post(NVIDIA_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "Hello from Nvidia NIM!"}}]},
+        )
+    )
+    provider = NvidiaProvider(api_key="test-key")
+    result = await provider.generate_chat([{"role": "user", "content": "hello"}])
+    assert result == "Hello from Nvidia NIM!"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_nvidia_rate_limit_maps_to_provider_rate_limit_error():
+    respx.post(NVIDIA_URL).mock(
+        return_value=httpx.Response(429, text="Rate limit exceeded")
+    )
+    provider = NvidiaProvider(api_key="test-key")
+
+    with pytest.raises(ProviderRateLimitError) as exc:
+        await provider.generate_chat([{"role": "user", "content": "hello"}])
+    assert exc.value.status_code == 429
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_nvidia_timeout_maps_to_provider_timeout_error():
+    respx.post(NVIDIA_URL).mock(side_effect=httpx.TimeoutException("timed out"))
+    provider = NvidiaProvider(api_key="test-key")
+
+    with pytest.raises(ProviderTimeoutError):
+        await provider.generate_chat([{"role": "user", "content": "hello"}])
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_nvidia_generate_json_returns_parsed_dict():
+    respx.post(NVIDIA_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"language": "python"}'}}]},
+        )
+    )
+    provider = NvidiaProvider(api_key="test-key")
+    result = await provider.generate_json("detect language", schema={"language": "str"})
+    assert result == {"language": "python"}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_nvidia_server_error_maps_to_provider_api_error():
+    respx.post(NVIDIA_URL).mock(return_value=httpx.Response(502, text="bad gateway"))
+    provider = NvidiaProvider(api_key="test-key")
+
+    with pytest.raises(ProviderAPIError):
+        await provider.generate_chat([{"role": "user", "content": "hello"}])
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_nvidia_oversized_response_raises_provider_api_error(monkeypatch):
+    monkeypatch.setattr("app.providers.nvidia.MAX_RESPONSE_BYTES", 10)
+    respx.post(NVIDIA_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "x" * 100}}]},
+        )
+    )
+    provider = NvidiaProvider(api_key="test-key")
 
     with pytest.raises(ProviderAPIError, match="exceeded"):
         await provider.generate_chat([{"role": "user", "content": "hello"}])

@@ -127,6 +127,19 @@ class AIOrchestrator:
         )
         return data
 
+    async def generate_text_with_fallback(
+        self,
+        prompt: str,
+        temperature: float = 0.7,
+        **kwargs,
+    ) -> Tuple[str, str]:
+        return await self._execute_with_failover(
+            "generate_text",
+            prompt,
+            temperature=temperature,
+            **kwargs,
+        )
+
     async def generate_chat_with_fallback(
         self,
         messages: list[dict],

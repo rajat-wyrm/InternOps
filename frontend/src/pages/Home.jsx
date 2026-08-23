@@ -46,15 +46,10 @@ function ManagerHome({ user }) {
   } = useQuery({
     queryKey: QUERY_KEYS.TEAM_MEMBERS,
     queryFn: () => api.get('/team/members').then((res) => res.data),
+    staleTime: 5 * 60 * 1000,
   });
 
-  if (isLoading) {
-    return (
-      <p className="text-slate-600 dark:text-slate-300">Loading dashboard...</p>
-    );
-  }
-
-  if (isError) {
+  if (isError && team.length === 0) {
     return (
       <ApiErrorState
         error={error}
@@ -64,6 +59,8 @@ function ManagerHome({ user }) {
       />
     );
   }
+
+  const isFetchingFirstTime = isLoading && team.length === 0;
 
   const active = team.filter(
     (m) => !m.suspended && (m.internship_status || 'ACTIVE') === 'ACTIVE'
@@ -111,28 +108,30 @@ function ManagerHome({ user }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
           label="Team members"
-          value={team.length}
+          value={isFetchingFirstTime ? '...' : team.length}
           icon="👥"
           gradient="from-indigo-500 to-blue-600"
         />
 
         <StatCard
           label="Active"
-          value={active}
+          value={isFetchingFirstTime ? '...' : active}
           icon="✅"
           gradient="from-emerald-400 to-teal-500"
         />
 
         <StatCard
           label="Avg attendance"
-          value={avgAtt === null ? '—' : `${avgAtt}%`}
+          value={
+            isFetchingFirstTime ? '...' : avgAtt === null ? '—' : `${avgAtt}%`
+          }
           icon="📅"
           gradient="from-sky-400 to-blue-500"
         />
 
         <StatCard
           label="Avg rating"
-          value={avgRating}
+          value={isFetchingFirstTime ? '...' : avgRating}
           sub="out of 10"
           icon="⭐"
           gradient="from-amber-400 to-orange-500"
@@ -160,7 +159,11 @@ function ManagerHome({ user }) {
             </Link>
           </div>
 
-          {lowAttendance.length === 0 ? (
+          {isFetchingFirstTime ? (
+            <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-sm">
+              Loading team data...
+            </div>
+          ) : lowAttendance.length === 0 ? (
             <div className="rounded-3xl border border-emerald-100 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/30 text-center py-8 px-4">
               <p className="text-slate-800 dark:text-white font-extrabold">
                 Everything looks good
@@ -276,15 +279,10 @@ function InternHome({ user }) {
       return { att, attError, ratings, ratingsError };
     },
     enabled: !!user,
+    staleTime: 5 * 60 * 1000,
   });
 
-  if (isLoading) {
-    return (
-      <p className="text-slate-600 dark:text-slate-300">Loading dashboard...</p>
-    );
-  }
-
-  if (isError) {
+  if (isError && !stats) {
     return (
       <ApiErrorState
         error={error}
@@ -294,6 +292,8 @@ function InternHome({ user }) {
       />
     );
   }
+
+  const isFetchingFirstTime = isLoading && !stats;
 
   const att = stats?.att;
   const attError = stats?.attError;
@@ -333,7 +333,7 @@ function InternHome({ user }) {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
         <StatCard
           label="Present this month"
-          value={present}
+          value={isFetchingFirstTime ? '...' : present}
           sub="days"
           icon="📅"
           gradient="from-emerald-400 to-teal-500"
@@ -341,7 +341,7 @@ function InternHome({ user }) {
 
         <StatCard
           label="My avg rating"
-          value={ratings !== null ? avg : '—'}
+          value={isFetchingFirstTime ? '...' : ratings !== null ? avg : '—'}
           sub="out of 10"
           icon="⭐"
           gradient="from-amber-400 to-orange-500"
@@ -349,7 +349,13 @@ function InternHome({ user }) {
 
         <StatCard
           label="Total ratings"
-          value={ratings !== null ? ratingsData.length : '—'}
+          value={
+            isFetchingFirstTime
+              ? '...'
+              : ratings !== null
+                ? ratingsData.length
+                : '—'
+          }
           icon="📊"
           gradient="from-indigo-500 to-blue-600"
         />
@@ -368,7 +374,11 @@ function InternHome({ user }) {
             </p>
           </div>
 
-          {attError ? (
+          {isFetchingFirstTime ? (
+            <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-sm">
+              Loading attendance data...
+            </div>
+          ) : attError ? (
             <ApiErrorState
               error={attError}
               title="Failed to load attendance records"
@@ -460,22 +470,16 @@ export default function Home() {
 
   const {
     data: me,
-    isLoading,
     isError,
     error,
     refetch,
   } = useQuery({
     queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
   });
 
-  if (isLoading) {
-    return (
-      <p className="text-slate-600 dark:text-slate-300">Loading profile...</p>
-    );
-  }
-
-  if (isError) {
+  if (isError && !user && !me) {
     return (
       <ApiErrorState
         error={error}
@@ -486,11 +490,9 @@ export default function Home() {
     );
   }
 
-  const u = { ...user, full_name: me?.full_name || user?.full_name };
+  const u = { ...user, ...me };
 
-  const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(
-    user?.role
-  );
+  const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(u?.role);
 
   return isManager ? <ManagerHome user={u} /> : <InternHome user={u} />;
 }

@@ -180,16 +180,15 @@ async function createChecklist({
       `
         INSERT INTO onboarding_checklists (
           intern_id,
-          template_id,
           title,
           role,
-          department_id,
-          assigned_by
+          department,
+          created_by
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING *
       `,
-      [internId, templateId, title, role, departmentId || null, assignedBy]
+      [internId, title, role, departmentId || null, assignedBy]
     );
 
     const checklist = checklistResult.rows[0];
@@ -321,6 +320,112 @@ async function getChecklistsForIntern(internId) {
 }
 
 /**
+ * Update an existing checklist.
+ */
+async function updateChecklist(
+  checklistId,
+  { title, role, department },
+  items = []
+) {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const checklistResult = await client.query(
+      `
+        UPDATE onboarding_checklists
+        SET
+          title = COALESCE($1, title),
+          role = COALESCE($2, role),
+          department = COALESCE($3, department),
+          updated_at = NOW()
+        WHERE id = $4
+        RETURNING *
+      `,
+      [title || null, role || null, department || null, checklistId]
+    );
+
+    const checklist = checklistResult.rows[0];
+
+    if (!checklist) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    if (items.length > 0) {
+      await client.query(
+        `
+          DELETE FROM onboarding_checklist_items
+          WHERE checklist_id = $1
+        `,
+        [checklistId]
+      );
+
+      const savedItems = [];
+
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i];
+
+        const itemResult = await client.query(
+          `
+            INSERT INTO onboarding_checklist_items (
+              checklist_id,
+              title,
+              description,
+              due_day_offset,
+              social_task_id,
+              position
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+          `,
+          [
+            checklistId,
+            item.title,
+            item.description || null,
+            item.dueDayOffset ?? item.due_day_offset ?? null,
+            item.socialTaskId || item.social_task_id || null,
+            i,
+          ]
+        );
+
+        savedItems.push(itemResult.rows[0]);
+      }
+
+      await client.query('COMMIT');
+
+      return {
+        ...checklist,
+        items: savedItems,
+      };
+    }
+
+    const itemsResult = await client.query(
+      `
+        SELECT *
+        FROM onboarding_checklist_items
+        WHERE checklist_id = $1
+        ORDER BY position ASC, created_at ASC
+      `,
+      [checklistId]
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      ...checklist,
+      items: itemsResult.rows,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Update completion state of a checklist item.
  */
 async function updateChecklistItemCompletion({
@@ -355,5 +460,6 @@ module.exports = {
   createChecklist,
   getChecklistById,
   getChecklistsForIntern,
+  updateChecklist,
   updateChecklistItemCompletion,
 };

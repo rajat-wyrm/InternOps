@@ -1,0 +1,228 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.0, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\Sampriti\.gemini\antigravity\scratch\InternOps\ai-service\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Sampriti\.gemini\antigravity\scratch\InternOps\ai-service
+configfile: pyproject.toml
+plugins: anyio-4.14.2, asyncio-1.4.0, respx-0.23.1
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 12 items
+
+tests/test_ai_routes.py::test_chat_requires_prompt_or_messages PASSED    [  8%]
+tests/test_ai_routes.py::test_chat_rejects_invalid_role PASSED           [ 16%]
+tests/test_ai_routes.py::test_chat_rejects_blank_content PASSED          [ 25%]
+tests/test_ai_routes.py::test_chat_truncates_message_list_to_16 PASSED   [ 33%]
+tests/test_ai_routes.py::test_chat_without_configured_provider_key_returns_503 FAILED [ 41%]
+tests/test_ai_routes.py::test_chat_happy_path_with_mocked_provider FAILED [ 50%]
+tests/test_ai_routes.py::test_health_endpoint FAILED                     [ 58%]
+tests/test_ai_routes.py::test_health_endpoint_reports_healthy_when_key_present FAILED [ 66%]
+tests/test_ai_routes.py::test_health_endpoint_reports_unhealthy_when_circuit_open FAILED [ 75%]
+tests/test_ai_routes.py::test_usage_endpoint FAILED                      [ 83%]
+tests/test_ai_routes.py::test_rate_limit_trips_after_configured_max PASSED [ 91%]
+tests/test_ai_routes.py::test_chat_uses_cache_for_identical_requests FAILED [100%]
+
+================================== FAILURES ===================================
+____________ test_chat_without_configured_provider_key_returns_503 ____________
+
+client = <starlette.testclient.TestClient object at 0x00000242E7AF1CD0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000242E7BB1260>
+
+    def test_chat_without_configured_provider_key_returns_503(client, monkeypatch):
+        # No API keys set in the test environment ->
+        # the registry raises AIProviderError -> mapped to 503.
+        for key in ["GEMINI_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "HUGGINGFACE_TOKEN"]:
+            monkeypatch.delenv(key, raising=False)
+        r = client.post("/ai/chat", json={"prompt": "hello"})
+>       assert r.status_code == 503
+E       assert 500 == 503
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_ai_routes.py:91: AssertionError
+__________________ test_chat_happy_path_with_mocked_provider __________________
+
+client = <starlette.testclient.TestClient object at 0x00000242E7B49D90>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000242E7BC0550>
+
+    def test_chat_happy_path_with_mocked_provider(client, monkeypatch):
+        import app.api.ai_routes as ai_routes_module
+        from app.models.ai import ProviderResult
+    
+        async def fake_call_provider(user_id, messages):
+            return ProviderResult(provider="fake-provider", cached=False, content="hi there!")
+    
+        monkeypatch.setattr(ai_routes_module, "call_provider", fake_call_provider)
+    
+        r = client.post("/ai/chat", json={"prompt": "hello"}, headers={"x-user-id": "happy-path"})
+>       assert r.status_code == 200
+E       assert 500 == 200
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_ai_routes.py:105: AssertionError
+____________________________ test_health_endpoint _____________________________
+
+client = <starlette.testclient.TestClient object at 0x00000242E7C348D0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000242E7BC0450>
+
+    def test_health_endpoint(client, monkeypatch):
+        for key in [
+            "GEMINI_API_KEY",
+            "OPENAI_API_KEY",
+            "GROQ_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "HUGGINGFACE_TOKEN",
+        ]:
+            monkeypatch.delenv(key, raising=False)
+    
+        r = client.get("/ai/health")
+>       assert r.status_code == 200
+E       assert 500 == 200
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_ai_routes.py:122: AssertionError
+____________ test_health_endpoint_reports_healthy_when_key_present ____________
+
+client = <starlette.testclient.TestClient object at 0x00000242E7C36AD0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000242E7B77890>
+
+    def test_health_endpoint_reports_healthy_when_key_present(client, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        r = client.get("/ai/health")
+>       body = r.json()
+               ^^^^^^^^
+
+tests\test_ai_routes.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\httpx\_models.py:832: in json
+    return jsonlib.loads(self.content, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Program Files\Python313\Lib\json\__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Program Files\Python313\Lib\json\decoder.py:344: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <json.decoder.JSONDecoder object at 0x00000242E2637380>
+s = 'Internal Server Error', idx = 0
+
+    def raw_decode(self, s, idx=0):
+        """Decode a JSON document from ``s`` (a ``str`` beginning with
+        a JSON document) and return a 2-tuple of the Python
+        representation and the index in ``s`` where the document ended.
+    
+        This can be used to decode a JSON document from a string that may
+        have extraneous data at the end.
+    
+        """
+        try:
+            obj, end = self.scan_once(s, idx)
+        except StopIteration as err:
+>           raise JSONDecodeError("Expecting value", s, err.value) from None
+E           json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+C:\Program Files\Python313\Lib\json\decoder.py:362: JSONDecodeError
+__________ test_health_endpoint_reports_unhealthy_when_circuit_open ___________
+
+client = <starlette.testclient.TestClient object at 0x00000242E7AB7350>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000242E7A7FE30>
+
+    @pytest.mark.asyncio
+    async def test_health_endpoint_reports_unhealthy_when_circuit_open(client, monkeypatch):
+        import time
+        from app.providers.orchestrator import get_circuit_breaker
+    
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    
+        cb = get_circuit_breaker("gemini")
+        cb.failures = 3
+        cb.disabled_until = time.time() + 300
+    
+        try:
+            r = client.get("/ai/health")
+>           body = r.json()
+                   ^^^^^^^^
+
+tests\test_ai_routes.py:155: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\httpx\_models.py:832: in json
+    return jsonlib.loads(self.content, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Program Files\Python313\Lib\json\__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Program Files\Python313\Lib\json\decoder.py:344: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <json.decoder.JSONDecoder object at 0x00000242E2637380>
+s = 'Internal Server Error', idx = 0
+
+    def raw_decode(self, s, idx=0):
+        """Decode a JSON document from ``s`` (a ``str`` beginning with
+        a JSON document) and return a 2-tuple of the Python
+        representation and the index in ``s`` where the document ended.
+    
+        This can be used to decode a JSON document from a string that may
+        have extraneous data at the end.
+    
+        """
+        try:
+            obj, end = self.scan_once(s, idx)
+        except StopIteration as err:
+>           raise JSONDecodeError("Expecting value", s, err.value) from None
+E           json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+C:\Program Files\Python313\Lib\json\decoder.py:362: JSONDecodeError
+_____________________________ test_usage_endpoint _____________________________
+
+client = <starlette.testclient.TestClient object at 0x00000242E7BC1B50>
+
+    def test_usage_endpoint(client):
+        r = client.get("/ai/usage")
+>       assert r.status_code == 200
+E       assert 500 == 200
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_ai_routes.py:165: AssertionError
+_________________ test_chat_uses_cache_for_identical_requests _________________
+
+client = <starlette.testclient.TestClient object at 0x00000242E7B77A70>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000242E7B7CD10>
+
+    def test_chat_uses_cache_for_identical_requests(client, monkeypatch):
+        import app.api.ai_routes as ai_routes_module
+    
+        calls = 0
+    
+        async def fake_generate(prompt, temperature=0.7, **kwargs):
+            nonlocal calls
+            calls += 1
+            return "cached response", "fake-provider"
+    
+        monkeypatch.setattr(
+>           ai_routes_module.ai_orchestrator,
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "generate_text_with_fallback",
+            fake_generate,
+        )
+E       AttributeError: module 'app.api.ai_routes' has no attribute 'ai_orchestrator'
+
+tests\test_ai_routes.py:217: AttributeError
+=========================== short test summary info ===========================
+FAILED tests/test_ai_routes.py::test_chat_without_configured_provider_key_returns_503 - assert 500 == 503
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+FAILED tests/test_ai_routes.py::test_chat_happy_path_with_mocked_provider - assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+FAILED tests/test_ai_routes.py::test_health_endpoint - assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+FAILED tests/test_ai_routes.py::test_health_endpoint_reports_healthy_when_key_present - json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+FAILED tests/test_ai_routes.py::test_health_endpoint_reports_unhealthy_when_circuit_open - json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+FAILED tests/test_ai_routes.py::test_usage_endpoint - assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+FAILED tests/test_ai_routes.py::test_chat_uses_cache_for_identical_requests - AttributeError: module 'app.api.ai_routes' has no attribute 'ai_orchestrator'
+========================= 7 failed, 5 passed in 2.00s =========================
+

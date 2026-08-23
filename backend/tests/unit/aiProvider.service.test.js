@@ -351,6 +351,37 @@ describe('AI Provider Service', () => {
     expect(mockFetch.mock.calls[0][0]).toContain('api.openai.com');
   });
 
+  it('should attach per-provider failure reasons to the thrown error for diagnostics (#1795)', async () => {
+    jest.resetModules();
+    process.env.AI_PROVIDER_ORDER = 'gemini,groq';
+    mockConfig.ai.geminiKey = 'your-placeholder-key'; // treated as unconfigured
+    mockConfig.ai.groqKey = 'groq-key';
+    mockGetRedisClient.mockResolvedValue(null);
+    mockFetch.mockRejectedValue(new Error('groq unreachable'));
+
+    aiService = require('../../src/services/aiProviderService');
+
+    let caught;
+    try {
+      await aiService.generateAIResponse({
+        userId: 'user-diag',
+        messages: [{ role: 'user', content: 'hello' }],
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught.message).toBe('All AI providers unavailable');
+    expect(Array.isArray(caught.details)).toBe(true);
+    expect(caught.details).toEqual([
+      { provider: 'gemini', reason: 'missing_api_key' },
+      { provider: 'groq', reason: 'groq unreachable' },
+    ]);
+
+    mockConfig.ai.geminiKey = 'gemini-key';
+  });
+
   it('should enforce LRU cache eviction limits and TTL configurations', async () => {
     jest.clearAllMocks();
     jest.resetModules();
@@ -416,5 +447,56 @@ describe('AI Provider Service', () => {
     });
 
     expect(mockFetch).toHaveBeenCalledTimes(10);
+  });
+  it('should enforce the default 5MB response size limit when AI_MAX_RESPONSE_BYTES is not set', async () => {
+    jest.resetModules();
+    delete process.env.AI_MAX_RESPONSE_BYTES;
+    process.env.AI_PROVIDER_ORDER = 'groq';
+    mockGetRedisClient.mockResolvedValue(null);
+
+    // Default is 5MB
+    const oversizedLength = 5 * 1024 * 1024 + 1;
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: jest.fn().mockReturnValue(String(oversizedLength)) },
+      text: jest.fn().mockResolvedValue(''),
+    });
+
+    aiService = require('../../src/services/aiProviderService');
+
+    await expect(
+      aiService.generateAIResponse({
+        userId: 'size-test-user',
+        messages: [{ role: 'user', content: 'test' }],
+      })
+    ).rejects.toThrow('Content-Length exceeds 5242880 bytes');
+  });
+
+  it('should enforce the custom AI_MAX_RESPONSE_BYTES limit when it is set', async () => {
+    jest.resetModules();
+    process.env.AI_MAX_RESPONSE_BYTES = '1024'; // 1KB
+    process.env.AI_PROVIDER_ORDER = 'groq';
+    mockGetRedisClient.mockResolvedValue(null);
+
+    // Larger than 1KB
+    const oversizedLength = 2048;
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: jest.fn().mockReturnValue(String(oversizedLength)) },
+      text: jest.fn().mockResolvedValue(''),
+    });
+
+    aiService = require('../../src/services/aiProviderService');
+
+    await expect(
+      aiService.generateAIResponse({
+        userId: 'size-test-user',
+        messages: [{ role: 'user', content: 'test' }],
+      })
+    ).rejects.toThrow('Content-Length exceeds 1024 bytes');
   });
 });

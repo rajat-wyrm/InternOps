@@ -116,8 +116,14 @@ async function generateRatingSuggestion(data) {
   }
 
   const wordCount = feedback.split(/\s+/).filter(Boolean).length;
-  if (wordCount < MIN_FEEDBACK_WORDS || wordCount > MAX_FEEDBACK_WORDS) {
+  if (wordCount > MAX_FEEDBACK_WORDS) {
     feedback = feedback.split(/\s+/).slice(0, MAX_FEEDBACK_WORDS).join(' ');
+  } else if (wordCount < MIN_FEEDBACK_WORDS) {
+    return {
+      source: 'ai',
+      suggestedScore: score,
+      feedback: 'AI feedback too short — regenerate or use fallback',
+    };
   }
 
   return {

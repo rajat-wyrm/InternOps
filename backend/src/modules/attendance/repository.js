@@ -61,6 +61,68 @@ async function getAttendance(userId, { from, to, page = 1, limit = 30 } = {}) {
   return { records: res.rows, total, page: safePage, limit: safeLimit };
 }
 
+async function getDepartmentAttendanceSheet({
+  departmentId,
+  requesterId,
+  isAdmin,
+  from,
+  to,
+}) {
+  const memberScope = isAdmin
+    ? `SELECT id, full_name, email, role, department_id
+       FROM users
+       WHERE department_id = $1 AND deleted_at IS NULL`
+    : `WITH RECURSIVE visible_users AS (
+         SELECT id, full_name, email, role, department_id, manager_id, 0 AS depth
+         FROM users
+         WHERE id = $2 AND deleted_at IS NULL
+         UNION ALL
+         SELECT u.id, u.full_name, u.email, u.role, u.department_id, u.manager_id,
+                visible_users.depth + 1
+         FROM users u
+         INNER JOIN visible_users ON u.manager_id = visible_users.id
+         WHERE u.deleted_at IS NULL AND visible_users.depth < 100
+       )
+       SELECT id, full_name, email, role, department_id
+       FROM visible_users
+       WHERE department_id = $1`;
+
+  const memberParams = isAdmin ? [departmentId] : [departmentId, requesterId];
+
+  const membersResult = await pool.query(memberScope, memberParams);
+  const members = membersResult.rows;
+  const memberIds = members.map((member) => member.id);
+
+  if (memberIds.length === 0) {
+    return { members: [], dates: [], records: [] };
+  }
+
+  const recordsResult = await pool.query(
+    `SELECT a.id, a.user_id, TO_CHAR(a.date, 'YYYY-MM-DD') AS date, a.status, a.remarks,
+            a.marked_by, marker.full_name AS marked_by_name
+     FROM attendance a
+     LEFT JOIN users marker ON marker.id = a.marked_by
+     WHERE a.user_id = ANY($1::uuid[])
+       AND a.date >= $2
+       AND a.date <= $3
+       AND a.deleted_at IS NULL
+     ORDER BY a.date ASC, a.user_id ASC`,
+    [memberIds, from, to]
+  );
+
+  const datesResult = await pool.query(
+    `SELECT TO_CHAR(day, 'YYYY-MM-DD') AS date
+     FROM generate_series($1::date, $2::date, interval '1 day') AS day`,
+    [from, to]
+  );
+
+  return {
+    members,
+    dates: datesResult.rows.map((row) => row.date),
+    records: recordsResult.rows,
+  };
+}
+
 async function getMonthlyStats(userId, month, year) {
   // SARGable date-range form: avoid EXTRACT() on a date column, which would
   // force a sequential scan. With the date range we can use a btree index.
@@ -143,11 +205,118 @@ async function getAuthorizedSubordinates(managerId) {
   return res.rows;
 }
 
+async function getAllUsers() {
+  const res = await pool.query(
+    'SELECT id, full_name, email, role, department_id FROM users WHERE deleted_at IS NULL'
+  );
+
+  return res.rows;
+}
+
+async function getUsersByDepartment(departmentId) {
+  const res = await pool.query(
+    'SELECT id, full_name, email, role, department_id FROM users WHERE deleted_at IS NULL AND department_id = $1',
+    [departmentId]
+  );
+
+  return res.rows;
+}
+
+async function getAnomalies(managerId, isAdmin, filters = {}) {
+  const { intern_id, flag_type, viewed } = filters;
+  let query = `
+    SELECT a.*, 
+           u.full_name AS intern_name, 
+           u.email AS intern_email,
+           v.full_name AS viewed_by_name
+    FROM attendance_anomalies a
+    JOIN users u ON u.id = a.intern_id
+    LEFT JOIN users v ON v.id = a.viewed_by
+    WHERE 1=1
+  `;
+  const params = [];
+
+  if (!isAdmin) {
+    params.push(managerId);
+    query += ` AND a.intern_id IN (
+      WITH RECURSIVE subordinates AS (
+        SELECT id, 0 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+        UNION ALL
+        SELECT u.id, s.depth + 1
+        FROM users u
+        INNER JOIN subordinates s ON u.manager_id = s.id
+        WHERE u.deleted_at IS NULL AND s.depth < 100
+      )
+      SELECT id FROM subordinates
+    )`;
+  }
+
+  if (intern_id) {
+    params.push(intern_id);
+    query += ` AND a.intern_id = $${params.length}`;
+  }
+
+  if (flag_type) {
+    params.push(flag_type);
+    query += ` AND a.flag_type = $${params.length}`;
+  }
+
+  if (viewed !== undefined) {
+    if (viewed) {
+      query += ` AND a.viewed_at IS NOT NULL`;
+    } else {
+      query += ` AND a.viewed_at IS NULL`;
+    }
+  }
+
+  query += ` ORDER BY a.created_at DESC`;
+
+  const res = await pool.query(query, params);
+  return res.rows;
+}
+
+async function markAnomalyViewed(anomalyId, managerId, isAdmin) {
+  if (!isAdmin) {
+    const checkRes = await pool.query(
+      `SELECT intern_id FROM attendance_anomalies WHERE id = $1`,
+      [anomalyId]
+    );
+    if (checkRes.rows.length === 0) {
+      throw new Error('Anomaly not found');
+    }
+    const internId = checkRes.rows[0].intern_id;
+    const subordinates = await getAuthorizedSubordinates(managerId);
+    const subIds = new Set(subordinates.map((s) => s.id));
+    if (!subIds.has(internId)) {
+      throw new Error('Access denied: Intern is not in your hierarchy');
+    }
+  }
+
+  const res = await pool.query(
+    `UPDATE attendance_anomalies
+     SET viewed_by = $1, viewed_at = NOW(), updated_at = NOW()
+     WHERE id = $2
+     RETURNING *`,
+    [managerId, anomalyId]
+  );
+
+  if (res.rows.length === 0) {
+    throw new Error('Anomaly not found');
+  }
+
+  return res.rows[0];
+}
+
 module.exports = {
   markAttendance,
   getAttendance,
+  getDepartmentAttendanceSheet,
   getMonthlyStats,
   bulkMark,
   listHierarchySubordinates,
   getAuthorizedSubordinates,
+  getAllUsers,
+  getUsersByDepartment,
+  getAnomalies,
+  markAnomalyViewed,
 };
