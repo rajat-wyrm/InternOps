@@ -1,46 +1,34 @@
 """
-Rate limiting — STUB.
+Rate limiting compatibility module.
 
-TODO(rate-limit): replace with slowapi (or similar) once it's added as a
-dependency. This is an in-memory fixed-window limiter, keyed like the JS
-keyGenerator (user id if authed, else client IP) — good enough for local
-testing, but resets on restart and won't work across multiple workers.
+The RateLimiter implementation lives in rate_limiter.py.
+This module keeps the existing enforce_rate_limit dependency
+used by the AI chat endpoint.
 """
 
-import os
-import time
-from collections import defaultdict
-
-from fastapi import Depends, HTTPException, Request, status
-
+from fastapi import Depends, Request
 from .auth import User, get_current_user
+from .config import REDIS_URL
+from .rate_limiter import RateLimiter
 
-AI_CHAT_RATE_LIMIT = int(os.getenv("AI_CHAT_RATE_LIMIT_PER_MIN", "10"))
+def get_redis_client():
+    from . import rate_limiter
 
-
-class RateLimiter:
-    def __init__(self, max_per_minute: int):
-        self.max_per_minute = max_per_minute
-        self._hits: dict = defaultdict(list)  # key -> [timestamps]
-
-    def check(self, key: str) -> None:
-        now = time.time()
-        window_start = now - 60
-        hits = [t for t in self._hits[key] if t > window_start]
-        if len(hits) >= self.max_per_minute:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many requests",
-            )
-        hits.append(now)
-        self._hits[key] = hits
-
-
-chat_rate_limiter = RateLimiter(AI_CHAT_RATE_LIMIT)
-
+    return rate_limiter.redis_client
+headers = {"x-user-id": "rate-limit-test-user"}
 
 async def enforce_rate_limit(
-    request: Request, user: User = Depends(get_current_user)
+    request: Request,
+    user: User = Depends(get_current_user),
 ) -> None:
-    key = user.id if user and user.id else (request.client.host if request.client else "unknown")
-    chat_rate_limiter.check(key)
+    from . import rate_limiter
+
+    # Use the Redis client supplied by this compatibility module.
+    rate_limiter.redis_client = get_redis_client()
+    await chat_rate_limiter.check_rate_limit(
+        request=request,
+        current_user=user,
+    )
+    
+ai_rate_limiter = RateLimiter()
+chat_rate_limiter = RateLimiter()
