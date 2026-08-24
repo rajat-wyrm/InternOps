@@ -24,7 +24,7 @@ from app.core.auth import get_current_user, User
 
 @pytest.fixture
 def client(monkeypatch):
-    import app.core.rate_limit as rate_limit_module
+    import app.core.rate_limiter as rate_limit_module
 
     class FakeRedis:
         """Minimal in-memory stand-in for redis.asyncio.Redis, just for tests."""
@@ -41,11 +41,12 @@ def client(monkeypatch):
 
     # Force the limiter to use our fake client instead of a real Redis connection.
     fake_redis = FakeRedis()
-    monkeypatch.setattr(rate_limit_module, "get_redis_client", lambda: fake_redis)
+    monkeypatch.setattr(rate_limit_module, "redis_client", fake_redis)
 
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: User(id="test_user", roles=["ADMIN"])
+    chat_rate_limiter._hits.clear()
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -185,7 +186,7 @@ def test_rate_limit_trips_after_configured_max(client, monkeypatch):
     # Replace the real call_provider() with our fake one
     monkeypatch.setattr(ai_routes_module, "call_provider", fake_call_provider)
 
-    limit = chat_rate_limiter.max_per_minute
+    limit = chat_rate_limiter.requests_per_minute
     headers = {"x-user-id": "rate-limit-test-user"}
 
     # These requests should NOT hit the rate limit
