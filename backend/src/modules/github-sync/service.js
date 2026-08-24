@@ -53,7 +53,7 @@ function verifyWebhookSignature(payload, signatureHeader) {
     : signatureHeader;
   const expected = crypto
     .createHmac('sha256', secret)
-    .update(typeof payload === 'string' ? payload : JSON.stringify(payload))
+    .update(payload)
     .digest('hex');
   if (sig.length !== expected.length) {
     return false;

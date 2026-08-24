@@ -17,7 +17,7 @@ const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
 const { setupCronJobs } = require('./utils/cron');
 const githubSyncOrchestrator = require('./modules/github-sync/orchestrator');
-
+const rawBody = require('fastify-raw-body');
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
   logger:
@@ -29,6 +29,13 @@ const app = Fastify({
       : { level: process.env.LOG_LEVEL || 'info' },
   bodyLimit: 1048576,
   genReqId: () => uuidv4(),
+});
+
+app.register(rawBody, {
+  field: 'rawBody',
+  global: false,
+  encoding: false,
+  runFirst: true,
 });
 
 // Layer 1: Register monitoring routes BEFORE global middleware to ensure observability
