@@ -1,5 +1,4 @@
-const ALLOWED_DOMAINS = [];
-
+const ALLOWED_DOMAIN = [];
 module.exports = {
-  ALLOWED_DOMAINS,
+  ALLOWED_DOMAIN,
 };
