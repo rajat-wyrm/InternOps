@@ -20,8 +20,22 @@ const auditQuerySchema = z.object({
   resourceType: z.string().trim().max(100).optional(),
   action: z.string().trim().max(100).optional(),
   search: z.string().trim().max(200).optional(),
-  startDate: z.string().trim().max(40).optional(),
-  endDate: z.string().trim().max(40).optional(),
+  startDate: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .refine((v) => !v || !Number.isNaN(Date.parse(v)), {
+      message: 'startDate must be a valid date',
+    }),
+  endDate: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .refine((v) => !v || !Number.isNaN(Date.parse(v)), {
+      message: 'endDate must be a valid date',
+    }),
 });
 
 async function routes(fastify) {

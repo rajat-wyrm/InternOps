@@ -16,6 +16,33 @@ const UPLOAD_DIR = path.join(
   'certificates'
 );
 
+function safeSandbox(value, maxLen = 200) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value).slice(0, maxLen) : '';
+  }
+  if (typeof value !== 'string') {
+    return String(value).slice(0, maxLen);
+  }
+
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+}
+
+function sanitizeCertificatePromptData(data = {}) {
+  return {
+    type: safeSandbox(data.type, 50) || 'achievement',
+    name: safeSandbox(data.name, 100),
+    company: safeSandbox(data.company, 100),
+    achievement: safeSandbox(data.achievement, 300),
+    tone: safeSandbox(data.tone || 'formal', 50) || 'formal',
+    language: safeSandbox(data.language || 'English', 50) || 'English',
+  };
+}
+
 // Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -401,18 +428,20 @@ async function getBulkJobStatus(id) {
 
 async function generateAIContent(data) {
   const aiProvider = require('../../services/aiProviderService');
+  const sanitized = sanitizeCertificatePromptData(data);
 
-  const prompt = `Generate professional certificate text for a ${data.type} certificate.
-Recipient: ${data.name}
-Company/Organization: ${data.company}
-Achievement: ${data.achievement}
-Tone: ${data.tone || 'formal'}
-Language: ${data.language || 'English'}
-
-Return a JSON object with:
-- "title": The certificate title (e.g., "Certificate of Excellence")
-- "body": The certificate body text (2-3 sentences describing the achievement)
-- "footer": A footer line (e.g., "Awarded on [date]" or a closing statement)`;
+  const prompt = [
+    `Generate professional certificate text for a ${sanitized.type} certificate.`,
+    `Recipient: ${sanitized.name}`,
+    `Company/Organization: ${sanitized.company}`,
+    `Achievement: ${sanitized.achievement}`,
+    `Tone: ${sanitized.tone}`,
+    `Language: ${sanitized.language}`,
+    'Return a JSON object with:',
+    '- "title": The certificate title (e.g., "Certificate of Excellence")',
+    '- "body": The certificate body text (2-3 sentences describing the achievement)',
+    '- "footer": A footer line (e.g., "Awarded on [date]" or a closing statement)',
+  ].join(' ');
 
   try {
     const result = await aiProvider.generate(prompt);
@@ -422,8 +451,8 @@ Return a JSON object with:
     return {
       success: true,
       data: {
-        title: `Certificate of ${data.type.charAt(0).toUpperCase() + data.type.slice(1)}`,
-        body: `This certificate is proudly presented to ${data.name} from ${data.company} in recognition of ${data.achievement}.`,
+        title: `Certificate of ${sanitized.type.charAt(0).toUpperCase() + sanitized.type.slice(1)}`,
+        body: `This certificate is proudly presented to ${sanitized.name} from ${sanitized.company} in recognition of ${sanitized.achievement}.`,
         footer: `Awarded on ${new Date().toISOString().slice(0, 10)}`,
       },
     };
@@ -432,18 +461,24 @@ Return a JSON object with:
 
 async function suggestTemplate(data) {
   const aiProvider = require('../../services/aiProviderService');
+  const sanitized = sanitizeCertificatePromptData(data);
 
   const templates = await repo.getTemplates({ limit: 10 });
-  const templateNames = templates.map((t) => t.name).join(', ');
+  const templateNames = templates
+    .map((t) => safeSandbox(t.name, 80))
+    .join(', ');
 
-  const prompt = `Given an achievement: "${data.achievement}" of type "${data.type}", which of these certificate templates would be most appropriate?
+  const prompt = `Given an achievement: "${sanitized.achievement}" of type "${sanitized.type}", which of these certificate templates would be most appropriate?
 Available templates: ${templateNames}
 
-Return just the template name that best matches.`;
+Return only valid JSON in this exact format:
+{"templateName":"<template name>"}`;
 
   try {
     const result = await aiProvider.generate(prompt);
-    const matched = templates.find((t) => result.includes(t.name));
+    const matched = templates.find((t) =>
+      result.includes(safeSandbox(t.name, 80))
+    );
     return matched || templates[0];
   } catch {
     return templates[0];

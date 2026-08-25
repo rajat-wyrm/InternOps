@@ -1,24 +1,24 @@
+import logging
 from fastapi import HTTPException
 from app.prompts.certificates import build_certificate_prompt
-from app.providers.gemini import GeminiProvider
-from app.core.config import settings
+from app.providers.orchestrator import ai_orchestrator
+
+logger = logging.getLogger(__name__)
 
 
 async def generate_certificate_design(task: str):
     try:
         prompt = build_certificate_prompt(task)
 
-        provider = GeminiProvider(
-            api_key=settings.GEMINI_API_KEY,
-            model_name=settings.GEMINI_MODEL,
+        response, _ = await ai_orchestrator.generate_chat_with_fallback(
+            [{"role": "user", "content": prompt}]
         )
-
-        response = await provider.generate_text(prompt)
 
         return response
 
     except Exception:
+        logger.exception("Failed to generate certificate design")
         raise HTTPException(
             status_code=502,
-            detail="Failed to generate certificate design."
+            detail="Failed to generate certificate design.",
         )

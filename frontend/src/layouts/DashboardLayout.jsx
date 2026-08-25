@@ -26,6 +26,8 @@ import {
   Zap,
   ToggleRight,
   GitPullRequest,
+  Menu,
+  X,
 } from 'lucide-react';
 
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
@@ -38,6 +40,7 @@ import useAuthStore from '../store/auth';
 import useFeatureFlagsStore from '../store/featureFlags';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { ROLE_LABEL } from '../constants/roles';
+import FloatingChatbot from '../components/FloatingChatbot';
 
 const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
 const ADMIN_AND_SENIOR_TL_ROLES = ['ADMIN', 'SENIOR_TL'];
@@ -240,11 +243,22 @@ export default function DashboardLayout() {
     () => localStorage.getItem('theme') === 'dark'
   );
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const { data: me } = useQuery({
     queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
   });
+
+  const { data: unreadData } = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: () => api.get('/notifications/unread-count').then((r) => r.data),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
+    enabled: !!user,
+  });
+
+  const unreadCount = unreadData?.unread || 0;
 
   const displayName = me?.full_name || user?.fullName || user?.email;
   const avatarUrl = me?.avatar_url || null;
@@ -291,6 +305,7 @@ export default function DashboardLayout() {
         String(sidebarNavRef.current.scrollTop)
       );
     }
+    setMobileOpen(false);
   }, []);
 
   const handleLogout = () => {
@@ -300,10 +315,25 @@ export default function DashboardLayout() {
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 text-slate-900 dark:text-white">
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
       <aside
-        className={`${
-          collapsed ? 'w-20' : 'w-64'
-        } shrink-0 bg-gradient-to-b from-indigo-700 via-indigo-800 to-violet-950 text-white flex flex-col transition-all duration-300 ease-in-out shadow-2xl shadow-indigo-950/20`}
+        className={`
+          fixed inset-y-0 left-0 z-50 flex flex-col
+          bg-gradient-to-b from-indigo-700 via-indigo-800 to-violet-950
+          text-white shadow-2xl shadow-indigo-950/20
+          transition-all duration-300 ease-in-out
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
+          md:relative md:translate-x-0 md:inset-auto md:z-auto
+          ${collapsed ? 'w-20' : 'w-64'}
+          shrink-0
+        `}
       >
         <div
           className={`p-5 flex items-center ${collapsed ? 'justify-center' : 'justify-start'}`}
@@ -456,14 +486,31 @@ export default function DashboardLayout() {
             )}
           </div>
         </div>
+        {/* Mobile close button */}
+        <button
+          className="absolute top-4 right-4 md:hidden w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition"
+          onClick={() => setMobileOpen(false)}
+          aria-label="Close sidebar"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm dark:shadow-none">
           <div className="flex items-center gap-3">
+            {/* Mobile hamburger */}
+            <button
+              className="md:hidden w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open sidebar"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            {/* Desktop collapse toggle */}
             <button
               onClick={() => setCollapsed((c) => !c)}
-              className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition font-extrabold"
+              className="hidden md:flex w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 items-center justify-center text-slate-600 dark:text-slate-300 transition font-extrabold"
             >
               {collapsed ? '»' : '«'}
             </button>
@@ -490,9 +537,22 @@ export default function DashboardLayout() {
             <Link
               to="/notifications"
               onClick={saveSidebarScroll}
+              aria-label={
+                unreadCount > 0
+                  ? `Notifications (${unreadCount} unread)`
+                  : 'Notifications'
+              }
+              title="Notifications"
               className="w-10 h-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition"
             >
-              <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+              <div className="relative">
+                <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] px-1 items-center justify-center text-[9px] font-extrabold text-white bg-red-500 rounded-full border border-white dark:border-slate-900 select-none">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </div>
             </Link>
             <Link
               to="/profile"
@@ -522,6 +582,7 @@ export default function DashboardLayout() {
         onCancel={() => setShowLogoutConfirm(false)}
         danger={true}
       />
+      <FloatingChatbot />
     </div>
   );
 }

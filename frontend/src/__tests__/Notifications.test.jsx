@@ -24,12 +24,12 @@ function createTestQueryClient() {
   });
 }
 
-describe('Notifications Page Row Action Pending States', () => {
+describe('Notifications Page Optimistic UI Updates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('disables only the active notification row action button while request is pending', async () => {
+  it('immediately updates marked notification to read state in the UI (optimistic update)', async () => {
     const mockNotifications = [
       {
         id: 101,
@@ -75,34 +75,25 @@ describe('Notifications Page Row Action Pending States', () => {
       name: /mark read/i,
     });
     expect(markReadButtons).toHaveLength(2);
-    expect(markReadButtons[0]).not.toBeDisabled();
-    expect(markReadButtons[1]).not.toBeDisabled();
 
     // Click mark read on first notification
     fireEvent.click(markReadButtons[0]);
 
-    // First button should be disabled and show loading state
+    // First button should be instantly removed from the DOM because the notification is updated to read
     await waitFor(() => {
-      expect(screen.getByText('Marking...')).toBeInTheDocument();
+      const remainingButtons = screen.queryAllByRole('button', {
+        name: /mark read/i,
+      });
+      expect(remainingButtons).toHaveLength(1);
     });
 
-    const pendingButton = screen.getByRole('button', {
-      name: /marking\.\.\./i,
-    });
-    expect(pendingButton).toBeDisabled();
-
-    // Second button should STILL be enabled
-    const remainingMarkReadButtons = screen.getAllByRole('button', {
-      name: /mark read/i,
-    });
-    expect(remainingMarkReadButtons).toHaveLength(1);
-    expect(remainingMarkReadButtons[0]).not.toBeDisabled();
+    expect(api.patch).toHaveBeenCalledWith('/notifications/101/read');
 
     // Resolve patch mutation
     resolvePatch({ data: { success: true } });
   });
 
-  it('disables only the active notification delete button while delete request is pending', async () => {
+  it('immediately removes deleted notification from the UI (optimistic update)', async () => {
     const mockNotifications = [
       {
         id: 201,
@@ -148,13 +139,13 @@ describe('Notifications Page Row Action Pending States', () => {
     // Click delete on first notification
     fireEvent.click(deleteButtons[0]);
 
-    // First delete button should be disabled
+    // First notification card should be instantly removed from the DOM
     await waitFor(() => {
-      expect(deleteButtons[0]).toBeDisabled();
+      expect(screen.queryByText('Delete target alert')).not.toBeInTheDocument();
     });
 
-    // Second delete button should remain enabled
-    expect(deleteButtons[1]).not.toBeDisabled();
+    expect(screen.getByText('Other alert')).toBeInTheDocument();
+    expect(api.delete).toHaveBeenCalledWith('/notifications/201');
 
     resolveDelete({ data: { success: true } });
   });

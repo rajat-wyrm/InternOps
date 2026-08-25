@@ -32,7 +32,8 @@ Before running the load tests, ensure the following are available:
 - k6 installed and available on your PATH
 - Artillery installed globally:
   - `npm install -g artillery`
-- A running backend instance at the target URL, typically `BASE_URL=http://127.0.0.1:5000/api/v1`
+- A running backend instance at the target URL, typically `BASE_URL=http://127.0.0.1:5000`
+- Note: The load test configuration automatically appends the `/api` prefix. Set `BASE_URL` to the server origin only (for example, `http://127.0.0.1:5000`).
 - Required services for the application, such as the database and any dependent APIs, are running
 
 ## Installation

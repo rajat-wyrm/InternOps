@@ -1,5 +1,6 @@
 const app = require('../../src/app');
 const pool = require('../../src/config/db');
+console.log(process.env.SEED_ADMIN_EMAIL);
 const { v4: uuidv4 } = require('uuid');
 const argon2 = require('argon2');
 const {
@@ -40,6 +41,8 @@ describe('Audit Integration Tests', () => {
       'SELECT id FROM users WHERE email = $1',
       [SEEDED_ADMIN_EMAIL]
     );
+    console.log('SEEDED_ADMIN_EMAIL =', SEEDED_ADMIN_EMAIL);
+    console.log('ROWS =', adminUserRes.rows);
     adminUserId = adminUserRes.rows[0].id;
 
     // Create Intern User in database
@@ -290,6 +293,47 @@ describe('Audit Integration Tests', () => {
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(400);
+    });
+    it('should return 400 for an invalid startDate', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/audit?startDate=not-a-date',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+
+      expect(response.statusCode).toBe(400);
+
+      const body = response.json();
+
+      expect(body.error).toBe('Invalid query parameters');
+      expect(body.details).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: 'startDate must be a valid date',
+          }),
+        ])
+      );
+    });
+
+    it('should return 400 for an invalid endDate', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/audit?endDate=not-a-date',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+
+      expect(response.statusCode).toBe(400);
+
+      const body = response.json();
+
+      expect(body.error).toBe('Invalid query parameters');
+      expect(body.details).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: 'endDate must be a valid date',
+          }),
+        ])
+      );
     });
 
     it('should filter by resourceType', async () => {

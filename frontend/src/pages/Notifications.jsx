@@ -46,23 +46,99 @@ export default function Notifications() {
 
   const markReadMut = useMutation({
     mutationFn: (id) => api.patch(`/notifications/${id}/read`),
-    onSuccess: invalidate,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: previousData.data.map((n) =>
+            n.id === id ? { ...n, read: true } : n
+          ),
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, id, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
+    onSettled: () => {
+      invalidate();
+    },
   });
 
   const markAllReadMut = useMutation({
     mutationFn: () => api.post('/notifications/read-all', {}),
-    onSuccess: invalidate,
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: previousData.data.map((n) => ({ ...n, read: true })),
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
+    onSettled: () => {
+      invalidate();
+    },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/notifications/${id}`),
-    onSuccess: invalidate,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: previousData.data.filter((n) => n.id !== id),
+          total: Math.max(0, previousData.total - 1),
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, id, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
+    onSettled: () => {
+      invalidate();
+    },
   });
 
   const deleteAllMut = useMutation({
     mutationFn: () => api.delete('/notifications/all'),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: [],
+          total: 0,
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
     onSuccess: () => {
       setShowDeleteModal(false);
+    },
+    onSettled: () => {
       invalidate();
     },
   });

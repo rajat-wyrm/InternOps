@@ -24,6 +24,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    # Test-only credentials for ephemeral GitHub Actions runners.
+    # These values are safe because the environment is temporary and never used in production.
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
@@ -131,5 +133,7 @@ jobs:
         shell: bash
         run: |
           if [ -f backend/tests/load/reports/backend.pid ]; then
-            kill "$(cat backend/tests/load/reports/backend.pid)" || true
+            PID=$(cat backend/tests/load/reports/backend.pid)
+            kill "$PID" || true
+            pkill -P "$PID" || true
           fi

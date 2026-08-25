@@ -6,7 +6,7 @@ async function getDirectReports(managerId) {
   );
   return res.rows;
 }
-async function getFullTeam(userId, { page = 1, limit = 50 } = {}) {
+async function getFullTeam(userId, { page = 1, limit = 10 } = {}) {
   const offset = (page - 1) * limit;
 
   const countQuery = `

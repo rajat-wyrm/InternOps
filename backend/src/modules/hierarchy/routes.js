@@ -24,7 +24,11 @@ async function routes(fastify) {
         querystring: {
           type: 'object',
           required: ['managerId'],
-          properties: { managerId: { type: 'string', format: 'uuid' } },
+          properties: {
+            managerId: { type: 'string', format: 'uuid' },
+            page: { type: 'integer', minimum: 1, default: 1 },
+            limit: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
         },
       },
     },
@@ -37,7 +41,11 @@ async function routes(fastify) {
         });
       }
 
-      const result = await service.getFullTeam(parsed.data.managerId);
+      const result = await service.getFullTeam(
+        parsed.data.managerId,
+        parsed.data.page,
+        parsed.data.limit
+      );
       return {
         data: result.rows,
         total: result.total,

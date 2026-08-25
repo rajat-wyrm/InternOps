@@ -4,44 +4,15 @@ const {
 const auth = require('../../middleware/auth');
 const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
+const aiService = require('./ai.service');
 const rbac = require('../../middleware/rbac');
-const repo = require('../social-tasks/repository');
+const repo = require('./repository');
+const socialTasksRepo = require('../social-tasks/repository');
+const service = require('./service');
+const pLimit = require('p-limit');
+const { fetchProofContent } = require('../social-tasks/crawler.service');
+const { verifyClaim } = require('../social-tasks/ai-verify.service');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
-const path = require('path');
-const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
-const config = require('../../config');
-const { pipeline } = require('stream/promises');
-
-const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/gif'];
-const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.gif'];
-const uploadRepo = require('../uploads/repository');
-
-const MAGIC_BYTES = {
-  'image/jpeg': [[0xff, 0xd8, 0xff]],
-  'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
-  'image/gif': [[0x47, 0x49, 0x46, 0x38]],
-};
-
-const projectRoot = path.resolve(__dirname, '..', '..', '..');
-const uploadsRoot = path.resolve(projectRoot, config.uploadDir);
-
-function isValidUploadPath(dbSavedPath) {
-  if (!dbSavedPath) return true;
-  const absolutePath = path.resolve(projectRoot, dbSavedPath);
-  const relative = path.relative(uploadsRoot, absolutePath);
-  return !relative.startsWith('..') && !path.isAbsolute(relative);
-}
-
-function detectMimeFromBuffer(buf) {
-  if (!buf || buf.length < 4) return null;
-  for (const [mime, signatures] of Object.entries(MAGIC_BYTES)) {
-    for (const sig of signatures) {
-      if (sig.every((byte, i) => buf[i] === byte)) return mime;
-    }
-  }
-  return null;
-}
 
 async function routes(fastify) {
   // Submit proof (intern only)
@@ -55,138 +26,184 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const parts = req.parts();
-      let task_id = null;
-      let didComment = false;
-      let didRepost = false;
-      let didShare = false;
-      const filesData = [];
+      const parsed = await service.parseMultipartSubmission(req);
 
-      for await (const part of parts) {
-        if (part.type === 'file') {
-          const buffer = await part.toBuffer();
-          if (buffer.length > 0) {
-            filesData.push({
-              filename: part.filename,
-              mimetype: part.mimetype,
-              buffer: buffer,
-              truncated: part.file.truncated,
-            });
-          }
-        } else {
-          switch (part.fieldname) {
-            case 'task_id':
-              task_id = part.value;
-              break;
-            case 'didComment':
-              didComment = part.value === 'true';
-              break;
-            case 'didRepost':
-              didRepost = part.value === 'true';
-              break;
-            case 'didShare':
-              didShare = part.value === 'true';
-              break;
-          }
-        }
-      }
-
-      if (!task_id) {
+      if (!parsed.task_id) {
         return reply.status(400).send({ error: 'task_id required' });
       }
 
-      if (filesData.length === 0)
-        return reply.status(400).send({ error: 'Image file required' });
-
-      if (filesData.length > 5)
-        return reply.status(400).send({ error: 'Maximum 5 images allowed' });
-
-      // Authorization: the intern must actually be assigned to the task
-      const isAssigned = await repo.isTaskAssignedToUser(task_id, req.user.id);
-      if (!isAssigned) {
-        return reply
-          .status(403)
-          .send({ error: 'You are not assigned to this task' });
-      }
-
-      const absoluteUploadDir = path.resolve(
-        __dirname,
-        '..',
-        '..',
-        '..',
-        config.uploadDir
-      );
-      await fs.promises.mkdir(absoluteUploadDir, { recursive: true });
-
-      const dbSavedPaths = [];
-      const writtenFiles = [];
-
       try {
-        if (!didComment && !didRepost && !didShare) {
-          return reply.status(400).send({
-            error: 'At least one engagement action must be selected.',
+        const proof = await service.submitProof(req.user.id, parsed);
+
+        req.auditOnResponse = {
+          userId: req.user.id,
+          action: 'PROOF_SUBMITTED',
+          resourceType: 'proof',
+          resourceId: proof.id,
+        };
+
+        return proof;
+      } catch (err) {
+        if (err.statusCode) {
+          return reply.status(err.statusCode).send({ error: err.message });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // AI-verify a submitted proof against its task link
+  fastify.post(
+    '/:id/ai-verify',
+    {
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Start asynchronous AI verification for a proof',
+        params: toSchema(z.object({ id: z.string() })),
+      },
+    },
+    async (req, reply) => {
+      try {
+        const proof = await repo.getProof(req.params.id);
+
+        if (!proof) {
+          return reply.status(404).send({
+            error: 'Proof not found',
           });
         }
 
-        for (const data of filesData) {
-          const ext = path.extname(data.filename).toLowerCase();
-          if (
-            !ALLOWED_MIMES.includes(data.mimetype) ||
-            !ALLOWED_EXTS.includes(ext)
-          ) {
-            return reply
-              .status(400)
-              .send({ error: 'Only JPEG, PNG, GIF images are allowed' });
-          }
+        const hasAccess = await checkHierarchyAccess(
+          req.user.id,
+          proof.intern_id
+        );
 
-          if (data.truncated) {
-            return reply.status(400).send({ error: 'File size exceeds limit' });
-          }
-
-          const firstChunk = data.buffer.subarray(0, 16);
-          const detectedMime = detectMimeFromBuffer(firstChunk);
-          if (!detectedMime || detectedMime !== data.mimetype) {
-            return reply.status(400).send({
-              error: 'File contents do not match declared image type',
-            });
-          }
-
-          const filename = uuidv4() + ext;
-          const uploadPath = path.join(absoluteUploadDir, filename);
-          await fs.promises.writeFile(uploadPath, data.buffer);
-          writtenFiles.push(uploadPath);
-          dbSavedPaths.push(['uploads', filename].join('/'));
+        if (!hasAccess && req.user.role !== 'ADMIN') {
+          return reply.status(403).send({
+            error: 'Forbidden: not in intern hierarchy',
+          });
         }
-      } catch (error) {
-        for (const file of writtenFiles) {
+
+        const task = await socialTasksRepo.getTaskById(proof.task_id);
+
+        if (!task) {
+          return reply.status(404).send({
+            error: 'Task not found',
+          });
+        }
+
+        if (!task.task_link) {
+          return reply.status(400).send({
+            error: 'Task does not have a proof URL',
+          });
+        }
+
+        /*
+         * Verification is intentionally asynchronous.
+         * The reviewer request must not wait for crawling or Gemini.
+         */
+        void (async () => {
           try {
-            await fs.promises.unlink(file);
-          } catch (_) {
-            // Ignore cleanup errors
+            const crawlResult = await fetchProofContent(task.task_link);
+
+            if (!crawlResult.success) {
+              req.log.warn(
+                {
+                  proofId: proof.id,
+                  error: crawlResult.error,
+                },
+                'AI verification could not crawl proof URL'
+              );
+              return;
+            }
+
+            const verificationResult = await verifyClaim({
+              content: crawlResult.content,
+              claimedActions: {
+                did_comment: proof.did_comment,
+                did_repost: proof.did_repost,
+                did_share: proof.did_share,
+              },
+            });
+
+            await repo.saveVerificationResult(proof.id, verificationResult);
+
+            req.log.info(
+              {
+                proofId: proof.id,
+                verification: verificationResult,
+              },
+              'AI verification completed'
+            );
+          } catch (err) {
+            req.log.error(
+              err,
+              'Background AI verification failed: ' + proof.id
+            );
           }
-        }
-        throw error;
+        })();
+
+        return reply.status(202).send({
+          success: true,
+          proofId: proof.id,
+          status: 'verification_started',
+          advisory: true,
+        });
+      } catch (err) {
+        req.log.error(err, 'Failed to start AI verification: ' + req.params.id);
+
+        return reply.status(500).send({
+          error: 'AI verification failed to start',
+        });
       }
+    }
+  );
 
-      const proof = await repo.submitProofWithImages(
-        task_id,
-        req.user.id,
-        dbSavedPaths,
-        {
-          didComment,
-          didRepost,
-          didShare,
+  // Get AI verification result for a proof
+  fastify.get(
+    '/:id/verification',
+    {
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Get the AI verification result for a proof',
+        params: toSchema(z.object({ id: z.string() })),
+      },
+    },
+    async (req, reply) => {
+      try {
+        const proof = await repo.getProof(req.params.id);
+
+        if (!proof) {
+          return reply.status(404).send({ error: 'Proof not found' });
         }
-      );
 
-      req.auditOnResponse = {
-        userId: req.user.id,
-        action: 'PROOF_SUBMITTED',
-        resourceType: 'proof',
-        resourceId: proof.id,
-      };
+        const hasAccess = await checkHierarchyAccess(
+          req.user.id,
+          proof.intern_id
+        );
 
-      return proof;
+        if (!hasAccess && req.user.role !== 'ADMIN') {
+          return reply.status(403).send({
+            error: 'Forbidden: not in intern hierarchy',
+          });
+        }
+
+        return {
+          proofId: proof.id,
+          verification: proof.verification_result || null,
+          advisory: true,
+        };
+      } catch (err) {
+        req.log.error(
+          err,
+          'Failed to get AI verification result: ' + req.params.id
+        );
+
+        return reply.status(500).send({
+          error: 'Failed to get verification result',
+        });
+      }
     }
   );
 
@@ -202,8 +219,6 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      // Repository enforces hierarchy check; the route only validates
-      // existence and delegates authorization to the data layer.
       try {
         const verified = await repo.verifyProof(
           req.params.id,
@@ -244,8 +259,58 @@ async function routes(fastify) {
         params: toSchema(z.object({ taskId: z.string() })),
       },
     },
-    async (req) => {
-      return repo.getProofsByTask(req.params.taskId);
+    async (req, reply) => {
+      try {
+        const task = await socialTasksRepo.getTaskById(req.params.taskId);
+        if (!task) {
+          return reply.status(404).send({ error: 'Task not found' });
+        }
+        const proofs = await repo.getProofsByTask(req.params.taskId);
+
+        const limit = pLimit(3);
+
+        const results = await Promise.all(
+          proofs.map((p) =>
+            limit(async () => {
+              const submissionData = {
+                ...p,
+                target_platform: task?.target_platform,
+                task_link: task?.task_link,
+                title: task?.title,
+                description: task?.description,
+              };
+
+              try {
+                const ai = await aiService.generateTaskSummary(
+                  submissionData,
+                  req.user.id
+                );
+
+                return {
+                  ...p,
+                  aiSummary: ai.summary,
+                  consistencyFlag: ai.consistencyFlag,
+                };
+              } catch (err) {
+                req.log.error(
+                  err,
+                  'Failed to generate AI summary for proof: ' + p.id
+                );
+                return {
+                  ...p,
+                  aiSummary: null,
+                  consistencyFlag: 'needs_review',
+                };
+              }
+            })
+          )
+        );
+
+        return results;
+      } catch (err) {
+        req.log.error(err, 'Error in GET /proofs/task/:taskId');
+        return reply.status(500).send({ error: 'Internal server error' });
+      }
     }
   );
 
@@ -271,51 +336,26 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const proof = await repo.getProof(req.params.id);
-      if (!proof) {
-        return reply.status(404).send({ error: 'Proof not found' });
-      }
-
-      if (proof.image_path && !isValidUploadPath(proof.image_path)) {
-        return reply
-          .status(400)
-          .send({ error: 'Directory traversal attempt detected' });
-      }
-
-      if (proof.images && proof.images.length > 0) {
-        for (const img of proof.images) {
-          if (!isValidUploadPath(img)) {
-            return reply
-              .status(400)
-              .send({ error: 'Directory traversal attempt detected' });
-          }
+      try {
+        const proof = await service.deleteProofById(req.params.id);
+        if (!proof) {
+          return reply.status(404).send({ error: 'Proof not found' });
         }
+
+        req.auditOnResponse = {
+          userId: req.user.id,
+          action: 'PROOF_DELETED',
+          resourceType: 'proof',
+          resourceId: req.params.id,
+        };
+
+        return { success: true };
+      } catch (err) {
+        if (err.statusCode) {
+          return reply.status(err.statusCode).send({ error: err.message });
+        }
+        throw err;
       }
-
-      await repo.deleteProof(req.params.id);
-
-      // Delete legacy image if it exists
-      if (proof.image_path) {
-        await uploadRepo.deleteFile(proof.image_path).catch(() => {});
-      }
-
-      // Delete multiple images if they exist
-      if (proof.images && proof.images.length > 0) {
-        await Promise.all(
-          proof.images.map((imgPath) =>
-            uploadRepo.deleteFile(imgPath).catch(() => {})
-          )
-        );
-      }
-
-      req.auditOnResponse = {
-        userId: req.user.id,
-        action: 'PROOF_DELETED',
-        resourceType: 'proof',
-        resourceId: req.params.id,
-      };
-
-      return { success: true };
     }
   );
 
@@ -329,28 +369,26 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const image = await repo.getProofImage(req.params.imageId);
-      if (!image) {
-        return reply.status(404).send({ error: 'Image not found' });
+      try {
+        const image = await service.deleteProofImageById(req.params.imageId);
+        if (!image) {
+          return reply.status(404).send({ error: 'Image not found' });
+        }
+
+        req.auditOnResponse = {
+          userId: req.user.id,
+          action: 'PROOF_IMAGE_DELETED',
+          resourceType: 'proof_image',
+          resourceId: req.params.imageId,
+        };
+
+        return { success: true };
+      } catch (err) {
+        if (err.statusCode) {
+          return reply.status(err.statusCode).send({ error: err.message });
+        }
+        throw err;
       }
-
-      if (image.image_path && !isValidUploadPath(image.image_path)) {
-        return reply
-          .status(400)
-          .send({ error: 'Directory traversal attempt detected' });
-      }
-
-      await repo.deleteProofImage(req.params.imageId);
-      await uploadRepo.deleteFile(image.image_path).catch(() => {});
-
-      req.auditOnResponse = {
-        userId: req.user.id,
-        action: 'PROOF_IMAGE_DELETED',
-        resourceType: 'proof_image',
-        resourceId: req.params.imageId,
-      };
-
-      return { success: true };
     }
   );
 }

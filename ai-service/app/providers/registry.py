@@ -7,7 +7,7 @@ inside the adapters themselves, so the adapters stay focused purely on
 "how do I talk to this vendor."
 
 Env vars:
-  AI_PROVIDER       - "gemini" (default) or any supported provider name
+  AI_PROVIDER        - "gemini" (default) or any supported provider name
   <PROVIDER>_API_KEY - required for each provider (HUGGINGFACE uses _TOKEN)
   <PROVIDER>_MODEL   - optional override (defaults to adapter's default)
 """
@@ -22,6 +22,7 @@ from app.providers.groq import GroqProvider
 from app.providers.anthropic import AnthropicProvider
 from app.providers.deepseek import DeepSeekProvider
 from app.providers.huggingface import HuggingFaceProvider
+from app.providers.nvidia import NvidiaProvider
 
 _PROVIDER_CLASSES: Dict[str, Type[BaseAIProvider]] = {
     "gemini": GeminiProvider,
@@ -30,6 +31,7 @@ _PROVIDER_CLASSES: Dict[str, Type[BaseAIProvider]] = {
     "anthropic": AnthropicProvider,
     "deepseek": DeepSeekProvider,
     "huggingface": HuggingFaceProvider,
+    "nvidia": NvidiaProvider,
 }
 
 _API_KEY_ENV_VAR: Dict[str, str] = {
@@ -39,6 +41,7 @@ _API_KEY_ENV_VAR: Dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
     "huggingface": "HUGGINGFACE_TOKEN",
+    "nvidia": "NVIDIA_API_KEY",
 }
 
 _MODEL_ENV_VAR: Dict[str, str] = {
@@ -48,6 +51,7 @@ _MODEL_ENV_VAR: Dict[str, str] = {
     "anthropic": "ANTHROPIC_MODEL",
     "deepseek": "DEEPSEEK_MODEL",
     "huggingface": "HUGGINGFACE_MODEL",
+    "nvidia": "NVIDIA_MODEL",
 }
 
 
@@ -90,24 +94,40 @@ def has_adapter(name: str) -> bool:
 
 
 def get_configured_providers_health() -> list:
-    """Lightweight config-presence health check.
+    """Return lightweight health information for configured providers.
 
     Reports whether each known provider has an API key configured. This
     does NOT make a live API call to the vendor — a real ping would cost
     quota/latency on every hit to /ai/health. Swap this out for an actual
-    `generate_text("ping")` call per provider if that tradeoff is wrong
+    `generate_chat("ping")` call per provider if that tradeoff is wrong
     for this service.
     """
+    import time
+    from app.providers.orchestrator import get_circuit_breaker
+
     report = []
+
     for name, key_var in _API_KEY_ENV_VAR.items():
         has_key = bool(os.environ.get(key_var))
+        cb = get_circuit_breaker(name)
+        is_circuit_open = cb.disabled_until is not None and time.time() < cb.disabled_until
+
+        if not has_key:
+            status = "unhealthy"
+            error_message = f"{key_var} is not configured"
+        elif is_circuit_open:
+            status = "unhealthy"
+            error_message = "Circuit breaker open"
+        else:
+            status = "healthy"
+            error_message = None
+
         report.append(
             {
                 "name": name,
-                "available": has_key,
-                "lastError": None
-                if has_key
-                else {"message": f"{key_var} is not configured"},
+                "status": status,
+                "lastErrorMessage": error_message,
             }
         )
+
     return report

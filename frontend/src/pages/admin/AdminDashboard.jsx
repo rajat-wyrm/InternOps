@@ -17,6 +17,7 @@ import api from '../../lib/axios';
 import { Card, Spinner, EmptyState } from '../../components/ui';
 import UserActionMenu from '../../components/UserActionMenu';
 import CreateUserModal from '../../components/admin/CreateUserModal';
+import EditUserModal from '../../components/admin/EditUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
 
@@ -81,6 +82,7 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState('');
   const [deletingUserId, setDeletingUserId] = useState(null);
   const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
   const [bulkUserOpen, setBulkUserOpen] = useState(false);
 
   const limit = 10;
@@ -387,6 +389,7 @@ export default function AdminDashboard() {
                             suspendMut.isPending ||
                             activateMut.isPending
                           }
+                          onEdit={setEditingUser}
                           onSuspend={(target) => suspendMut.mutate(target.id)}
                           onActivate={(target) => activateMut.mutate(target.id)}
                           onDelete={handleDelete}
@@ -435,6 +438,12 @@ export default function AdminDashboard() {
       <CreateUserModal
         open={createUserOpen}
         onClose={() => setCreateUserOpen(false)}
+      />
+
+      <EditUserModal
+        open={!!editingUser}
+        user={editingUser}
+        onClose={() => setEditingUser(null)}
       />
 
       <BulkUserModal

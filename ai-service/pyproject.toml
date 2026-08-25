@@ -10,6 +10,8 @@ dependencies = [
     "uvicorn>=0.51.0",
     "redis>=6.0.0",
     "asyncpg>=0.31.0",
+    "python-dotenv>=1.0",
+    "PyJWT>=2.8.0",
 ]
 
 [dependency-groups]
@@ -17,4 +19,12 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "respx>=0.23.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+filterwarnings = [
+    "ignore:.*httpx.*starlette.testclient.*:DeprecationWarning",
+    "ignore:.*httpx.*starlette.testclient.*:Warning",
+    "ignore:Fallback provider.*lacks a valid API key.*:RuntimeWarning"
 ]

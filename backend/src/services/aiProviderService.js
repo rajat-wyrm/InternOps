@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { LRUCache } = require('lru-cache');
+const { GoogleGenAI } = require('@google/genai');
 const config = require('../config');
 const { getRedisClient } = require('../config/redis');
 
@@ -11,9 +12,18 @@ const COOLDOWN_MS = Number(
 );
 const CACHE_TTL_MS = Number(process.env.AI_CACHE_TTL_MS || 5 * 60 * 1000);
 const CACHE_MAX_ENTRIES = Number(process.env.AI_CACHE_MAX_ENTRIES || 500);
-const MAX_RESPONSE_BYTES = Number(
-  process.env.AI_MAX_RESPONSE_BYTES || 2 * 1024 * 1024 // 2MB default cap
+
+const MAX_AI_RESPONSE_BYTES = Number(
+  process.env.AI_MAX_RESPONSE_BYTES || 5 * 1024 * 1024
 );
+
+class ResponseSizeLimitError extends Error {
+  constructor(message = 'AI provider response exceeded size cap') {
+    super(message);
+    this.name = 'ResponseSizeLimitError';
+    this.statusCode = 413;
+  }
+}
 
 const USER_CACHE_MAX = Number(process.env.AI_USER_CACHE_MAX || 1000);
 const caches = new LRUCache({ max: USER_CACHE_MAX }); // userId -> LRUCache, evicts oldest when full
@@ -31,25 +41,14 @@ function getCache(userId) {
   return cache;
 }
 
-const MAX_AI_RESPONSE_BYTES = Number(
-  process.env.AI_MAX_RESPONSE_BYTES || 5 * 1024 * 1024
-);
-
-class ResponseSizeLimitError extends Error {
-  constructor(message = 'AI provider response exceeded size cap') {
-    super(message);
-    this.name = 'ResponseSizeLimitError';
-    this.statusCode = 413;
-  }
-}
-
 function isPlaceholder(value) {
   return !value || String(value).startsWith('your-');
 }
 
 function getProviderOrder() {
   return (
-    process.env.AI_PROVIDER_ORDER || 'groq,openai,gemini,deepseek,huggingface'
+    process.env.AI_PROVIDER_ORDER ||
+    'gemini,fastapi,groq,openai,deepseek,huggingface'
   )
     .split(',')
     .map((p) => p.trim().toLowerCase())
@@ -162,9 +161,9 @@ async function fetchWithTimeout(url, options = {}) {
     // Reject oversized responses before buffering the body into memory.
     // Closes the stream-amplification OOM path
     const contentLength = response.headers.get('content-length');
-    if (contentLength && Number(contentLength) > MAX_RESPONSE_BYTES) {
-      throw new Error(
-        `Response exceeds maximum allowed size of ${MAX_RESPONSE_BYTES} bytes`
+    if (contentLength && Number(contentLength) > MAX_AI_RESPONSE_BYTES) {
+      throw new ResponseSizeLimitError(
+        `AI provider response Content-Length exceeds ${MAX_AI_RESPONSE_BYTES} bytes`
       );
     }
 
@@ -331,33 +330,16 @@ async function callDeepSeek(messages) {
 
 async function callGemini(messages) {
   const prompt = buildPrompt(messages);
+  const key = config.ai.geminiKey || '';
+  const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
-  const response = await fetchWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${
-      process.env.GEMINI_MODEL || 'gemini-1.5-flash'
-    }:generateContent?key=${config.ai.geminiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-      }),
-    }
-  );
+  const ai = new GoogleGenAI({ apiKey: key });
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: prompt,
+  });
 
-  if (!response.ok) {
-    throw new Error(`gemini failed with status ${response.status}`);
-  }
-
-  const data = await parseJsonResponseWithLimit(response, 'gemini');
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text = response.text;
 
   if (!text) {
     throw new Error('gemini returned empty response');
@@ -403,7 +385,33 @@ async function callHuggingFace(messages) {
   return text;
 }
 
+async function callFastAPI(messages) {
+  const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+  const response = await fetchWithTimeout(`${baseUrl}/ai/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ messages }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`fastapi service failed with status ${response.status}`);
+  }
+
+  const data = await parseJsonResponseWithLimit(response, 'fastapi');
+  if (!data || !data.content) {
+    throw new Error('fastapi service returned empty response');
+  }
+
+  return data.content;
+}
+
 const providerRegistry = {
+  fastapi: {
+    key: () => config.ai.fastapiUrl || 'http://localhost:8000',
+    call: callFastAPI,
+  },
   groq: {
     key: () => config.ai.groqKey,
     call: callGroq,

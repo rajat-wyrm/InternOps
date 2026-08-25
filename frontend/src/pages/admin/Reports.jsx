@@ -111,18 +111,18 @@ export default function Reports() {
             <div className="space-y-2">
               {attendanceData.map((row) => (
                 <div
-                  key={row.role + row.status}
-                  className="flex items-center justify-between text-sm"
+                  key={`${row.user_id}-${row.status}`}
+                  className="flex items-center justify-between text-sm border-b border-gray-100 dark:border-slate-700 pb-2"
                 >
-                  <span className="flex items-center gap-2">
-                    <Badge color={ROLE_COLOR[row.role] || 'gray'}>
-                      {row.role}
-                    </Badge>
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-gray-800 dark:text-white">
+                      {row.intern_name}
+                    </span>
 
                     <Badge color={STATUS_COLOR[row.status] || 'gray'}>
                       {row.status}
                     </Badge>
-                  </span>
+                  </div>
 
                   <span className="font-bold text-gray-800 dark:text-white">
                     {row.count}
@@ -155,15 +155,23 @@ export default function Reports() {
             <div className="space-y-2">
               {ratingsData.map((row) => (
                 <div
-                  key={row.role}
-                  className="flex items-center justify-between text-sm"
+                  key={row.user_id}
+                  className="flex items-center justify-between text-sm border-b border-gray-100 dark:border-slate-700 pb-2"
                 >
-                  <Badge color={ROLE_COLOR[row.role] || 'gray'}>
-                    {row.role}
-                  </Badge>
+                  <div>
+                    <div className="font-semibold text-gray-800 dark:text-white">
+                      {row.intern_name}
+                    </div>
+
+                    {row.email && (
+                      <div className="text-xs text-gray-400 dark:text-slate-500">
+                        {row.email}
+                      </div>
+                    )}
+                  </div>
 
                   <span className="text-gray-700 dark:text-slate-300">
-                    ⭐ {parseFloat(row.avg_score).toFixed(2)}{' '}
+                    ⭐ {Number(row.avg_score || 0).toFixed(2)}{' '}
                     <span className="text-gray-400 dark:text-slate-500">
                       ({row.total})
                     </span>

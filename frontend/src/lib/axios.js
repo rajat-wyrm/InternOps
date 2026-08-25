@@ -79,6 +79,61 @@ function shouldShowGlobalToast(err) {
   );
 }
 
+// Classifies a failed AI chat request (POST /ai/chat) into a single,
+// user-friendly message. Callers that show this message inline should mark
+// their request config with `_suppressGlobalError: true` so the global
+// response interceptor below does not *also* toast a second, generic error
+// for the same failure (see issue #1795).
+function getAiChatErrorMessage(err) {
+  if (!err?.response) {
+    if (err?.code === 'ECONNABORTED') {
+      return {
+        message: 'The AI assistant took too long to respond. Please try again.',
+        retryable: true,
+      };
+    }
+    return {
+      message:
+        'Unable to reach the AI assistant. Check your connection and try again.',
+      retryable: true,
+    };
+  }
+
+  const status = err.response.status;
+
+  if (status === 401 || status === 403) {
+    return {
+      message: "You don't have access to the AI assistant right now.",
+      retryable: false,
+    };
+  }
+
+  if (status === 429) {
+    const serverMessage = getApiErrorMessage(err.response.data);
+    return {
+      message:
+        serverMessage ||
+        "You've reached the AI assistant's usage limit. Please try again later.",
+      retryable: false,
+    };
+  }
+
+  if (status >= 500) {
+    return {
+      message:
+        'The AI assistant is temporarily unavailable. Please try again in a moment.',
+      retryable: true,
+    };
+  }
+
+  const serverMessage = getApiErrorMessage(err.response.data);
+  return {
+    message:
+      serverMessage || 'Could not process that request. Please try rephrasing.',
+    retryable: false,
+  };
+}
+
 function notifyGlobalApiError(err) {
   if (!shouldShowGlobalToast(err)) {
     return;
@@ -282,7 +337,9 @@ api.interceptors.response.use(
         const newToken = refreshRes.data?.accessToken;
 
         if (newToken) {
-          const meRes = await api.get('/users/me');
+          const meRes = await api.get('/users/me', {
+            headers: { Authorization: `Bearer ${newToken}` },
+          });
           // Store refreshed token in memory only.
           if (_authStore) {
             _authStore
@@ -339,4 +396,4 @@ api.interceptors.response.use(
 );
 
 export default api;
-export { clearCsrfToken };
+export { clearCsrfToken, getAiChatErrorMessage };

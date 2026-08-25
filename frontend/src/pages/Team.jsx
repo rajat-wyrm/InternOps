@@ -111,6 +111,68 @@ function Stars({ value }) {
   );
 }
 
+const RATING_OPTIONS = [
+  { value: '', label: 'All Ratings' },
+  { value: '1', label: '1' },
+  { value: '2', label: '2' },
+  { value: '3', label: '3' },
+  { value: '4', label: '4' },
+  { value: '5', label: '5' },
+  { value: '6', label: '6' },
+  { value: '7', label: '7' },
+  { value: '8', label: '8' },
+  { value: '9', label: '9' },
+  { value: '10', label: '10' },
+];
+
+const ELIGIBILITY_OPTIONS = [
+  { value: '', label: 'All' },
+  { value: 'ELIGIBLE', label: '🟢 Eligible' },
+  { value: 'NOT_ELIGIBLE', label: '🔴 Not Eligible' },
+];
+
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'All status' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'ON_HOLD', label: 'On Hold' },
+  { value: 'TERMINATED', label: 'Terminated' },
+  { value: 'SUSPENDED', label: 'Suspended' },
+];
+
+function RatingWithBadge({ value }) {
+  if (value == null || value === '') {
+    return <span className="text-slate-400 dark:text-slate-500">—</span>;
+  }
+
+  const raw = Number(value);
+  if (Number.isNaN(raw)) {
+    return <span className="text-slate-400 dark:text-slate-500">—</span>;
+  }
+
+  const roundedRating = Math.round(raw);
+  const isNotEligible = roundedRating >= 1 && roundedRating <= 4;
+  const isEligible = roundedRating >= 5;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-extrabold text-slate-900 dark:text-white text-sm">
+        {roundedRating}
+      </span>
+      {isNotEligible && (
+        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60 whitespace-nowrap">
+          🔴 Not Eligible
+        </span>
+      )}
+      {isEligible && (
+        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60 whitespace-nowrap">
+          🟢 Eligible
+        </span>
+      )}
+    </div>
+  );
+}
+
 const EDIT_FIELDS = [
   { key: 'full_name', label: 'Full name' },
   { key: 'phone', label: 'Phone' },
@@ -576,6 +638,7 @@ function MemberDetail({ memberId, onClose }) {
   const [error, setError] = useState('');
   const [newRole, setNewRole] = useState('');
   const [newManager, setNewManager] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
   const {
     data: teamMembers = [],
@@ -602,7 +665,7 @@ function MemberDetail({ memberId, onClose }) {
   const member = fetchedMember || teamMembers.find((m) => m.id === memberId);
 
   useEffect(() => {
-    if (member) {
+    if (member && !edit) {
       setForm({
         full_name: member.full_name || '',
         phone: member.phone || '',
@@ -618,7 +681,7 @@ function MemberDetail({ memberId, onClose }) {
         notes: member.notes || '',
       });
     }
-  }, [memberId, member]);
+  }, [memberId, member, edit]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['teamMember', memberId] });
@@ -672,6 +735,21 @@ function MemberDetail({ memberId, onClose }) {
     },
     onError: (err) =>
       setError(err.response?.data?.error || 'Failed to reassign manager'),
+  });
+
+  const passwordMut = useMutation({
+    mutationFn: (password) =>
+      api.patch(`/team/members/${memberId}/password`, { password }),
+    onSuccess: () => {
+      setMessage('Password updated successfully');
+      setError('');
+      setNewPassword('');
+      setTimeout(() => setMessage(''), 2500);
+    },
+    onError: (err) => {
+      setError(err.response?.data?.error || 'Failed to update password');
+      setMessage('');
+    },
   });
 
   const pct = member ? attendancePct(member) : null;
@@ -1019,6 +1097,35 @@ function MemberDetail({ memberId, onClose }) {
                       </button>
                     </div>
                   </Field>
+
+                  <Field label="Reset Password">
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        placeholder="Enter new password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-2.5 flex-1 rounded-2xl text-sm"
+                      />
+
+                      <button
+                        onClick={() => passwordMut.mutate(newPassword)}
+                        disabled={
+                          passwordMut.isPending ||
+                          !newPassword ||
+                          newPassword.length < 8
+                        }
+                        className="px-3 py-2 rounded-2xl bg-indigo-600 text-white text-sm font-bold disabled:opacity-50 shrink-0"
+                      >
+                        {passwordMut.isPending ? 'Updating...' : 'Reset'}
+                      </button>
+                    </div>
+                    {newPassword && newPassword.length < 8 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        Password must be at least 8 characters.
+                      </p>
+                    )}
+                  </Field>
                 </div>
               )}
 
@@ -1152,7 +1259,11 @@ function PendingProofsPanel({ onMember }) {
 
 export default function Team() {
   const [search, setSearch] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [ratingFilter, setRatingFilter] = useState('');
+  const [eligibilityFilter, setEligibilityFilter] = useState('');
   const [view, setView] = useState('table');
   const [selected, setSelected] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -1177,13 +1288,79 @@ export default function Team() {
     return members.filter((m) => {
       if (roleFilter && m.role !== roleFilter) return false;
 
+      if (deptFilter) {
+        const mDept = m.department_name || m.department_id || '';
+        if (mDept !== deptFilter) return false;
+      }
+
+      if (statusFilter) {
+        if (statusFilter === 'SUSPENDED') {
+          if (!m.suspended) return false;
+        } else {
+          const mStatus = m.internship_status || 'ACTIVE';
+          if (mStatus !== statusFilter) return false;
+        }
+      }
+
+      const rawRating = m.rating ?? m.avg_rating;
+      const numRating =
+        rawRating != null && rawRating !== '' ? Number(rawRating) : null;
+
+      if (ratingFilter) {
+        if (numRating == null || Number.isNaN(numRating)) return false;
+        if (Math.round(numRating) !== Number(ratingFilter)) return false;
+      }
+
+      if (eligibilityFilter) {
+        if (numRating == null || Number.isNaN(numRating)) return false;
+        const rounded = Math.round(numRating);
+        if (eligibilityFilter === 'ELIGIBLE' && (rounded < 5 || rounded > 10)) {
+          return false;
+        }
+        if (
+          eligibilityFilter === 'NOT_ELIGIBLE' &&
+          (rounded < 1 || rounded > 4)
+        ) {
+          return false;
+        }
+      }
+
       if (!q) return true;
 
-      return [m.full_name, m.email, m.college, m.position].some((v) =>
-        (v || '').toLowerCase().includes(q)
-      );
+      return [
+        m.full_name,
+        m.email,
+        m.college,
+        m.position,
+        m.id,
+        m.department_name,
+      ].some((v) => (v || '').toLowerCase().includes(q));
     });
-  }, [members, search, roleFilter]);
+  }, [
+    members,
+    search,
+    roleFilter,
+    deptFilter,
+    statusFilter,
+    ratingFilter,
+    eligibilityFilter,
+  ]);
+
+  const departmentFilterOptions = useMemo(() => {
+    const depts = [
+      ...new Set(
+        members.map((m) => m.department_name || m.department_id).filter(Boolean)
+      ),
+    ];
+
+    return [
+      { value: '', label: 'All departments' },
+      ...depts.map((d) => ({
+        value: d,
+        label: d,
+      })),
+    ];
+  }, [members]);
 
   const roles = useMemo(
     () => [...new Set(members.map((m) => m.role))],
@@ -1339,11 +1516,43 @@ export default function Team() {
         </div>
 
         <CustomSelect
+          value={deptFilter}
+          onChange={setDeptFilter}
+          options={departmentFilterOptions}
+          placeholder="All departments"
+          className="w-full sm:w-44"
+        />
+
+        <CustomSelect
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={STATUS_FILTER_OPTIONS}
+          placeholder="All status"
+          className="w-full sm:w-36"
+        />
+
+        <CustomSelect
           value={roleFilter}
           onChange={setRoleFilter}
           options={roleFilterOptions}
           placeholder="All roles"
-          className="w-full sm:w-44"
+          className="w-full sm:w-36"
+        />
+
+        <CustomSelect
+          value={ratingFilter}
+          onChange={setRatingFilter}
+          options={RATING_OPTIONS}
+          placeholder="All Ratings"
+          className="w-full sm:w-36"
+        />
+
+        <CustomSelect
+          value={eligibilityFilter}
+          onChange={setEligibilityFilter}
+          options={ELIGIBILITY_OPTIONS}
+          placeholder="All"
+          className="w-full sm:w-40"
         />
 
         <div className="flex rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
@@ -1463,7 +1672,7 @@ export default function Team() {
                     </td>
 
                     <td className="p-4">
-                      <Stars value={m.avg_rating} />
+                      <RatingWithBadge value={m.rating ?? m.avg_rating} />
                     </td>
 
                     <td className="p-4 text-slate-700 dark:text-slate-300">
@@ -1547,7 +1756,7 @@ export default function Team() {
                   </span>
 
                   <span>
-                    <Stars value={m.avg_rating} />
+                    <RatingWithBadge value={m.rating ?? m.avg_rating} />
                   </span>
 
                   <span>

@@ -29,7 +29,7 @@ class FaultyMockProvider(BaseAIProvider):
     def provider_name(self) -> str:
         return self._name
 
-    async def generate_text(self, prompt: str, temperature: float = 0.7, **kwargs) -> str:
+    async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
         self.calls += 1
         if self.fail_with is not None:
             raise self.fail_with
@@ -97,7 +97,7 @@ async def test_recoverable_errors_trigger_failover(monkeypatch):
     monkeypatch.setattr("app.providers.orchestrator.get_provider", lambda name: providers[name])
 
     orchestrator = AIOrchestrator()
-    content, provider_name = await orchestrator.generate_text_with_fallback("test")
+    content, provider_name = await orchestrator.generate_chat_with_fallback([{"role": "user", "content": "test"}])
 
     assert content == "success-fallback"
     assert provider_name == "openai"
@@ -121,7 +121,7 @@ async def test_programming_errors_do_not_trigger_failover(monkeypatch):
 
     # Should raise ValueError immediately without falling back
     with pytest.raises(ValueError, match="Coding mistake"):
-        await orchestrator.generate_text_with_fallback("test")
+        await orchestrator.generate_chat_with_fallback([{"role": "user", "content": "test"}])
 
     # OpenAI must NOT have been called
     assert providers["openai"].calls == 0
@@ -143,7 +143,7 @@ async def test_cancelled_error_propagates_immediately(monkeypatch):
     orchestrator = AIOrchestrator()
 
     with pytest.raises(asyncio.CancelledError):
-        await orchestrator.generate_text_with_fallback("test")
+        await orchestrator.generate_chat_with_fallback([{"role": "user", "content": "test"}])
 
     assert providers["openai"].calls == 0
     cb_gemini = get_circuit_breaker("gemini")

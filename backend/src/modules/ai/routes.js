@@ -134,21 +134,22 @@ async function routes(fastify) {
         });
       }
 
-      const usage = await aiRepo.getTodayUsage(req.user.id);
-
-      if (usage >= config.ai.dailyLimit) {
-        return reply.status(429).send({
-          error: 'Daily AI usage limit exceeded',
-        });
-      }
-
       try {
+        const usageResult = await aiRepo.tryIncrementUsage(
+          req.user.id,
+          config.ai.dailyLimit
+        );
+
+        if (!usageResult) {
+          return reply.status(429).send({
+            error: 'Daily AI usage limit exceeded',
+          });
+        }
+
         const result = await generateAIResponse({
           userId: req.user.id,
           messages: finalMessages,
         });
-
-        await aiRepo.incrementUsage(req.user.id);
 
         return {
           provider: result.provider,
@@ -162,8 +163,18 @@ async function routes(fastify) {
           });
         }
 
+        // `error.details` (when present) is the per-provider failure list
+        // produced by generateAIResponse — e.g. [{ provider: 'gemini',
+        // reason: 'missing_api_key' }, ...]. It's the actually useful
+        // diagnostic signal (which providers were tried and why each one
+        // failed) so it must be logged alongside the top-level error
+        // message, not dropped. None of this is sent to the client.
         req.log.error(
-          { err: error.message, code: error.statusCode },
+          {
+            err: error.message,
+            code: error.statusCode,
+            providers: error.details,
+          },
           'AI provider failed'
         );
         return reply.status(503).send({

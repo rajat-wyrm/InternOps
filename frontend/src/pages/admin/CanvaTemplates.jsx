@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   ExternalLink,
@@ -27,7 +28,22 @@ function colorsFor(template) {
 }
 
 function CanvaTemplates() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const error = searchParams.get('error');
+
+    if (success === 'true') {
+      alert('Canva connected successfully!');
+      setSearchParams({});
+    }
+
+    if (error) {
+      alert(`Canva connection failed: ${error}`);
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
   const [newTemplate, setNewTemplate] = useState({
     name: '',
     description: '',

@@ -144,7 +144,7 @@ function writeSession(reply, sessionId, userId = null) {
   reply.setCookie(SESSION_COOKIE, signed, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
     maxAge: ONE_DAY_IN_SECONDS, // 24 hours
   });
@@ -164,7 +164,7 @@ function rotateAndSetCsrf(request, reply, userId = null) {
   reply.setCookie(TOKEN_COOKIE, csrfToken, {
     httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
     maxAge: ONE_DAY_IN_SECONDS, // 24 hours
   });
@@ -217,7 +217,7 @@ function generateToken(request, reply) {
   reply.setCookie('csrf-token', token, {
     httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
     maxAge: ONE_DAY_IN_SECONDS,
   });
@@ -231,6 +231,7 @@ const EXEMPT = [
   '/api/v1/auth/logout',
   '/api/v1/auth/forgot-password',
   '/api/v1/auth/reset-password',
+  '/api/v1/github/webhook',
   '/docs',
   '/docs/json',
 ];

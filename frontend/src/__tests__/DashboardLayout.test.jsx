@@ -151,4 +151,95 @@ describe('DashboardLayout Component Tests', () => {
 
     expect(useAuthStore.getState().accessToken).toBeNull();
   });
+
+  it('renders unread count badge when there are unread notifications', async () => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: { id: '1', email: 'user@example.com', role: 'INTERN' },
+    });
+
+    api.get.mockImplementation((url) => {
+      if (url === '/users/me') {
+        return Promise.resolve({
+          data: {
+            full_name: 'Jane Doe',
+            avatar_url: 'avatar.jpg',
+          },
+        });
+      }
+      if (url === '/notifications/unread-count') {
+        return Promise.resolve({
+          data: { unread: 5 },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    renderLayout();
+
+    // Verify badge with count 5 is visible
+    expect(await screen.findByText('5')).toBeInTheDocument();
+  });
+
+  it('caps unread count badge display at 9+ when count is greater than 9', async () => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: { id: '1', email: 'user@example.com', role: 'INTERN' },
+    });
+
+    api.get.mockImplementation((url) => {
+      if (url === '/users/me') {
+        return Promise.resolve({
+          data: {
+            full_name: 'Jane Doe',
+            avatar_url: 'avatar.jpg',
+          },
+        });
+      }
+      if (url === '/notifications/unread-count') {
+        return Promise.resolve({
+          data: { unread: 15 },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    renderLayout();
+
+    // Verify badge with count "9+" is visible
+    expect(await screen.findByText('9+')).toBeInTheDocument();
+  });
+
+  it('does not render unread count badge when count is 0', async () => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      user: { id: '1', email: 'user@example.com', role: 'INTERN' },
+    });
+
+    api.get.mockImplementation((url) => {
+      if (url === '/users/me') {
+        return Promise.resolve({
+          data: {
+            full_name: 'Jane Doe',
+            avatar_url: 'avatar.jpg',
+          },
+        });
+      }
+      if (url === '/notifications/unread-count') {
+        return Promise.resolve({
+          data: { unread: 0 },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    renderLayout();
+
+    // Wait a brief moment to ensure state loads
+    await screen.findByText('Dashboard', { selector: 'span' });
+
+    // Badge shouldn't be present
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+    expect(screen.queryByText('9+')).not.toBeInTheDocument();
+  });
 });
