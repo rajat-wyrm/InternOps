@@ -1,5 +1,23 @@
 const { z } = require('zod');
 
+const dateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
+  .refine((value) => {
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+
+    return (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    );
+  }, 'Invalid calendar date');
+
+function toUtcTimestamp(dateOnly) {
+  return new Date(`${dateOnly}T00:00:00.000Z`).getTime();
+}
+
 const templateCreateSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
@@ -31,8 +49,8 @@ const certificateGenerateSchema = z
     title: z.string().min(1).max(255).default('Certificate of Achievement'),
     body: z.string().optional(),
     issuer: z.string().max(255).optional(),
-    issue_date: z.string().optional(),
-    expiry_date: z.string().optional(),
+    issue_date: dateOnlySchema.optional(),
+    expiry_date: dateOnlySchema.optional(),
     certificate_type: z
       .enum([
         'appreciation',
@@ -50,15 +68,8 @@ const certificateGenerateSchema = z
         return true;
       }
 
-      const issueDate = new Date(data.issue_date);
-      const expiryDate = new Date(data.expiry_date);
-
-      if (
-        Number.isNaN(issueDate.getTime()) ||
-        Number.isNaN(expiryDate.getTime())
-      ) {
-        return false;
-      }
+      const issueDate = toUtcTimestamp(data.issue_date);
+      const expiryDate = toUtcTimestamp(data.expiry_date);
 
       return expiryDate >= issueDate;
     },
@@ -124,6 +135,7 @@ const aiAutoGenerateSchema = z.object({
 });
 
 module.exports = {
+  dateOnlySchema,
   templateCreateSchema,
   templateUpdateSchema,
   certificateGenerateSchema,

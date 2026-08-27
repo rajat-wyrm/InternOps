@@ -69,6 +69,13 @@ async function routes(fastify) {
       const data = await req.file();
       if (!data) return reply.status(400).send({ error: 'No file uploaded' });
 
+      const targetUserId = data.fields?.user_id?.value || req.user.id;
+      if (targetUserId !== req.user.id && req.user.role !== 'ADMIN') {
+        return reply
+          .status(403)
+          .send({ error: 'Not authorized to upload for this user' });
+      }
+
       const ext = path.extname(data.filename || '').toLowerCase();
       if (!ALLOWED.includes(data.mimetype) || !ALLOWED_EXTS.includes(ext)) {
         return reply.status(400).send({ error: 'Unsupported file type' });
@@ -90,13 +97,15 @@ async function routes(fastify) {
           .send({ error: 'File contents do not match declared image type' });
       }
 
-      const fileName = `avatar_${req.user.id}_${crypto.randomBytes(6).toString('hex')}${ext}`;
+      const fileName = `avatar_${targetUserId}_${crypto.randomBytes(6).toString('hex')}${ext}`;
+      const relativeDirectory = path.join('user-images', 'avatars');
       const uploadPath = path.join(
         __dirname,
         '..',
         '..',
         '..',
-        config.uploadDir
+        config.uploadDir,
+        relativeDirectory
       );
 
       // Calculate the absolute path of the target file
@@ -111,8 +120,30 @@ async function routes(fastify) {
       fs.mkdirSync(uploadPath, { recursive: true });
       fs.writeFileSync(targetFilePath, buffer);
 
-      const url = `/uploads/${fileName}`;
-      await repo.updateAvatarUrl(req.user.id, url);
+      const storagePath = path.posix.join(
+        'uploads',
+        relativeDirectory.replaceAll(path.sep, '/'),
+        fileName
+      );
+      const url = `/${storagePath}`;
+      const image = await repo.addUserImage({
+        userId: targetUserId,
+        storagePath,
+        imageUrl: url,
+        originalFilename: data.filename,
+        mimeType: data.mimetype,
+        fileSize: buffer.length,
+      });
+      if (image.previousStoragePath) {
+        await repo
+          .deleteFile(image.previousStoragePath)
+          .catch((error) =>
+            req.log.warn(
+              { error, path: image.previousStoragePath },
+              'Failed to remove replaced avatar'
+            )
+          );
+      }
 
       return { success: true, avatar_url: url };
     }

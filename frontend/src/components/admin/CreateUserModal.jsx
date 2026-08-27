@@ -40,6 +40,7 @@ export default function CreateUserModal({ open, onClose }) {
   const [role, setRole] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [managerId, setManagerId] = useState('');
+  const [avatar, setAvatar] = useState(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -114,8 +115,20 @@ export default function CreateUserModal({ open, onClose }) {
 
   // Register mutation
   const registerMutation = useMutation({
-    mutationFn: (payload) =>
-      api.post('/auth/register', payload).then((res) => res.data),
+    mutationFn: async (payload) => {
+      const user = await api
+        .post('/auth/register', payload)
+        .then((res) => res.data);
+      if (avatar) {
+        const form = new FormData();
+        form.append('user_id', user.id);
+        form.append('file', avatar);
+        await api.post('/uploads/avatar', form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
+      return user;
+    },
     onSuccess: () => {
       setSuccessMsg('User account provisioned successfully.');
       setError('');
@@ -130,6 +143,7 @@ export default function CreateUserModal({ open, onClose }) {
       setRole('');
       setDepartmentId('');
       setManagerId('');
+      setAvatar(null);
 
       setTimeout(() => {
         setSuccessMsg('');
@@ -348,6 +362,17 @@ export default function CreateUserModal({ open, onClose }) {
                   </p>
                 </div>
               )}
+
+              <div className="md:col-span-2">
+                <label className={labelClass}>Profile Image</label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={(e) => setAvatar(e.target.files?.[0] || null)}
+                  disabled={registerMutation.isPending}
+                  className="w-full text-sm text-slate-500 dark:text-slate-400"
+                />
+              </div>
             </div>
           </div>
 
