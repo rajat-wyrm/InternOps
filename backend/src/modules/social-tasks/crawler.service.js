@@ -1,4 +1,7 @@
 const { URL } = require('url');
+const dns = require('dns').promises;
+const net = require('net');
+
 const { ALLOWED_DOMAINS } = require('../../config/crawler-allowlist');
 const { getAdapterForDomain } = require('./platform-adapters');
 
@@ -12,6 +15,74 @@ function isAllowedDomain(hostname) {
     (domain) =>
       normalizedHostname === domain || normalizedHostname.endsWith(`.${domain}`)
   );
+}
+
+function isPrivateIPv4(ip) {
+  const parts = ip.split('.').map(Number);
+
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
+    return false;
+  }
+
+  const [a, b] = parts;
+
+  return (
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    a === 127 ||
+    (a === 169 && b === 254)
+  );
+}
+
+function isPrivateIPv6(ip) {
+  const normalized = ip.toLowerCase();
+
+  return (
+    normalized === '::1' ||
+    normalized.startsWith('fc') ||
+    normalized.startsWith('fd') ||
+    normalized.startsWith('fe8') ||
+    normalized.startsWith('fe9') ||
+    normalized.startsWith('fea') ||
+    normalized.startsWith('feb')
+  );
+}
+
+function isPrivateOrInternalIP(ip) {
+  const version = net.isIP(ip);
+
+  if (version === 4) {
+    return isPrivateIPv4(ip);
+  }
+
+  if (version === 6) {
+    return isPrivateIPv6(ip);
+  }
+
+  return true;
+}
+
+async function resolveAndValidateHostname(hostname) {
+  const normalizedHostname = hostname.toLowerCase().trim();
+
+  if (
+    normalizedHostname === 'localhost' ||
+    normalizedHostname.endsWith('.localhost')
+  ) {
+    return false;
+  }
+
+  const addresses = await dns.lookup(normalizedHostname, {
+    all: true,
+    verbatim: true,
+  });
+
+  if (!addresses.length) {
+    return false;
+  }
+
+  return addresses.every(({ address }) => !isPrivateOrInternalIP(address));
 }
 
 async function fetchProofContent(url) {
@@ -49,6 +120,22 @@ async function fetchProofContent(url) {
     };
   }
 
+  try {
+    const isSafeHost = await resolveAndValidateHostname(hostname);
+
+    if (!isSafeHost) {
+      return {
+        success: false,
+        error: 'Proof URL resolves to a private or internal IP address',
+      };
+    }
+  } catch {
+    return {
+      success: false,
+      error: 'Unable to resolve proof URL hostname',
+    };
+  }
+
   const adapter = getAdapterForDomain(hostname);
 
   if (!adapter) {
@@ -59,6 +146,7 @@ async function fetchProofContent(url) {
   }
 
   const controller = new AbortController();
+
   const timeout = setTimeout(() => {
     controller.abort();
   }, FETCH_TIMEOUT_MS);
