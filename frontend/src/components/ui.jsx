@@ -308,6 +308,7 @@ export function Spinner({ label = 'Loading...', size = 'md' }) {
       md: 'h-8 w-8 border-[3px]',
       lg: 'h-12 w-12 border-[4px]',
     }[size] || 'h-8 w-8 border-[3px]';
+
   return (
     <div className="flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400 py-8">
       <span className="relative inline-flex">
@@ -316,6 +317,15 @@ export function Spinner({ label = 'Loading...', size = 'md' }) {
         />
         <span className="absolute inset-1 rounded-full border border-indigo-100 dark:border-indigo-900/60" />
       </span>
+
+      {label && (
+        <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+          {label}
+        </span>
+      )}
+    </div>
+  );
+}
 
       {label && (
         <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
