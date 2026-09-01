@@ -5,6 +5,16 @@ import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, StatCard, ApiErrorState } from '../components/ui';
+import {
+  Users,
+  CircleCheck,
+  CalendarDays,
+  Star,
+  BarChart3,
+  Zap,
+  Target,
+  User,
+} from 'lucide-react';
 
 function attendancePct(m) {
   const total = Number(m.attendance_total) || 0;
@@ -112,21 +122,21 @@ function ManagerHome({ user }) {
         <StatCard
           label="Team members"
           value={team.length}
-          icon="👥"
+          icon={<Users />}
           gradient="from-indigo-500 to-blue-600"
         />
 
         <StatCard
           label="Active"
           value={active}
-          icon="✅"
+          icon={<CircleCheck />}
           gradient="from-emerald-400 to-teal-500"
         />
 
         <StatCard
           label="Avg attendance"
           value={avgAtt === null ? '—' : `${avgAtt}%`}
-          icon="📅"
+          icon={<CalendarDays />}
           gradient="from-sky-400 to-blue-500"
         />
 
@@ -134,7 +144,7 @@ function ManagerHome({ user }) {
           label="Avg rating"
           value={avgRating}
           sub="out of 10"
-          icon="⭐"
+          icon={<Star />}
           gradient="from-amber-400 to-orange-500"
         />
       </div>
@@ -194,7 +204,8 @@ function ManagerHome({ user }) {
         <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
           <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
             <h3 className="font-extrabold text-xl text-slate-900 dark:text-white flex items-center gap-2">
-              ⚡ Quick actions
+              <Zap className="w-5 h-5" />
+              Quick actions
             </h3>
 
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -205,7 +216,7 @@ function ManagerHome({ user }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <QuickAction
               to="/team"
-              icon="👥"
+              icon={<Users />}
               label="Manage team"
               description="View members"
               tint="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/60"
@@ -213,7 +224,7 @@ function ManagerHome({ user }) {
 
             <QuickAction
               to="/attendance"
-              icon="📅"
+              icon={<CalendarDays />}
               label="Mark attendance"
               description="Daily records"
               tint="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60"
@@ -221,7 +232,7 @@ function ManagerHome({ user }) {
 
             <QuickAction
               to="/ratings"
-              icon="⭐"
+              icon={<Star />}
               label="Rate members"
               description="Performance"
               tint="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60"
@@ -229,7 +240,7 @@ function ManagerHome({ user }) {
 
             <QuickAction
               to="/tasks"
-              icon="🎯"
+              icon={<Target />}
               label="Social tasks"
               description="Track tasks"
               tint="bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60"
@@ -319,7 +330,7 @@ function InternHome({ user }) {
           label="Present this month"
           value={present}
           sub="days"
-          icon="📅"
+          icon={<CalendarDays />}
           gradient="from-emerald-400 to-teal-500"
         />
 
@@ -327,14 +338,14 @@ function InternHome({ user }) {
           label="My avg rating"
           value={avg}
           sub="out of 10"
-          icon="⭐"
+          icon={<Star />}
           gradient="from-amber-400 to-orange-500"
         />
 
         <StatCard
           label="Total ratings"
           value={ratings.length}
-          icon="📊"
+          icon={<BarChart3 />}
           gradient="from-indigo-500 to-blue-600"
         />
       </div>
@@ -344,7 +355,8 @@ function InternHome({ user }) {
         <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
           <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
             <h3 className="font-extrabold text-xl text-slate-900 dark:text-white flex items-center gap-2">
-              📅 This month's attendance
+              <CalendarDays className="w-5 h-5" />
+              This month's attendance
             </h3>
 
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -386,7 +398,8 @@ function InternHome({ user }) {
         <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
           <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
             <h3 className="font-extrabold text-xl text-slate-900 dark:text-white flex items-center gap-2">
-              ⚡ Quick actions
+              <Zap className="w-5 h-5" />
+              Quick actions
             </h3>
 
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -397,7 +410,7 @@ function InternHome({ user }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <QuickAction
               to="/tasks"
-              icon="🎯"
+              icon={<Target />}
               label="My tasks"
               description="View assignments"
               tint="bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60"
@@ -405,7 +418,7 @@ function InternHome({ user }) {
 
             <QuickAction
               to="/attendance"
-              icon="📅"
+              icon={<CalendarDays />}
               label="My attendance"
               description="Track presence"
               tint="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60"
@@ -413,7 +426,7 @@ function InternHome({ user }) {
 
             <QuickAction
               to="/ratings"
-              icon="⭐"
+              icon={<Star />}
               label="My ratings"
               description="Performance"
               tint="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60"
@@ -421,7 +434,7 @@ function InternHome({ user }) {
 
             <QuickAction
               to="/profile"
-              icon="👤"
+              icon={<User />}
               label="My profile"
               description="Account details"
               tint="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/60"
