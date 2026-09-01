@@ -142,6 +142,7 @@ async function updateMember(id, data) {
 
 // Create a new member under the given manager, with optional detail fields.
 async function createMember(data) {
+  const normalizedEmail = data.email.trim().toLowerCase();
   const hash = await argon2.hash(data.password);
   const {
     rows: [created],
@@ -152,7 +153,7 @@ async function createMember(data) {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING id`,
     [
-      data.email,
+      normalizedEmail,
       hash,
       data.role,
       data.manager_id,

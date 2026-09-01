@@ -10,7 +10,14 @@ import {
   AlertCircle,
   Mail,
   ShieldCheck,
+  Building2,
+  MapPin,
+  CalendarDays,
+  BriefcaseBusiness,
+  MonitorSmartphone,
+  ArrowRight,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import {
   Card,
@@ -22,6 +29,7 @@ import {
   ConfirmationModal,
 } from '../components/ui';
 import useAuthStore from '../store/auth';
+import useFeatureFlagsStore from '../store/featureFlags';
 
 const ROLE_COLOR = {
   ADMIN: 'purple',
@@ -29,6 +37,20 @@ const ROLE_COLOR = {
   TL: 'blue',
   CAPTAIN: 'teal',
   INTERN: 'gray',
+};
+const ROLE_LABEL = {
+  ADMIN: 'Admin',
+  SENIOR_TL: 'Senior TL',
+  TL: 'Team Lead',
+  CAPTAIN: 'Captain',
+  INTERN: 'Intern',
+};
+const POSITION_LABEL = {
+  ADMIN: 'Administrator',
+  SENIOR_TL: 'Senior Team Lead',
+  TL: 'Team Lead',
+  CAPTAIN: 'Captain',
+  INTERN: 'Intern',
 };
 
 function initials(name, email) {
@@ -47,10 +69,13 @@ export default function Profile() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
+  const fetchFlags = useFeatureFlagsStore((s) => s.fetchFlags);
 
-  const [full_name, setfull_name] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [nameError, setNameError] = useState('');
@@ -67,7 +92,13 @@ export default function Profile() {
   });
 
   useEffect(() => {
-    if (profile) setfull_name(profile.full_name || '');
+    if (!profile) return;
+    const nameParts = (profile.full_name || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    setFirstName(nameParts.shift() || '');
+    setLastName(nameParts.join(' '));
   }, [profile]);
 
   const flash = (m) => {
@@ -75,34 +106,24 @@ export default function Profile() {
     setError('');
     setTimeout(() => setMessage(''), 2500);
   };
+  const handleLastNameChange = (event) => {
+    const value = event.target.value;
+    setLastName(
+      value.trim().toLowerCase() === (profile?.email || '').trim().toLowerCase()
+        ? ''
+        : value
+    );
+  };
+  const combinedName = [firstName.trim(), lastName.trim()]
+    .filter(Boolean)
+    .join(' ');
   const validateProfile = () => {
-    const name = full_name.trim();
-    // Length validation
-    if (name.length < 3 || name.length > 100) {
+    if (combinedName.length < 3 || combinedName.length > 100) {
       setNameError('Name must be between 3 and 100 characters.');
       return false;
     }
-    // Allow international letters, combining marks,
-    // spaces, apostrophes and hyphens
     const nameRegex = /^[\p{L}\p{M}\s'-]+$/u;
-
-    if (!nameRegex.test(name)) {
-      setNameError('Name contains invalid characters.');
-      return false;
-    }
-
-    // Length validation
-    if (name.length < 3 || name.length > 100) {
-      setNameError('Name must be between 3 and 100 characters.');
-      return false;
-    }
-
-    if (!nameRegex.test(name)) {
-      setNameError('Name contains invalid characters.');
-      return false;
-    }
-    // Block dangerous HTML characters
-    if (/[<>]/.test(name)) {
+    if (!nameRegex.test(combinedName)) {
       setNameError('Name contains invalid characters.');
       return false;
     }
@@ -126,13 +147,15 @@ export default function Profile() {
 
   const changePasswordMut = useMutation({
     mutationFn: (data) => api.patch('/users/me/password', data),
-    onSuccess: () => {
+    onSuccess: async () => {
       flash('Password changed successfully');
       if (user?.mustChangePassword) {
         setAuth({ user: { ...user, mustChangePassword: false } });
+        await fetchFlags();
       }
       setOldPassword('');
       setNewPassword('');
+      setConfirmPassword('');
     },
     onError: (err) =>
       setError(err.response?.data?.error || 'Failed to change password'),
@@ -178,6 +201,19 @@ export default function Profile() {
     },
   });
 
+  const passwordChecks = {
+    length: newPassword.length >= 8,
+    uppercase: /[A-Z]/.test(newPassword),
+    lowercase: /[a-z]/.test(newPassword),
+    number: /[0-9]/.test(newPassword),
+    special: /[^A-Za-z0-9]/.test(newPassword),
+    notObvious: !['12345678', 'password', 'password123'].includes(
+      newPassword.toLowerCase()
+    ),
+  };
+  const isStrongPassword = Object.values(passwordChecks).every(Boolean);
+  const passwordsMatch =
+    confirmPassword.length > 0 && newPassword === confirmPassword;
   if (isLoading) {
     return (
       <div className="flex justify-center p-12">
@@ -188,14 +224,14 @@ export default function Profile() {
 
   if (isError) {
     return (
-      <div className="max-w-6xl mx-auto animate-fade-in-up">
-        <div className="mb-6 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
+      <div className="mx-auto max-w-7xl animate-fade-in-up">
+        <div className="mb-5 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
             <User className="w-6 h-6" />
           </div>
 
           <div>
-            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
               My Profile
             </h1>
             <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
@@ -216,17 +252,49 @@ export default function Profile() {
 
   const displayName = profile?.full_name || 'Unnamed User';
   const displayEmail = profile?.email || '';
+  const formatDate = (value) => {
+    if (!value) return 'Not provided';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? 'Not provided'
+      : date.toLocaleDateString(undefined, {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+  };
+  const isAdmin = profile?.role === 'ADMIN';
+  const profileAvatarUrl =
+    profile?.avatar_url || (isAdmin ? '/admin-default-avatar.svg' : null);
+  const scopeLabel = isAdmin ? 'Access scope' : 'Department';
+  const accessScope = isAdmin
+    ? 'Platform-wide'
+    : profile?.department_name || 'No department';
+  const positionLabel =
+    POSITION_LABEL[profile?.role] || profile?.position || 'Not added';
+  const accountDetails = [
+    { label: scopeLabel, value: accessScope, icon: Building2 },
+    { label: 'Position', value: positionLabel, icon: BriefcaseBusiness },
+    ...(profile?.location
+      ? [{ label: 'Location', value: profile.location, icon: MapPin }]
+      : []),
+    {
+      label: 'Member since',
+      value: formatDate(profile?.joining_date || profile?.created_at),
+      icon: CalendarDays,
+    },
+  ];
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in-up">
+    <div className="mx-auto max-w-7xl animate-fade-in-up">
       {/* Professional Header Block */}
-      <div className="mb-6 flex items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
+      <div className="mb-5 flex items-center gap-3">
+        <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
           <User className="w-6 h-6" />
         </div>
 
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
             My Profile
           </h1>
           <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-1">
@@ -265,249 +333,302 @@ export default function Profile() {
         </div>
       )}
 
-      {/* Hero Card */}
-      <Card className="mb-7 overflow-hidden border border-slate-200 dark:border-slate-700 shadow-[0_18px_45px_rgba(79,70,229,0.12)] dark:shadow-none">
-        <div className="relative">
-          {/* Gradient Name Block */}
-          <div className="relative min-h-[150px] bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 px-7 md:px-9 py-7 flex items-center">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.28),transparent_36%)]" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.14),transparent_42%)]" />
-
-            <div className="relative z-10">
-              <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-white/70 font-bold mb-2">
-                Profile Overview
+      {/* Compact Profile Summary */}
+      <Card className="mb-5 border border-slate-200 p-4 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:shadow-none md:p-5">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
+            <div className="w-32 shrink-0">
+              <div className="relative mx-auto w-fit">
+                {profileAvatarUrl ? (
+                  <img
+                    src={profileAvatarUrl}
+                    alt="avatar"
+                    className="h-24 w-24 rounded-3xl border-4 border-white bg-white object-cover shadow-xl dark:border-slate-900 dark:bg-slate-900"
+                  />
+                ) : (
+                  <div className="flex h-24 w-24 items-center justify-center rounded-3xl border-4 border-white bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-3xl font-extrabold text-white shadow-xl dark:border-slate-900">
+                    {initials(profile?.full_name, profile?.email)}
+                  </div>
+                )}
+                <label
+                  className={`absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-indigo-600 shadow-lg transition-all dark:border-slate-700 dark:bg-slate-800 dark:text-indigo-300 ${
+                    avatarMut.isPending
+                      ? 'cursor-not-allowed opacity-60'
+                      : 'cursor-pointer hover:scale-105 hover:bg-indigo-50 dark:hover:bg-slate-700'
+                  }`}
+                  title={avatarMut.isPending ? 'Uploading...' : 'Change avatar'}
+                >
+                  {avatarMut.isPending ? (
+                    <span className="text-[10px] font-semibold">...</span>
+                  ) : (
+                    <Camera className="h-4 w-4" />
+                  )}
+                  <input
+                    disabled={avatarMut.isPending}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(event) => {
+                      if (avatarMut.isPending) return;
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      if (!file.type.startsWith('image/')) {
+                        setError('Please select an image file.');
+                        event.target.value = '';
+                        return;
+                      }
+                      if (file.size > 5 * 1024 * 1024) {
+                        setError('Avatar must be 5MB or smaller.');
+                        event.target.value = '';
+                        return;
+                      }
+                      setError('');
+                      avatarMut.mutate(file);
+                      event.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+              {profile?.avatar_url && (
+                <button
+                  type="button"
+                  onClick={() => setShowRemoveAvatarModal(true)}
+                  disabled={avatarMut.isPending || removeAvatarMut.isPending}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-1.5 whitespace-nowrap text-xs font-semibold text-red-600 transition-colors hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-400 dark:hover:text-red-300"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {removeAvatarMut.isPending ? 'Removing...' : 'Remove image'}
+                </button>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-2xl font-bold tracking-tight text-slate-900 dark:text-white md:text-3xl">
+                  {displayName}
+                </h2>
+                <Badge color={ROLE_COLOR[profile?.role] || 'gray'}>
+                  {ROLE_LABEL[profile?.role] || profile?.role}
+                </Badge>
+                <Badge color={profile?.suspended ? 'red' : 'green'}>
+                  {profile?.suspended ? 'Suspended' : 'Active'}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                <Mail className="h-4 w-4 shrink-0" />
+                <p className="truncate text-sm font-medium md:text-base">
+                  {displayEmail}
+                </p>
+              </div>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+                Manage personal details, account information, and sign-in
+                security from one place.
               </p>
-
-              <h3 className="text-3xl md:text-5xl font-extrabold text-white tracking-tight drop-shadow-sm">
-                {displayName}
-              </h3>
             </div>
           </div>
-
-          {/* Profile Details Block */}
-          <div className="bg-white dark:bg-slate-900 px-7 md:px-9 py-6">
-            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
-              <div className="flex flex-col md:flex-row md:items-center gap-5">
-                {/* Avatar */}
-                <div className="relative shrink-0">
-                  {profile?.avatar_url ? (
-                    <img
-                      src={profile.avatar_url}
-                      alt="avatar"
-                      className="w-24 h-24 md:w-28 md:h-28 rounded-3xl object-cover border-4 border-white dark:border-slate-900 shadow-xl bg-white dark:bg-slate-900"
-                    />
-                  ) : (
-                    <div className="w-24 h-24 md:w-28 md:h-28 rounded-3xl bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white flex items-center justify-center text-4xl font-extrabold border-4 border-white dark:border-slate-900 shadow-xl">
-                      {initials(profile?.full_name, profile?.email)}
-                    </div>
-                  )}
-
-                  <label
-                    className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-2xl bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 shadow-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center transition-all ${
-                      avatarMut.isPending
-                        ? 'opacity-60 cursor-not-allowed'
-                        : 'cursor-pointer hover:scale-105 hover:bg-indigo-50 dark:hover:bg-slate-700'
-                    }`}
-                    title={
-                      avatarMut.isPending ? 'Uploading...' : 'Change avatar'
-                    }
-                  >
-                    {avatarMut.isPending ? (
-                      <span className="text-[10px] font-semibold">...</span>
-                    ) : (
-                      <Camera className="w-4 h-4" />
-                    )}
-                    <input
-                      disabled={avatarMut.isPending}
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (avatarMut.isPending) return;
-                        const file = e.target.files?.[0];
-
-                        if (!file) return;
-
-                        if (!file.type.startsWith('image/')) {
-                          setError('Please select an image file.');
-                          e.target.value = '';
-                          return;
-                        }
-
-                        if (file.size > 5 * 1024 * 1024) {
-                          setError('Avatar must be 5MB or smaller.');
-                          e.target.value = '';
-                          return;
-                        }
-
-                        setError('');
-                        avatarMut.mutate(file);
-                        e.target.value = '';
-                      }}
-                    />
-                  </label>
-                  {profile?.avatar_url && (
-                    <button
-                      type="button"
-                      onClick={() => setShowRemoveAvatarModal(true)}
-                      disabled={
-                        avatarMut.isPending || removeAvatarMut.isPending
-                      }
-                      className="mt-4 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      {removeAvatarMut.isPending
-                        ? 'Removing...'
-                        : 'Remove image'}
-                    </button>
-                  )}
-                </div>
-
-                {/* Email and Badges */}
+          <div
+            className={`grid shrink-0 grid-cols-1 gap-2 ${
+              accountDetails.length === 4
+                ? 'sm:grid-cols-2 xl:w-[500px]'
+                : 'sm:grid-cols-3 xl:w-[500px]'
+            }`}
+          >
+            {accountDetails.map(({ label, value, icon: Icon }) => (
+              <div
+                key={label}
+                className="flex min-w-0 items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60"
+              >
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500 dark:text-indigo-300" />
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                    <Mail className="w-4 h-4 shrink-0" />
-                    <p className="text-sm md:text-base font-medium truncate">
-                      {displayEmail}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    <Badge color={ROLE_COLOR[profile?.role] || 'gray'}>
-                      {profile?.role}
-                    </Badge>
-
-                    <Badge color={profile?.suspended ? 'red' : 'green'}>
-                      {profile?.suspended ? 'Suspended' : 'Active'}
-                    </Badge>
-                  </div>
-
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 max-w-xl">
-                    Keep profile information accurate and update your password
-                    regularly for better account protection.
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    {label}
+                  </p>
+                  <p
+                    className="mt-1 truncate text-sm font-semibold text-slate-800 dark:text-slate-100"
+                    title={value}
+                  >
+                    {value}
                   </p>
                 </div>
               </div>
-
-              {/* Account Status */}
-              <div className="w-full xl:w-auto">
-                <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
-                  <div className="w-11 h-11 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300 flex items-center justify-center">
-                    <ShieldCheck className="w-5 h-5" />
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Account status
-                    </p>
-                    <p className="text-sm font-bold text-slate-900 dark:text-white">
-                      {profile?.suspended ? 'Suspended' : 'Active'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </Card>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Personal Info Card */}
-        <Card className="p-6 md:p-7 min-h-[300px] border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-          <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
-            <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center">
-              <Pencil className="w-5 h-5" />
+      <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <div className="flex h-full flex-col gap-5">
+          <Card className="border border-slate-200 p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:shadow-none md:p-6">
+            <div className="mb-4 flex items-center gap-3 border-b border-slate-200 pb-3 dark:border-slate-700">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+                <Pencil className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Personal Information
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Update your display name
+                </p>
+              </div>
             </div>
-
-            <div>
-              <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
-                Personal Information
-              </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Update your display name and profile details
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-5">
-            <div>
-              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-                Full Name
-              </label>
-
-              <Input
-                value={full_name}
-                onChange={(e) => setfull_name(e.target.value)}
-                placeholder="Enter your full name"
-              />
-              {nameError && (
-                <p className="text-sm text-red-500 mt-1">{nameError}</p>
-              )}
-            </div>
-
-            <Btn
-              onClick={() => {
-                if (!validateProfile()) return;
-
-                updateProfileMut.mutate({
-                  full_name: full_name.trim(),
-                });
-              }}
-              disabled={
-                updateProfileMut.isPending || full_name === profile?.full_name
-              }
-              className="w-full sm:w-auto px-6 bg-gradient-to-r from-indigo-600 to-blue-600 hover:shadow-indigo-200 dark:hover:shadow-none"
+            <form
+              className="space-y-4"
+              autoComplete="off"
+              onSubmit={(event) => event.preventDefault()}
             >
-              {updateProfileMut.isPending ? 'Saving...' : 'Save Changes'}
-            </Btn>
-          </div>
-        </Card>
-
-        {/* Security Card */}
-        <Card className="p-6 md:p-7 min-h-[300px] border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-          <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
-            <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center">
-              <Lock className="w-5 h-5" />
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    First Name
+                  </label>
+                  <Input
+                    name="profileFirstName"
+                    autoComplete="off"
+                    value={firstName}
+                    onChange={(event) => setFirstName(event.target.value)}
+                    placeholder="Enter first name"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Last Name
+                  </label>
+                  <Input
+                    name="profileLastName"
+                    autoComplete="off"
+                    value={lastName}
+                    onChange={handleLastNameChange}
+                    placeholder="Enter last name (optional)"
+                  />
+                </div>
+              </div>
+              {nameError && <p className="text-sm text-red-500">{nameError}</p>}
+              <Btn
+                onClick={() => {
+                  if (!validateProfile()) return;
+                  updateProfileMut.mutate({ full_name: combinedName });
+                }}
+                disabled={
+                  updateProfileMut.isPending ||
+                  combinedName === (profile?.full_name || '').trim()
+                }
+                className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 px-6 sm:w-auto"
+              >
+                {updateProfileMut.isPending ? 'Saving...' : 'Save Changes'}
+              </Btn>
+            </form>
+          </Card>
+          <Card
+            className={`${
+              confirmPassword.length > 0 && !passwordsMatch ? '' : 'mt-auto'
+            } border border-slate-200 p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:shadow-none md:p-6`}
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300">
+                  <MonitorSmartphone className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-slate-900 dark:text-white">
+                    Active Sessions
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Review and revoke signed-in devices
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/sessions"
+                className="inline-flex shrink-0 items-center gap-1 text-sm font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-300 dark:hover:text-indigo-200"
+              >
+                Review <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
-
+          </Card>
+        </div>
+        <Card className="border border-slate-200 p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:shadow-none md:p-6">
+          <div className="mb-4 flex items-center gap-3 border-b border-slate-200 pb-3 dark:border-slate-700">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
+              <Lock className="h-5 w-5" />
+            </div>
             <div>
-              <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
-                Security
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                Password & Security
               </h3>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Change your password securely
+                Use a unique password for this account
               </p>
             </div>
           </div>
-
-          <div className="space-y-5">
+          <div className="space-y-4">
             <div>
-              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Current Password
               </label>
-
               <Input
                 type="password"
+                name="current-password"
+                autoComplete="section-security current-password"
                 value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)}
+                onChange={(event) => setOldPassword(event.target.value)}
                 placeholder="Enter current password"
                 minLength={8}
               />
             </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-                New Password
-              </label>
-
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Minimum 8 characters"
-              />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  New Password
+                </label>
+                <Input
+                  type="password"
+                  name="new-password"
+                  autoComplete="section-security new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="Create a strong password"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Confirm New Password
+                </label>
+                <Input
+                  type="password"
+                  name="confirm-new-password"
+                  autoComplete="section-security new-password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="Re-enter new password"
+                  aria-invalid={confirmPassword.length > 0 && !passwordsMatch}
+                />
+                {confirmPassword.length > 0 && !passwordsMatch && (
+                  <p
+                    className="mt-2 text-sm font-medium text-rose-500"
+                    aria-live="polite"
+                  >
+                    Passwords do not match.
+                  </p>
+                )}
+              </div>
             </div>
-
+            <div className="grid grid-cols-1 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/60 sm:grid-cols-2">
+              {[
+                ['length', '8 or more characters'],
+                ['uppercase', 'One uppercase letter'],
+                ['lowercase', 'One lowercase letter'],
+                ['number', 'One number'],
+                ['special', 'One special character'],
+                ['notObvious', 'Not an obvious password'],
+              ].map(([key, label]) => (
+                <div
+                  key={key}
+                  className={`flex items-center gap-2 ${passwordChecks[key] ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  <span>{label}</span>
+                </div>
+              ))}
+            </div>
             <Btn
               variant="success"
               onClick={() =>
@@ -516,9 +637,10 @@ export default function Profile() {
               disabled={
                 changePasswordMut.isPending ||
                 !oldPassword ||
-                newPassword.length < 8
+                !isStrongPassword ||
+                !passwordsMatch
               }
-              className="w-full sm:w-auto px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:shadow-emerald-200 dark:hover:shadow-none"
+              className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 px-6 sm:w-auto"
             >
               {changePasswordMut.isPending ? 'Updating...' : 'Update Password'}
             </Btn>

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import api from '../../lib/axios';
 import CustomSelect from '../CustomSelect';
+import useAuthStore from '../../store/auth';
 
 const ROLE_OPTIONS = [
   { value: 'TL', label: 'TL' },
@@ -280,6 +281,16 @@ function AssignmentGroup({
 }
 
 export default function EditUserModal({ open, user, onClose }) {
+  const currentUser = useAuthStore((state) => state.user);
+  const isRestrictedEditor = ['SENIOR_TL', 'TL'].includes(currentUser?.role);
+  const allowedRoleOptions =
+    currentUser?.role === 'SENIOR_TL'
+      ? ROLE_OPTIONS
+      : currentUser?.role === 'TL'
+        ? ROLE_OPTIONS.filter((option) =>
+            ['CAPTAIN', 'INTERN'].includes(option.value)
+          )
+        : ROLE_OPTIONS;
   const queryClient = useQueryClient();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -313,7 +324,7 @@ export default function EditUserModal({ open, user, onClose }) {
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((r) => r.data || []),
-    enabled: open,
+    enabled: open && !isRestrictedEditor,
   });
   const { data: members = [] } = useQuery({
     queryKey: ['departmentHierarchyMembers', departmentId],
@@ -325,7 +336,10 @@ export default function EditUserModal({ open, user, onClose }) {
   });
   const adminLocked = user?.role === 'ADMIN';
   const seniorLocked = user?.role === 'SENIOR_TL';
+  const departmentLocked = adminLocked || seniorLocked || isRestrictedEditor;
   const hierarchyLocked = adminLocked || seniorLocked;
+  const canEditHierarchy = !hierarchyLocked;
+  const roleLocked = adminLocked || seniorLocked;
   const memberById = useMemo(
     () => new Map(members.map((member) => [member.id, member])),
     [members]
@@ -369,10 +383,13 @@ export default function EditUserModal({ open, user, onClose }) {
     () =>
       role === 'TL'
         ? interns.filter(
-            (intern) => !intern.manager_id || intern.manager_id === user?.id
+            (intern) =>
+              !intern.manager_id ||
+              intern.manager_id === user?.id ||
+              intern.manager_id === user?.manager_id
           )
         : interns,
-    [interns, role, user?.id]
+    [interns, role, user?.id, user?.manager_id]
   );
   const filteredInterns = useMemo(() => {
     const query = internSearch.trim().toLowerCase();
@@ -403,7 +420,7 @@ export default function EditUserModal({ open, user, onClose }) {
     ...captainManagedInterns.map((intern) => intern.id),
   ]).size;
   useEffect(() => {
-    if (!open || !user || !members.length || hierarchyLocked) return;
+    if (!open || !user || !members.length || !canEditHierarchy) return;
     setSelectedCaptainIds(
       role === 'TL'
         ? captains
@@ -416,7 +433,7 @@ export default function EditUserModal({ open, user, onClose }) {
         .filter((intern) => intern.manager_id === user.id)
         .map((intern) => intern.id)
     );
-  }, [captains, hierarchyLocked, interns, members.length, open, role, user]);
+  }, [captains, canEditHierarchy, interns, members.length, open, role, user]);
   const managers = useMemo(
     () =>
       members.filter(
@@ -430,18 +447,20 @@ export default function EditUserModal({ open, user, onClose }) {
         full_name: fullName.trim(),
         email: email.trim(),
       };
-      if (!hierarchyLocked) {
+      if (!roleLocked) {
         base.role = role;
+      }
+      if (!departmentLocked) {
         base.department_id = departmentId || null;
       }
 
-      if (!hierarchyLocked && role === 'INTERN') {
+      if (!departmentLocked && role === 'INTERN') {
         base.manager_id = managerId || null;
       }
 
       await api.patch(`/users/${user.id}`, base);
 
-      if (!hierarchyLocked && ['TL', 'CAPTAIN'].includes(role)) {
+      if (canEditHierarchy && ['TL', 'CAPTAIN'].includes(role)) {
         await api.patch(`/users/${user.id}/hierarchy`, {
           role,
           department_id: departmentId,
@@ -544,9 +563,9 @@ export default function EditUserModal({ open, user, onClose }) {
                       ? [{ value: 'ADMIN', label: 'Admin' }]
                       : seniorLocked
                         ? [{ value: 'SENIOR_TL', label: 'Senior TL' }]
-                        : ROLE_OPTIONS
+                        : allowedRoleOptions
                   }
-                  disabled={hierarchyLocked || mutation.isPending}
+                  disabled={roleLocked || mutation.isPending}
                   className="[&>button]:pl-11"
                 />
               </div>
@@ -572,17 +591,33 @@ export default function EditUserModal({ open, user, onClose }) {
                 <CustomSelect
                   value={departmentId}
                   onChange={setDepartmentId}
-                  options={departments.map((d) => ({
-                    value: d.id,
-                    label: d.name,
-                  }))}
-                  disabled={hierarchyLocked || mutation.isPending}
+                  options={
+                    isRestrictedEditor
+                      ? [
+                          {
+                            value: departmentId,
+                            label:
+                              user.department_name ||
+                              (departmentId
+                                ? 'Assigned department'
+                                : 'Not assigned'),
+                          },
+                        ]
+                      : departments.map((d) => ({
+                          value: d.id,
+                          label: d.name,
+                        }))
+                  }
+                  disabled={departmentLocked || mutation.isPending}
+                  placeholder={
+                    departmentId ? 'Assigned department' : 'Not assigned'
+                  }
                   className="[&>button]:pl-11"
                 />
               </div>
             </label>
           </div>
-          {!hierarchyLocked && role === 'INTERN' && (
+          {!departmentLocked && role === 'INTERN' && (
             <div className="mt-5">
               <p className="mb-2 text-xs font-extrabold uppercase text-slate-500">
                 Assign Manager
@@ -599,7 +634,7 @@ export default function EditUserModal({ open, user, onClose }) {
               />
             </div>
           )}
-          {!hierarchyLocked && ['TL', 'CAPTAIN'].includes(role) && (
+          {canEditHierarchy && ['TL', 'CAPTAIN'].includes(role) && (
             <section className="mt-5 space-y-4">
               {role === 'TL' && (
                 <AssignmentGroup
@@ -727,7 +762,7 @@ export default function EditUserModal({ open, user, onClose }) {
                 }
                 description={
                   role === 'TL'
-                    ? 'Captain-managed interns are visible through the hierarchy and are not selected here. Selecting one transfers the intern directly to this TL.'
+                    ? 'Senior-TL-managed and unassigned interns can be transferred directly to this TL. Captain-managed interns remain visible through the hierarchy and are not selected here.'
                     : 'Assign interns who report directly to this Captain.'
                 }
                 singularLabel="Intern"

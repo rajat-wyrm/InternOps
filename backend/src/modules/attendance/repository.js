@@ -119,6 +119,19 @@ async function getDepartmentAttendanceSheet({
     : [departmentId, requesterId];
 
   const membersResult = await pool.query(memberScope, memberParams);
+  const scopedMemberIds = membersResult.rows.map((member) => member.id);
+  let availableMonths = [];
+  if (scopedMemberIds.length > 0) {
+    const availableMonthsResult = await pool.query(
+      `SELECT DISTINCT TO_CHAR(a.date, 'YYYY-MM') AS month
+       FROM attendance a
+       WHERE a.user_id = ANY($1::uuid[])
+         AND a.deleted_at IS NULL
+       ORDER BY month ASC`,
+      [scopedMemberIds]
+    );
+    availableMonths = availableMonthsResult.rows.map((row) => row.month);
+  }
   const members = membersResult.rows
     .filter((member) => memberAppliesToRange(member, from, to))
     .sort((a, b) => {
@@ -141,7 +154,12 @@ async function getDepartmentAttendanceSheet({
   const memberIds = members.map((member) => member.id);
 
   if (memberIds.length === 0) {
-    return { members: [], dates: [], records: [] };
+    return {
+      members: [],
+      dates: [],
+      records: [],
+      available_months: availableMonths,
+    };
   }
 
   const recordsResult = await pool.query(
@@ -168,6 +186,7 @@ async function getDepartmentAttendanceSheet({
     members,
     dates: datesResult.rows.map((row) => row.date),
     records: recordsResult.rows,
+    available_months: availableMonths,
   };
 }
 

@@ -327,7 +327,17 @@ export default function FloatingChatbot() {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [triggerPosition, setTriggerPosition] = useState(() => {
+    try {
+      return (
+        JSON.parse(localStorage.getItem('floating-chatbot-position')) || null
+      );
+    } catch {
+      return null;
+    }
+  });
   const messagesEndRef = useRef(null);
+  const dragRef = useRef(null);
   const inputRef = useRef(null);
 
   const user = useAuthStore((s) => s.user);
@@ -462,22 +472,104 @@ What do you need help with?`;
     ]);
   };
 
+  const clampPosition = useCallback((x, y) => {
+    const margin = 12;
+    const size = 56;
+    return {
+      x: Math.min(Math.max(margin, x), window.innerWidth - size - margin),
+      y: Math.min(Math.max(margin, y), window.innerHeight - size - margin),
+    };
+  }, []);
+  const handleTriggerPointerDown = (event) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const rect = event.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+  };
+  const handleTriggerPointerMove = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (
+      Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 5
+    )
+      drag.moved = true;
+    if (!drag.moved) return;
+    event.preventDefault();
+    setTriggerPosition(
+      clampPosition(event.clientX - drag.offsetX, event.clientY - drag.offsetY)
+    );
+  };
+  const handleTriggerPointerUp = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (!drag.moved) {
+      setOpen((value) => !value);
+      return;
+    }
+    const position = clampPosition(
+      event.clientX - drag.offsetX,
+      event.clientY - drag.offsetY
+    );
+    setTriggerPosition(position);
+    localStorage.setItem('floating-chatbot-position', JSON.stringify(position));
+  };
+  useEffect(() => {
+    if (!triggerPosition) return undefined;
+    const keepInBounds = () =>
+      setTriggerPosition((value) =>
+        value ? clampPosition(value.x, value.y) : value
+      );
+    window.addEventListener('resize', keepInBounds);
+    return () => window.removeEventListener('resize', keepInBounds);
+  }, [clampPosition, triggerPosition]);
+  const panelStyle = (() => {
+    if (!triggerPosition) return undefined;
+    const panelWidth = Math.min(360, window.innerWidth - 24);
+    const panelHeight = Math.min(520, window.innerHeight - 24);
+    const gap = 12;
+    const margin = 12;
+    const triggerSize = 56;
+    const spaceRight = window.innerWidth - (triggerPosition.x + triggerSize);
+    const left =
+      spaceRight >= panelWidth + gap
+        ? triggerPosition.x + triggerSize + gap
+        : Math.max(margin, triggerPosition.x - panelWidth - gap);
+    const top =
+      triggerPosition.y >= panelHeight + gap
+        ? triggerPosition.y - panelHeight - gap
+        : Math.min(
+            triggerPosition.y + triggerSize + gap,
+            window.innerHeight - panelHeight - margin
+          );
+    return { left, top, width: panelWidth, height: panelHeight };
+  })();
   if (!isAllowed) return null;
-
   return (
     <>
       {/* ── Chat panel ───────────────────────────────────────────────────── */}
       <div
-        className={`fixed bottom-24 right-5 z-50 w-[360px] max-w-[calc(100vw-2.5rem)] transition-all duration-300 ease-in-out origin-bottom-right ${
+        className={`fixed z-50 max-w-[calc(100vw-1.5rem)] transition-all duration-300 ease-in-out ${
+          triggerPosition
+            ? 'origin-center'
+            : 'bottom-24 right-5 w-[360px] origin-bottom-right'
+        } ${
           open
-            ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto'
-            : 'opacity-0 scale-95 translate-y-4 pointer-events-none'
+            ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
+            : 'pointer-events-none translate-y-4 scale-95 opacity-0'
         }`}
+        style={panelStyle}
         aria-hidden={!open}
       >
         <div
-          className="flex flex-col rounded-[1.5rem] overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 shadow-2xl shadow-slate-950/20"
-          style={{ height: '520px' }}
+          className="flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 dark:border-slate-700 dark:bg-slate-950"
+          style={triggerPosition ? undefined : { height: '520px' }}
         >
           {/* Header */}
           <div className="relative overflow-hidden bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 text-white shrink-0">
@@ -568,8 +660,22 @@ What do you need help with?`;
       {/* ── Floating trigger button ───────────────────────────────────────── */}
       <button
         id="floating-chatbot-trigger"
-        onClick={() => setOpen((o) => !o)}
-        className={`fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full shadow-2xl shadow-indigo-600/40 flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 ${
+        onPointerDown={handleTriggerPointerDown}
+        onPointerMove={handleTriggerPointerMove}
+        onPointerUp={handleTriggerPointerUp}
+        onPointerCancel={() => {
+          dragRef.current = null;
+        }}
+        style={
+          triggerPosition
+            ? {
+                left: triggerPosition.x,
+                top: triggerPosition.y,
+                touchAction: 'none',
+              }
+            : { touchAction: 'none' }
+        }
+        className={`fixed z-50 w-14 h-14 rounded-full shadow-2xl shadow-indigo-600/40 flex items-center justify-center transition-colors duration-300 hover:scale-105 active:scale-95 ${triggerPosition ? '' : 'bottom-5 right-5'} ${
           open
             ? 'bg-gradient-to-br from-slate-700 to-slate-900 rotate-0'
             : 'bg-gradient-to-br from-indigo-600 to-violet-600'

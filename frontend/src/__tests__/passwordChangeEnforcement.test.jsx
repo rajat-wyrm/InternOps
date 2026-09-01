@@ -13,6 +13,30 @@ describe('first-login password enforcement', () => {
     expect(source).toContain('<Navigate to="/profile" replace />');
   });
 
+  test('skips protected feature flags while a password change is required', () => {
+    const source = read('App.jsx');
+    expect(source).toContain('if (refreshedUser?.mustChangePassword)');
+    expect(source).toContain('resetFlags();');
+    expect(source).toContain('await fetchFlags();');
+    expect(source.indexOf('resetFlags();')).toBeLessThan(
+      source.indexOf('await fetchFlags();')
+    );
+  });
+
+  test('pauses protected layout background activity until password change', () => {
+    const source = read('layouts/DashboardLayout.jsx');
+    expect(source).toContain(
+      'if (!accessToken || user?.mustChangePassword) return undefined;'
+    );
+    expect(source).toContain(
+      'enabled: isDepartmentScopedRole && !user?.mustChangePassword'
+    );
+    expect(source).toContain('enabled: !!user && !user?.mustChangePassword');
+    expect(source).toContain(
+      '[accessToken, queryClient, user?.mustChangePassword]'
+    );
+  });
+
   test('redirects temporary-password login to Profile', () => {
     const source = read('pages/Login.jsx');
     expect(source).toContain(
@@ -30,5 +54,7 @@ describe('first-login password enforcement', () => {
     const clearFlag = source.indexOf('mustChangePassword: false');
     expect(successBlock).toBeGreaterThan(-1);
     expect(clearFlag).toBeGreaterThan(successBlock);
+    expect(source).toContain('await fetchFlags();');
+    expect(source.indexOf('await fetchFlags();')).toBeGreaterThan(clearFlag);
   });
 });

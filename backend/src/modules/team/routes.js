@@ -71,7 +71,13 @@ const updateSchema = z.object(detailFields).superRefine((data, ctx) => {
 });
 const createSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z
+    .string()
+    .min(8)
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/,
+      'Password is too weak. Use at least 8 characters with uppercase, lowercase, number, and special character.'
+    ),
   role: z.enum(['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
   manager_id: z.string().uuid().optional(),
   department_id: z.string().uuid().optional(),
@@ -225,16 +231,46 @@ async function routes(fastify) {
           error: `You can only add members below your own role (${managerRole})`,
         });
       }
-      if (await repo.emailExists(data.email)) {
+      const normalizedEmail = data.email.trim().toLowerCase();
+      if (await repo.emailExists(normalizedEmail)) {
         return reply
           .status(409)
           .send({ error: 'A user with this email already exists' });
       }
 
-      const member = await repo.createMember({
-        ...data,
-        manager_id: managerId,
-      });
+      let member;
+      try {
+        member = await repo.createMember({
+          ...data,
+          email: normalizedEmail,
+          manager_id: managerId,
+        });
+      } catch (error) {
+        if (
+          error.code === '23505' &&
+          error.constraint === 'users_one_senior_tl_per_department'
+        ) {
+          return reply.status(409).send({
+            error: 'This department already has an active Senior TL',
+            code: 'DEPARTMENT_ALREADY_HAS_SENIOR_TL',
+          });
+        }
+        if (
+          error.code === '23514' &&
+          error.constraint === 'users_email_lowercase'
+        ) {
+          return reply.status(400).send({
+            error: 'Email addresses must be lowercase',
+            code: 'EMAIL_MUST_BE_LOWERCASE',
+          });
+        }
+        if (error.code === '23505') {
+          return reply
+            .status(409)
+            .send({ error: 'A user with this email already exists' });
+        }
+        throw error;
+      }
       req.auditOnResponse = {
         userId: req.user.id,
         action: 'MEMBER_CREATED',

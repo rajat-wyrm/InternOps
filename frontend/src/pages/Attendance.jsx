@@ -8,6 +8,7 @@ import AttendanceMarkForm from '../components/AttendanceMarkForm';
 import BulkAttendanceForm from '../components/BulkAttendanceForm';
 import CustomSelect from '../components/CustomSelect';
 import { ApiErrorState } from '../components/ui';
+import { ROLE_LABEL } from '../constants/roles';
 import DepartmentAttendanceSheet from '../components/department/DepartmentAttendanceSheet';
 
 function monthRange(month, today) {
@@ -56,9 +57,16 @@ export default function Attendance({
   const { deptId: routeDeptId } = useParams();
   const deptId = propDeptId || routeDeptId;
   const user = useAuthStore((s) => s.user);
-  const requestedDeptId = deptId || user?.department_id || '';
+  const requestedDeptId =
+    deptId || user?.departmentId || user?.department_id || '';
   const canMark = ['CAPTAIN', 'TL', 'SENIOR_TL'].includes(user?.role);
   const isAdmin = user?.role === 'ADMIN';
+  const canViewAttendanceSheet = [
+    'ADMIN',
+    'SENIOR_TL',
+    'TL',
+    'CAPTAIN',
+  ].includes(user?.role);
   const canViewAttendance = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(
     user?.role
   );
@@ -101,11 +109,11 @@ export default function Attendance({
     setPage(1);
   };
 
-  // Fetch departments if user is Admin
+  // Managers use their first authorized department as the default scope.
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
-    enabled: isAdmin,
+    enabled: isManager && !isProjectView,
   });
 
   // Managers can pick any team member; everyone can always see their own.
@@ -119,16 +127,19 @@ export default function Attendance({
     queryFn: () =>
       api
         .get('/attendance/authorized-members', {
-          params: { department_id: requestedDeptId || undefined },
+          params: isAdmin
+            ? { department_id: requestedDeptId || undefined }
+            : undefined,
         })
-        .then((res) => res.data),
+        .then((res) => res.data || []),
     enabled: canViewAttendance && !isProjectView && !!user?.id,
   });
 
   const teamDeptId = team.find((member) => member.department_id)?.department_id;
-  const resolvedDeptId = requestedDeptId || teamDeptId || '';
+  const assignedDeptId = departments[0]?.id || '';
+  const resolvedDeptId = requestedDeptId || teamDeptId || assignedDeptId;
   const departmentIsResolving =
-    isManager && !isProjectView && !resolvedDeptId && !teamIsError;
+    canViewAttendanceSheet && !isProjectView && !resolvedDeptId && !teamIsError;
 
   const activeDepartment = departments.find(
     (department) => department.id === resolvedDeptId
@@ -164,8 +175,14 @@ export default function Attendance({
           params: { from: sheetFrom, to: sheetTo },
         })
         .then((res) => res.data),
-    enabled: viewAll && !!resolvedDeptId && !isProjectView,
+    enabled: viewAll && !!resolvedDeptId,
   });
+  useEffect(() => {
+    const availableMonths = sheetData?.available_months || [];
+    if (!availableMonths.length || availableMonths.includes(selectedMonth))
+      return;
+    setSelectedMonth(availableMonths[availableMonths.length - 1]);
+  }, [selectedMonth, sheetData?.available_months]);
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['attendance', viewUserId, page],
     queryFn: () =>
@@ -183,7 +200,7 @@ export default function Attendance({
   const effectiveTeam = isProjectView ? roster : team;
 
   useEffect(() => {
-    if (!resolvedDeptId || isProjectView || team.length === 0) return;
+    if (isProjectView || team.length === 0) return;
     const selectedUserIsVisible =
       viewUserId === user?.id ||
       team.some((member) => member.id === viewUserId);
@@ -191,7 +208,7 @@ export default function Attendance({
       setViewUserId(user?.id || sortAttendanceMembers(team)[0].id);
       setPage(1);
     }
-  }, [resolvedDeptId, isProjectView, team, user?.id, viewUserId]);
+  }, [isProjectView, team, user?.id, viewUserId]);
   const selectedName =
     viewUserId === user?.id
       ? 'Me'
@@ -218,8 +235,8 @@ export default function Attendance({
   const attendanceUserOptions = attendanceOptionMembers.map((member) => ({
     value: member.id,
     label: member.isCurrentUser
-      ? `Me (${member.email || 'Current user'}) - ${member.role}`
-      : `${member.full_name || member.email} (${member.role})`,
+      ? `Me (${member.email || 'Current user'}) - ${ROLE_LABEL[member.role] || member.role}`
+      : `${member.full_name || member.email} (${ROLE_LABEL[member.role] || member.role})`,
   }));
 
   return (
@@ -342,6 +359,7 @@ export default function Attendance({
                       View all attendance
                     </button>
                   ) : (
+                    canViewAttendanceSheet &&
                     resolvedDeptId && (
                       <button
                         type="button"
@@ -451,7 +469,9 @@ export default function Attendance({
                         <tr>
                           <th className="px-6 py-4 font-extrabold">Date</th>
                           <th className="px-6 py-4 font-extrabold">Status</th>
-                          <th className="px-6 py-4 font-extrabold">Remarks</th>
+                          <th className="px-6 py-4 text-center font-extrabold">
+                            Remarks
+                          </th>
                         </tr>
                       </thead>
 
@@ -483,8 +503,17 @@ export default function Attendance({
                               </span>
                             </td>
 
-                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                              {a.remarks || 'ΓÇö'}
+                            <td className="px-6 py-4 text-center text-slate-600 dark:text-slate-300">
+                              {a.remarks ? (
+                                a.remarks
+                              ) : (
+                                <span
+                                  className="inline-flex min-h-5 items-center justify-center text-base leading-none"
+                                  aria-label="No remarks"
+                                >
+                                  &mdash;
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -494,8 +523,8 @@ export default function Attendance({
 
                   <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
                     <span>
-                      {total} record{total === 1 ? '' : 's'} ┬╖ page {page} of{' '}
-                      {totalPages}
+                      {total} record{total === 1 ? '' : 's'} &middot; page{' '}
+                      {page} of {totalPages}
                     </span>
 
                     <div className="flex gap-2">
@@ -582,15 +611,27 @@ export default function Attendance({
                       Resolving department attendance...
                     </p>
                   )}
-                  {!isProjectView && resolvedDeptId && (
+                  {isProjectView && onViewAllAttendance ? (
                     <button
                       type="button"
-                      onClick={switchAttendanceView}
-                      disabled={viewTransitioning}
-                      className="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-xl bg-emerald-600 px-5 text-sm font-extrabold text-white transition-colors hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-70 sm:ml-auto sm:w-auto"
+                      onClick={() => onViewAllAttendance(viewUserId)}
+                      className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-extrabold text-white transition-colors hover:bg-emerald-700 sm:ml-auto sm:w-auto"
                     >
-                      {viewAll ? 'Individual View' : 'View All'}
+                      <CalendarCheck className="h-4 w-4" aria-hidden="true" />
+                      View All Attendance
                     </button>
+                  ) : (
+                    canViewAttendanceSheet &&
+                    resolvedDeptId && (
+                      <button
+                        type="button"
+                        onClick={switchAttendanceView}
+                        disabled={viewTransitioning}
+                        className="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-xl bg-emerald-600 px-5 text-sm font-extrabold text-white transition-colors hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-70 sm:ml-auto sm:w-auto"
+                      >
+                        {viewAll ? 'Individual View' : 'View All'}
+                      </button>
+                    )
                   )}
                 </div>
               </>
@@ -657,7 +698,9 @@ export default function Attendance({
                         <tr>
                           <th className="px-6 py-4 font-extrabold">Date</th>
                           <th className="px-6 py-4 font-extrabold">Status</th>
-                          <th className="px-6 py-4 font-extrabold">Remarks</th>
+                          <th className="px-6 py-4 text-center font-extrabold">
+                            Remarks
+                          </th>
                         </tr>
                       </thead>
 
@@ -689,8 +732,17 @@ export default function Attendance({
                               </span>
                             </td>
 
-                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                              {a.remarks || 'ΓÇö'}
+                            <td className="px-6 py-4 text-center text-slate-600 dark:text-slate-300">
+                              {a.remarks ? (
+                                a.remarks
+                              ) : (
+                                <span
+                                  className="inline-flex min-h-5 items-center justify-center text-base leading-none"
+                                  aria-label="No remarks"
+                                >
+                                  &mdash;
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -700,8 +752,8 @@ export default function Attendance({
 
                   <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
                     <span>
-                      {total} record{total === 1 ? '' : 's'} ┬╖ page {page} of{' '}
-                      {totalPages}
+                      {total} record{total === 1 ? '' : 's'} &middot; page{' '}
+                      {page} of {totalPages}
                     </span>
 
                     <div className="flex gap-2">

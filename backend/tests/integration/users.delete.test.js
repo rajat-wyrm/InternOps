@@ -172,7 +172,9 @@ afterAll(async () => {
        WHERE email = ANY($1::text[])`,
       [TEST_EMAILS]
     );
-    await hardDelete(TEST_EMAILS);
+    await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [
+      [secondAdminId, internId].filter(Boolean),
+    ]);
     await resetSeededAdminPassword();
     // Ensure the seeded admin is always left in a clean state
     await pool.query(
@@ -227,20 +229,60 @@ describe('DELETE /api/users/:id — last-active-admin delete guard', () => {
     });
     expect(res.statusCode).toBe(409);
     expect(JSON.parse(res.body).error).toBe(
-      'Admin accounts cannot be deleted.'
+      'Admin accounts cannot be removed.'
     );
   });
   // ── Test 4 ────────────────────────────────────────────────────────────────
-  it('should return 200 when deleting an intern', async () => {
-    const res = await inject('DELETE', `/api/v1/users/${internId}`, {
+  it('requires the exact email before removing an intern', async () => {
+    const missing = await inject('DELETE', `/api/v1/users/${internId}`, {
       payload: {},
     });
+    expect(missing.statusCode).toBe(400);
+    expect(JSON.parse(missing.body).code).toBe('CONFIRMATION_MISMATCH');
+
+    const incorrect = await inject('DELETE', `/api/v1/users/${internId}`, {
+      payload: { confirmation: 'wrong@example.com' },
+    });
+    expect(incorrect.statusCode).toBe(400);
+    expect(JSON.parse(incorrect.body).code).toBe('CONFIRMATION_MISMATCH');
+
+    const stillActive = await pool.query(
+      'SELECT 1 FROM users WHERE id=$1 AND deleted_at IS NULL',
+      [internId]
+    );
+    expect(stillActive.rowCount).toBe(1);
+  });
+
+  it('should return 200 when deleting an intern', async () => {
+    const res = await inject('DELETE', `/api/v1/users/${internId}`, {
+      payload: { confirmation: INTERN_EMAIL },
+    });
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).message).toBe('Soft-deleted');
-    // Restore so afterAll cleanup can hard-delete cleanly
-    await pool.query('UPDATE users SET deleted_at = NULL WHERE email = $1', [
-      INTERN_EMAIL,
-    ]);
+    expect(JSON.parse(res.body).message).toBe(
+      'User access removed and personal data anonymized'
+    );
+    const removed = await pool.query(
+      `SELECT email,full_name,suspended,deleted_at,department_id,manager_id,
+              phone,college,course,year_of_study,position,location,notes,avatar_url
+       FROM users WHERE id=$1`,
+      [internId]
+    );
+    expect(removed.rows[0]).toMatchObject({
+      full_name: 'Removed User',
+      suspended: true,
+      department_id: null,
+      manager_id: null,
+      phone: null,
+      college: null,
+      course: null,
+      year_of_study: null,
+      position: null,
+      location: null,
+      notes: null,
+      avatar_url: null,
+    });
+    expect(removed.rows[0].email).not.toBe(INTERN_EMAIL);
+    expect(removed.rows[0].deleted_at).not.toBeNull();
   });
   // ── Test 5 ────────────────────────────────────────────────────────────────
   it('should throw a DB exception when directly soft-deleting the last active admin via SQL', async () => {

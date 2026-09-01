@@ -110,10 +110,10 @@ async function getUnreadCount(userId, client = pool) {
   return parseInt(res.rows[0].count, 10);
 }
 
-async function notifyAdmin(message) {
+async function notifyAdmin(message, client = pool) {
   const audit = require('../audit/repository'); // Lazy load
 
-  const adminRes = await pool.query(
+  const adminRes = await client.query(
     `SELECT DISTINCT id
      FROM users
      WHERE role = 'ADMIN'
@@ -124,9 +124,14 @@ async function notifyAdmin(message) {
     return;
   }
 
-  for (const { id: adminId } of adminRes.rows) {
-    await send(adminId, message);
+  const notifications = adminRes.rows.map(({ id }) => ({
+    user_id: id,
+    message,
+  }));
 
+  await bulkSend(notifications, client);
+
+  for (const { id: adminId } of adminRes.rows) {
     if (audit && typeof audit.logEvent === 'function') {
       await audit.logEvent({
         userId: adminId,

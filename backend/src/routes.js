@@ -112,6 +112,10 @@ module.exports = async function routes(fastify, opts) {
     prefix: '/github',
   });
 
+  fastify.register(require('./modules/internops/routes'), {
+    prefix: '/internops',
+  });
+
   // Public certificate verification (no auth)
   const { verifyCertificate } = require('./modules/certificates/verify');
   verifyCertificate(fastify);

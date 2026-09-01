@@ -673,7 +673,7 @@ async function preview(buffer, options = {}, emailDetailsBuffer = null) {
       );
     }
     if (
-      options.requesterRole === 'SENIOR_TL' &&
+      options.requesterRole !== 'ADMIN' &&
       (options.requesterDepartmentId !== context.department.id ||
         options.requesterId !== context.manager.id)
     ) {

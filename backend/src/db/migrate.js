@@ -45,6 +45,9 @@ const MIGRATION_RENAMES = {
   '036_workbook_profile_enrichment.sql': '042_workbook_profile_enrichment.sql',
   '037_weekly_rating_import.sql': '043_weekly_rating_import.sql',
   '038_department_senior_tl_unique.sql': '044_department_senior_tl_unique.sql',
+  '029_notices_enhancements.sql': '046_notices_enhancements.sql',
+  '037_add_hr_management_roles.sql': '047_add_hr_management_roles.sql',
+  '046_add_hr_management_roles.sql': '047_add_hr_management_roles.sql',
 };
 
 const fsPromises = fs.promises;

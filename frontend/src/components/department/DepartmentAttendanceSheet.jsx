@@ -398,6 +398,7 @@ export default function DepartmentAttendanceSheet({
                 value={selectedMonth}
                 onChange={onMonthChange}
                 max={new Date().toISOString().slice(0, 7)}
+                allowedMonths={data?.available_months ?? []}
                 className="mt-1"
               />
             </label>
@@ -460,6 +461,10 @@ export default function DepartmentAttendanceSheet({
             >
               Retry
             </button>
+          </div>
+        ) : data?.available_months?.length === 0 ? (
+          <div className="p-12 text-center text-slate-500 dark:text-slate-400">
+            No attendance records are available for this team.
           </div>
         ) : data?.members?.length ? (
           <AttendanceGrid

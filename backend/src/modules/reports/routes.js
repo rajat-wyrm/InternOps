@@ -67,7 +67,11 @@ async function routes(fastify) {
     },
     async (req, reply) => {
       const range = parseDateRange(req.query);
-      return repo.attendanceSummaryByRole(range.from, range.to);
+
+      const departmentId =
+        req.user.role === 'ADMIN' ? null : req.user.departmentId;
+
+      return repo.attendanceSummaryByRole(range.from, range.to, departmentId);
     }
   );
 
@@ -83,7 +87,11 @@ async function routes(fastify) {
     },
     async (req, reply) => {
       const range = parseDateRange(req.query);
-      return repo.ratingsSummary(range.from, range.to);
+
+      const departmentId =
+        req.user.role === 'ADMIN' ? null : req.user.departmentId;
+
+      return repo.ratingsSummary(range.from, range.to, departmentId);
     }
   );
 
@@ -93,8 +101,11 @@ async function routes(fastify) {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
       schema: { tags: ['Reports'], description: 'Task completion statistics' },
     },
-    async () => {
-      return repo.taskCompletionStats();
+    async (req) => {
+      const departmentId =
+        req.user.role === 'ADMIN' ? null : req.user.departmentId;
+
+      return repo.taskCompletionStats(departmentId);
     }
   );
 

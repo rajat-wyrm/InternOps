@@ -49,6 +49,7 @@ const EXEMPTIONS = new Map([
   ['uploads', 'service.js extraction pending'],
   ['uptoskills', 'repository.js extraction pending'],
   ['users', 'service.js extraction pending'],
+  ['internops', 'independent from database (uses CSV parsing)'],
 ]);
 
 // ── Main ─────────────────────────────────────────────────────────────

@@ -22,33 +22,49 @@ async function listUsersPaginated({
   page,
   limit,
   offset,
+  departmentId,
+  filterDepartmentId,
 }) {
-  const where = ['deleted_at IS NULL'];
+  const where = ['users.deleted_at IS NULL'];
   const params = [];
+
+  if (departmentId) {
+    params.push(departmentId);
+    where.push(`users.department_id = $${params.length}`);
+  }
+  if (filterDepartmentId === 'unassigned') {
+    where.push('users.department_id IS NULL');
+  } else if (filterDepartmentId) {
+    params.push(filterDepartmentId);
+    where.push(`users.department_id = $${params.length}`);
+  }
 
   if (search) {
     params.push(`%${search}%`);
     where.push(
-      `(full_name ILIKE $${params.length} OR email ILIKE $${params.length})`
+      `(users.full_name ILIKE $${params.length} OR users.email ILIKE $${params.length})`
     );
   }
 
   if (role) {
     params.push(role);
-    where.push(`role = $${params.length}`);
+    where.push(`users.role = $${params.length}`);
   }
 
   if (typeof suspended === 'boolean') {
     params.push(suspended);
-    where.push(`suspended = $${params.length}`);
+    where.push(`users.suspended = $${params.length}`);
   }
 
   const whereSql = `WHERE ${where.join(' AND ')}`;
 
   const dataSql = `
-    SELECT id, email, role, full_name, suspended, avatar_url, created_at,
-           department_id, manager_id
+    SELECT users.id, users.email, users.role, users.full_name, users.suspended,
+           users.avatar_url, users.created_at, users.department_id, users.manager_id,
+           departments.name AS department_name
     FROM users
+    LEFT JOIN departments ON departments.id = users.department_id
+      AND departments.deleted_at IS NULL
     ${whereSql}
     ORDER BY
       CASE role
@@ -84,12 +100,35 @@ async function listUsersPaginated({
   };
 }
 
+async function listManageableUserIds(requesterId) {
+  const result = await pool.query(
+    `WITH RECURSIVE managed AS (
+       SELECT id, manager_id, role, department_id, 0 AS depth
+       FROM users
+       WHERE manager_id = $1 AND deleted_at IS NULL
+       UNION ALL
+       SELECT u.id, u.manager_id, u.role, u.department_id, managed.depth + 1
+       FROM users u
+       JOIN managed ON u.manager_id = managed.id
+       WHERE u.deleted_at IS NULL AND managed.depth < 100
+     )
+     SELECT DISTINCT id FROM managed`,
+    [requesterId]
+  );
+  return result.rows.map((row) => row.id);
+}
+
 async function getUserById(id) {
   return pool.query(
-    `SELECT id, email, role, full_name, suspended, avatar_url, created_at,
-            department_id, manager_id, phone, college, course, year_of_study, position,
-            joining_date, internship_status, location, notes
-     FROM users WHERE id=$1 AND deleted_at IS NULL`,
+    `SELECT users.id, users.email, users.role, users.full_name, users.suspended,
+            users.avatar_url, users.created_at, users.department_id, users.manager_id,
+            users.phone, users.college, users.course, users.year_of_study, users.position,
+            users.joining_date, users.internship_status, users.location, users.notes,
+            departments.name AS department_name
+     FROM users
+     LEFT JOIN departments ON departments.id = users.department_id
+       AND departments.deleted_at IS NULL
+     WHERE users.id=$1 AND users.deleted_at IS NULL`,
     [id]
   );
 }
@@ -320,11 +359,49 @@ async function activateUser(id) {
   );
 }
 
-async function softDeleteUser(id) {
-  await pool.query(
-    'UPDATE users SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1',
-    [id]
-  );
+async function safelyRemoveUser(id) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const targetResult = await client.query(
+      `SELECT id, email, full_name, role, department_id, manager_id
+       FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`,
+      [id]
+    );
+    const target = targetResult.rows[0];
+    if (!target) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    await client.query(
+      'UPDATE users SET manager_id=$1,updated_at=NOW() WHERE manager_id=$2 AND deleted_at IS NULL',
+      [target.manager_id || null, id]
+    );
+    await client.query('DELETE FROM notifications WHERE user_id=$1', [id]);
+    await client.query('DELETE FROM refresh_tokens WHERE user_id=$1', [id]);
+    await client.query('DELETE FROM password_reset_tokens WHERE user_id=$1', [
+      id,
+    ]);
+    await client.query('DELETE FROM email_verifications WHERE user_id=$1', [
+      id,
+    ]);
+    const removedEmail = `removed+${id}@deleted.invalid`;
+    await client.query(
+      `UPDATE users SET email=$1,full_name='Removed User',phone=NULL,college=NULL,
+       course=NULL,year_of_study=NULL,position=NULL,internship_domain=NULL,
+       offer_letter_url=NULL,location=NULL,notes=NULL,avatar_url=NULL,
+       intern_code=NULL,manager_id=NULL,department_id=NULL,suspended=TRUE,
+       deleted_at=NOW(),updated_at=NOW() WHERE id=$2`,
+      [removedEmail, id]
+    );
+    await client.query('COMMIT');
+    return { ...target, removedEmail };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function countOtherActiveAdmins(id) {
@@ -344,6 +421,7 @@ async function countOtherActiveAdmins(id) {
 module.exports = {
   listUsersByRole,
   listUsersPaginated,
+  listManageableUserIds,
   getUserById,
   getDepartmentById,
   countDirectReports,
@@ -352,6 +430,6 @@ module.exports = {
   updateUser,
   suspendUser,
   activateUser,
-  softDeleteUser,
+  safelyRemoveUser,
   countOtherActiveAdmins,
 };

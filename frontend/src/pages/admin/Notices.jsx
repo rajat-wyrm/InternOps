@@ -14,6 +14,12 @@ import {
   Clock,
   AlertTriangle,
   Newspaper,
+  Upload,
+  Link as LinkIcon,
+  Star,
+  Briefcase,
+  CalendarDays,
+  FileWarning,
 } from 'lucide-react';
 import api from '../../lib/axios';
 import useAuthStore from '../../store/auth';
@@ -27,7 +33,17 @@ import {
 } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
 
-const CATEGORIES = ['GENERAL', 'REMINDER', 'ALERT', 'NEWS'];
+const CATEGORIES = [
+  'GENERAL',
+  'REMINDER',
+  'ALERT',
+  'NEWS',
+  'INTERNSHIP',
+  'ANNOUNCEMENT',
+  'EVENT',
+  'IMPORTANT',
+  'DEADLINE',
+];
 
 const CATEGORY_STYLES = {
   GENERAL:
@@ -37,6 +53,16 @@ const CATEGORY_STYLES = {
   ALERT:
     'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-100 dark:border-rose-900/60',
   NEWS: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-900/60',
+  INTERNSHIP:
+    'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-100 dark:border-purple-900/60',
+  ANNOUNCEMENT:
+    'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-100 dark:border-blue-900/60',
+  EVENT:
+    'bg-fuchsia-50 dark:bg-fuchsia-950/40 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-100 dark:border-fuchsia-900/60',
+  IMPORTANT:
+    'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-100 dark:border-red-900/60',
+  DEADLINE:
+    'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-100 dark:border-orange-900/60',
 };
 
 const CATEGORY_META = {
@@ -44,6 +70,19 @@ const CATEGORY_META = {
   REMINDER: { Icon: Clock, color: 'text-amber-500', label: 'Reminder' },
   ALERT: { Icon: AlertTriangle, color: 'text-rose-500', label: 'Alert' },
   NEWS: { Icon: Newspaper, color: 'text-emerald-500', label: 'News' },
+  INTERNSHIP: {
+    Icon: Briefcase,
+    color: 'text-purple-500',
+    label: 'Internship',
+  },
+  ANNOUNCEMENT: {
+    Icon: Megaphone,
+    color: 'text-blue-500',
+    label: 'Announcement',
+  },
+  EVENT: { Icon: CalendarDays, color: 'text-fuchsia-500', label: 'Event' },
+  IMPORTANT: { Icon: FileWarning, color: 'text-red-500', label: 'Important' },
+  DEADLINE: { Icon: Clock, color: 'text-orange-500', label: 'Deadline' },
 };
 
 const CATEGORY_OPTIONS = CATEGORIES.map((category) => ({
@@ -78,9 +117,87 @@ function NoticeForm({
   const [title, setTitle] = useState(initial.title ?? '');
   const [content, setContent] = useState(initial.content ?? '');
   const [category, setCategory] = useState(initial.category ?? 'GENERAL');
+  const [image_url, setImageUrl] = useState(initial.image_url ?? '');
+  const [action_button_text, setActionButtonText] = useState(
+    initial.action_button_text ?? ''
+  );
+  const [action_button_link, setActionButtonLink] = useState(
+    initial.action_button_link ?? ''
+  );
+  const [is_featured, setIsFeatured] = useState(initial.is_featured ?? false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Image size must be less than 5MB');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError('');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await api.post('/uploads/notice-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImageUrl(res.data.image_url);
+    } catch (err) {
+      setUploadError(err.response?.data?.error || 'Failed to upload image');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-3">
+      {uploadError && (
+        <div className="text-sm text-red-500 p-2 bg-red-50 rounded-lg">
+          {uploadError}
+        </div>
+      )}
+
+      <div className="flex items-center gap-4">
+        {image_url && (
+          <img
+            src={image_url}
+            alt="Notice Preview"
+            className="h-16 w-32 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
+          />
+        )}
+        <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+          {isUploading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Upload className="w-4 h-4 text-slate-500" />
+          )}
+          <span className="text-sm text-slate-600 dark:text-slate-400">
+            {image_url ? 'Change Image' : 'Upload Image (Optional)'}
+          </span>
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageUpload}
+            disabled={isPending || isUploading}
+          />
+        </label>
+        {image_url && (
+          <button
+            type="button"
+            onClick={() => setImageUrl('')}
+            className="text-rose-500 text-sm hover:underline"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+
       <Input
         placeholder="Notice title"
         value={title}
@@ -97,6 +214,44 @@ function NoticeForm({
         className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none transition disabled:opacity-60 disabled:cursor-not-allowed"
       />
 
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Input
+          placeholder="Action Button Text (e.g. Apply Now)"
+          value={action_button_text}
+          onChange={(e) => setActionButtonText(e.target.value)}
+          disabled={isPending}
+          className="flex-1"
+        />
+        <div className="flex-1 relative">
+          <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="url"
+            placeholder="Action Button Link (https://...)"
+            value={action_button_link}
+            onChange={(e) => setActionButtonLink(e.target.value)}
+            disabled={isPending}
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pl-10 pr-4 py-2 text-sm text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-400/50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 ml-1 mb-2">
+        <input
+          type="checkbox"
+          id="is_featured"
+          checked={is_featured}
+          onChange={(e) => setIsFeatured(e.target.checked)}
+          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+        />
+        <label
+          htmlFor="is_featured"
+          className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1"
+        >
+          Mark as Featured{' '}
+          <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+        </label>
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="w-full sm:w-64">
           <CustomSelect
@@ -110,9 +265,19 @@ function NoticeForm({
         </div>
 
         <Btn
-          disabled={isPending || !title.trim() || !content.trim()}
+          disabled={
+            isPending || isUploading || !title.trim() || !content.trim()
+          }
           onClick={() =>
-            onSubmit({ title: title.trim(), content: content.trim(), category })
+            onSubmit({
+              title: title.trim(),
+              content: content.trim(),
+              category,
+              image_url: image_url || null,
+              action_button_text: action_button_text || null,
+              action_button_link: action_button_link || null,
+              is_featured,
+            })
           }
           className="rounded-2xl"
         >
@@ -319,11 +484,25 @@ export default function Notices() {
                   submitLabel="Save Changes"
                 />
               ) : (
-                <div className="flex items-start gap-4">
-                  <CategoryBadge category={n.category} />
+                <div className="flex flex-col sm:flex-row items-start gap-4">
+                  {n.image_url && (
+                    <img
+                      src={n.image_url}
+                      alt={n.title}
+                      className="w-full sm:w-32 h-32 sm:h-20 object-cover rounded-xl shrink-0 border border-slate-200 dark:border-slate-700"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0 flex flex-col gap-1 w-full">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CategoryBadge category={n.category} />
+                      {n.is_featured && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-900/60 uppercase tracking-wide">
+                          <Star className="w-3 h-3 fill-amber-500" /> Featured
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-900 dark:text-white">
+                    <p className="font-bold text-slate-900 dark:text-white text-lg mt-1">
                       {n.title}
                     </p>
 

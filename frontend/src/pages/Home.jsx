@@ -5,6 +5,7 @@ import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, StatCard, ApiErrorState } from '../components/ui';
+import { getTeamRoleBreakdown } from '../utils/teamRoleBreakdown';
 
 function attendancePct(m) {
   const total = Number(m.attendance_total);
@@ -80,6 +81,7 @@ function ManagerHome({ user }) {
 
   const internCount = team.filter((member) => member.role === 'INTERN').length;
   const isAdmin = user?.role === 'ADMIN';
+  const memberBreakdown = getTeamRoleBreakdown(user?.role, team);
   const pcts = team
     .map(attendancePct)
     .filter((percentage) => Number.isFinite(percentage));
@@ -128,34 +130,32 @@ function ManagerHome({ user }) {
           label={isAdmin ? 'Total team members' : 'Team members'}
           value={team.length}
           sub={
-            isAdmin ? (
+            memberBreakdown.length ? (
               <span className="block leading-5">
-                <span className="flex items-center gap-2 whitespace-nowrap">
-                  <span>
-                    {seniorTlCount}{' '}
-                    {seniorTlCount === 1 ? 'Senior TL' : 'Senior TLs'}
+                {memberBreakdown.map((row, rowIndex) => (
+                  <span
+                    key={row.map(({ role }) => role).join('-')}
+                    className={rowIndex > 0 ? 'block' : 'block'}
+                  >
+                    {row.map(({ role, count, label }, itemIndex) => (
+                      <span
+                        key={role}
+                        className="inline-block whitespace-nowrap"
+                      >
+                        {itemIndex > 0 && (
+                          <span className="mx-2 font-extrabold text-indigo-400 dark:text-indigo-300">
+                            •
+                          </span>
+                        )}
+                        {count} {label}
+                      </span>
+                    ))}
                   </span>
-
-                  <span className="text-slate-400 dark:text-slate-500">•</span>
-
-                  <span>
-                    {tlCount} {tlCount === 1 ? 'TL' : 'TLs'}
-                  </span>
-                </span>
-
-                <span className="mt-1 flex items-center gap-2 whitespace-nowrap">
-                  <span>
-                    {captainCount} {captainCount === 1 ? 'Captain' : 'Captains'}
-                  </span>
-
-                  <span className="text-slate-400 dark:text-slate-500">•</span>
-
-                  <span>
-                    {internCount} {internCount === 1 ? 'Intern' : 'Interns'}
-                  </span>
-                </span>
+                ))}
               </span>
-            ) : undefined
+            ) : (
+              'No team members'
+            )
           }
           icon="👥"
           gradient="from-indigo-500 to-blue-600"

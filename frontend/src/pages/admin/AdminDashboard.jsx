@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   useQuery,
   useMutation,
@@ -14,13 +15,16 @@ import {
   Filter,
 } from 'lucide-react';
 import api from '../../lib/axios';
+import useAuthStore from '../../store/auth';
 import { Card, Spinner, EmptyState } from '../../components/ui';
 import UserActionMenu from '../../components/UserActionMenu';
 import CreateUserModal from '../../components/admin/CreateUserModal';
 import EditUserModal from '../../components/admin/EditUserModal';
+import DeleteUserModal from '../../components/admin/DeleteUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
 import WorkbookImportModal from '../../components/admin/WorkbookImportModal';
+import { ROLE_LABEL } from '../../constants/roles';
 
 const ROLE_COLOR = {
   ADMIN:
@@ -48,7 +52,6 @@ const AVATAR_COLOR = {
 
 const ROLE_OPTIONS = [
   { value: '', label: 'All roles' },
-  { value: 'ADMIN', label: 'Admin' },
   { value: 'SENIOR_TL', label: 'Senior TL' },
   { value: 'TL', label: 'TL' },
   { value: 'CAPTAIN', label: 'Captain' },
@@ -74,14 +77,22 @@ function initials(u) {
 }
 
 export default function AdminDashboard() {
+  const currentUser = useAuthStore((state) => state.user);
+  const isAdmin = currentUser?.role === 'ADMIN';
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState(
+    () => searchParams.get('departmentId') || ''
+  );
   const [deletingUserId, setDeletingUserId] = useState(null);
+  const [deletingUser, setDeletingUser] = useState(null);
+  const [actionError, setActionError] = useState('');
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [bulkUserOpen, setBulkUserOpen] = useState(false);
@@ -98,6 +109,19 @@ export default function AdminDashboard() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/departments').then((res) => res.data || []),
+    enabled: isAdmin,
+  });
+  const departmentOptions = [
+    { value: '', label: 'All departments' },
+    ...departments.map((department) => ({
+      value: department.id,
+      label: department.name,
+    })),
+    { value: 'unassigned', label: 'Not assigned' },
+  ];
   const suspendedFilter =
     statusFilter === 'active'
       ? false
@@ -113,6 +137,7 @@ export default function AdminDashboard() {
       debouncedSearch,
       roleFilter,
       statusFilter,
+      departmentFilter,
     ],
     queryFn: () =>
       api
@@ -123,6 +148,7 @@ export default function AdminDashboard() {
             search: debouncedSearch || undefined,
             role: roleFilter || undefined,
             suspended: suspendedFilter,
+            department_id: isAdmin ? departmentFilter || undefined : undefined,
           },
         })
         .then((res) => res.data),
@@ -134,20 +160,47 @@ export default function AdminDashboard() {
 
   const suspendMut = useMutation({
     mutationFn: (id) => api.patch(`/users/${id}/suspend`),
-    onSuccess: invalidateUsers,
+    onSuccess: () => {
+      setActionError('');
+      invalidateUsers();
+    },
+    onError: (requestError) =>
+      setActionError(
+        requestError.response?.data?.error || 'User action failed'
+      ),
   });
 
   const activateMut = useMutation({
     mutationFn: (id) => api.patch(`/users/${id}/activate`),
-    onSuccess: invalidateUsers,
+    onSuccess: () => {
+      setActionError('');
+      invalidateUsers();
+    },
+    onError: (requestError) =>
+      setActionError(
+        requestError.response?.data?.error || 'User action failed'
+      ),
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id) => api.delete(`/users/${id}`),
-    onSuccess: invalidateUsers,
+    mutationFn: ({ id, confirmation }) =>
+      api.delete(`/users/${id}`, {
+        data: { confirmation },
+        _suppressGlobalError: true,
+      }),
+    onSuccess: () => {
+      setActionError('');
+      invalidateUsers();
+    },
+    onError: (requestError) =>
+      setActionError(
+        requestError.response?.data?.error || 'User deletion failed'
+      ),
     onSettled: () => setDeletingUserId(null),
   });
 
+  const canManageUser = (target) =>
+    isAdmin ? target.id !== currentUser?.id : target.can_manage === true;
   const rows = data?.data ?? data?.users ?? data?.items ?? [];
   const total = data?.total ?? data?.count ?? rows.length;
   const totalPages = Math.max(Math.ceil(total / limit), 1);
@@ -157,6 +210,10 @@ export default function AdminDashboard() {
     setPage(1);
   };
 
+  const handleDepartmentFilterChange = (value) => {
+    setDepartmentFilter(value);
+    setPage(1);
+  };
   const handleStatusFilterChange = (value) => {
     setStatusFilter(value);
     setPage(1);
@@ -164,13 +221,8 @@ export default function AdminDashboard() {
 
   const handleDelete = (user) => {
     if (deleteMut.isPending || deletingUserId === user.id) return;
-
-    if (
-      confirm(`Delete ${user.full_name || user.email}? This cannot be undone.`)
-    ) {
-      setDeletingUserId(user.id);
-      deleteMut.mutate(user.id);
-    }
+    setActionError('');
+    setDeletingUser(user);
   };
 
   return (
@@ -204,12 +256,14 @@ export default function AdminDashboard() {
           >
             <span>Preview Workbook</span>
           </button>
-          <button
-            onClick={() => setBulkUserOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
-          >
-            <span>+ Bulk Add</span>
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setBulkUserOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
+            >
+              <span>+ Bulk Add</span>
+            </button>
+          )}
           <button
             onClick={() => setCreateUserOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
@@ -233,7 +287,7 @@ export default function AdminDashboard() {
               </h2>
 
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Search users and refine by role or account status.
+                Search users and refine by role, department, or account status.
               </p>
             </div>
           </div>
@@ -264,6 +318,15 @@ export default function AdminDashboard() {
             className="w-full sm:w-44"
           />
 
+          {isAdmin && (
+            <CustomSelect
+              value={departmentFilter}
+              onChange={handleDepartmentFilterChange}
+              options={departmentOptions}
+              placeholder="All departments"
+              className="w-full sm:w-52"
+            />
+          )}
           <CustomSelect
             value={statusFilter}
             onChange={handleStatusFilterChange}
@@ -296,6 +359,18 @@ export default function AdminDashboard() {
           </button>
         </div>
       )}
+      {actionError && (
+        <div className="mb-5 flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError('')}
+            className="ml-4 font-extrabold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {/* Users Table */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 overflow-hidden shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         {isLoading ? (
@@ -303,12 +378,12 @@ export default function AdminDashboard() {
         ) : rows.length === 0 ? (
           <EmptyState
             title={
-              search || roleFilter || statusFilter
+              search || roleFilter || statusFilter || departmentFilter
                 ? 'No users found'
                 : 'No users yet'
             }
             text={
-              search || roleFilter || statusFilter
+              search || roleFilter || statusFilter || departmentFilter
                 ? 'No users were found matching those criteria.'
                 : 'New users will appear here.'
             }
@@ -321,13 +396,18 @@ export default function AdminDashboard() {
                   <th className="px-6 py-4 font-extrabold whitespace-nowrap">
                     User
                   </th>
-                  <th className="px-6 py-4 font-extrabold whitespace-nowrap">
+                  <th className="px-6 py-4 text-center font-extrabold whitespace-nowrap">
                     Role
                   </th>
-                  <th className="px-6 py-4 font-extrabold whitespace-nowrap">
+                  {isAdmin && (
+                    <th className="px-6 py-4 text-center font-extrabold whitespace-nowrap">
+                      Department
+                    </th>
+                  )}
+                  <th className="px-6 py-4 text-center font-extrabold whitespace-nowrap">
                     Status
                   </th>
-                  <th className="px-6 py-4 font-extrabold text-right whitespace-nowrap">
+                  <th className="px-6 py-4 text-right font-extrabold whitespace-nowrap">
                     Actions
                   </th>
                 </tr>
@@ -365,17 +445,24 @@ export default function AdminDashboard() {
                       </div>
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 text-center">
                       <span
                         className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
                           ROLE_COLOR[u.role] || ROLE_COLOR.INTERN
                         }`}
                       >
-                        {u.role}
+                        {ROLE_LABEL[u.role] || u.role}
                       </span>
                     </td>
+                    {isAdmin && (
+                      <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap text-center">
+                        {u.role === 'ADMIN'
+                          ? 'Platform-wide'
+                          : u.department_name || 'Not assigned'}
+                      </td>
+                    )}
 
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 text-center">
                       <span
                         className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
                           u.suspended
@@ -389,19 +476,30 @@ export default function AdminDashboard() {
 
                     <td className="px-6 py-4 text-right">
                       <div className="inline-flex text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 transition">
-                        <UserActionMenu
-                          user={u}
-                          busy={
-                            deletingUserId === u.id ||
-                            deleteMut.isPending ||
-                            suspendMut.isPending ||
-                            activateMut.isPending
-                          }
-                          onEdit={setEditingUser}
-                          onSuspend={(target) => suspendMut.mutate(target.id)}
-                          onActivate={(target) => activateMut.mutate(target.id)}
-                          onDelete={handleDelete}
-                        />
+                        {canManageUser(u) && (
+                          <UserActionMenu
+                            user={u}
+                            busy={
+                              deletingUserId === u.id ||
+                              deleteMut.isPending ||
+                              suspendMut.isPending ||
+                              activateMut.isPending
+                            }
+                            onEdit={(target) => {
+                              setActionError('');
+                              setEditingUser(target);
+                            }}
+                            onSuspend={(target) => {
+                              setActionError('');
+                              suspendMut.mutate(target.id);
+                            }}
+                            onActivate={(target) => {
+                              setActionError('');
+                              activateMut.mutate(target.id);
+                            }}
+                            onDelete={handleDelete}
+                          />
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -443,6 +541,24 @@ export default function AdminDashboard() {
           )}
         </div>
       )}
+      <DeleteUserModal
+        user={deletingUser}
+        pending={deleteMut.isPending}
+        error={actionError}
+        onClose={() => {
+          if (!deleteMut.isPending) {
+            setDeletingUser(null);
+            setActionError('');
+          }
+        }}
+        onConfirm={(confirmation) => {
+          setDeletingUserId(deletingUser.id);
+          deleteMut.mutate(
+            { id: deletingUser.id, confirmation },
+            { onSuccess: () => setDeletingUser(null) }
+          );
+        }}
+      />
       <CreateUserModal
         open={createUserOpen}
         onClose={() => setCreateUserOpen(false)}

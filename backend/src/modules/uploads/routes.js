@@ -118,6 +118,65 @@ async function routes(fastify) {
     }
   );
 
+  // Upload a notice image
+  fastify.post(
+    '/notice-image',
+    {
+      preHandler: [auth, sanitize],
+      schema: {
+        tags: ['Uploads'],
+        description: 'Upload a notice image (multipart)',
+      },
+    },
+    async (req, reply) => {
+      const data = await req.file();
+      if (!data) return reply.status(400).send({ error: 'No file uploaded' });
+
+      const ext = path.extname(data.filename || '').toLowerCase();
+      if (!ALLOWED.includes(data.mimetype) || !ALLOWED_EXTS.includes(ext)) {
+        return reply.status(400).send({ error: 'Unsupported file type' });
+      }
+
+      const buffer = await data.toBuffer();
+
+      if (data.file.truncated) {
+        return reply
+          .status(413)
+          .send({ error: 'File exceeds maximum size of 5MB' });
+      }
+
+      const detectedMime = detectMimeFromBuffer(buffer);
+      if (!detectedMime || detectedMime !== data.mimetype) {
+        return reply
+          .status(400)
+          .send({ error: 'File contents do not match declared image type' });
+      }
+
+      const fileName = `notice_${req.user.id}_${crypto.randomBytes(6).toString('hex')}${ext}`;
+      const uploadPath = path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        config.uploadDir
+      );
+
+      const targetFilePath = path.resolve(uploadPath, fileName);
+      const absoluteUploadPath = path.resolve(uploadPath);
+
+      if (!targetFilePath.startsWith(absoluteUploadPath)) {
+        return reply.status(400).send({ error: 'Invalid file path' });
+      }
+
+      fs.mkdirSync(uploadPath, { recursive: true });
+      fs.writeFileSync(targetFilePath, buffer);
+
+      const url = `/uploads/${fileName}`;
+
+      return { success: true, image_url: url };
+    }
+  );
+
   // Remove the current user's avatar
   fastify.delete(
     '/avatar',

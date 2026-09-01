@@ -77,6 +77,18 @@ describe('NoticeBoard Component', () => {
     expect(screen.getAllByRole('heading', { level: 3 }).length).toBe(6);
   });
 
+  it('keeps a stable panel height while filters change', () => {
+    const { container } = render(<NoticeBoard />);
+    const board = container.firstElementChild;
+    expect(board).toHaveClass('h-[560px]');
+    fireEvent.click(screen.getByRole('button', { name: 'MEDIUM' }));
+    expect(board).toHaveClass('h-[560px]');
+    expect(container.querySelector('.notice-scrollbar')).toHaveClass(
+      'min-h-0',
+      'flex-1',
+      'overflow-y-auto'
+    );
+  });
   it('allows clearing notices and reloading sample notices', () => {
     render(<NoticeBoard />);
 

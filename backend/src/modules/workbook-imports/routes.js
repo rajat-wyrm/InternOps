@@ -16,7 +16,7 @@ async function routes(fastify) {
     '/preview',
     {
       config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
       schema: {
         tags: ['Workbook Imports'],
         description:
@@ -92,7 +92,7 @@ async function routes(fastify) {
     '/execute',
     {
       config: { rateLimit: { max: 2, timeWindow: '5 minutes' } },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
       schema: {
         tags: ['Workbook Imports'],
         description:

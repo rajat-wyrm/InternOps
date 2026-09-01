@@ -50,10 +50,7 @@ export default function CustomMonthPicker({
   const minimum = parseMonth(min);
   const maximum = parseMonth(max);
   const allowed = useMemo(
-    () =>
-      Array.isArray(allowedMonths) && allowedMonths.length
-        ? new Set(allowedMonths)
-        : null,
+    () => (Array.isArray(allowedMonths) ? new Set(allowedMonths) : null),
     [allowedMonths]
   );
   const allowedYears = useMemo(
@@ -141,7 +138,8 @@ export default function CustomMonthPicker({
   };
 
   const moveYear = (direction) => {
-    if (!allowedYears.length) {
+    if (allowed && !allowedYears.length) return;
+    if (!allowed) {
       setViewYear((year) => year + direction);
       return;
     }
@@ -176,7 +174,9 @@ export default function CustomMonthPicker({
             type="button"
             onClick={() => moveYear(-1)}
             disabled={Boolean(
-              allowedYears.length && viewYear <= allowedYears[0]
+              allowed
+                ? !allowedYears.length || viewYear <= allowedYears[0]
+                : minimum && viewYear <= minimum.year
             )}
             className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-400 dark:hover:bg-slate-800"
             aria-label="Previous year"
@@ -190,8 +190,9 @@ export default function CustomMonthPicker({
             type="button"
             onClick={() => moveYear(1)}
             disabled={Boolean(
-              allowedYears.length
-                ? viewYear >= allowedYears[allowedYears.length - 1]
+              allowed
+                ? !allowedYears.length ||
+                    viewYear >= allowedYears[allowedYears.length - 1]
                 : maximum && viewYear >= maximum.year
             )}
             className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-400 dark:hover:bg-slate-800"

@@ -427,12 +427,13 @@ async function callFastAPI(messages) {
   return data.content;
 }
 
-async function callFastAPIImage(prompt) {
+async function callFastAPIImage(prompt, authorization) {
   const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
   const response = await fetchWithTimeout(`${baseUrl}/ai/generate-image`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: authorization,
     },
     body: JSON.stringify({ prompt }),
   });
@@ -453,8 +454,8 @@ async function callFastAPIImage(prompt) {
   return data;
 }
 
-async function generateAIImage({ prompt }) {
-  return callFastAPIImage(prompt);
+async function generateAIImage({ prompt, authorization }) {
+  return callFastAPIImage(prompt, authorization);
 }
 
 const providerRegistry = {

@@ -324,7 +324,7 @@ async function execute(workbookBuffer, emailBuffer, options) {
       );
     }
     if (
-      options.requesterRole === 'SENIOR_TL' &&
+      options.requesterRole !== 'ADMIN' &&
       (options.requesterId !== manager.id ||
         options.requesterDepartmentId !== department.id)
     ) {

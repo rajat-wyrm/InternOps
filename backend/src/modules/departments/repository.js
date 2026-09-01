@@ -75,62 +75,121 @@ async function getDepartmentTeams(departmentId) {
   );
   return rows;
 }
-async function deleteDepartment(id, force = false) {
-  const { rows } = await pool.query(
-    `
-    SELECT COUNT(*)::int AS user_count
-    FROM users
-    WHERE department_id = $1
-      AND deleted_at IS NULL
-    `,
-    [id]
-  );
-
-  const userCount = Number(rows[0].user_count);
-
-  if (userCount > 0 && !force) {
-    return {
-      success: false,
-      userCount,
-    };
-  }
-
-  if (force) {
-    await pool.query(
-      `
-      UPDATE users
-      SET department_id = NULL
-      WHERE department_id = $1
-        AND deleted_at IS NULL
-      `,
+async function deleteDepartment(id, confirmedName = null) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SET LOCAL lock_timeout = '10s'");
+    await client.query("SET LOCAL statement_timeout = '30s'");
+    const departmentResult = await client.query(
+      `SELECT id,name FROM departments WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`,
       [id]
     );
-  }
-
-  const result = await pool.query(
-    `
-    UPDATE departments
-    SET deleted_at = NOW(),
-        updated_at = NOW()
-    WHERE id = $1
-    RETURNING id
-    `,
-    [id]
-  );
-
-  if (result.rowCount === 0) {
+    const department = departmentResult.rows[0];
+    if (!department) {
+      await client.query('ROLLBACK');
+      return { success: false, notFound: true, userCount: 0 };
+    }
+    const membersResult = await client.query(
+      `SELECT id,role,manager_id FROM users
+       WHERE department_id=$1 AND deleted_at IS NULL AND role <> 'ADMIN' FOR UPDATE`,
+      [id]
+    );
+    const members = membersResult.rows;
+    const roleCounts = members.reduce(
+      (counts, member) => {
+        counts[member.role] = (counts[member.role] || 0) + 1;
+        return counts;
+      },
+      { SENIOR_TL: 0, TL: 0, CAPTAIN: 0, INTERN: 0 }
+    );
+    if (members.length && confirmedName !== department.name) {
+      await client.query('ROLLBACK');
+      return {
+        success: false,
+        confirmationRequired: true,
+        userCount: members.length,
+        roleCounts,
+      };
+    }
+    const memberIds = members.map((member) => member.id);
+    if (memberIds.length) {
+      await client.query(
+        `UPDATE users SET manager_id=NULL,updated_at=NOW()
+         WHERE manager_id=ANY($1::uuid[]) AND NOT (id=ANY($1::uuid[]))`,
+        [memberIds]
+      );
+      await client.query(
+        'DELETE FROM notifications WHERE user_id=ANY($1::uuid[])',
+        [memberIds]
+      );
+      await client.query(
+        'DELETE FROM refresh_tokens WHERE user_id=ANY($1::uuid[])',
+        [memberIds]
+      );
+      await client.query(
+        'DELETE FROM password_reset_tokens WHERE user_id=ANY($1::uuid[])',
+        [memberIds]
+      );
+      await client.query(
+        'DELETE FROM email_verifications WHERE user_id=ANY($1::uuid[])',
+        [memberIds]
+      );
+      await client.query('DELETE FROM ai_usage WHERE user_id=ANY($1::uuid[])', [
+        memberIds,
+      ]);
+      await client.query(
+        'DELETE FROM assessments WHERE user_id=ANY($1::uuid[])',
+        [memberIds]
+      );
+      await client.query(
+        'DELETE FROM attendance_exemptions WHERE user_id=ANY($1::uuid[])',
+        [memberIds]
+      );
+      await client.query(
+        'DELETE FROM meeting_attendees WHERE user_id=ANY($1::uuid[])',
+        [memberIds]
+      );
+      await client.query(
+        'DELETE FROM onboarding_checklists WHERE intern_id=ANY($1::uuid[])',
+        [memberIds]
+      );
+      await client.query(
+        'DELETE FROM proof_submissions WHERE intern_id=ANY($1::uuid[])',
+        [memberIds]
+      );
+      await client.query(
+        'DELETE FROM task_assignments WHERE user_id=ANY($1::uuid[])',
+        [memberIds]
+      );
+      await client.query(
+        `UPDATE users SET email='removed+'||id::text||'@deleted.invalid',
+         full_name='Removed User',phone=NULL,college=NULL,course=NULL,
+         year_of_study=NULL,position=NULL,internship_domain=NULL,
+         offer_letter_url=NULL,location=NULL,notes=NULL,avatar_url=NULL,
+         intern_code=NULL,manager_id=NULL,department_id=NULL,suspended=TRUE,
+         deleted_at=NOW(),updated_at=NOW() WHERE id=ANY($1::uuid[])`,
+        [memberIds]
+      );
+    }
+    await client.query(
+      `UPDATE departments SET deleted_at=NOW(),updated_at=NOW() WHERE id=$1`,
+      [id]
+    );
+    await client.query('COMMIT');
     return {
-      success: false,
-      userCount: 0,
+      success: true,
+      userCount: members.length,
+      roleCounts,
+      departmentName: department.name,
     };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
   }
-
-  return {
-    success: true,
-    userCount,
-  };
 }
-
 async function handoverSeniorTl(
   departmentId,
   outgoingLeadId,

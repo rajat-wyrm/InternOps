@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, CalendarCheck, Star, Users } from 'lucide-react';
 import api from '../../lib/axios';
+import { ROLE_LABEL } from '../../constants/roles';
 import {
   PageHeader,
   Card,
@@ -34,12 +35,12 @@ export default function ProjectDetailPage() {
   const [tab, setTab] = useState('attendance');
 
   // Queries
-  const { data: departments = [] } = useQuery({
+  const departmentsQuery = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((r) => r.data),
   });
 
-  const { data: teams = [] } = useQuery({
+  const teamsQuery = useQuery({
     queryKey: ['departmentTeams', deptId],
     queryFn: () => api.get(`/departments/${deptId}/teams`).then((r) => r.data),
     enabled: !!deptId,
@@ -49,11 +50,16 @@ export default function ProjectDetailPage() {
     queryKey: ['fullTeam', leadId],
     queryFn: () =>
       api
-        .get('/hierarchy/full-team', { params: { managerId: leadId } })
+        .get('/hierarchy/full-team', {
+          params: { managerId: leadId, limit: 100 },
+          _suppressGlobalError: true,
+        })
         .then((r) => r.data),
     enabled: !!leadId,
   });
 
+  const departments = departmentsQuery.data || [];
+  const teams = teamsQuery.data || [];
   const department = departments.find((item) => item.id === deptId);
   const lead = teams.find((item) => item.lead_id === leadId);
 
@@ -71,8 +77,9 @@ export default function ProjectDetailPage() {
     return list;
   }, [rosterQuery.data?.data, lead]);
 
-  const isLoading = rosterQuery.isLoading;
-  const error = rosterQuery.error;
+  const isLoading =
+    departmentsQuery.isLoading || teamsQuery.isLoading || rosterQuery.isLoading;
+  const error = departmentsQuery.error || teamsQuery.error || rosterQuery.error;
 
   return (
     <div className="animate-fade-in-up">
@@ -84,36 +91,48 @@ export default function ProjectDetailPage() {
         >
           <span className="inline-flex items-center gap-2">
             <ArrowLeft className="w-4 h-4" />
-            Back to Projects
+            Back to Department
           </span>
         </Btn>
 
         <PageHeader
-          title={lead?.lead_name || 'Project Detail'}
+          title={lead?.lead_name || 'Hierarchy Detail'}
           subtitle={`${department?.name || 'Department'} · roster, attendance, and ratings`}
           icon={<Users className="w-6 h-6" />}
         />
       </div>
 
-      {isLoading ? (
+      {error ? (
+        <ApiErrorState
+          error={error}
+          title={
+            error?.response?.status === 403
+              ? 'Access denied'
+              : 'Failed to load hierarchy detail'
+          }
+          fallback={
+            error?.response?.status === 403
+              ? 'This hierarchy detail is not available for your account.'
+              : 'Unable to load this hierarchy roster.'
+          }
+          onRetry={() => navigate(`/departments/${deptId}/projects`)}
+        />
+      ) : isLoading ? (
         <div className="flex justify-center p-8">
           <Spinner />
         </div>
-      ) : error ? (
-        <ApiErrorState
-          error={error}
-          title="Failed to load project detail"
-          fallback="Unable to load this project's roster."
-        />
       ) : (
         <>
           <Card className="p-5 mb-5">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <SummaryPill
-                label="Project lead"
+                label="Hierarchy lead"
                 value={lead?.lead_name || leadId}
               />
-              <SummaryPill label="Role" value={lead?.role || '—'} />
+              <SummaryPill
+                label="Role"
+                value={ROLE_LABEL[lead?.role] || lead?.role || '-'}
+              />
               <SummaryPill label="Roster size" value={roster.length} />
             </div>
           </Card>

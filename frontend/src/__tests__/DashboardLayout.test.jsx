@@ -89,7 +89,7 @@ describe('DashboardLayout Component Tests', () => {
   const renderLayout = () => {
     return render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={['/notifications']}>
           <DashboardLayout />
         </MemoryRouter>
       </QueryClientProvider>
@@ -111,7 +111,9 @@ describe('DashboardLayout Component Tests', () => {
     expect(screen.getByText('Ratings')).toBeInTheDocument();
     expect(screen.getByText('Tasks')).toBeInTheDocument();
     expect(screen.getByText('Meetings')).toBeInTheDocument();
-    expect(screen.getByText('Notifications')).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('link', { name: 'Notifications' })[0]
+    ).toHaveAttribute('href', '/notifications');
     expect(screen.getByText('Profile')).toBeInTheDocument();
     expect(screen.getByText('Sessions')).toBeInTheDocument();
 

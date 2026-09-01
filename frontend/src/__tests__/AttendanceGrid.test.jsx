@@ -172,6 +172,34 @@ describe('attendance grid contracts', () => {
       "import CustomMonthPicker from '../CustomMonthPicker'"
     );
   });
+  test('restricts attendance month selection to months with records', () => {
+    const repository = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        '../../../backend/src/modules/attendance/repository.js'
+      ),
+      'utf8'
+    );
+    const monthPicker = fs.readFileSync(
+      path.resolve(__dirname, '../components/CustomMonthPicker.jsx'),
+      'utf8'
+    );
+    expect(repository).toContain("TO_CHAR(a.date, 'YYYY-MM') AS month");
+    expect(repository).toContain('a.deleted_at IS NULL');
+    expect(repository).toContain('available_months: availableMonths');
+    expect(sheet).toContain('allowedMonths={data?.available_months ?? []}');
+    expect(sheet).toContain(
+      'No attendance records are available for this team.'
+    );
+    expect(attendance).toContain('sheetData?.available_months || []');
+    expect(attendance).toContain('availableMonths[availableMonths.length - 1]');
+    expect(monthPicker).toContain(
+      'Array.isArray(allowedMonths) ? new Set(allowedMonths) : null'
+    );
+    expect(monthPicker).toContain(
+      'if (allowed && !allowedYears.length) return;'
+    );
+  });
   test('waits for month popup positioning before display', () => {
     const monthPicker = fs.readFileSync(
       path.resolve(__dirname, '../components/CustomMonthPicker.jsx'),

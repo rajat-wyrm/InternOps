@@ -124,9 +124,9 @@ export default function NoticeBoard({ initialNotices = SAMPLE_NOTICES }) {
   const resetNotices = () => setNotices(initialNotices);
 
   return (
-    <div className="w-full space-y-4">
+    <div className="flex h-[560px] w-full min-h-0 flex-col gap-4">
       {/* Notice Board Sub-Header / Quick Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-white/10 text-xs">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2 text-xs">
         <div className="flex items-center gap-1.5 font-medium text-slate-300">
           <Filter className="w-3.5 h-3.5 text-indigo-400" />
           <span>Filter:</span>
@@ -167,7 +167,7 @@ export default function NoticeBoard({ initialNotices = SAMPLE_NOTICES }) {
 
       {/* Main List / Empty State */}
       {notices.length === 0 || filteredNotices.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-10 px-4 text-center rounded-xl bg-white/[0.03] border border-white/10 backdrop-blur-md">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-4 py-10 text-center backdrop-blur-md">
           <Inbox className="w-10 h-10 text-slate-500 mb-2 stroke-[1.5]" />
           <p className="text-sm font-semibold text-slate-300">
             No active notices.
@@ -187,7 +187,7 @@ export default function NoticeBoard({ initialNotices = SAMPLE_NOTICES }) {
           )}
         </div>
       ) : (
-        <div className="notice-scrollbar max-h-[520px] overflow-y-auto pr-1 space-y-3.5">
+        <div className="notice-scrollbar min-h-0 flex-1 space-y-3.5 overflow-y-auto pr-2">
           {filteredNotices.map((notice) => {
             const priorityKey = (notice.priority || 'low').toLowerCase();
             const config = PRIORITY_CONFIG[priorityKey] || PRIORITY_CONFIG.low;

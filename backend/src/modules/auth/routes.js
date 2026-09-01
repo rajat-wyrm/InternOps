@@ -1,3 +1,6 @@
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
 const service = require('./service');
 const { z } = require('zod');
 const rbac = require('../../middleware/rbac');
@@ -22,10 +25,11 @@ async function routes(fastify) {
   fastify.post(
     '/register',
     {
-      preHandler: [auth, rbac('ADMIN')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
       schema: {
         tags: ['Authentication'],
-        description: 'Register a new user (Admin only)',
+        description:
+          'Register a user within the requester role and department scope',
         body: {
           type: 'object',
           required: ['email', 'password', 'role'],
@@ -61,7 +65,7 @@ async function routes(fastify) {
   fastify.post(
     '/register/bulk',
     {
-      preHandler: [auth, rbac('ADMIN')],
+      preHandler: [auth, rbac('ADMIN'), sanitize],
       schema: {
         tags: ['Authentication'],
         description: 'Bulk register users (Admin only)',
@@ -193,7 +197,7 @@ async function routes(fastify) {
   fastify.post(
     '/login',
     {
-      preHandler: [bruteForceCheck],
+      preHandler: [bruteForceCheck, sanitize],
       schema: {
         tags: ['Authentication'],
         description: 'Login with email and password',
@@ -252,6 +256,7 @@ async function routes(fastify) {
   fastify.post(
     '/refresh',
     {
+      preHandler: [sanitize],
       schema: { tags: ['Authentication'], description: 'Refresh access token' },
     },
     async (req, reply) => {
@@ -281,7 +286,7 @@ async function routes(fastify) {
   fastify.post(
     '/logout',
     {
-      preHandler: [auth],
+      preHandler: [auth, sanitize],
       schema: {
         tags: ['Authentication'],
         description: 'Logout and revoke refresh token',
@@ -330,6 +335,7 @@ async function routes(fastify) {
   fastify.post(
     '/verify-email',
     {
+      preHandler: [sanitize],
       schema: {
         tags: ['Authentication'],
         description: 'Verify email with token',
@@ -351,7 +357,7 @@ async function routes(fastify) {
   fastify.post(
     '/resend-verification',
     {
-      preHandler: [auth],
+      preHandler: [auth, sanitize],
       schema: {
         tags: ['Authentication'],
         description: 'Resend verification email',
@@ -369,6 +375,7 @@ async function routes(fastify) {
   fastify.post(
     '/forgot-password',
     {
+      preHandler: [sanitize],
       schema: {
         tags: ['Authentication'],
         description: 'Send password reset email',
@@ -404,6 +411,7 @@ async function routes(fastify) {
   fastify.post(
     '/reset-password',
     {
+      preHandler: [sanitize],
       schema: {
         tags: ['Authentication'],
         description: 'Reset password with token',

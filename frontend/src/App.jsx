@@ -24,6 +24,7 @@ const Notifications = lazy(() => import('./pages/Notifications'));
 const InternOpsAssistant = lazy(
   () => import('./components/InternOpsAssistant')
 );
+const InternOps = lazy(() => import('./pages/InternOps'));
 const Reports = lazy(() => import('./pages/admin/Reports'));
 const ReportTemplates = lazy(() => import('./pages/admin/ReportTemplates'));
 const Analytics = lazy(() => import('./pages/admin/Analytics'));
@@ -47,10 +48,11 @@ const TaskDetails = lazy(() => import('./pages/admin/TaskDetails'));
 function PageLoader() {
   return (
     <div className="flex items-center justify-center min-h-[50vh] w-full">
-      <div className="relative w-12 h-12">
-        <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-white/5"></div>
-        <div className="absolute inset-0 rounded-full border-4 border-t-transparent border-r-transparent border-indigo-600 dark:border-indigo-400 animate-spin"></div>
-      </div>
+      <div
+        className="h-12 w-12 animate-spin rounded-full border-4 border-slate-300 border-t-indigo-600 dark:border-slate-700 dark:border-t-indigo-400"
+        role="status"
+        aria-label="Loading"
+      />
     </div>
   );
 }
@@ -95,14 +97,18 @@ export default function App() {
   useEffect(() => {
     if (!bootRefreshPromise) {
       bootRefreshPromise = api.post('/auth/refresh', {}).then(async (res) => {
+        const refreshedUser = res.data.user;
         setAuth({
           accessToken: res.data.accessToken,
-          user: res.data.user,
+          user: refreshedUser,
         });
-
-        // Fetch feature flags only once as part of the shared boot process.
-        await fetchFlags();
-
+        // Feature flags are protected resources. Temporary-password accounts
+        // may access only Profile until the required password change succeeds.
+        if (refreshedUser?.mustChangePassword) {
+          resetFlags();
+        } else {
+          await fetchFlags();
+        }
         return res;
       });
     }
@@ -207,12 +213,11 @@ export default function App() {
           </p>
 
           {/* Premium Loading Spinner */}
-          <div className="relative w-12 h-12">
-            {/* Outer glowing track */}
-            <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-white/5"></div>
-            {/* Inner spinning gradient indicator */}
-            <div className="absolute inset-0 rounded-full border-4 border-t-transparent border-r-transparent border-indigo-600 dark:border-indigo-400 animate-spin"></div>
-          </div>
+          <div
+            className="h-12 w-12 animate-spin rounded-full border-4 border-slate-300 border-t-indigo-600 dark:border-slate-700 dark:border-t-indigo-400"
+            role="status"
+            aria-label="Loading InternOps"
+          />
         </div>
       </div>
     );
@@ -277,6 +282,14 @@ export default function App() {
 
             {/* Admin/Manager Routes */}
             <Route
+              path="internops"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <InternOps />
+                </RoleGuard>
+              }
+            />
+            <Route
               path="reports"
               element={
                 <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
@@ -320,7 +333,7 @@ export default function App() {
             <Route
               path="admin"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <AdminDashboard />
                 </RoleGuard>
               }
@@ -328,7 +341,7 @@ export default function App() {
             <Route
               path="departments"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Departments />
                 </RoleGuard>
               }
@@ -336,7 +349,7 @@ export default function App() {
             <Route
               path="admin/departments"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Departments />
                 </RoleGuard>
               }
@@ -344,7 +357,7 @@ export default function App() {
             <Route
               path="departments/:deptId/projects"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <ProjectsPage />
                 </RoleGuard>
               }
@@ -352,7 +365,7 @@ export default function App() {
             <Route
               path="departments/:deptId/projects/:leadId"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <ProjectDetailPage />
                 </RoleGuard>
               }
@@ -360,7 +373,7 @@ export default function App() {
             <Route
               path="admin/departments/:deptId/attendance"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Attendance />
                 </RoleGuard>
               }
@@ -368,7 +381,7 @@ export default function App() {
             <Route
               path="admin/departments/:deptId/ratings"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Ratings />
                 </RoleGuard>
               }
@@ -376,7 +389,7 @@ export default function App() {
             <Route
               path="admin/departments/:deptId/tasks"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Tasks />
                 </RoleGuard>
               }
