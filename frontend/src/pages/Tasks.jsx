@@ -103,9 +103,7 @@ export default function Tasks() {
       form.append('didRepost', String(!!didRepost));
       form.append('didShare', String(!!didShare));
 
-      return api.post('/proofs/submit', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      return api.post('/proofs/submit', form);
     },
 
     onSuccess: (_, variables) => {

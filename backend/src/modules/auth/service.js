@@ -67,6 +67,8 @@ function publicUser(user) {
     email: user.email,
     role: user.role,
     fullName: user.full_name,
+    avatar_url: user.avatar_url || null,
+    avatarUrl: user.avatar_url || null,
   };
 }
 
@@ -110,7 +112,12 @@ async function login(email, password, ip, userAgent) {
   await recordLoginAttempt(email, ip, true);
 
   const access = generateAccessToken(user);
-  const refresh = generateRefreshToken(user);
+
+  const jwt = require('jsonwebtoken');
+  console.log('Decoded Access Token:', jwt.decode(access));
+  console.log('User from DB:', user);
+
+const refresh = generateRefreshToken(user);
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
   await repo.storeRefreshTokenRedis(user.id, hashToken(refresh), expires);

@@ -1,7 +1,6 @@
 const { verifyAccessToken } = require('../utils/tokens');
 const {
   isAccessTokenBlacklisted,
-  blacklistAccessToken,
 } = require('../config/redis');
 
 async function authMiddleware(request, reply) {
@@ -12,7 +11,8 @@ async function authMiddleware(request, reply) {
   }
 
   try {
-    const decoded = verifyAccessToken(auth.split(' ')[1]);
+    const token = auth.split(' ')[1];
+    const decoded = verifyAccessToken(token);
 
     if (await isAccessTokenBlacklisted(decoded.jti)) {
       return reply.status(401).send({
@@ -23,11 +23,12 @@ async function authMiddleware(request, reply) {
     request.user = Object.freeze({
       id: decoded.id,
       role: decoded.role,
+      departmentId: decoded.departmentId, // ✅ Added this line
       type: decoded.typ,
       jti: decoded.jti,
       exp: decoded.exp,
     });
-  } catch {
+  } catch (err) {
     return reply.status(401).send({ error: 'Invalid token' });
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { getUploadUrl } from '../lib/axios';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -51,11 +52,20 @@ export function UserAvatar({
   size = 'w-9 h-9',
   text = 'text-sm',
 }) {
-  if (src) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [src]);
+
+  const resolvedSrc = getUploadUrl(src);
+
+  if (resolvedSrc && !imgError) {
     return (
       <img
-        src={src}
-        alt=""
+        src={resolvedSrc}
+        alt={name || email || 'avatar'}
+        onError={() => setImgError(true)}
         className={`${size} rounded-full object-cover border border-white/70 dark:border-slate-700 shadow-sm`}
       />
     );

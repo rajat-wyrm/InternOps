@@ -39,17 +39,19 @@ const updateProfileSchema = z.object({
   notes: z.string().optional(),
   avatar_url: z
     .string()
+    .nullable()
     .refine(
       (val) => {
+        if (val === null || val === '') return true;
         if (val.startsWith('/uploads/')) return true;
         try {
           const url = new URL(val);
-          return url.protocol === 'https:';
+          return url.protocol === 'https:' || url.protocol === 'http:';
         } catch {
           return false;
         }
       },
-      { message: 'Must be a valid HTTPS URL or an internal upload path' }
+      { message: 'Must be a valid URL or an internal upload path' }
     )
     .optional(),
 });
@@ -308,35 +310,7 @@ async function routes(fastify) {
       },
     },
     async (req) => {
-      const schema = z.object({
-        full_name: z.string().optional(),
-        phone: z.string().optional(),
-        college: z.string().optional(),
-        course: z.string().optional(),
-        year_of_study: z.string().optional(),
-        position: z.string().optional(),
-        joining_date: z.string().optional(),
-        internship_status: z.string().optional(),
-        location: z.string().optional(),
-        notes: z.string().optional(),
-        avatar_url: z
-          .string()
-          .refine(
-            (val) => {
-              if (val.startsWith('/uploads/')) return true;
-              try {
-                const url = new URL(val);
-                return url.protocol === 'https:';
-              } catch {
-                return false;
-              }
-            },
-            { message: 'Must be a valid HTTPS URL or an internal upload path' }
-          )
-          .optional(),
-      });
-
-      const data = schema.parse(req.body);
+      const data = updateProfileSchema.parse(req.body);
 
       await authRepo.updateProfile(req.user.id, data);
 

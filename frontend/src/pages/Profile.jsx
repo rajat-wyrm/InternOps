@@ -10,7 +10,7 @@ import {
   Mail,
   ShieldCheck,
 } from 'lucide-react';
-import api from '../lib/axios';
+import api, { getUploadUrl } from '../lib/axios';
 import {
   Card,
   Btn,
@@ -20,6 +20,7 @@ import {
   ApiErrorState,
 } from '../components/ui';
 import useAuthStore from '../store/auth';
+import { QUERY_KEYS } from '../constants/queryKeys';
 
 const ROLE_COLOR = {
   ADMIN: 'purple',
@@ -52,6 +53,7 @@ export default function Profile() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [nameError, setNameError] = useState('');
+  const [avatarImgError, setAvatarImgError] = useState(false);
   const {
     data: profile,
     isLoading,
@@ -66,6 +68,10 @@ export default function Profile() {
   useEffect(() => {
     if (profile) setFullName(profile.full_name || '');
   }, [profile]);
+
+  useEffect(() => {
+    setAvatarImgError(false);
+  }, [profile?.avatar_url]);
 
   const flash = (m) => {
     setMessage(m);
@@ -98,6 +104,7 @@ export default function Profile() {
       }
 
       queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.USER_PROFILE });
     },
     onError: (err) =>
       setError(err.response?.data?.error || 'Failed to update profile'),
@@ -119,13 +126,22 @@ export default function Profile() {
       const form = new FormData();
       form.append('file', file);
 
-      return api.post('/uploads/avatar', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      return api.post('/uploads/avatar', form);
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       flash('Avatar updated successfully');
+      const newAvatarUrl = res.data?.avatar_url;
+      if (newAvatarUrl && user) {
+        setAuth({
+          user: {
+            ...user,
+            avatar_url: newAvatarUrl,
+            avatarUrl: newAvatarUrl,
+          },
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['myProfile'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.USER_PROFILE });
     },
     onError: (err) =>
       setError(err.response?.data?.error || 'Avatar upload failed'),
@@ -228,10 +244,11 @@ export default function Profile() {
               <div className="flex flex-col md:flex-row md:items-center gap-5">
                 {/* Avatar */}
                 <div className="relative shrink-0">
-                  {profile?.avatar_url ? (
+                  {profile?.avatar_url && !avatarImgError ? (
                     <img
-                      src={profile.avatar_url}
+                      src={getUploadUrl(profile.avatar_url)}
                       alt="avatar"
+                      onError={() => setAvatarImgError(true)}
                       className="w-24 h-24 md:w-28 md:h-28 rounded-3xl object-cover border-4 border-white dark:border-slate-900 shadow-xl bg-white dark:bg-slate-900"
                     />
                   ) : (

@@ -22,8 +22,19 @@ const ALLOWED_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
 const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
   'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
-  'image/gif': [[0x47, 0x49, 0x46, 0x38]],
+  'image/gif': [
+    [0x47, 0x49, 0x46, 0x38, 0x37, 0x61],
+    [0x47, 0x49, 0x46, 0x38, 0x39, 0x61],
+    [0x47, 0x49, 0x46, 0x38],
+  ],
 };
+
+function normalizeMime(mime) {
+  if (!mime) return null;
+  const lower = mime.toLowerCase().trim();
+  if (lower === 'image/jpg') return 'image/jpeg';
+  return lower;
+}
 
 function detectMimeFromBuffer(buf) {
   if (!buf || buf.length < 4) return null;
@@ -45,7 +56,7 @@ function detectMimeFromBuffer(buf) {
 
   for (const [mime, signatures] of Object.entries(MAGIC_BYTES)) {
     for (const sig of signatures) {
-      if (sig.every((byte, i) => buf[i] === byte)) {
+      if (buf.length >= sig.length && sig.every((byte, i) => buf[i] === byte)) {
         return mime;
       }
     }
@@ -70,7 +81,10 @@ async function routes(fastify) {
       if (!data) return reply.status(400).send({ error: 'No file uploaded' });
 
       const ext = path.extname(data.filename || '').toLowerCase();
-      if (!ALLOWED.includes(data.mimetype) || !ALLOWED_EXTS.includes(ext)) {
+      const clientMime = normalizeMime(data.mimetype);
+      const allowedNormalized = ALLOWED.map(normalizeMime);
+
+      if (!clientMime || !allowedNormalized.includes(clientMime) || !ALLOWED_EXTS.includes(ext)) {
         return reply.status(400).send({ error: 'Unsupported file type' });
       }
 
@@ -84,7 +98,7 @@ async function routes(fastify) {
 
       // Magic-byte verification — defends against MIME spoofing
       const detectedMime = detectMimeFromBuffer(buffer);
-      if (!detectedMime || detectedMime !== data.mimetype) {
+      if (!detectedMime || detectedMime !== clientMime) {
         return reply
           .status(400)
           .send({ error: 'File contents do not match declared image type' });

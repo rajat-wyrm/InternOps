@@ -10,10 +10,12 @@ async function updateAvatarUrl(userId, avatarUrl) {
 }
 
 async function deleteFile(dbSavedPath) {
+  if (!dbSavedPath || typeof dbSavedPath !== 'string') return;
   const projectRoot = path.resolve(__dirname, '..', '..', '..');
 
   const uploadsRoot = path.resolve(projectRoot, config.uploadDir);
-  const absolutePath = path.resolve(projectRoot, dbSavedPath);
+  const cleanRelative = dbSavedPath.replace(/^[/\\]+/, '');
+  const absolutePath = path.resolve(projectRoot, cleanRelative);
 
   const relative = path.relative(uploadsRoot, absolutePath);
 

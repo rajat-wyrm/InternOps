@@ -280,5 +280,32 @@ api.interceptors.response.use(
   }
 );
 
+export function getBackendUrl() {
+  const raw = import.meta.env.VITE_API_URL;
+  if (!raw) return '';
+  let url = raw.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    url = `http://${url}`;
+  }
+  return url.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
+}
+
+export function getUploadUrl(path) {
+  if (!path || typeof path !== 'string') return null;
+  const trimmed = path.trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:')
+  ) {
+    return trimmed;
+  }
+  const backend = getBackendUrl();
+  const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return backend ? `${backend}${cleanPath}` : cleanPath;
+}
+
 export default api;
 export { clearCsrfToken };

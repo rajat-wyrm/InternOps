@@ -13,7 +13,7 @@ import {
   Users,
   Filter,
 } from 'lucide-react';
-import api from '../../lib/axios';
+import api, { getUploadUrl } from '../../lib/axios';
 import { Card, Spinner, EmptyState } from '../../components/ui';
 import UserActionMenu from '../../components/UserActionMenu';
 import CreateUserModal from '../../components/admin/CreateUserModal';
@@ -43,6 +43,37 @@ const AVATAR_COLOR = {
   INTERN:
     'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-100 border-slate-200 dark:border-slate-600',
 };
+
+function AdminUserAvatar({ u }) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [u?.avatar_url]);
+
+  const src = getUploadUrl(u?.avatar_url);
+
+  if (src && !imgError) {
+    return (
+      <img
+        src={src}
+        alt=""
+        onError={() => setImgError(true)}
+        className="w-11 h-11 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm"
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xs font-extrabold border ${
+        AVATAR_COLOR[u.role] || AVATAR_COLOR.INTERN
+      }`}
+    >
+      {initials(u)}
+    </div>
+  );
+}
 
 const ROLE_OPTIONS = [
   { value: '', label: 'All roles' },
@@ -313,13 +344,7 @@ export default function AdminDashboard() {
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
-                        <div
-                          className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xs font-extrabold border ${
-                            AVATAR_COLOR[u.role] || AVATAR_COLOR.INTERN
-                          }`}
-                        >
-                          {initials(u)}
-                        </div>
+                        <AdminUserAvatar u={u} />
 
                         <div className="min-w-0">
                           <div className="font-extrabold text-slate-900 dark:text-white truncate">

@@ -12,20 +12,46 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../../config');
 const { pipeline } = require('stream/promises');
-const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/gif'];
-const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.gif'];
+const ALLOWED_MIMES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
 const uploadRepo = require('../uploads/repository');
 const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
   'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
-  'image/gif': [[0x47, 0x49, 0x46, 0x38]],
+  'image/gif': [
+    [0x47, 0x49, 0x46, 0x38, 0x37, 0x61],
+    [0x47, 0x49, 0x46, 0x38, 0x39, 0x61],
+    [0x47, 0x49, 0x46, 0x38],
+  ],
 };
+
+function normalizeMime(mime) {
+  if (!mime) return null;
+  const lower = mime.toLowerCase().trim();
+  if (lower === 'image/jpg') return 'image/jpeg';
+  return lower;
+}
 
 function detectMimeFromBuffer(buf) {
   if (!buf || buf.length < 4) return null;
+
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+
   for (const [mime, signatures] of Object.entries(MAGIC_BYTES)) {
     for (const sig of signatures) {
-      if (sig.every((byte, i) => buf[i] === byte)) return mime;
+      if (buf.length >= sig.length && sig.every((byte, i) => buf[i] === byte)) return mime;
     }
   }
   return null;
@@ -119,13 +145,17 @@ async function routes(fastify) {
 
         for (const data of filesData) {
           const ext = path.extname(data.filename).toLowerCase();
+          const clientMime = normalizeMime(data.mimetype);
+          const allowedNormalized = ALLOWED_MIMES.map(normalizeMime);
+
           if (
-            !ALLOWED_MIMES.includes(data.mimetype) ||
+            !clientMime ||
+            !allowedNormalized.includes(clientMime) ||
             !ALLOWED_EXTS.includes(ext)
           ) {
             return reply
               .status(400)
-              .send({ error: 'Only JPEG, PNG, GIF images are allowed' });
+              .send({ error: 'Only JPEG, PNG, GIF, and WebP images are allowed' });
           }
           if (data.truncated) {
             return reply.status(400).send({ error: 'File size exceeds limit' });
@@ -133,7 +163,7 @@ async function routes(fastify) {
 
           const firstChunk = data.buffer.subarray(0, 16);
           const detectedMime = detectMimeFromBuffer(firstChunk);
-          if (!detectedMime || detectedMime !== data.mimetype) {
+          if (!detectedMime || detectedMime !== clientMime) {
             return reply.status(400).send({
               error: 'File contents do not match declared image type',
             });

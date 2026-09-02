@@ -123,12 +123,13 @@ app.register(require('@fastify/cors'), {
 });
 
 app.register(require('@fastify/helmet'), {
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'http:', 'https:'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       frameAncestors: ["'none'"],
@@ -156,8 +157,12 @@ app.register(require('@fastify/multipart'), {
   },
 });
 
+const uploadStaticRoot = path.join(__dirname, '..', config.uploadDir);
+const fs = require('fs');
+fs.mkdirSync(uploadStaticRoot, { recursive: true });
+
 app.register(require('@fastify/static'), {
-  root: path.join(__dirname, '..', config.uploadDir),
+  root: uploadStaticRoot,
   prefix: '/uploads/',
 });
 
