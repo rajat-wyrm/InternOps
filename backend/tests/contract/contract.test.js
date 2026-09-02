@@ -231,6 +231,53 @@ describe('Contract: Departments', () => {
     deptId = parse(res).id;
   });
 
+  it('POST /api/v1/departments trims leading and trailing whitespace', async () => {
+    const departmentName = `TrimmedDept_${Date.now()}`;
+
+    const res = await inject('POST', '/api/v1/departments', {
+      payload: {
+        name: `  ${departmentName}  `,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+
+    const body = parse(res);
+
+    assertSchema('POST /api/v1/departments', body);
+    expect(body.name).toBe(departmentName);
+
+    await inject('DELETE', `/api/v1/departments/${body.id}`);
+  });
+
+  it('rejects department name that differs only by whitespace', async () => {
+    const departmentName = `DuplicateDept_${Date.now()}`;
+
+    const firstRes = await inject('POST', '/api/v1/departments', {
+      payload: {
+        name: departmentName,
+      },
+    });
+
+    expect(firstRes.statusCode).toBe(200);
+
+    const firstBody = parse(firstRes);
+
+    const secondRes = await inject('POST', '/api/v1/departments', {
+      payload: {
+        name: `  ${departmentName}  `,
+      },
+    });
+
+    expect(secondRes.statusCode).toBe(409);
+
+    const secondBody = parse(secondRes);
+
+    expect(secondBody.error).toBe('Department name already exists');
+
+    await inject('DELETE', `/api/v1/departments/${firstBody.id}`);
+  });
+
   it('GET /api/v1/departments returns array of departments', async () => {
     const res = await inject('GET', '/api/v1/departments');
     expect(res.statusCode).toBe(200);
