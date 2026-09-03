@@ -41,6 +41,13 @@ const STATUS_BADGE = {
     'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60',
 };
 
+const ELIGIBILITY_BADGE = {
+  ELIGIBLE:
+    'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60',
+  NOT_ELIGIBLE:
+    'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60',
+};
+
 // A manager may add any member ranked below themselves.
 const ROLE_RANK = { ADMIN: 4, SENIOR_TL: 3, TL: 2, CAPTAIN: 1, INTERN: 0 };
 const ASSIGNABLE = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
@@ -107,6 +114,29 @@ function Stars({ value }) {
       <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
         {safeRaw.toFixed(1).replace(/\.0$/, '')}/10
       </span>
+    </span>
+  );
+}
+
+// Ratings 1–4 => Not Eligible, 5–10 => Eligible. No rating yet => unknown.
+function eligibilityFor(avgRating) {
+  if (avgRating == null) return null;
+  const rounded = Math.round(Number(avgRating));
+  return rounded >= 5 ? 'ELIGIBLE' : 'NOT_ELIGIBLE';
+}
+
+function EligibilityBadge({ avgRating }) {
+  const status = eligibilityFor(avgRating);
+
+  if (!status) {
+    return <span className="text-slate-400 dark:text-slate-500">—</span>;
+  }
+
+  return (
+    <span
+      className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${ELIGIBILITY_BADGE[status]}`}
+    >
+      {status === 'ELIGIBLE' ? '🟢 Eligible' : '🔴 Not Eligible'}
     </span>
   );
 }
@@ -869,6 +899,12 @@ function MemberDetail({ memberId, onClose }) {
                         }
                       />
                       <Row
+                        label="Eligibility"
+                        value={
+                          <EligibilityBadge avgRating={member.avg_rating} />
+                        }
+                      />
+                      <Row
                         label="Account"
                         value={
                           member.suspended ? (
@@ -1150,6 +1186,7 @@ function PendingProofsPanel({ onMember }) {
 export default function Team() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [ratingFilter, setRatingFilter] = useState('');
   const [view, setView] = useState('table');
   const [selected, setSelected] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -1174,13 +1211,19 @@ export default function Team() {
     return members.filter((m) => {
       if (roleFilter && m.role !== roleFilter) return false;
 
+      if (ratingFilter) {
+        const rounded =
+          m.avg_rating != null ? Math.round(Number(m.avg_rating)) : null;
+        if (rounded !== Number(ratingFilter)) return false;
+      }
+
       if (!q) return true;
 
       return [m.full_name, m.email, m.college, m.position].some((v) =>
         (v || '').toLowerCase().includes(q)
       );
     });
-  }, [members, search, roleFilter]);
+  }, [members, search, roleFilter, ratingFilter]);
 
   const roles = useMemo(
     () => [...new Set(members.map((m) => m.role))],
@@ -1196,6 +1239,17 @@ export default function Team() {
       })),
     ],
     [roles]
+  );
+
+  const ratingFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'All ratings' },
+      ...Array.from({ length: 10 }, (_, i) => {
+        const val = i + 1;
+        return { value: String(val), label: `${val}` };
+      }),
+    ],
+    []
   );
 
   const stats = useMemo(() => {
@@ -1343,6 +1397,14 @@ export default function Team() {
           className="w-full sm:w-44"
         />
 
+        <CustomSelect
+          value={ratingFilter}
+          onChange={setRatingFilter}
+          options={ratingFilterOptions}
+          placeholder="All ratings"
+          className="w-full sm:w-40"
+        />
+
         <div className="flex rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
           <button
             onClick={() => setView('table')}
@@ -1385,6 +1447,7 @@ export default function Team() {
                 <th className="p-4 font-extrabold">Phone</th>
                 <th className="p-4 font-extrabold w-40">Attendance</th>
                 <th className="p-4 font-extrabold">Rating</th>
+                <th className="p-4 font-extrabold">Eligibility</th>
                 <th className="p-4 font-extrabold">Tasks</th>
                 <th className="p-4 font-extrabold">Pending</th>
                 <th className="p-4 font-extrabold">Status</th>
@@ -1463,6 +1526,10 @@ export default function Team() {
                       <Stars value={m.avg_rating} />
                     </td>
 
+                    <td className="p-4">
+                      <EligibilityBadge avgRating={m.avg_rating} />
+                    </td>
+
                     <td className="p-4 text-slate-700 dark:text-slate-300">
                       {m.verified_tasks}/{m.total_tasks}
                     </td>
@@ -1535,7 +1602,7 @@ export default function Team() {
                   <p>🎓 {m.college || '—'}</p>
                 </div>
 
-                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-700 pt-3">
+                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-700 pt-3 mb-3">
                   <span>
                     Att:{' '}
                     <b className="text-slate-800 dark:text-white">
@@ -1553,6 +1620,10 @@ export default function Team() {
                       {m.verified_tasks}/{m.total_tasks}
                     </b>
                   </span>
+                </div>
+
+                <div className="flex items-center justify-end">
+                  <EligibilityBadge avgRating={m.avg_rating} />
                 </div>
               </div>
             );
