@@ -104,7 +104,10 @@ async function routes(fastify) {
       }
 
       // 5. Execute secure repository fetch
-      return repo.topPerformers(role, limit);
+      const departmentId =
+        req.user.role === 'ADMIN' ? null : req.user.departmentId;
+
+      return repo.topPerformers(role, limit, departmentId);
     }
   );
 

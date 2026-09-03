@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, Trophy, TrendingUp, Building2, Filter } from 'lucide-react';
+import {
+  AlertTriangle,
+  BarChart3,
+  Trophy,
+  TrendingUp,
+  Building2,
+  Filter,
+  Users,
+} from 'lucide-react';
 import api from '../../lib/axios';
 import { Card, Table, Badge, Spinner } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
@@ -55,6 +63,11 @@ export default function Analytics() {
   const [deptId, setDeptId] = useState('');
   const [month, setMonth] = useState(String(new Date().getMonth() + 1));
   const [year, setYear] = useState(String(new Date().getFullYear()));
+  const { data: overview } = useQuery({
+    queryKey: ['analyticsOverview'],
+    queryFn: () =>
+      api.get('/analytics/overview').then((response) => response.data),
+  });
 
   const yearOptions = getYearOptions();
   const monthOptions = getMonthOptions(year);
@@ -123,6 +136,18 @@ export default function Analytics() {
       api.get('/analytics/attendance-trends?months=6').then((r) => r.data),
   });
 
+  const roleCounts = overview?.users || [];
+  const totalActiveUsers = roleCounts.reduce(
+    (sum, item) => sum + Number(item.count || 0),
+    0
+  );
+  const lowAttendanceMembers = (deptAttendance || []).filter((member) => {
+    const present = Number(member.present || 0);
+    const absent = Number(member.absent || 0);
+    const halfDay = Number(member.half_day || 0);
+    const total = present + absent + halfDay;
+    return total > 0 && Math.round((present / total) * 100) < 60;
+  });
   const byMonth = trends
     ? Object.entries(
         trends.reduce((acc, row) => {
@@ -158,6 +183,47 @@ export default function Analytics() {
         </div>
       </div>
 
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card className="p-5">
+          <div className="flex items-center gap-3">
+            <Users className="h-10 w-10 rounded-xl bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300" />
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Active users
+              </p>
+              <p className="text-3xl font-black text-slate-900 dark:text-white">
+                {totalActiveUsers}
+              </p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-5">
+          <div className="flex items-center gap-3">
+            <Trophy className="h-10 w-10 rounded-xl bg-amber-50 p-2 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300" />
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Top performers
+              </p>
+              <p className="text-3xl font-black text-slate-900 dark:text-white">
+                {topPerformers?.length || 0}
+              </p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-5">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-10 w-10 rounded-xl bg-rose-50 p-2 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300" />
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Needs attention
+              </p>
+              <p className="text-3xl font-black text-slate-900 dark:text-white">
+                {lowAttendanceMembers.length}
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Top Performers */}
         <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
@@ -250,8 +316,10 @@ export default function Analytics() {
           ) : (
             <div className="space-y-5">
               {byMonth.map(([m, s]) => {
-                const total =
-                  (s.PRESENT || 0) + (s.ABSENT || 0) + (s.HALF_DAY || 0);
+                const present = Number(s.PRESENT || 0);
+                const absent = Number(s.ABSENT || 0);
+                const halfDay = Number(s.HALF_DAY || 0);
+                const total = present + absent + halfDay;
                 const safeTotal = total || 1;
 
                 return (
@@ -268,29 +336,29 @@ export default function Analytics() {
                         className="bg-emerald-500"
                         title={`Present: ${s.PRESENT || 0}`}
                         style={{
-                          width: `${((s.PRESENT || 0) / safeTotal) * 100}%`,
+                          width: `${(present / safeTotal) * 100}%`,
                         }}
                       />
                       <div
                         className="bg-amber-400"
                         title={`Half Day: ${s.HALF_DAY || 0}`}
                         style={{
-                          width: `${((s.HALF_DAY || 0) / safeTotal) * 100}%`,
+                          width: `${(halfDay / safeTotal) * 100}%`,
                         }}
                       />
                       <div
                         className="bg-red-500"
                         title={`Absent: ${s.ABSENT || 0}`}
                         style={{
-                          width: `${((s.ABSENT || 0) / safeTotal) * 100}%`,
+                          width: `${(absent / safeTotal) * 100}%`,
                         }}
                       />
                     </div>
 
                     <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500 dark:text-slate-400">
-                      <span>Present: {s.PRESENT || 0}</span>
-                      <span>Half day: {s.HALF_DAY || 0}</span>
-                      <span>Absent: {s.ABSENT || 0}</span>
+                      <span>Present: {present}</span>
+                      <span>Half day: {halfDay}</span>
+                      <span>Absent: {absent}</span>
                     </div>
                   </div>
                 );
@@ -300,6 +368,46 @@ export default function Analytics() {
         </Card>
       </div>
 
+      {deptId && lowAttendanceMembers.length > 0 && (
+        <Card className="mb-6 p-6 md:p-7">
+          <div className="flex items-center gap-3 border-b border-slate-200 pb-4 dark:border-slate-700">
+            <AlertTriangle className="h-10 w-10 rounded-xl bg-rose-50 p-2 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300" />
+            <div>
+              <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                Needs Attention
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Members below 60% attendance for the selected month.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {lowAttendanceMembers.slice(0, 8).map((member) => {
+              const present = Number(member.present || 0);
+              const total =
+                present +
+                Number(member.absent || 0) +
+                Number(member.half_day || 0);
+              const percentage = total
+                ? Math.round((present / total) * 100)
+                : 0;
+              return (
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 dark:border-rose-900/60 dark:bg-rose-950/30"
+                >
+                  <span className="truncate font-bold text-slate-800 dark:text-slate-200">
+                    {member.full_name || 'Unnamed member'}
+                  </span>
+                  <span className="ml-3 font-black text-rose-600 dark:text-rose-300">
+                    {percentage}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
       {/* Department Attendance */}
       <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">

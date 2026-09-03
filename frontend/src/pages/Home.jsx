@@ -5,13 +5,14 @@ import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, StatCard, ApiErrorState } from '../components/ui';
+import { getTeamRoleBreakdown } from '../utils/teamRoleBreakdown';
 
 function attendancePct(m) {
-  const total = Number(m.attendance_total) || 0;
-  if (!total) return null;
-
-  const score = Number(m.present_count) + Number(m.half_day_count) * 0.5;
-  return Math.round((score / total) * 100);
+  const total = Number(m.attendance_total);
+  const present = Number(m.present_count);
+  if (!Number.isFinite(total) || total <= 0) return null;
+  if (!Number.isFinite(present) || present < 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((present / total) * 100)));
 }
 
 function QuickAction({ to, icon, label, tint, description }) {
@@ -68,12 +69,28 @@ function ManagerHome({ user }) {
   const active = team.filter(
     (m) => !m.suspended && (m.internship_status || 'ACTIVE') === 'ACTIVE'
   ).length;
+  const seniorTlCount = team.filter(
+    (member) => member.role === 'SENIOR_TL'
+  ).length;
 
-  const pcts = team.map(attendancePct).filter((p) => p !== null);
+  const tlCount = team.filter((member) => member.role === 'TL').length;
 
-  const avgAtt = pcts.length
-    ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)
+  const captainCount = team.filter(
+    (member) => member.role === 'CAPTAIN'
+  ).length;
+
+  const internCount = team.filter((member) => member.role === 'INTERN').length;
+  const isAdmin = user?.role === 'ADMIN';
+  const memberBreakdown = getTeamRoleBreakdown(user?.role, team);
+  const pcts = team
+    .map(attendancePct)
+    .filter((percentage) => Number.isFinite(percentage));
+  const averageAttendance = pcts.length
+    ? Math.round(
+        pcts.reduce((sum, percentage) => sum + percentage, 0) / pcts.length
+      )
     : null;
+  const avgAtt = Number.isFinite(averageAttendance) ? averageAttendance : null;
 
   const ratings = team
     .map((m) => m.avg_rating)
@@ -110,8 +127,36 @@ function ManagerHome({ user }) {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
-          label="Team members"
+          label={isAdmin ? 'Total team members' : 'Team members'}
           value={team.length}
+          sub={
+            memberBreakdown.length ? (
+              <span className="block leading-5">
+                {memberBreakdown.map((row, rowIndex) => (
+                  <span
+                    key={row.map(({ role }) => role).join('-')}
+                    className={rowIndex > 0 ? 'block' : 'block'}
+                  >
+                    {row.map(({ role, count, label }, itemIndex) => (
+                      <span
+                        key={role}
+                        className="inline-block whitespace-nowrap"
+                      >
+                        {itemIndex > 0 && (
+                          <span className="mx-2 font-extrabold text-indigo-400 dark:text-indigo-300">
+                            •
+                          </span>
+                        )}
+                        {count} {label}
+                      </span>
+                    ))}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              'No team members'
+            )
+          }
           icon="👥"
           gradient="from-indigo-500 to-blue-600"
         />
@@ -153,10 +198,10 @@ function ManagerHome({ user }) {
             </div>
 
             <Link
-              to="/team"
+              to="/analytics"
               className="text-indigo-600 dark:text-indigo-400 text-sm font-bold hover:underline shrink-0"
             >
-              View team →
+              View analytics →
             </Link>
           </div>
 

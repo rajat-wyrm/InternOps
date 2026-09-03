@@ -25,7 +25,7 @@ async def get_today_usage(user_id: str) -> int:
 
         return row["successful_requests"] if row else 0
 
-    except (asyncpg.PostgresError, RuntimeError, OSError) as e:
+    except (asyncpg.PostgresError, RuntimeError, OSError, ValueError) as e:
         logger.warning("Database unavailable for get_today_usage: %s", e)
         return 0
 
@@ -59,7 +59,7 @@ async def increment_usage(user_id: str) -> None:
                 user_id,
             )
 
-    except (asyncpg.PostgresError, RuntimeError, OSError) as e:
+    except (asyncpg.PostgresError, RuntimeError, OSError, ValueError) as e:
         logger.warning("Database unavailable for increment_usage: %s", e)
 
 
@@ -90,6 +90,6 @@ async def get_daily_usage_report() -> list:
             for row in rows
         ]
 
-    except (asyncpg.PostgresError, RuntimeError, OSError) as e:
+    except (asyncpg.PostgresError, RuntimeError, OSError, ValueError) as e:
         logger.warning("Database unavailable for get_daily_usage_report: %s", e)
         return []

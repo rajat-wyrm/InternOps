@@ -1,11 +1,10 @@
+import json
 import logging
-from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
-from pydantic import UUID4
-
+from uuid import UUID
 from app.core.auth import User, get_current_user
-from app.core.rbac import require_roles
+from app.core.rbac import require_permission
 from app.core.database import get_pool
 from app.attendance.schemas.anomaly_schema import (
     AnomalyResponse,
@@ -47,7 +46,7 @@ async def run_anomaly_job_async():
     "/analyze",
     response_model=TriggerAnalysisResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(require_roles("ADMIN", "SENIOR_TL", "TL"))],
+    dependencies=[Depends(require_permission("ATTENDANCE_MANAGE"))]
 )
 async def trigger_analysis(
     background_tasks: BackgroundTasks,
@@ -65,11 +64,11 @@ async def trigger_analysis(
 @router.get(
     "",
     response_model=AnomalyListResponse,
-    dependencies=[Depends(require_roles("ADMIN", "SENIOR_TL", "TL", "CAPTAIN"))]
+    dependencies=[Depends(require_permission("ATTENDANCE_VIEW"))]
 )
 async def list_anomalies(
     current_user: User = Depends(get_current_user),
-    intern_id: Optional[str] = None,
+    intern_id: Optional[UUID] = None,
     flag_type: Optional[str] = None,
     viewed: Optional[bool] = None
 ):
@@ -89,11 +88,11 @@ async def list_anomalies(
 
         # Build SQL query dynamically
         query = """
-            SELECT 
-                a.id, a.intern_id, a.flag_type, a.severity, a.reason, a.details,
-                a.viewed_by, a.viewed_at, a.notification_status, a.created_at, a.updated_at,
-                u.full_name AS intern_name, u.email AS intern_email,
-                v.full_name AS viewed_by_name
+                   SELECT
+                       a.id, a.intern_id, a.flag_type, a.severity, a.reason, a.details,
+                       a.viewed_by, a.viewed_at, a.notification_status, a.created_at, a.updated_at,
+                       u.full_name AS intern_name, u.email AS intern_email,
+                       v.full_name AS viewed_by_name
             FROM attendance_anomalies a
             JOIN users u ON u.id = a.intern_id
             LEFT JOIN users v ON v.id = a.viewed_by
@@ -126,7 +125,6 @@ async def list_anomalies(
         query += " ORDER BY a.created_at DESC"
 
         rows = await conn.fetch(query, *params)
-        
         anomalies = []
         for r in rows:
             details_val = None
@@ -158,7 +156,7 @@ async def list_anomalies(
 @router.post(
     "/{anomaly_id}/view",
     response_model=AnomalyResponse,
-    dependencies=[Depends(require_roles("ADMIN", "SENIOR_TL", "TL", "CAPTAIN"))]
+    dependencies=[Depends(require_permission("ATTENDANCE_VIEW"))]
 )
 async def mark_anomaly_viewed(
     anomaly_id: str,
@@ -173,7 +171,7 @@ async def mark_anomaly_viewed(
         # Fetch the anomaly to verify ownership
         anomaly_row = await conn.fetchrow(
             """
-            SELECT intern_id FROM attendance_anomalies WHERE id = $1::uuid
+               SELECT intern_id FROM attendance_anomalies WHERE id = $1::uuid
             """,
             anomaly_id
         )
@@ -211,7 +209,6 @@ async def mark_anomaly_viewed(
         try:
             intern_row = await conn.fetchrow("SELECT full_name, email FROM users WHERE id = $1::uuid", intern_id)
             intern_name = intern_row["full_name"] or intern_row["email"] if intern_row else intern_id
-            
             audit_details = {
                 "anomaly_id": anomaly_id,
                 "intern_id": intern_id,
@@ -243,7 +240,7 @@ async def mark_anomaly_viewed(
         # Fetch updated record to return
         updated = await conn.fetchrow(
             """
-            SELECT 
+             SELECT
                 a.id, a.intern_id, a.flag_type, a.severity, a.reason, a.details,
                 a.viewed_by, a.viewed_at, a.notification_status, a.created_at, a.updated_at,
                 u.full_name AS intern_name, u.email AS intern_email,

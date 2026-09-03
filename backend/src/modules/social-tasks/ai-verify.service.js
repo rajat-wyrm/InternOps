@@ -1,16 +1,19 @@
+const { generateAIResponse } = require('../../services/aiProviderService');
+const { safeParseJSON } = require('../../utils/promptCleaner');
+
+function createUnverifiableResults(claimedActions, notes) {
+  return (Array.isArray(claimedActions) ? claimedActions : []).map(
+    (action) => ({
+      action,
+      confidence: 'unverifiable',
+      supports: false,
+      notes,
+    })
+  );
+}
+
 /**
  * AI verification service contract.
- *
- * STATUS: Not implemented. Companion placeholder to `crawler.service.js` for
- * the deferred claim-verification feature (see issue #1710 for the full
- * investigation and rationale for keeping this as a documented stub instead
- * of finishing the integration). A working Gemini-based prototype of this
- * function existed at `Internship/ai-verify.service.js` but depended on a
- * broken `require()` of a Python prompt module and was never reachable from
- * any route, so it was removed as dead code rather than kept as a second
- * copy. If this feature is picked back up, port that prototype's approach
- * here, add a JS (not Python) version of the claim-verification prompt, and
- * call this from `proof-submissions/routes.js`.
  *
  * @param {object} params
  * @param {string} params.content - The proof content crawled from the URL.
@@ -22,7 +25,60 @@
  * }>} The AI claim verification result.
  */
 async function verifyClaim({ content, claimedActions }) {
-  throw new Error('Not implemented');
+  if (!content || !String(content).trim()) {
+    return createUnverifiableResults(
+      claimedActions,
+      'No content available to verify.'
+    );
+  }
+
+  const prompt = `Verify whether the provided content supports each claimed social-media action.
+
+Return ONLY a JSON object with a "results" array. Each result must include:
+- "action"
+- "confidence" (high, medium, low, or unverifiable)
+- "supports" (boolean)
+- "notes" (brief explanation)
+
+BEGIN CONTENT
+${String(content).slice(0, 12000)}
+END CONTENT
+
+Claimed actions: ${JSON.stringify(claimedActions || [])}`;
+
+  try {
+    const response = await generateAIResponse({
+      userId: 'social-task-verification',
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    if (response.fallback) {
+      console.warn('[AI Verify] AI service fallback returned', response.error);
+      return createUnverifiableResults(
+        claimedActions,
+        'AI verification service is currently unavailable.'
+      );
+    }
+
+    const parsed = safeParseJSON(response.content);
+    if (!Array.isArray(parsed?.results)) {
+      console.warn('[AI Verify] Invalid AI verification response');
+      return createUnverifiableResults(
+        claimedActions,
+        'Unable to parse AI verification response.'
+      );
+    }
+
+    return parsed.results;
+  } catch (error) {
+    console.error('[AI Verify] Verification request failed', {
+      message: error.message,
+    });
+    return createUnverifiableResults(
+      claimedActions,
+      'AI verification service is currently unavailable.'
+    );
+  }
 }
 
 module.exports = {

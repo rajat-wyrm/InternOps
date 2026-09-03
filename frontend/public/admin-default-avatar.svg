@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">InternOps administrator default avatar</title>
+  <desc id="desc">A balanced indigo administrator avatar with a centered shield and dashboard tiles.</desc>
+  <defs>
+    <linearGradient id="admin-bg" x1="84" y1="68" x2="426" y2="444" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2563EB"/>
+      <stop offset="0.52" stop-color="#4338CA"/>
+      <stop offset="1" stop-color="#6D28D9"/>
+    </linearGradient>
+    <linearGradient id="admin-shield" x1="160" y1="142" x2="354" y2="402" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E0E7FF"/>
+    </linearGradient>
+    <linearGradient id="admin-panel" x1="190" y1="190" x2="322" y2="334" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3730A3"/>
+      <stop offset="1" stop-color="#312E81"/>
+    </linearGradient>
+    <filter id="admin-shadow" x="-25%" y="-25%" width="150%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#1E1B4B" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <circle cx="256" cy="256" r="236" fill="url(#admin-bg)"/>
+  <circle cx="256" cy="256" r="217" fill="none" stroke="#FFFFFF" stroke-opacity="0.2" stroke-width="7"/>
+  <path d="M78 169C126 94 206 57 291 67" fill="none" stroke="#7DD3FC" stroke-opacity="0.42" stroke-width="17" stroke-linecap="round"/>
+  <path d="M421 345C382 415 309 450 229 442" fill="none" stroke="#C4B5FD" stroke-opacity="0.4" stroke-width="17" stroke-linecap="round"/>
+  <g transform="translate(0 10)" filter="url(#admin-shadow)">
+    <path d="M256 113L360 151V239C360 315 319 368 256 404C193 368 152 315 152 239V151L256 113Z" fill="url(#admin-shield)"/>
+    <path d="M256 137L338 167V239C338 298 308 341 256 373C204 341 174 298 174 239V167L256 137Z" fill="url(#admin-panel)"/>
+    <g transform="translate(2 13)">
+      <rect x="199" y="203" width="48" height="87" rx="13" fill="#38BDF8"/>
+      <rect x="263" y="203" width="48" height="38" rx="11" fill="#818CF8"/>
+      <rect x="263" y="253" width="48" height="37" rx="11" fill="#A78BFA"/>
+    </g>
+  </g>
+</svg>

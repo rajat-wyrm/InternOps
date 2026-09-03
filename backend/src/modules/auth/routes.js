@@ -25,10 +25,11 @@ async function routes(fastify) {
   fastify.post(
     '/register',
     {
-      preHandler: [auth, rbac('ADMIN'), sanitize],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
       schema: {
         tags: ['Authentication'],
-        description: 'Register a new user (Admin only)',
+        description:
+          'Register a user within the requester role and department scope',
         body: {
           type: 'object',
           required: ['email', 'password', 'role'],
@@ -37,7 +38,15 @@ async function routes(fastify) {
             password: { type: 'string', minLength: 8 },
             role: {
               type: 'string',
-              enum: ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+              enum: [
+                'ADMIN',
+                'MANAGEMENT',
+                'HR',
+                'SENIOR_TL',
+                'TL',
+                'CAPTAIN',
+                'INTERN',
+              ],
             },
             managerId: { type: 'string', format: 'uuid' },
             departmentId: { type: 'string', format: 'uuid' },
@@ -77,7 +86,15 @@ async function routes(fastify) {
                   password: { type: 'string', minLength: 8 },
                   role: {
                     type: 'string',
-                    enum: ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+                    enum: [
+                      'ADMIN',
+                      'MANAGEMENT',
+                      'HR',
+                      'SENIOR_TL',
+                      'TL',
+                      'CAPTAIN',
+                      'INTERN',
+                    ],
                   },
                   managerId: { type: 'string', format: 'uuid' },
                   departmentId: { type: 'string', format: 'uuid' },

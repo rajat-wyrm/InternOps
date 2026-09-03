@@ -22,6 +22,7 @@ from app.providers.groq import GroqProvider
 from app.providers.anthropic import AnthropicProvider
 from app.providers.deepseek import DeepSeekProvider
 from app.providers.huggingface import HuggingFaceProvider
+from app.providers.nvidia import NvidiaProvider
 
 _PROVIDER_CLASSES: Dict[str, Type[BaseAIProvider]] = {
     "gemini": GeminiProvider,
@@ -30,6 +31,7 @@ _PROVIDER_CLASSES: Dict[str, Type[BaseAIProvider]] = {
     "anthropic": AnthropicProvider,
     "deepseek": DeepSeekProvider,
     "huggingface": HuggingFaceProvider,
+    "nvidia": NvidiaProvider,
 }
 
 _API_KEY_ENV_VAR: Dict[str, str] = {
@@ -39,6 +41,7 @@ _API_KEY_ENV_VAR: Dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
     "huggingface": "HUGGINGFACE_TOKEN",
+    "nvidia": "NVIDIA_API_KEY",
 }
 
 _MODEL_ENV_VAR: Dict[str, str] = {
@@ -48,6 +51,7 @@ _MODEL_ENV_VAR: Dict[str, str] = {
     "anthropic": "ANTHROPIC_MODEL",
     "deepseek": "DEEPSEEK_MODEL",
     "huggingface": "HUGGINGFACE_MODEL",
+    "nvidia": "NVIDIA_MODEL",
 }
 
 
@@ -98,18 +102,31 @@ def get_configured_providers_health() -> list:
     `generate_chat("ping")` call per provider if that tradeoff is wrong
     for this service.
     """
+    import time
+    from app.providers.orchestrator import get_circuit_breaker
+
     report = []
 
     for name, key_var in _API_KEY_ENV_VAR.items():
         has_key = bool(os.environ.get(key_var))
+        cb = get_circuit_breaker(name)
+        is_circuit_open = cb.disabled_until is not None and time.time() < cb.disabled_until
+
+        if not has_key:
+            status = "unhealthy"
+            error_message = f"{key_var} is not configured"
+        elif is_circuit_open:
+            status = "unhealthy"
+            error_message = "Circuit breaker open"
+        else:
+            status = "healthy"
+            error_message = None
 
         report.append(
             {
                 "name": name,
-                "status": "healthy" if has_key else "unhealthy",
-                "lastErrorMessage": None
-                if has_key
-                else f"{key_var} is not configured",
+                "status": status,
+                "lastErrorMessage": error_message,
             }
         )
 

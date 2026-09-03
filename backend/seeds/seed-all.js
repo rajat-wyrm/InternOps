@@ -1,4 +1,15 @@
 require('dotenv').config();
+const SEED_ALL_CONFIRMATION = 'I UNDERSTAND THIS REPLACES DATABASE DATA';
+const environment = process.env.NODE_ENV || 'development';
+if (environment === 'production') {
+  throw new Error('seed-all.js is disabled in production');
+}
+if (process.env.ALLOW_DESTRUCTIVE_SEED !== SEED_ALL_CONFIRMATION) {
+  throw new Error(
+    'Refusing destructive seed. Set ALLOW_DESTRUCTIVE_SEED to the documented confirmation phrase.'
+  );
+}
+
 const pool = require('../src/config/db');
 const argon2 = require('argon2');
 const crypto = require('crypto');

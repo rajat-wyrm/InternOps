@@ -3,6 +3,11 @@
 // developer run) starts from a known state. Leaving the password
 // mutated between runs was the original cause of the cascading
 // 401 errors.
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+const { activateTestDatabase } = require('../src/config/testDatabase');
+activateTestDatabase();
+
 const argon2 = require('argon2');
 const pool = require('../src/config/db');
 

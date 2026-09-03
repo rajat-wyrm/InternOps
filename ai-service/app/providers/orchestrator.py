@@ -127,6 +127,36 @@ class AIOrchestrator:
         )
         return data
 
+    async def generate_image(
+        self,
+        prompt: str,
+        **kwargs,
+    ) -> str:
+        data, _ = await self.generate_image_with_fallback(prompt, **kwargs)
+        return data
+
+    async def generate_image_with_fallback(
+        self,
+        prompt: str,
+        **kwargs,
+    ) -> Tuple[str, str]:
+        return await self._execute_with_failover(
+            "generate_image", prompt, **kwargs
+        )
+
+    async def generate_text_with_fallback(
+        self,
+        prompt: str,
+        temperature: float = 0.7,
+        **kwargs,
+    ) -> Tuple[str, str]:
+        return await self._execute_with_failover(
+            "generate_text",
+            prompt,
+            temperature=temperature,
+            **kwargs,
+        )
+
     async def generate_chat_with_fallback(
         self,
         messages: list[dict],
@@ -220,7 +250,15 @@ class AIOrchestrator:
 
             # 2. Call Provider on Cache Miss
             try:
-                func = getattr(provider, method_name)
+                func = getattr(provider, method_name, None)
+                if func is None:
+                    errors.append(
+                        {
+                            "provider": provider_name,
+                            "reason": f"{method_name} not supported by this provider",
+                        }
+                    )
+                    continue
                 result = await func(*args, **kwargs)
                 await cb.record_success()
 

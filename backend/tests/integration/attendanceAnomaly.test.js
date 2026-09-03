@@ -6,6 +6,7 @@ describe('Attendance Anomalies Integration Tests', () => {
   let adminToken;
   let managerToken;
   let unauthorizedToken;
+  const fakeAdminId = '00000000-0000-0000-0000-000000000000';
   let fakeInternId = '11111111-1111-1111-1111-111111111111';
   let fakeManagerId = '22222222-2222-2222-2222-222222222222';
   let fakeOtherManagerId = '33333333-3333-3333-3333-333333333333';
@@ -16,7 +17,7 @@ describe('Attendance Anomalies Integration Tests', () => {
 
     // 1. Generate access tokens for roles
     adminToken = generateAccessToken({
-      id: '00000000-0000-0000-0000-000000000000',
+      id: fakeAdminId,
       role: 'ADMIN',
       department_id: null,
     });
@@ -35,11 +36,18 @@ describe('Attendance Anomalies Integration Tests', () => {
 
     // 2. Clean up and insert test users and department
     await pool.query('DELETE FROM attendance_anomalies');
-    await pool.query('DELETE FROM users WHERE id IN ($1, $2, $3)', [
+    await pool.query('DELETE FROM users WHERE id IN ($1, $2, $3, $4)', [
       fakeInternId,
       fakeManagerId,
       fakeOtherManagerId,
+      fakeAdminId,
     ]);
+
+    await pool.query(
+      `INSERT INTO users (id, email, password_hash, role, full_name, suspended, must_change_password)
+       VALUES ($1, 'anomaly_admin@test.com', 'pwd', 'ADMIN', 'Anomaly Admin', FALSE, FALSE)`,
+      [fakeAdminId]
+    );
 
     // Insert manager and intern
     await pool.query(
@@ -74,10 +82,11 @@ describe('Attendance Anomalies Integration Tests', () => {
   afterAll(async () => {
     // Clean up test data
     await pool.query('DELETE FROM attendance_anomalies');
-    await pool.query('DELETE FROM users WHERE id IN ($1, $2, $3)', [
+    await pool.query('DELETE FROM users WHERE id IN ($1, $2, $3, $4)', [
       fakeInternId,
       fakeManagerId,
       fakeOtherManagerId,
+      fakeAdminId,
     ]);
     await app.close();
   });

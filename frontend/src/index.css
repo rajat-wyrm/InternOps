@@ -7,6 +7,50 @@ body.modal-open {
   overflow: hidden;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
+.internops-sheet-scroll {
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.internops-sheet-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.internops-sheet-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.12);
+}
+
+.internops-sheet-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background: #64748b;
+  background-clip: padding-box;
+}
+
+.internops-sheet-scroll::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+  background-clip: padding-box;
+}
+
+.dark .internops-sheet-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.dark .internops-sheet-scroll::-webkit-scrollbar-thumb {
+  background: #475569;
+  background-clip: padding-box;
+}
+
+.dark .internops-sheet-scroll::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+  background-clip: padding-box;
+}
+
 html,
 body {
   font-family:
@@ -25,6 +69,54 @@ body {
 
 body {
   letter-spacing: -0.01em;
+}
+
+/* Project-wide light-mode depth: a quiet ambient canvas plus elevated surfaces. */
+html:not(.dark) body {
+  background-color: #f4f7fb;
+  background-image:
+    radial-gradient(
+      circle at 12% 6%,
+      rgba(99, 102, 241, 0.1),
+      transparent 30rem
+    ),
+    radial-gradient(
+      circle at 88% 4%,
+      rgba(56, 189, 248, 0.08),
+      transparent 32rem
+    ),
+    linear-gradient(180deg, #fbfdff 0%, #f4f7fb 48%, #f1f5f9 100%);
+  background-attachment: fixed;
+  color: #0f172a;
+}
+
+html:not(.dark) .bg-slate-50 {
+  background-color: rgba(248, 250, 252, 0.72);
+}
+
+html:not(.dark)
+  :where(
+    div,
+    section,
+    article,
+    aside,
+    main
+  )[class~='bg-white'][class*='rounded-'] {
+  border-color: rgba(203, 213, 225, 0.82);
+  background-image: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.99),
+    rgba(248, 250, 252, 0.92)
+  );
+  box-shadow:
+    0 1px 1px rgba(255, 255, 255, 0.9) inset,
+    0 14px 34px -24px rgba(15, 23, 42, 0.32),
+    0 4px 12px -8px rgba(79, 70, 229, 0.12);
+}
+
+html:not(.dark) :where(input, textarea, select)[class~='bg-white'] {
+  background-image: linear-gradient(180deg, #ffffff, #fbfdff);
+  border-color: #cbd5e1;
 }
 
 .bg-animated-gradient {
@@ -269,4 +361,44 @@ html.dark select option:hover {
 .notice-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(129, 140, 248, 0.6) transparent;
+}
+
+/* Shared modal presentation: consistent dimming, blur, elevation, and motion. */
+@keyframes internops-modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes internops-modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.75rem, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.internops-modal-backdrop {
+  animation: internops-modal-backdrop-in 200ms ease-out both;
+}
+
+.internops-modal-backdrop > .internops-modal-panel,
+.internops-modal-panel {
+  animation: internops-modal-panel-in 200ms ease-out both;
+  transform-origin: center;
+  will-change: opacity, transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .internops-modal-backdrop,
+  .internops-modal-backdrop > .internops-modal-panel,
+  .internops-modal-panel {
+    animation-duration: 1ms;
+  }
 }

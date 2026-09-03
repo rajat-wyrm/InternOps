@@ -41,6 +41,49 @@ function csvCell(value) {
 
 async function routes(fastify) {
   fastify.get(
+    '/attendance-detail-csv',
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')],
+      schema: {
+        tags: ['Reports'],
+        description: 'Export detailed historical attendance CSV',
+      },
+    },
+    async (req, reply) => {
+      const range = parseDateRange(req.query);
+      const rows = await repo.detailedAttendanceExport(
+        req.query.department_id || null,
+        range.from,
+        range.to
+      );
+      const csv = ['Member,Email,Role,Lifecycle Status,Date,Attendance,Remarks']
+        .concat(
+          rows.map((r) =>
+            [
+              r.full_name,
+              r.email,
+              r.role,
+              r.internship_status,
+              String(r.date).slice(0, 10),
+              r.status,
+              r.remarks,
+            ]
+              .map(csvCell)
+              .join(',')
+          )
+        )
+        .join('\n');
+      return reply
+        .header('Content-Type', 'text/csv')
+        .header(
+          'Content-Disposition',
+          `attachment; filename="attendance-${range.from}-to-${range.to}.csv"`
+        )
+        .send(csv);
+    }
+  );
+
+  fastify.get(
     '/attendance-csv',
     {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],

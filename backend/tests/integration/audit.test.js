@@ -1,5 +1,6 @@
 const app = require('../../src/app');
 const pool = require('../../src/config/db');
+console.log(process.env.SEED_ADMIN_EMAIL);
 const { v4: uuidv4 } = require('uuid');
 const argon2 = require('argon2');
 const {
@@ -40,6 +41,8 @@ describe('Audit Integration Tests', () => {
       'SELECT id FROM users WHERE email = $1',
       [SEEDED_ADMIN_EMAIL]
     );
+    console.log('SEEDED_ADMIN_EMAIL =', SEEDED_ADMIN_EMAIL);
+    console.log('ROWS =', adminUserRes.rows);
     adminUserId = adminUserRes.rows[0].id;
 
     // Create Intern User in database

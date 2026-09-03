@@ -181,14 +181,27 @@ describe('GET /api/departments/:deptId/teams', () => {
 
     const body = JSON.parse(res.body);
     expect(Array.isArray(body)).toBe(true);
-    expect(body).toHaveLength(1);
+    expect(body).toHaveLength(2);
+
+    const captainLead = body.find((row) => row.lead_id === leadCaptainId);
+
+    expect(captainLead).toMatchObject({
+      role: 'CAPTAIN',
+      member_count: 1,
+      tl_count: 0,
+      captain_count: 0,
+      intern_count: 1,
+    });
 
     const seniorTlLead = body.find((row) => row.lead_id === leadTlId);
 
     expect(seniorTlLead).toMatchObject({
       lead_name: 'TL Lead',
       role: 'SENIOR_TL',
-      member_count: 2,
+      member_count: 5,
+      tl_count: 0,
+      captain_count: 1,
+      intern_count: 4,
     });
   });
 

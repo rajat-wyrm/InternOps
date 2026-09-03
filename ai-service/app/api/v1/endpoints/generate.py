@@ -18,21 +18,55 @@ async def generate_ai_content(
     """
     Generate AI content using the orchestrator with failover and circuit breaker.
 
+    Accepts either:
+      - a flat `prompt` / `user_input` string (single-turn), or
+      - a structured `messages` array (same shape as /ai/chat:
+        [{"role": "user"|"assistant"|"system", "content": "..."}])
+        so multi-turn conversation history is preserved instead of being
+        collapsed into a single prompt string.
+
     Requires a valid JWT in the Authorization header.
     Rate-limited per verified user id.
     """
-    prompt = payload.get("prompt") or payload.get("user_input")
-    if not prompt:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Prompt or user_input is required in payload",
-        )
-    try:
-        prompt = sanitize_prompt(prompt)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    raw_messages = payload.get("messages")
 
-    messages = [{"role": "user", "content": prompt}]
+    if raw_messages is not None:
+        if not isinstance(raw_messages, list) or not raw_messages:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="messages must be a non-empty list",
+            )
+
+        messages = []
+        for msg in raw_messages:
+            role = msg.get("role") if isinstance(msg, dict) else None
+            content = msg.get("content") if isinstance(msg, dict) else None
+            if role not in ("user", "assistant", "system") or not content:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Each message requires a valid role and non-empty content",
+                )
+            try:
+                content = sanitize_prompt(content)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+                )
+            messages.append({"role": role, "content": content})
+    else:
+        prompt = payload.get("prompt") or payload.get("user_input")
+        if not prompt:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Prompt or user_input is required in payload",
+            )
+        try:
+            prompt = sanitize_prompt(prompt)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+        messages = [{"role": "user", "content": prompt}]
+
     try:
         content, provider_name = await ai_orchestrator.generate_chat_with_fallback(messages)
         return {

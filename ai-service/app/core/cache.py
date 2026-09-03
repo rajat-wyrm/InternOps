@@ -9,7 +9,7 @@ from app.core.redis_client import get_redis
 def cache_key(
     provider: str,
     model: str,
-    prompt: str,
+    prompt: Any,
     temperature: float,
 ) -> str:
     """

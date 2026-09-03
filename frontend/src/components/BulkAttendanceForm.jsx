@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
-import { Card, Btn, Input } from './ui';
+import { Card, Btn, Input, ConfirmationModal } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDatePicker from './CustomDatePicker';
 
@@ -19,6 +19,14 @@ export default function BulkAttendanceForm({
   const [fillMissing, setFillMissing] = useState(false);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const [pendingEntries, setPendingEntries] = useState(null);
+  useEffect(() => {
+    if (!propDeptId || propDeptId === departmentId) return;
+    setDepartmentId(propDeptId);
+    setSelectedUsers([]);
+  }, [propDeptId, departmentId]);
+
+  const FILL_CONFIRM_THRESHOLD = 10;
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
@@ -66,7 +74,7 @@ export default function BulkAttendanceForm({
   const statusOptions = [
     { value: 'PRESENT', label: 'Present' },
     { value: 'ABSENT', label: 'Absent' },
-    { value: 'HALF_DAY', label: 'Half Day' },
+    { value: 'INFORMED', label: 'Informed absence' },
   ];
 
   const departmentOptions = [
@@ -119,6 +127,12 @@ export default function BulkAttendanceForm({
           remarks: '',
         });
       }
+
+      // Show confirmation if auto-filling more than threshold
+      if (others.length > FILL_CONFIRM_THRESHOLD) {
+        setPendingEntries(entries);
+        return;
+      }
     }
 
     bulkMutation.mutate({ entries });
@@ -126,6 +140,18 @@ export default function BulkAttendanceForm({
 
   return (
     <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+      <ConfirmationModal
+        open={!!pendingEntries}
+        title="Confirm Bulk Mark"
+        message={`This will mark ${pendingEntries?.length ?? 0} members in total (including ${(pendingEntries?.length ?? 0) - selectedUsers.length} auto-filled). Are you sure?`}
+        confirmText="Yes, mark all"
+        onConfirm={() => {
+          bulkMutation.mutate({ entries: pendingEntries });
+          setPendingEntries(null);
+        }}
+        onCancel={() => setPendingEntries(null)}
+        danger={true}
+      />
       <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
         <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center border border-blue-100 dark:border-blue-900/60">
           <span className="text-lg font-extrabold">✓</span>

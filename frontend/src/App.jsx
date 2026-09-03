@@ -6,6 +6,7 @@ import useFeatureFlagsStore from './store/featureFlags';
 import api from './lib/axios';
 import RoleGuard from './components/RoleGuard';
 import ErrorBoundary from './components/ErrorBoundary';
+import HR from './pages/HR';
 
 // Lazy load page components
 const Login = lazy(() => import('./pages/Login'));
@@ -23,7 +24,9 @@ const Notifications = lazy(() => import('./pages/Notifications'));
 const InternOpsAssistant = lazy(
   () => import('./components/InternOpsAssistant')
 );
+const InternOps = lazy(() => import('./pages/InternOps'));
 const Reports = lazy(() => import('./pages/admin/Reports'));
+const ReportTemplates = lazy(() => import('./pages/admin/ReportTemplates'));
 const Analytics = lazy(() => import('./pages/admin/Analytics'));
 const Exports = lazy(() => import('./pages/admin/Exports'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
@@ -33,20 +36,23 @@ const Notices = lazy(() => import('./pages/admin/Notices'));
 const Certificates = lazy(() => import('./pages/admin/Certificates'));
 const BulkGenerate = lazy(() => import('./pages/admin/BulkGenerate'));
 const CanvaTemplates = lazy(() => import('./pages/admin/CanvaTemplates'));
+const CanvaCallback = lazy(() => import('./pages/admin/CanvaCallback'));
 const AICertificates = lazy(() => import('./pages/admin/AICertificates'));
 const QuickGenerate = lazy(() => import('./pages/admin/QuickGenerate'));
 const FeatureFlags = lazy(() => import('./pages/admin/FeatureFlags'));
 const GithubSync = lazy(() => import('./pages/admin/GithubSync'));
 const ProjectsPage = lazy(() => import('./pages/admin/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/admin/ProjectDetailPage'));
+const TaskDetails = lazy(() => import('./pages/admin/TaskDetails'));
 
 function PageLoader() {
   return (
     <div className="flex items-center justify-center min-h-[50vh] w-full">
-      <div className="relative w-12 h-12">
-        <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-white/5"></div>
-        <div className="absolute inset-0 rounded-full border-4 border-t-transparent border-r-transparent border-indigo-600 dark:border-indigo-400 animate-spin"></div>
-      </div>
+      <div
+        className="h-12 w-12 animate-spin rounded-full border-4 border-slate-300 border-t-indigo-600 dark:border-slate-700 dark:border-t-indigo-400"
+        role="status"
+        aria-label="Loading"
+      />
     </div>
   );
 }
@@ -55,10 +61,15 @@ let bootRefreshPromise = null;
 
 function Private({ children }) {
   const token = useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
   const hydrated = useAuthStore((s) => s.hydrated);
 
   if (!hydrated) return null;
   if (!token) return <Navigate to="/login" replace />;
+  if (user?.mustChangePassword && window.location.pathname !== '/profile') {
+    return <Navigate to="/profile" replace />;
+  }
+
   return children;
 }
 
@@ -85,23 +96,30 @@ export default function App() {
 
   useEffect(() => {
     if (!bootRefreshPromise) {
-      bootRefreshPromise = api.post('/auth/refresh', {});
+      bootRefreshPromise = api.post('/auth/refresh', {}).then(async (res) => {
+        const refreshedUser = res.data.user;
+        setAuth({
+          accessToken: res.data.accessToken,
+          user: refreshedUser,
+        });
+        // Feature flags are protected resources. Temporary-password accounts
+        // may access only Profile until the required password change succeeds.
+        if (refreshedUser?.mustChangePassword) {
+          resetFlags();
+        } else {
+          await fetchFlags();
+        }
+        return res;
+      });
     }
 
     bootRefreshPromise
-      .then((res) => {
-        setAuth({
-          accessToken: res.data.accessToken,
-          user: res.data.user,
-        });
-        // Fetch feature flags right after a successful auth refresh so they
-        // are available before any page component renders.
-        fetchFlags();
-      })
       .catch((err) => {
         const status = err.response?.status;
+
         if (status === 400 || status === 401 || status === 403) {
           const currentToken = useAuthStore.getState().accessToken;
+
           if (!currentToken) {
             logout();
             resetFlags();
@@ -195,12 +213,11 @@ export default function App() {
           </p>
 
           {/* Premium Loading Spinner */}
-          <div className="relative w-12 h-12">
-            {/* Outer glowing track */}
-            <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-white/5"></div>
-            {/* Inner spinning gradient indicator */}
-            <div className="absolute inset-0 rounded-full border-4 border-t-transparent border-r-transparent border-indigo-600 dark:border-indigo-400 animate-spin"></div>
-          </div>
+          <div
+            className="h-12 w-12 animate-spin rounded-full border-4 border-slate-300 border-t-indigo-600 dark:border-slate-700 dark:border-t-indigo-400"
+            role="status"
+            aria-label="Loading InternOps"
+          />
         </div>
       </div>
     );
@@ -227,10 +244,37 @@ export default function App() {
 
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="tasks" element={<Tasks />} />
+            <Route
+              path="tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
             <Route path="attendance" element={<Attendance />} />
             <Route path="ratings" element={<Ratings />} />
             <Route path="meetings" element={<Meetings />} />
             <Route path="team" element={<Team />} />
+
+            <Route
+              path="hr"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <HR />
+                </RoleGuard>
+              }
+            />
+
+            <Route path="profile" element={<Profile />} />
             <Route path="profile" element={<Profile />} />
             <Route path="sessions" element={<Sessions />} />
             <Route path="notifications" element={<Notifications />} />
@@ -238,10 +282,26 @@ export default function App() {
 
             {/* Admin/Manager Routes */}
             <Route
+              path="internops"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <InternOps />
+                </RoleGuard>
+              }
+            />
+            <Route
               path="reports"
               element={
                 <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
                   <Reports />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="report-templates"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <ReportTemplates />
                 </RoleGuard>
               }
             />
@@ -273,7 +333,7 @@ export default function App() {
             <Route
               path="admin"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <AdminDashboard />
                 </RoleGuard>
               }
@@ -281,7 +341,7 @@ export default function App() {
             <Route
               path="departments"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Departments />
                 </RoleGuard>
               }
@@ -289,7 +349,7 @@ export default function App() {
             <Route
               path="admin/departments"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Departments />
                 </RoleGuard>
               }
@@ -297,7 +357,7 @@ export default function App() {
             <Route
               path="departments/:deptId/projects"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <ProjectsPage />
                 </RoleGuard>
               }
@@ -305,7 +365,7 @@ export default function App() {
             <Route
               path="departments/:deptId/projects/:leadId"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <ProjectDetailPage />
                 </RoleGuard>
               }
@@ -313,7 +373,7 @@ export default function App() {
             <Route
               path="admin/departments/:deptId/attendance"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Attendance />
                 </RoleGuard>
               }
@@ -321,7 +381,7 @@ export default function App() {
             <Route
               path="admin/departments/:deptId/ratings"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Ratings />
                 </RoleGuard>
               }
@@ -329,7 +389,7 @@ export default function App() {
             <Route
               path="admin/departments/:deptId/tasks"
               element={
-                <RoleGuard allowedRoles={['ADMIN']}>
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
                   <Tasks />
                 </RoleGuard>
               }
@@ -376,6 +436,10 @@ export default function App() {
                   <CanvaTemplates />
                 </RoleGuard>
               }
+            />
+            <Route
+              path="canva-templates/callback"
+              element={<CanvaCallback />}
             />
             <Route
               path="ai-certificates"

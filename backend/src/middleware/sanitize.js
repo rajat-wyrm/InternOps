@@ -32,8 +32,11 @@ const EXCLUDED_FIELDS = new Set([
   'accesstoken',
   'refreshtoken',
   'verificationtoken',
+  'csrftoken',
+  '_csrf',
   'apikey',
   'clientsecret',
+  'secret',
   'email',
   'recipient_email',
   'avatar_url',
@@ -45,7 +48,6 @@ const EXCLUDED_FIELDS = new Set([
   'actionurl',
   'redirecturi',
   'redirect_uri',
-  '_csrf',
 ]);
 
 // Fields that must never be mutated, regardless of any allowlist —
@@ -56,20 +58,44 @@ const EXCLUDED_FIELDS = new Set([
 const SENSITIVE_FIELDS = new Set([
   'password',
   'oldPassword',
+  'oldpassword',
   'newPassword',
+  'newpassword',
   'confirmPassword',
+  'confirmpassword',
   'token',
   'resetToken',
+  'resettoken',
   'refreshToken',
+  'refreshtoken',
+  'accessToken',
+  'accesstoken',
+  'verificationToken',
+  'verificationtoken',
+  'csrfToken',
+  'csrftoken',
   '_csrf',
+  'apiKey',
+  'apikey',
+  'clientSecret',
+  'clientsecret',
+  'secret',
 ]);
 
 const SAFE_FIELDS = new Set([
   'name',
-  'description',
-  'message',
+  'full_name',
   'title',
+  'description',
   'content',
+  'comment',
+  'message',
+  'bio',
+  'feedback',
+  'subject',
+  'body',
+  'notes',
+  'reason',
   'meeting_url',
   'meetingUrl',
 ]);
@@ -132,6 +158,11 @@ function sanitizeString(val, isSafeField) {
   );
 }
 
+function isSafeField(key) {
+  if (typeof key !== 'string') return false;
+  return SAFE_FIELDS.has(key) || SAFE_FIELDS.has(key.toLowerCase());
+}
+
 function sanitizeInput(obj, excludedFields = [], depth = 0) {
   // Prevent stack overflow DoS attacks
   if (depth > 10 || !obj || typeof obj !== 'object') return;
@@ -162,14 +193,34 @@ function sanitizeInput(obj, excludedFields = [], depth = 0) {
     const val = obj[key];
 
     if (typeof val === 'string') {
-      obj[key] = sanitizeString(val, SAFE_FIELDS.has(key));
+      obj[key] = sanitizeString(val, isSafeField(key));
     } else if (isPlainObject(val) || Array.isArray(val)) {
       sanitizeInput(val, excludedFields, depth + 1);
     }
   }
 }
 
+function isAuthRoute(request) {
+  if (!request) return false;
+  const path =
+    request.routerPath ||
+    request.routeOptions?.url ||
+    request.raw?.url ||
+    request.url ||
+    '';
+  return (
+    path.startsWith('/api/v1/auth') ||
+    path.startsWith('/auth') ||
+    path.includes('/auth/')
+  );
+}
+
 function sanitizationMiddleware(request, reply, done) {
+  if (isAuthRoute(request)) {
+    if (typeof done === 'function') return done();
+    return;
+  }
+
   const EXCLUDED_FIELDS_PARAM = [];
 
   if (request.body) {
@@ -184,7 +235,14 @@ function sanitizationMiddleware(request, reply, done) {
     sanitizeInput(request.params, EXCLUDED_FIELDS_PARAM);
   }
 
-  done();
+  if (typeof done === 'function') {
+    done();
+  }
 }
 
-module.exports = { sanitizeInput, sanitizationMiddleware, isExcludedField };
+module.exports = {
+  sanitizeInput,
+  sanitizationMiddleware,
+  isExcludedField,
+  isAuthRoute,
+};

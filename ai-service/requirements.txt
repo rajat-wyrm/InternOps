@@ -53,6 +53,8 @@ pydantic-settings==2.14.2
     # via ai-service
 pygments==2.20.0
     # via pytest
+pyjwt==2.13.0
+    # via ai-service
 pytest==9.1.1
     # via pytest-asyncio
 pytest-asyncio==1.4.0

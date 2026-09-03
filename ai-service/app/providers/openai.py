@@ -28,10 +28,13 @@ class OpenAIProvider(BaseAIProvider):
         api_key: str,
         model_name: str = "gpt-4o-mini",
         timeout: float = 15.0,
+        image_model: str = "dall-e-3",
     ):
         super().__init__(api_key=api_key, model_name=model_name)
         self.timeout = timeout
         self.base_url = "https://api.openai.com/v1/chat/completions"
+        self.image_url = "https://api.openai.com/v1/images/generations"
+        self.image_model = image_model
 
     async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
         payload = {
@@ -70,6 +73,55 @@ class OpenAIProvider(BaseAIProvider):
             raise ProviderAPIError(
                 f"Failed to parse structured JSON from OpenAI: {e}", self.provider_name
             )
+
+    async def generate_image(self, prompt: str, size: str = "1024x1024", **kwargs) -> Dict[str, Any]:
+        """Generate an image from a text prompt via OpenAI's Images API."""
+        payload = {
+            "model": self.image_model,
+            "prompt": prompt,
+            "size": size,
+            "n": 1,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.post(self.image_url, headers=headers, json=payload)
+            except httpx.TimeoutException:
+                raise ProviderTimeoutError("OpenAI image API request timed out", self.provider_name)
+            except httpx.RequestError as e:
+                raise ProviderAPIError(
+                    f"Network error connecting to OpenAI image API: {e}", self.provider_name
+                )
+
+        if response.status_code == 429:
+            raise ProviderRateLimitError(
+                "OpenAI rate limit or quota exceeded",
+                self.provider_name,
+                status_code=429,
+            )
+        if response.is_error:
+            raise ProviderAPIError(
+                f"OpenAI image API error: {response.text}",
+                self.provider_name,
+                status_code=response.status_code,
+            )
+
+        try:
+            data = response.json()
+            image_data = data["data"][0]
+        except (KeyError, IndexError, ValueError) as e:
+            raise ProviderAPIError(
+                f"Unexpected response payload from OpenAI image API: {e}", self.provider_name
+            )
+
+        return {
+            "url": image_data.get("url"),
+            "revised_prompt": image_data.get("revised_prompt", prompt),
+            "model": self.image_model,
+        }
 
     async def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         headers = {

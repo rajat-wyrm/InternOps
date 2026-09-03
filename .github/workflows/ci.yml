@@ -2,9 +2,9 @@ name: InternOps CI
 
 on:
   push:
-    branches: [ master, 'feature/*' ]
+    branches: [master, 'feature/*']
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 jobs:
   test:
@@ -17,18 +17,18 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: internops_test
-          POSTGRES_INITDB_ARGS: "--username=postgres"
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d internops_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
       JWT_SECRET: ci-test-secret-do-not-use-in-prod
       JWT_REFRESH_SECRET: ci-test-refresh-secret
       JWT_REFRESH_EXPIRES_IN: 7d
@@ -45,26 +45,45 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: package-lock.json
 
       - name: Install all dependencies
-        shell: bash
         run: npm ci --no-audit --no-fund
 
       - name: Run backend linting
         run: cd backend && npm run lint
+
       - name: Wait for PostgreSQL
+        env:
+          PGPASSWORD: postgres
         run: |
-          until pg_isready -h localhost -p 5432 -U postgres; do
+          until pg_isready -h localhost -p 5432 -U postgres -d internops_test; do
             echo "Waiting for PostgreSQL..."
             sleep 2
           done
 
+      - name: Verify PostgreSQL connection
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -p 5432 -U postgres -d internops_test \
+            -c "SELECT current_user, current_database();"
+
       - name: Run migrations
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
-        run: cd backend && npm run migrate
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
+        run: |
+          cd backend
+          echo "Running database migrations..."
+          echo "Node version:"
+          node --version
+          echo "Checking migration files:"
+          ls -la migrations
+          echo "Running migration..."
+          set -o pipefail
+          node src/db/migrate.js 2>&1 | tee migration-output.log
 
       - name: Seed test data
         run: cd backend && npm run seed
@@ -75,9 +94,12 @@ jobs:
       - name: Run Lint
         run: npm run lint
 
-
       - name: Run Frontend Tests
-        run: cd frontend && npm run test
+        run: |
+          cd frontend
+          npm cache clean --force
+          npm ci --workspaces=false --include=optional --no-audit --no-fund
+          npm run test
 
       - name: Build frontend
         run: cd frontend && npm run build

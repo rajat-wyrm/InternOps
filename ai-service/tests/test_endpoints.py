@@ -103,6 +103,81 @@ async def test_generate_rejects_empty_input():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_generate_accepts_structured_messages():
+    """POST /generate preserves a structured messages array instead of
+    flattening the conversation into a single prompt string."""
+    captured_bodies = []
+
+    def _capture(request):
+        import json
+
+        captured_bodies.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {"content": {"parts": [{"text": "Hello from Gemini!"}]}}
+                ]
+            },
+        )
+
+    respx.post(url__startswith=GEMINI_URL_PREFIX).mock(side_effect=_capture)
+
+    messages = [
+        {"role": "system", "content": "Be concise."},
+        {"role": "user", "content": "Hi"},
+        {"role": "assistant", "content": "Hello!"},
+        {"role": "user", "content": "How are you?"},
+    ]
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/generate",
+            json={"messages": messages},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["content"] == "Hello from Gemini!"
+
+    # The provider must have received all four structured turns, not a
+    # single flattened prompt.
+    assert len(captured_bodies) == 1
+
+
+@pytest.mark.asyncio
+async def test_generate_rejects_empty_messages_list():
+    """POST /generate rejects an empty messages array with 400."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/generate",
+            json={"messages": []},
+        )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_generate_rejects_message_missing_role():
+    """POST /generate rejects a message without a valid role with 400."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/generate",
+            json={"messages": [{"content": "hi"}]},
+        )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_generate_rate_limited_after_threshold(monkeypatch):
     """POST /generate returns 429 when client exceeds the requests-per-minute threshold."""
     respx.post(url__startswith=GEMINI_URL_PREFIX).mock(

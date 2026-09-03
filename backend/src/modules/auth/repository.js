@@ -9,6 +9,13 @@ async function findByIdRaw(id) {
   );
   return res.rows[0] || null;
 }
+async function getPasswordAccessState(id) {
+  const res = await pool.query(
+    'SELECT must_change_password, suspended FROM users WHERE id=$1 AND deleted_at IS NULL',
+    [id]
+  );
+  return res.rows[0] || null;
+}
 
 async function listUsersByRole(role) {
   return pool.query(
@@ -87,7 +94,7 @@ async function revokeAllUserTokens(userId) {
 
 async function updatePassword(userId, newHash) {
   await pool.query(
-    'UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2',
+    'UPDATE users SET password_hash=$1, must_change_password=FALSE, updated_at=NOW() WHERE id=$2',
     [newHash, userId]
   );
 }
@@ -303,6 +310,7 @@ module.exports = {
   findByEmail,
   findById,
   findByIdRaw,
+  getPasswordAccessState,
   listUsersByRole,
   verifyPassword,
   storeRefreshToken,
