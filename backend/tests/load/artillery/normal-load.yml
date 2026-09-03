@@ -50,14 +50,14 @@ scenarios:
   - name: 'Full user journey'
     flow:
       - get:
-          url: '/api/auth/csrf-token'
+          url: '/api/v1/auth/csrf-token'
           capture:
             - json: $.csrfToken
               as: csrfToken
           think: 0.5
 
       - post:
-          url: '/api/auth/login'
+          url: '/api/v1/auth/login'
           json:
             email: '{{ email }}'
             password: '{{ password }}'
@@ -67,79 +67,79 @@ scenarios:
           think: 1
 
       - get:
-          url: '/api/dashboard/stats'
+          url: '/api/v1/dashboard/stats'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/dashboard/summary'
+          url: '/api/v1/dashboard/summary'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/interns?page=1&limit=20'
+          url: '/api/v1/interns?page=1&limit=20'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/interns/search?q=engineering&limit=20'
+          url: '/api/v1/interns/search?q=engineering&limit=20'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/attendance/today'
+          url: '/api/v1/attendance/today'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/attendance/stats?startDate=2026-01-01&endDate=2026-12-31'
+          url: '/api/v1/attendance/stats?startDate=2026-01-01&endDate=2026-12-31'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/progress/stats'
+          url: '/api/v1/progress/stats'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/mentors/list'
+          url: '/api/v1/mentors/list'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/notifications/count'
+          url: '/api/v1/notifications/count'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/notifications?page=1&limit=10'
+          url: '/api/v1/notifications?page=1&limit=10'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/dashboard/charts?period=monthly&metric=users'
+          url: '/api/v1/dashboard/charts?period=monthly&metric=users'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - get:
-          url: '/api/sessions/current'
+          url: '/api/v1/sessions/current'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           think: 0.5
 
       - post:
-          url: '/api/auth/refresh'
+          url: '/api/v1/auth/refresh'
           headers:
             Authorization: 'Bearer {{ accessToken }}'
           json: {}

@@ -2,7 +2,7 @@ const pool = require('../config/db');
 async function checkHierarchyAccess(requesterId, targetUserId, client = pool) {
   if (requesterId === targetUserId) return true;
 
-  const usersRes = await pool.query(
+  const usersRes = await client.query(
     'SELECT id, role, department_id FROM users WHERE id IN ($1, $2)',
     [requesterId, targetUserId]
   );
@@ -19,6 +19,9 @@ async function checkHierarchyAccess(requesterId, targetUserId, client = pool) {
     ) {
       return false;
     }
+    // Senior TL is the department-wide leader. The role can access every
+    // non-admin account in the same department without changing manager_id.
+    if (requester.role === 'SENIOR_TL') return true;
   }
 
   const query = `WITH RECURSIVE chain AS (

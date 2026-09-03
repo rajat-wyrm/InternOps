@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
@@ -8,6 +8,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import api from '../lib/axios';
 import {
@@ -16,8 +17,21 @@ import {
   EmptyState,
   Spinner,
   ConfirmationModal,
+  ApiErrorState,
 } from '../components/ui';
 
+const LEGACY_WARNING_PREFIXES = [
+  String.fromCharCode(226, 353, 160, 239, 184, 143),
+  String.fromCharCode(226, 353, 160, 239, 184),
+  String.fromCharCode(226, 353, 160),
+];
+export function normalizeNotificationMessage(message) {
+  if (typeof message !== 'string') return message;
+  const prefix = LEGACY_WARNING_PREFIXES.find((value) =>
+    message.startsWith(value)
+  );
+  return prefix ? `⚠️ ${message.slice(prefix.length).trimStart()}` : message;
+}
 function timeAgo(d) {
   const s = Math.floor((Date.now() - new Date(d)) / 1000);
   if (s < 60) return 'just now';
@@ -25,13 +39,27 @@ function timeAgo(d) {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return new Date(d).toLocaleDateString();
 }
+export function parseLoginFailureNotification(message) {
+  const normalized = normalizeNotificationMessage(message);
+  if (typeof normalized !== 'string') return null;
+  const match = normalized.match(
+    /User Issue:\s*Login Failed\s*User:\s*([^\s]+)\s*Issue:\s*(.+?)(?:\s+Time:\s*.+)?$/i
+  );
+  if (!match) return null;
+  return {
+    title: 'Login attempt failed',
+    description: 'An unsuccessful sign-in attempt was detected for an account.',
+    account: match[1],
+    reason: match[2].trim(),
+  };
+}
 
 export default function Notifications() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['notifications', page],
     queryFn: () =>
       api.get(`/notifications?page=${page}&limit=20`).then((res) => res.data),
@@ -44,29 +72,118 @@ export default function Notifications() {
 
   const markReadMut = useMutation({
     mutationFn: (id) => api.patch(`/notifications/${id}/read`),
-    onSuccess: invalidate,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: previousData.data.map((n) =>
+            n.id === id ? { ...n, read: true } : n
+          ),
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, id, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
+    onSettled: () => {
+      invalidate();
+    },
   });
 
   const markAllReadMut = useMutation({
     mutationFn: () => api.post('/notifications/read-all', {}),
-    onSuccess: invalidate,
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: previousData.data.map((n) => ({ ...n, read: true })),
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
+    onSettled: () => {
+      invalidate();
+    },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/notifications/${id}`),
-    onSuccess: invalidate,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: previousData.data.filter((n) => n.id !== id),
+          total: Math.max(0, previousData.total - 1),
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, id, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
+    onSettled: () => {
+      invalidate();
+    },
   });
 
   const deleteAllMut = useMutation({
     mutationFn: () => api.delete('/notifications/all'),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: [],
+          total: 0,
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
     onSuccess: () => {
       setShowDeleteModal(false);
+    },
+    onSettled: () => {
       invalidate();
     },
   });
 
   const items = data?.data || [];
   const unread = items.filter((n) => !n.read).length;
+  const handleMarkRead = useCallback(
+    (id) => {
+      markReadMut.mutate(id);
+    },
+    [markReadMut]
+  );
+
+  const handleDelete = useCallback(
+    (id) => {
+      deleteMut.mutate(id);
+    },
+    [deleteMut]
+  );
 
   return (
     <div className="animate-fade-in-up">
@@ -102,7 +219,7 @@ export default function Notifications() {
           </div>
         </div>
 
-        {items.length > 0 && (
+        {items.length > 0 && !isError && (
           <div className="flex items-center gap-2">
             <Btn
               variant="outline"
@@ -131,7 +248,14 @@ export default function Notifications() {
         )}
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <ApiErrorState
+          error={error}
+          title="Failed to load notifications"
+          fallback="Unable to load notifications. Please try again."
+          onRetry={refetch}
+        />
+      ) : isLoading ? (
         <div className="flex justify-center p-8">
           <Spinner />
         </div>
@@ -145,68 +269,110 @@ export default function Notifications() {
         />
       ) : (
         <div className="space-y-3">
-          {items.map((n) => (
-            <Card
-              key={n.id}
-              className={`p-5 flex items-start gap-4 transition-all duration-300 border ${
-                n.read
-                  ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:hover:shadow-none'
-                  : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-100 dark:border-indigo-900/60 shadow-sm'
-              }`}
-            >
-              <div
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
+          {items.map((n) => {
+            const isMarkingThisNotification =
+              markReadMut.isPending && markReadMut.variables === n.id;
+            const isDeletingThisNotification =
+              deleteMut.isPending && deleteMut.variables === n.id;
+
+            const loginFailure = parseLoginFailureNotification(n.message);
+            return (
+              <Card
+                key={n.id}
+                className={`p-5 flex items-start gap-4 transition-all duration-300 border ${
                   n.read
-                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700'
-                    : 'bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white'
+                    ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:hover:shadow-none'
+                    : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-100 dark:border-indigo-900/60 shadow-sm'
                 }`}
               >
-                <Bell className="w-5 h-5" />
-              </div>
-
-              <div className="flex-1 min-w-0 pt-0.5">
-                <p
-                  className={`text-sm leading-relaxed ${
+                <div
+                  className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
                     n.read
-                      ? 'text-slate-700 dark:text-slate-300'
-                      : 'text-slate-900 dark:text-white font-bold'
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700'
+                      : 'bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white'
                   }`}
                 >
-                  {n.message}
-                </p>
+                  <Bell className="w-5 h-5" />
+                </div>
 
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium flex items-center gap-1.5">
-                  {timeAgo(n.created_at)}
-                </p>
-              </div>
+                <div className="flex-1 min-w-0 pt-0.5">
+                  {loginFailure ? (
+                    <div className="space-y-2">
+                      <div>
+                        <p className="font-extrabold text-slate-900 dark:text-white">
+                          {loginFailure.title}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                          {loginFailure.description}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                        <span>
+                          <strong className="text-slate-700 dark:text-slate-200">
+                            Account:
+                          </strong>{' '}
+                          {loginFailure.account}
+                        </span>
+                        <span>
+                          <strong className="text-slate-700 dark:text-slate-200">
+                            Reason:
+                          </strong>{' '}
+                          {loginFailure.reason}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p
+                      className={`text-sm leading-relaxed ${n.read ? 'text-slate-700 dark:text-slate-300' : 'font-bold text-slate-900 dark:text-white'}`}
+                    >
+                      {normalizeNotificationMessage(n.message)}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500">
+                    {timeAgo(n.created_at)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 pt-1">
+                  {!n.read && (
+                    <button
+                      onClick={() => handleMarkRead(n.id)}
+                      disabled={isMarkingThisNotification}
+                      className="text-indigo-600 dark:text-indigo-300 text-xs font-extrabold hover:text-indigo-800 dark:hover:text-indigo-200 transition-colors flex items-center gap-1 disabled:opacity-60"
+                    >
+                      {isMarkingThisNotification ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Marking...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          Mark as read
+                        </>
+                      )}
+                    </button>
+                  )}
 
-              <div className="flex items-center gap-2 shrink-0 pt-1">
-                {!n.read && (
                   <button
-                    onClick={() => markReadMut.mutate(n.id)}
-                    disabled={markReadMut.isPending}
-                    className="text-indigo-600 dark:text-indigo-300 text-xs font-extrabold hover:text-indigo-800 dark:hover:text-indigo-200 transition-colors flex items-center gap-1 disabled:opacity-60"
+                    onClick={() => handleDelete(n.id)}
+                    disabled={isDeletingThisNotification}
+                    className="text-slate-400 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-all disabled:opacity-60"
+                    title="Delete notification"
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    Mark read
+                    {isDeletingThisNotification ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
                   </button>
-                )}
-
-                <button
-                  onClick={() => deleteMut.mutate(n.id)}
-                  disabled={deleteMut.isPending}
-                  className="text-slate-400 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-xl transition-all disabled:opacity-60"
-                  title="Delete notification"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </Card>
-          ))}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      {data && data.total > data.limit && (
+      {!isError && data && data.total > data.limit && (
         <div className="flex items-center justify-center gap-4 mt-8 pt-4 border-t border-slate-200 dark:border-slate-700">
           <Btn
             variant="outline"

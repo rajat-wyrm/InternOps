@@ -12,9 +12,14 @@ async function send(userId, message, client = pool, options = {}) {
 
   if (emit) {
     try {
-      const { notifyUser } = require('../../websocket');
-      const unread = await getUnreadCount(userId);
+      const websocket = require('../../websocket') || {};
+      const notifyUser = websocket.notifyUser;
 
+      if (typeof notifyUser !== 'function') {
+        return notification;
+      }
+
+      const unread = await getUnreadCount(userId);
       await notifyUser(userId, 'notification-received', {
         notification,
         unreadCount: unread,
@@ -105,18 +110,28 @@ async function getUnreadCount(userId, client = pool) {
   return parseInt(res.rows[0].count, 10);
 }
 
-async function notifyAdmin(message) {
+async function notifyAdmin(message, client = pool) {
   const audit = require('../audit/repository'); // Lazy load
 
-  const adminRes = await pool.query(
-    "SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1"
+  const adminRes = await client.query(
+    `SELECT DISTINCT id
+     FROM users
+     WHERE role = 'ADMIN'
+       AND deleted_at IS NULL`
   );
 
-  if (adminRes.rows.length > 0) {
-    const adminId = adminRes.rows[0].id;
+  if (adminRes.rows.length === 0) {
+    return;
+  }
 
-    await send(adminId, message);
+  const notifications = adminRes.rows.map(({ id }) => ({
+    user_id: id,
+    message,
+  }));
 
+  await bulkSend(notifications, client);
+
+  for (const { id: adminId } of adminRes.rows) {
     if (audit && typeof audit.logEvent === 'function') {
       await audit.logEvent({
         userId: adminId,
@@ -127,8 +142,33 @@ async function notifyAdmin(message) {
   }
 }
 
+async function bulkSend(notifications, client = pool) {
+  if (!Array.isArray(notifications) || notifications.length === 0) {
+    return [];
+  }
+
+  const values = [];
+  const placeholders = [];
+  let index = 1;
+
+  for (const n of notifications) {
+    placeholders.push(`($${index++}, $${index++})`);
+    values.push(n.user_id, n.message);
+  }
+
+  const query = `
+    INSERT INTO notifications (user_id, message)
+    VALUES ${placeholders.join(', ')}
+    RETURNING *
+  `;
+
+  const res = await client.query(query, values);
+  return res.rows;
+}
+
 module.exports = {
   send,
+  bulkSend,
   notifyAdmin,
   get,
   markRead,

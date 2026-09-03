@@ -1,6 +1,11 @@
 # start-production.ps1
 # Build and run the full stack using Docker Compose
 
+if (-not (Test-Path "backend/.env")) {
+	Write-Host "Missing backend/.env. Copy backend/.env.example to backend/.env and set the required runtime secrets before starting production." -ForegroundColor Red
+	exit 1
+}
+
 Write-Host "=== BUILDING DOCKER IMAGES ===" -ForegroundColor Cyan
 docker-compose build
 

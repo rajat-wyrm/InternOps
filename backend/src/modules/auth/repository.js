@@ -9,6 +9,13 @@ async function findByIdRaw(id) {
   );
   return res.rows[0] || null;
 }
+async function getPasswordAccessState(id) {
+  const res = await pool.query(
+    'SELECT must_change_password, suspended FROM users WHERE id=$1 AND deleted_at IS NULL',
+    [id]
+  );
+  return res.rows[0] || null;
+}
 
 async function listUsersByRole(role) {
   return pool.query(
@@ -31,7 +38,7 @@ async function createUser(data) {
         data.role,
         data.managerId || null,
         data.departmentId || null,
-        data.fullName || null,
+        data.full_name || null,
       ]
     );
 
@@ -87,7 +94,7 @@ async function revokeAllUserTokens(userId) {
 
 async function updatePassword(userId, newHash) {
   await pool.query(
-    'UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2',
+    'UPDATE users SET password_hash=$1, must_change_password=FALSE, updated_at=NOW() WHERE id=$2',
     [newHash, userId]
   );
 }
@@ -203,6 +210,13 @@ async function claimRefreshToken(tokenHash) {
       arguments: [],
     });
     if (!raw) return null;
+    // Also revoke in Postgres so token can't be replayed after Redis restart
+    await pool
+      .query(
+        'UPDATE refresh_tokens SET revoked = TRUE WHERE token_hash = $1 AND revoked = FALSE',
+        [tokenHash]
+      )
+      .catch(() => {});
     try {
       return JSON.parse(raw).userId;
     } catch {
@@ -245,21 +259,30 @@ async function revokeRefreshTokenRedis(tokenHash) {
 // can never roll back — or block — the Postgres revocation (#507).
 async function revokeAllUserTokensRedis(userId) {
   // 1. Postgres UPDATE first inside a transaction — must succeed
-  const client = await pool.connect();
+  let client;
+
   try {
+    client = await pool.connect();
+
     await client.query('BEGIN');
+
     await client.query(
       'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
       [userId]
     );
+
     await client.query('COMMIT');
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+    }
+
     throw err;
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
-
   // 2. Redis cleanup (best-effort)
   try {
     const redis = await getRedisClient();
@@ -287,6 +310,7 @@ module.exports = {
   findByEmail,
   findById,
   findByIdRaw,
+  getPasswordAccessState,
   listUsersByRole,
   verifyPassword,
   storeRefreshToken,

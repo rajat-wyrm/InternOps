@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Bot,
   Sparkles,
@@ -12,7 +12,7 @@ import {
   Ban,
   Zap,
 } from 'lucide-react';
-import api from '../lib/axios';
+import api, { getAiChatErrorMessage } from '../lib/axios';
 import CustomSelect from './CustomSelect';
 
 const ROLES = ['Admin', 'Senior TL', 'TL', 'Captain', 'Intern'];
@@ -317,7 +317,9 @@ function getKBResponse(text) {
   }
   if (t.includes('audit') || t.includes('log')) return KB.audit;
 
-  return null;
+  return `I can help with InternOps-related questions such as ratings, attendance, tasks, proof verification, reports, sessions, meetings, permissions, and audit logs.
+
+  Please ask me something related to the InternOps platform.`;
 }
 
 function parseBold(text) {
@@ -578,37 +580,38 @@ export default function InternOpsAssistant() {
     ]);
   };
 
-  const handleSend = async (text) => {
-    const msg = text || input.trim();
+  const handleSend = useCallback(
+    async (text) => {
+      const msg = text || input.trim();
 
-    if (!msg) return;
+      if (!msg) return;
 
-    setInput('');
+      setInput('');
 
-    const userMsg = { role: 'user', content: msg, time: now() };
-    setMessages((prev) => [...prev, userMsg]);
-    setHistory((prev) => [...prev, { role: 'user', content: msg }]);
-    setIsTyping(true);
+      const userMsg = { role: 'user', content: msg, time: now() };
+      setMessages((prev) => [...prev, userMsg]);
+      setHistory((prev) => [...prev, { role: 'user', content: msg }]);
+      setIsTyping(true);
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, 450 + Math.random() * 300)
-    );
+      await new Promise((resolve) =>
+        setTimeout(resolve, 450 + Math.random() * 300)
+      );
 
-    const kbAnswer = getKBResponse(msg);
+      const kbAnswer = getKBResponse(msg);
 
-    if (kbAnswer) {
-      setIsTyping(false);
-      addBotMessage(kbAnswer);
-      return;
-    }
+      if (kbAnswer) {
+        setIsTyping(false);
+        addBotMessage(kbAnswer);
+        return;
+      }
 
-    if (
-      msg.toLowerCase().includes('what can i do') ||
-      msg.toLowerCase().includes('my permissions') ||
-      msg.toLowerCase().includes('my role')
-    ) {
-      const perms = ROLE_PERMISSIONS[role];
-      const answer = `**Your role: ${role}**
+      if (
+        msg.toLowerCase().includes('what can i do') ||
+        msg.toLowerCase().includes('my permissions') ||
+        msg.toLowerCase().includes('my role')
+      ) {
+        const perms = ROLE_PERMISSIONS[role];
+        const answer = `**Your role: ${role}**
 
 **✅ You can:**
 ${perms.canDo.map((item) => `- ${item}`).join('\n')}
@@ -616,44 +619,57 @@ ${perms.canDo.map((item) => `- ${item}`).join('\n')}
 **❌ You cannot:**
 ${perms.cannotDo.map((item) => `- ${item}`).join('\n')}`;
 
-      setIsTyping(false);
-      addBotMessage(answer);
-      return;
-    }
+        setIsTyping(false);
+        addBotMessage(answer);
+        return;
+      }
 
-    try {
-      const systemPrompt = `You are the InternOps Assistant. The user's current role is: ${role}. Give concise, role-aware answers about InternOps modules, permissions, ratings, attendance, tasks, reports, sessions, meetings, and audit logs.`;
+      try {
+        const systemPrompt = `You are the InternOps Assistant. The user's current role is: ${role}. Give concise, role-aware answers about InternOps modules, permissions, ratings, attendance, tasks, reports, sessions, meetings, and audit logs.`;
 
-      const response = await api.post('/ai/chat', {
-        messages: [
+        const response = await api.post(
+          '/ai/chat',
           {
-            role: 'system',
-            content: systemPrompt,
+            messages: [
+              {
+                role: 'system',
+                content: systemPrompt,
+              },
+              ...history.slice(-6).map((item) => ({
+                role: item.role === 'bot' ? 'assistant' : item.role,
+                content: item.content,
+              })),
+              {
+                role: 'user',
+                content: msg,
+              },
+            ],
           },
-          ...history.slice(-6).map((item) => ({
-            role: item.role === 'bot' ? 'assistant' : item.role,
-            content: item.content,
-          })),
-          {
-            role: 'user',
-            content: msg,
-          },
-        ],
-      });
+          // The failure is already surfaced as an in-chat message below, so
+          // suppress the global error toast to avoid showing the user two
+          // separate error messages for the same failed request (#1795).
+          { _suppressGlobalError: true }
+        );
 
-      const answer =
-        response.data?.content ||
-        "Sorry, I couldn't process that. Please try rephrasing.";
+        const answer =
+          response.data?.content ||
+          "Sorry, I couldn't process that. Please try rephrasing.";
 
-      setIsTyping(false);
-      addBotMessage(answer);
-    } catch {
-      setIsTyping(false);
-      addBotMessage(
-        '⚠️ Could not reach the AI service. Please check your connection and try again.'
-      );
-    }
-  };
+        setIsTyping(false);
+        addBotMessage(answer);
+      } catch (err) {
+        setIsTyping(false);
+        const { message, retryable } = getAiChatErrorMessage(err);
+        addBotMessage(
+          `⚠️ ${message}`,
+          retryable
+            ? [{ label: 'Retry', onClick: () => handleSend(msg) }]
+            : null
+        );
+      }
+    },
+    [input, role, history]
+  );
 
   useEffect(() => {
     const welcome = {
@@ -678,7 +694,12 @@ I can help you understand platform workflows, role permissions, and daily operat
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (
+      messagesEndRef.current &&
+      typeof messagesEndRef.current.scrollIntoView === 'function'
+    ) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isTyping]);
 
   const handleKeyDown = (event) => {

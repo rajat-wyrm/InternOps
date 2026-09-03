@@ -1,5 +1,4 @@
 const { checkHierarchyAccess } = require('../utils/hierarchy');
-const { createAuditLog, extractRequestInfo } = require('../utils/audit');
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -18,16 +17,7 @@ function ownership(paramName = 'id', { requireUuid = true } = {}) {
         .send({ error: `Invalid ${paramName}: must be a UUID` });
     }
     if (request.user.role === 'ADMIN') {
-      const { ipAddress, userAgent } = extractRequestInfo(request);
-      await createAuditLog({
-        userId: request.user.id,
-        action: 'ADMIN_ACCESSED_USER_DATA',
-        resourceType: 'USER',
-        resourceId: target,
-        ipAddress,
-        userAgent,
-      });
-      return; // admin bypass
+      return; // admin bypass — audit logged by onResponse hook (#983)
     }
     const ok = await checkHierarchyAccess(request.user.id, target);
     if (!ok) return reply.status(403).send({ error: 'Not in your hierarchy' });

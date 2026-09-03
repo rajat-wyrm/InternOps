@@ -1,5 +1,6 @@
 const app = require('../../src/app');
 const pool = require('../../src/config/db');
+console.log(process.env.SEED_ADMIN_EMAIL);
 const { v4: uuidv4 } = require('uuid');
 const argon2 = require('argon2');
 const {
@@ -31,6 +32,7 @@ describe('Audit Integration Tests', () => {
   const seededSystemLogId = uuidv4();
 
   beforeAll(async () => {
+    jest.setTimeout(60000);
     await app.ready();
     await resetSeededAdminPassword();
 
@@ -39,6 +41,8 @@ describe('Audit Integration Tests', () => {
       'SELECT id FROM users WHERE email = $1',
       [SEEDED_ADMIN_EMAIL]
     );
+    console.log('SEEDED_ADMIN_EMAIL =', SEEDED_ADMIN_EMAIL);
+    console.log('ROWS =', adminUserRes.rows);
     adminUserId = adminUserRes.rows[0].id;
 
     // Create Intern User in database
@@ -99,7 +103,7 @@ describe('Audit Integration Tests', () => {
     // Login Admin
     const adminCsrfRes = await app.inject({
       method: 'GET',
-      url: '/api/auth/csrf-token',
+      url: '/api/v1/auth/csrf-token',
     });
     adminCsrfToken = JSON.parse(adminCsrfRes.body).csrfToken;
     mergeCookies(
@@ -110,7 +114,7 @@ describe('Audit Integration Tests', () => {
 
     const adminLoginRes = await app.inject({
       method: 'POST',
-      url: '/api/auth/login',
+      url: '/api/v1/auth/login',
       cookies: adminCookies,
       headers: {
         'X-CSRF-Token': adminCsrfToken,
@@ -130,7 +134,7 @@ describe('Audit Integration Tests', () => {
     // Login Intern
     const internCsrfRes = await app.inject({
       method: 'GET',
-      url: '/api/auth/csrf-token',
+      url: '/api/v1/auth/csrf-token',
     });
     internCsrfToken = JSON.parse(internCsrfRes.body).csrfToken;
     mergeCookies(
@@ -141,7 +145,7 @@ describe('Audit Integration Tests', () => {
 
     const internLoginRes = await app.inject({
       method: 'POST',
-      url: '/api/auth/login',
+      url: '/api/v1/auth/login',
       cookies: internCookies,
       headers: {
         'X-CSRF-Token': internCsrfToken,
@@ -176,7 +180,7 @@ describe('Audit Integration Tests', () => {
     it('should reject unauthenticated request', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit',
+        url: '/api/v1/audit',
       });
       expect(res.statusCode).toBe(401);
     });
@@ -188,7 +192,7 @@ describe('Audit Integration Tests', () => {
     it('should return all audit logs with pagination metadata', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit',
+        url: '/api/v1/audit',
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -204,7 +208,7 @@ describe('Audit Integration Tests', () => {
     it('should not strip ip_address or user_agent for admin', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: `/api/audit?userId=${internId}`,
+        url: `/api/v1/audit?userId=${internId}`,
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -219,7 +223,7 @@ describe('Audit Integration Tests', () => {
     it('should support pagination parameters', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?limit=2&page=1',
+        url: '/api/v1/audit?limit=2&page=1',
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -232,7 +236,7 @@ describe('Audit Integration Tests', () => {
     it('should reject limit over 100', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?limit=200',
+        url: '/api/v1/audit?limit=200',
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(400);
@@ -241,7 +245,7 @@ describe('Audit Integration Tests', () => {
     it('should accept limit of exactly 100', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?limit=100',
+        url: '/api/v1/audit?limit=100',
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -252,7 +256,7 @@ describe('Audit Integration Tests', () => {
     it('should reject non-numeric limit', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?limit=abc',
+        url: '/api/v1/audit?limit=abc',
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(400);
@@ -261,7 +265,7 @@ describe('Audit Integration Tests', () => {
     it('should reject page less than 1', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?page=0',
+        url: '/api/v1/audit?page=0',
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(400);
@@ -270,7 +274,7 @@ describe('Audit Integration Tests', () => {
     it("should filter by userId and only return that user's logs", async () => {
       const res = await app.inject({
         method: 'GET',
-        url: `/api/audit?userId=${internId}`,
+        url: `/api/v1/audit?userId=${internId}`,
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -285,16 +289,57 @@ describe('Audit Integration Tests', () => {
     it('should reject invalid UUID for userId', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?userId=not-a-uuid',
+        url: '/api/v1/audit?userId=not-a-uuid',
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(400);
+    });
+    it('should return 400 for an invalid startDate', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/audit?startDate=not-a-date',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+
+      expect(response.statusCode).toBe(400);
+
+      const body = response.json();
+
+      expect(body.error).toBe('Invalid query parameters');
+      expect(body.details).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: 'startDate must be a valid date',
+          }),
+        ])
+      );
+    });
+
+    it('should return 400 for an invalid endDate', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/audit?endDate=not-a-date',
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+
+      expect(response.statusCode).toBe(400);
+
+      const body = response.json();
+
+      expect(body.error).toBe('Invalid query parameters');
+      expect(body.details).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: 'endDate must be a valid date',
+          }),
+        ])
+      );
     });
 
     it('should filter by resourceType', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?resourceType=system',
+        url: '/api/v1/audit?resourceType=system',
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -310,7 +355,7 @@ describe('Audit Integration Tests', () => {
     it('should return empty data array when no logs match filters', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?resourceType=nonexistent_type_xyz',
+        url: '/api/v1/audit?resourceType=nonexistent_type_xyz',
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -322,7 +367,7 @@ describe('Audit Integration Tests', () => {
     it('should combine userId and resourceType filters', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: `/api/audit?userId=${internId}&resourceType=auth`,
+        url: `/api/v1/audit?userId=${internId}&resourceType=auth`,
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -344,7 +389,7 @@ describe('Audit Integration Tests', () => {
     it("should only return the intern's own audit logs", async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit',
+        url: '/api/v1/audit',
         headers: { Authorization: `Bearer ${internToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -359,7 +404,7 @@ describe('Audit Integration Tests', () => {
     it('should ignore userId param for non-admins and always return only own logs', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: `/api/audit?userId=${adminUserId}`,
+        url: `/api/v1/audit?userId=${adminUserId}`,
         headers: { Authorization: `Bearer ${internToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -368,11 +413,10 @@ describe('Audit Integration Tests', () => {
       expect(body.data.every((log) => log.user_id === internId)).toBe(true);
       expect(body.data.some((log) => log.user_id === adminUserId)).toBe(false);
     });
-
     it("should not strip ip_address or user_agent from intern's own seeded log", async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit',
+        url: '/api/v1/audit',
         headers: { Authorization: `Bearer ${internToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -387,7 +431,7 @@ describe('Audit Integration Tests', () => {
     it('should allow intern to filter their own logs by resourceType', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?resourceType=auth',
+        url: '/api/v1/audit?resourceType=auth',
         headers: { Authorization: `Bearer ${internToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -401,7 +445,7 @@ describe('Audit Integration Tests', () => {
     it('should return empty results when intern filters by a resourceType with no own logs', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?resourceType=system',
+        url: '/api/v1/audit?resourceType=system',
         headers: { Authorization: `Bearer ${internToken}` },
       });
       expect(res.statusCode).toBe(200);
@@ -414,7 +458,7 @@ describe('Audit Integration Tests', () => {
     it('should support pagination for non-admin users', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/api/audit?limit=10&page=1',
+        url: '/api/v1/audit?limit=10&page=1',
         headers: { Authorization: `Bearer ${internToken}` },
       });
       expect(res.statusCode).toBe(200);

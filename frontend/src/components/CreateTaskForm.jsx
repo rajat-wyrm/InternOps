@@ -29,6 +29,9 @@ export default function CreateTaskForm() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const [generatedImage, setGeneratedImage] = useState(null);
+  const [imageError, setImageError] = useState('');
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   const createMutation = useMutation({
     mutationFn: (data) => api.post('/tasks', data),
@@ -53,6 +56,35 @@ export default function CreateTaskForm() {
     },
   });
 
+  const handleGenerateImage = async () => {
+    if (isGeneratingImage) return;
+
+    if (!form.description.trim()) {
+      setImageError('Add a description first to generate an image');
+      return;
+    }
+
+    setIsGeneratingImage(true);
+    setImageError('');
+
+    try {
+      const res = await api.post('/ai/generate-image', {
+        prompt: form.description,
+      });
+
+      setGeneratedImage({
+        base64: res.data.image_base64,
+        path: res.data.image_path,
+      });
+    } catch (err) {
+      setImageError(
+        err.response?.data?.error || 'Image generation failed. Try again.'
+      );
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
   const platformOptions = PLATFORMS.map((platform) => ({
     value: platform,
     label: platform,
@@ -71,7 +103,10 @@ export default function CreateTaskForm() {
     setError('');
     setMsg('');
 
-    createMutation.mutate(form);
+    createMutation.mutate({
+      ...form,
+      imagePath: generatedImage?.path,
+    });
   };
 
   return (
@@ -117,6 +152,7 @@ export default function CreateTaskForm() {
           <Input
             placeholder="Task title"
             value={form.title}
+            maxLength={30}
             onChange={(e) => updateField('title', e.target.value)}
             required
             disabled={createMutation.isPending}
@@ -136,6 +172,35 @@ export default function CreateTaskForm() {
             onChange={(e) => updateField('description', e.target.value)}
             disabled={createMutation.isPending}
           />
+        </div>
+
+        {/* Image Generation */}
+        <div>
+          <Btn
+            type="button"
+            variant="secondary"
+            onClick={handleGenerateImage}
+            disabled={isGeneratingImage || createMutation.isPending}
+            className="rounded-2xl"
+          >
+            {isGeneratingImage ? 'Generating…' : '✨ Generate Image'}
+          </Btn>
+
+          {imageError && (
+            <p className="text-rose-600 dark:text-rose-400 text-sm mt-2">
+              {imageError}
+            </p>
+          )}
+
+          {generatedImage && (
+            <div className="mt-3">
+              <img
+                src={`data:image/png;base64,${generatedImage.base64}`}
+                alt="Generated assignment visual"
+                className="rounded-2xl border border-slate-200 dark:border-slate-700 max-w-xs"
+              />
+            </div>
+          )}
         </div>
 
         {/* Platform + Deadline */}

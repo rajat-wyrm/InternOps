@@ -1,5 +1,7 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { captureException } from '../lib/sentry';
+import { reportClientError } from '../lib/errorReporter';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -13,10 +15,16 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+
     this.setState({ errorInfo });
-    // In a production environment, you would log this error to a service like Sentry or Datadog
-    // logErrorToService(error, errorInfo);
+    captureException(error, {
+      extra: { componentStack: errorInfo?.componentStack },
+      tags: { source: 'ErrorBoundary' },
+    });
+    reportClientError(error, errorInfo);
   }
+
+  handleReload = () => window.location.reload();
 
   render() {
     if (this.state.hasError) {
@@ -38,7 +46,7 @@ class ErrorBoundary extends React.Component {
             </p>
 
             <button
-              onClick={() => window.location.reload()}
+              onClick={this.handleReload}
               className="inline-flex items-center justify-center w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
             >
               <RefreshCw className="mr-2 h-5 w-5" />

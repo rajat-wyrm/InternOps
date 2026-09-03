@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -13,15 +13,36 @@ const INITIAL_FORM = {
   remarks: '',
 };
 
-export default function AttendanceMarkForm() {
+export default function AttendanceMarkForm({
+  roster,
+  departmentId: propDeptId,
+}) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(INITIAL_FORM);
+  const [departmentId, setDepartmentId] = useState(propDeptId || '');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  useEffect(() => {
+    if (!propDeptId || propDeptId === departmentId) return;
+    setDepartmentId(propDeptId);
+    setForm((current) => ({ ...current, userId: '' }));
+  }, [propDeptId, departmentId]);
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/departments').then((res) => res.data),
+    enabled: !roster,
+  });
 
   const { data: reports = [], isLoading: loadingReports } = useQuery({
-    queryKey: ['teamMembers'],
-    queryFn: () => api.get('/team/members').then((res) => res.data),
+    queryKey: ['teamMembers', departmentId],
+    queryFn: () =>
+      api
+        .get('/team/members', {
+          params: { department_id: departmentId || undefined },
+        })
+        .then((res) => res.data),
+    enabled: !roster,
   });
 
   const update = (field) => (e) =>
@@ -36,6 +57,9 @@ export default function AttendanceMarkForm() {
       queryClient.invalidateQueries({
         queryKey: ['attendance'],
       });
+      queryClient.invalidateQueries({
+        queryKey: ['memberHistory'],
+      });
       setError('');
       setMsg('Ã¢Å“â€œ Attendance marked');
       // Reset only the member + remarks fields Ã¢â‚¬â€ keep the same date and
@@ -49,18 +73,30 @@ export default function AttendanceMarkForm() {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  const effectiveReports = roster || reports;
+
   const memberOptions = [
     { value: '', label: 'Select member...' },
-    ...reports.map((u) => ({
+    ...(effectiveReports ?? []).map((u) => ({
       value: u.id,
       label: `${u.full_name || u.email} (${u.role})`,
     })),
   ];
 
+  const departmentOptions = [
+    { value: '', label: 'All departments' },
+    ...departments.map((d) => ({ value: d.id, label: d.name })),
+  ];
+
+  const handleDepartmentChange = (val) => {
+    setDepartmentId(val);
+    setForm((f) => ({ ...f, userId: '' }));
+  };
+
   const statusOptions = [
     { value: 'PRESENT', label: 'Present' },
     { value: 'ABSENT', label: 'Absent' },
-    { value: 'HALF_DAY', label: 'Half Day' },
+    { value: 'INFORMED', label: 'Informed absence' },
   ];
 
   return (
@@ -96,6 +132,7 @@ export default function AttendanceMarkForm() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          setError('');
 
           markMutation.mutate({
             user_id: form.userId,
@@ -107,6 +144,23 @@ export default function AttendanceMarkForm() {
         className="space-y-5"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {!roster && (
+            <div>
+              <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                Department
+              </label>
+
+              <CustomSelect
+                value={departmentId}
+                onChange={handleDepartmentChange}
+                options={departmentOptions}
+                placeholder="All departments"
+                disabled={markMutation.isPending}
+                className="w-full"
+              />
+            </div>
+          )}
+
           <div>
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
               Team Member
@@ -125,6 +179,7 @@ export default function AttendanceMarkForm() {
                 placeholder="Select member..."
                 disabled={markMutation.isPending}
                 className="w-full"
+                searchable
               />
             )}
           </div>

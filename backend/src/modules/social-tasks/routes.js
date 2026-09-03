@@ -8,9 +8,19 @@ const { extractRequestInfo } = require('../../utils/audit');
 const { z } = require('zod');
 const emailService = require('../../services/email');
 const { runWithConcurrencyLimit } = require('../../utils/concurrency');
+const aiDraftService = require('./ai-draft.service');
+const aiRepo = require('../ai/repository');
+const config = require('../../config');
 
 const EMAIL_BATCH_SIZE = 500;
 const EMAIL_CONCURRENCY = 10;
+const AI_TASK_DRAFT_RATE_LIMIT = Number(
+  process.env.AI_TASK_DRAFT_RATE_LIMIT_PER_MIN || 5
+);
+
+const aiDraftSchema = z.object({
+  brief: z.string().trim().min(3).max(500),
+});
 const createTaskSchema = z.object({
   title: z.string().min(1).max(255),
   description: z.string().max(2000).optional(),
@@ -24,7 +34,12 @@ const createTaskSchema = z.object({
     .refine(
       (v) => !v || !Number.isNaN(Date.parse(v)),
       'deadline must be a valid ISO date'
+    )
+    .refine(
+      (v) => !v || new Date(v).getTime() > Date.now(),
+      'deadline must be in the future'
     ),
+  imagePath: z.string().max(500).optional(),
 });
 
 const assignTaskSchema = z.object({
@@ -58,12 +73,21 @@ const updateTaskSchema = z.object({
     .refine(
       (v) => !v || !Number.isNaN(Date.parse(v)),
       'deadline must be a valid ISO date'
+    )
+    .refine(
+      (v) => !v || new Date(v).getTime() > Date.now(),
+      'deadline must be in the future'
     ),
 });
 async function notifyAllInternsAsync(task, log) {
   try {
+    const startTime = Date.now();
     const totalCount = await repo.getInternEmailCount();
-    if (totalCount === 0) return;
+
+    if (totalCount === 0) {
+      log.info({ taskId: task.id }, 'No interns found to notify');
+      return;
+    }
 
     let offset = 0;
     let totalSent = 0;
@@ -98,7 +122,12 @@ async function notifyAllInternsAsync(task, log) {
     }
 
     log.info(
-      { taskId: task.id, totalSent, totalFailed },
+      {
+        taskId: task.id,
+        totalSent,
+        totalFailed,
+        durationMs: Date.now() - startTime,
+      },
       'Finished sending intern task notifications'
     );
   } catch (err) {
@@ -136,23 +165,97 @@ module.exports = async function socialTasksRoutes(fastify) {
         resourceId: task.id,
         details: { title: task.title },
       };
+      void (async () => {
+        try {
+          const creatorEmail = await repo.getUserEmail(req.user.id);
+
+          if (creatorEmail) {
+            await emailService.sendNotification(creatorEmail, {
+              title: 'Task Created',
+              message: `Task "${task.title}" has been created successfully.`,
+              recipient: req.user.id,
+            });
+          }
+        } catch (emailErr) {
+          req.log.warn(
+            { emailErr },
+            'Task created but creator notification email failed'
+          );
+        }
+      })();
+
+      void notifyAllInternsAsync(task, req.log);
+
+      return task;
+    }
+  );
+
+  // Draft a social task from a short brief using AI (Admin / Senior TL).
+  // The draft is never persisted or auto-published — it is only returned
+  // for the creator to review, edit, and explicitly submit via POST /.
+  fastify.post(
+    '/ai-draft',
+    {
+      schema: {
+        tags: ['Tasks'],
+        description: 'Generate a draft task from a short brief using AI',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
+      config: {
+        rateLimit: {
+          max: AI_TASK_DRAFT_RATE_LIMIT,
+          timeWindow: '1 minute',
+          keyGenerator: (req) => req.user?.id || req.ip,
+        },
+      },
+    },
+    async (req, reply) => {
+      const parsed = aiDraftSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
+      }
+
       try {
-        const creatorEmail = await repo.getUserEmail(req.user.id);
-        if (creatorEmail) {
-          await emailService.sendNotification(creatorEmail, {
-            title: 'Task Created',
-            message: `Task "${task.title}" has been created successfully.`,
-            recipient: req.user.id,
+        // Per-creator daily cap on top of the per-minute rate limit above,
+        // so a single creator can't run up the AI bill on their own.
+        const usageResult = await aiRepo.tryIncrementUsage(
+          req.user.id,
+          config.ai.dailyLimit
+        );
+
+        if (!usageResult) {
+          return reply.status(429).send({
+            error: 'Daily AI usage limit exceeded',
           });
         }
-      } catch (emailErr) {
-        req.log.warn(
-          { emailErr },
-          'Task created but notification email failed'
+
+        const draft = await aiDraftService.generateTaskDraft({
+          brief: parsed.data.brief,
+          creatorId: req.user.id,
+        });
+
+        return draft;
+      } catch (error) {
+        if (error.statusCode === 400) {
+          return reply.status(400).send({ error: error.message });
+        }
+        if (error.statusCode === 413) {
+          return reply.status(413).send({
+            error: 'AI provider response too large',
+          });
+        }
+
+        req.log.error(
+          { err: error.message, code: error.statusCode },
+          'AI task draft generation failed'
         );
+        return reply.status(503).send({
+          error: 'AI drafting service unavailable',
+        });
       }
-      notifyAllInternsAsync(task, req.log);
-      return task;
     }
   );
 
@@ -180,6 +283,19 @@ module.exports = async function socialTasksRoutes(fastify) {
         resourceId: task.id,
         details: parsed.data,
       };
+      if (task.source === 'github' && task.github_issue_number) {
+        setImmediate(async () => {
+          try {
+            const githubSync = require('../github-sync/service');
+            await githubSync.syncTaskToGithub(task.id, req.user.id);
+          } catch (syncErr) {
+            req.log.warn(
+              { taskId: task.id, err: syncErr.message },
+              'Two-way GitHub sync failed'
+            );
+          }
+        });
+      }
       return task;
     }
   );
@@ -192,6 +308,7 @@ module.exports = async function socialTasksRoutes(fastify) {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
     async (req, reply) => {
+      const task = await repo.getTaskById(req.params.id);
       await repo.deleteTask(req.params.id);
       req.auditOnResponse = {
         userId: req.user.id,
@@ -201,6 +318,19 @@ module.exports = async function socialTasksRoutes(fastify) {
         resourceId: req.params.id,
         details: {},
       };
+      if (task && task.source === 'github' && task.github_issue_number) {
+        setImmediate(async () => {
+          try {
+            const githubSync = require('../github-sync/service');
+            await githubSync.closeGithubIssueFromTask(task.id, req.user.id);
+          } catch (syncErr) {
+            req.log.warn(
+              { taskId: task.id, err: syncErr.message },
+              'GitHub issue close on delete failed'
+            );
+          }
+        });
+      }
       return { success: true };
     }
   );
@@ -219,6 +349,13 @@ module.exports = async function socialTasksRoutes(fastify) {
           details: parsed.error.issues,
         });
       }
+
+      // Verify task exists before assigning (#988)
+      const task = await repo.getTaskById(req.params.id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
       const { userIds } = parsed.data;
       if (userIds.length > 0) {
         await repo.assignTask(req.params.id, userIds, req.user.id);
@@ -236,15 +373,51 @@ module.exports = async function socialTasksRoutes(fastify) {
     }
   );
 
-  // List social tasks (any authenticated user). Optional ?deadlineBefore=ISO date.
+  // List social tasks (any authenticated user).
+  // Optional query params: ?deadlineBefore=ISO date, ?source=github|manual
   fastify.get(
     '/',
     {
-      schema: { tags: ['Tasks'], description: 'List social tasks' },
+      schema: {
+        tags: ['Tasks'],
+        description: 'List social tasks',
+        querystring: {
+          type: 'object',
+          properties: {
+            page: {
+              type: 'integer',
+              minimum: 1,
+              default: 1,
+            },
+            limit: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 100,
+              default: 50,
+            },
+            deadlineBefore: {
+              type: 'string',
+            },
+            department_id: {
+              type: 'string',
+            },
+            source: {
+              type: 'string',
+              enum: ['manual', 'github'],
+            },
+          },
+        },
+      },
       preHandler: [auth],
     },
     async (req) => {
-      return repo.getTasks(req.query || {}, req.user.id, req.user.role);
+      return repo.getTasks(
+        req.query || {},
+        req.user.id,
+        req.user.role,
+        req.query.page,
+        req.query.limit
+      );
     }
   );
 
@@ -287,6 +460,45 @@ module.exports = async function socialTasksRoutes(fastify) {
       };
 
       return submission;
+    }
+  );
+
+  // Get task by ID (Authenticated users)
+  fastify.get(
+    '/:id',
+    {
+      schema: {
+        tags: ['Tasks'],
+        description: 'Get task details by ID',
+      },
+      preHandler: [auth],
+    },
+    async (req, reply) => {
+      const task = await repo.getTaskById(req.params.id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+      return task;
+    }
+  );
+
+  // Get task analytics and department-wise completion stats (Admin & Senior TL)
+  fastify.get(
+    '/:id/analytics',
+    {
+      schema: {
+        tags: ['Tasks'],
+        description:
+          'Get task analytics and department-wise completion breakdown',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+    },
+    async (req, reply) => {
+      const analytics = await repo.getTaskAnalytics(req.params.id);
+      if (!analytics) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+      return analytics;
     }
   );
 };

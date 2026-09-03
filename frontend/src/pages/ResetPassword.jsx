@@ -10,8 +10,7 @@ export default function ResetPassword() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const hash = window.location.hash.slice(1);
-    const params = new URLSearchParams(hash);
+    const params = new URLSearchParams(window.location.search);
     const resetToken = params.get('token');
 
     if (!resetToken) {
@@ -35,14 +34,21 @@ export default function ResetPassword() {
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    if (resetMut.isPending) return;
+
     if (!token) {
       setError('Reset token is missing or invalid');
       return;
     }
 
-    resetMut.mutate({ token, newPassword });
-  };
+    setError('');
+    setMessage('');
 
+    resetMut.mutate({
+      token,
+      newPassword,
+    });
+  };
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-animated-gradient bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 animate-gradient-shift p-4">
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-400/20 rounded-full blur-3xl animate-float-slow" />
@@ -85,20 +91,25 @@ export default function ResetPassword() {
             <input type="hidden" value={token} readOnly />
 
             <div>
-              <label className="block text-xs font-extrabold uppercase tracking-wider text-white/70 mb-2">
+              <label
+                htmlFor="newPassword"
+                className="block text-xs font-extrabold uppercase tracking-wider text-white/70 mb-2"
+              >
                 New Password
               </label>
-
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/55">
                   🔒
                 </span>
 
                 <input
+                  id="newPassword"
                   type="password"
                   placeholder="New password (min 8)"
+                  autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                  minLength={8}
                   required
                   className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-white/12 border border-white/20 text-white placeholder-white/45 focus:bg-white/18 focus:border-white/50 focus:ring-2 focus:ring-white/25 outline-none transition shadow-inner"
                 />

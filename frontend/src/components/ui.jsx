@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import useBodyScrollLock from '../hooks/useBodyScrollLock';
+import { getApiErrorMessage } from '../lib/apiError';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -70,14 +72,54 @@ export function UserAvatar({
   );
 }
 
-export function Card({ children, className = '', hover = false }) {
+export function Card({ children, className = '', hover = false, ...props }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:shadow-none text-slate-900 dark:text-white ${
+      {...props}
+      className={`relative overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-700 bg-gradient-to-br from-white via-white to-slate-50/80 dark:bg-none dark:bg-slate-900 shadow-[0_16px_38px_-24px_rgba(15,23,42,0.34),0_5px_14px_-10px_rgba(79,70,229,0.16)] dark:shadow-none text-slate-900 dark:text-white ${
         hover ? 'card-hover cursor-pointer' : ''
       } ${className}`}
     >
       {children}
+    </div>
+  );
+}
+
+export function ApiErrorState({
+  error,
+  title = 'Failed to load data',
+  fallback,
+  onRetry,
+  className = '',
+}) {
+  return (
+    <div
+      className={`rounded-3xl border border-red-100 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 shadow-sm ${className}`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-2xl bg-white/70 dark:bg-red-950/60 border border-red-100 dark:border-red-900/60 flex items-center justify-center shrink-0">
+          <AlertCircle className="w-5 h-5" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="font-extrabold text-sm">{title}</p>
+
+          <p className="text-sm mt-1 break-words">
+            {getApiErrorMessage(error, fallback)}
+          </p>
+
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-red-600 text-white text-xs font-extrabold hover:bg-red-700 transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -216,7 +258,9 @@ export function StatCard({
           </p>
 
           {sub && (
-            <p className="text-xs text-slate-500 dark:text-slate-500">{sub}</p>
+            <p className="mt-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {sub}
+            </p>
           )}
         </div>
 
@@ -248,11 +292,19 @@ export function EmptyState({ icon = '📭', title = 'Nothing here yet', text }) 
   );
 }
 
-export function Spinner({ label = 'Loading...' }) {
+export function Spinner({ label = 'Loading...', size = 'md' }) {
+  const spinnerSize =
+    {
+      sm: 'h-4 w-4 border-[2px]',
+      md: 'h-8 w-8 border-[3px]',
+      lg: 'h-12 w-12 border-[4px]',
+    }[size] || 'h-8 w-8 border-[3px]';
   return (
     <div className="flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400 py-8">
       <span className="relative inline-flex">
-        <span className="w-8 h-8 rounded-full border-[3px] border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin" />
+        <span
+          className={`rounded-full ${spinnerSize} border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin`}
+        />
         <span className="absolute inset-1 rounded-full border border-indigo-100 dark:border-indigo-900/60" />
       </span>
 
@@ -319,27 +371,9 @@ export function ConfirmationModal({
   loading = false,
   danger = true,
 }) {
-  // Handle body scroll locking and background blurring
-  useEffect(() => {
-    const root = document.getElementById('root');
-
-    if (open) {
-      document.body.style.overflow = 'hidden';
-      if (root) root.classList.add('blur-sm', 'transition-all', 'duration-300');
-    } else {
-      document.body.style.overflow = 'unset';
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset';
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-    };
-  }, [open]);
-
-  if (!open) return null;
+  const modalRef = useRef(null);
+  const previousActiveElementRef = useRef(null);
+  useBodyScrollLock(open, { blurBackground: true });
 
   const handleClose = () => {
     if (loading) return;
@@ -347,16 +381,91 @@ export function ConfirmationModal({
     else if (onClose) onClose();
   };
 
+  const handleCloseRef = useRef(handleClose);
+  useEffect(() => {
+    handleCloseRef.current = handleClose;
+  }, [handleClose]);
+
+  // Focus trap implementation
+  useEffect(() => {
+    if (!open) return;
+
+    // Save current active element to restore focus when modal closes
+    previousActiveElementRef.current = document.activeElement;
+
+    const modalElement = modalRef.current;
+    const focusableSelectors =
+      'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), iframe, object, embed, [tabindex="0"], [contenteditable], [autofocus]';
+
+    if (modalElement) {
+      const focusable = modalElement.querySelectorAll(focusableSelectors);
+      if (focusable.length > 0) {
+        focusable[0].focus();
+      } else {
+        modalElement.focus();
+      }
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        handleCloseRef.current();
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        if (!modalElement) return;
+        const focusable = Array.from(
+          modalElement.querySelectorAll(focusableSelectors)
+        );
+        if (focusable.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            last.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === last) {
+            first.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (
+        previousActiveElementRef.current &&
+        typeof previousActiveElementRef.current.focus === 'function'
+      ) {
+        previousActiveElementRef.current.focus();
+      }
+    };
+  }, [open]);
+
+  if (!open) return null;
+
   const finalConfirmText = confirmLabel || confirmText;
   const finalCancelText = cancelLabel || cancelText;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center p-4"
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
+        ref={modalRef}
+        tabIndex={-1}
+        className="internops-modal-panel w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-slate-200 dark:border-slate-700">

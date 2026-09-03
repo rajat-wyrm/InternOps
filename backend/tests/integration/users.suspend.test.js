@@ -11,8 +11,13 @@
  *   6. DB trigger rejects direct SQL bypass          → DB exception
  */
 
+console.log('LOAD 1');
 const app = require('../../src/app');
+
+console.log('LOAD 2');
 const pool = require('../../src/config/db');
+
+console.log('LOAD 3');
 const {
   SEEDED_ADMIN_EMAIL,
   SEEDED_ADMIN_PASSWORD,
@@ -20,6 +25,8 @@ const {
   parseSetCookie,
   mergeCookies,
 } = require('./helpers');
+
+console.log('LOAD 4');
 
 const runId = Date.now();
 
@@ -44,6 +51,7 @@ function authHeaders() {
     Authorization: `Bearer ${accessToken}`,
     'X-CSRF-Token': csrfToken,
     'Content-Type': 'application/json',
+    Origin: 'http://localhost:5173',
   };
 }
 
@@ -60,7 +68,7 @@ function inject(method, url, opts = {}) {
 async function refreshCsrfToken() {
   const csrfRes = await app.inject({
     method: 'GET',
-    url: '/api/auth/csrf-token',
+    url: '/api/v1/auth/csrf-token',
     cookies,
   });
   csrfToken = JSON.parse(csrfRes.body).csrfToken;
@@ -71,11 +79,14 @@ async function refreshCsrfToken() {
 // ---------------------------------------------------------------------------
 // Setup / Teardown
 // ---------------------------------------------------------------------------
-
 beforeAll(async () => {
+  console.log('STEP 1');
   await app.ready();
+
+  console.log('STEP 2');
   await resetSeededAdminPassword();
 
+  console.log('STEP 3');
   // Clean up other users/admins that might be lingering from other tests
   try {
     await pool.query("DELETE FROM users WHERE role = 'ADMIN' AND email <> $1", [
@@ -114,7 +125,7 @@ beforeAll(async () => {
   // Login as the seeded admin
   const loginRes = await app.inject({
     method: 'POST',
-    url: '/api/auth/login',
+    url: '/api/v1/auth/login',
     cookies,
     headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
     payload: { email: SEEDED_ADMIN_EMAIL, password: SEEDED_ADMIN_PASSWORD },
@@ -144,12 +155,12 @@ beforeAll(async () => {
   }
 
   // Create a second admin via the register endpoint (admin-only)
-  const reg2 = await inject('POST', '/api/auth/register', {
+  const reg2 = await inject('POST', '/api/v1/auth/register', {
     payload: {
       email: SECOND_ADMIN_EMAIL,
       password: 'SecondAdmin@123',
       role: 'ADMIN',
-      fullName: 'Second Admin',
+      full_name: 'Second Admin',
     },
   });
   if (reg2.statusCode !== 201) {
@@ -163,12 +174,12 @@ beforeAll(async () => {
   }
 
   // Create an intern
-  const regIntern = await inject('POST', '/api/auth/register', {
+  const regIntern = await inject('POST', '/api/v1/auth/register', {
     payload: {
       email: INTERN_EMAIL,
       password: 'Intern@123',
       role: 'INTERN',
-      fullName: 'Test Intern',
+      full_name: 'Test Intern',
     },
   });
   if (regIntern.statusCode !== 201) {
@@ -208,11 +219,24 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------
 
 describe('PATCH /api/users/:id/suspend — Issue #468', () => {
+  beforeEach(async () => {
+    await pool.query(
+      `UPDATE users
+       SET suspended = FALSE, deleted_at = NULL, role = (CASE WHEN id = $3 THEN 'INTERN' ELSE 'ADMIN' END)::user_role
+       WHERE id = ANY($1::uuid[]) OR id = $2`,
+      [[seededAdminId, secondAdminId], internId, internId]
+    );
+  });
+
   // ── Test 1 ────────────────────────────────────────────────────────────────
   it('should return 400 when an admin tries to suspend themselves', async () => {
-    const res = await inject('PATCH', `/api/users/${seededAdminId}/suspend`, {
-      payload: {},
-    });
+    const res = await inject(
+      'PATCH',
+      `/api/v1/users/${seededAdminId}/suspend`,
+      {
+        payload: {},
+      }
+    );
 
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body);
@@ -220,51 +244,36 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
   });
 
   // ── Test 2 ────────────────────────────────────────────────────────────────
-  it('should return 400 when trying to suspend the last active admin', async () => {
-    // Suspend the seeded admin directly via SQL so no app-level guard fires,
-    // leaving the second admin as the only active admin.
-    await pool.query('UPDATE users SET suspended = TRUE WHERE email = $1', [
-      SEEDED_ADMIN_EMAIL,
+  it('rejects a token after its admin account is suspended', async () => {
+    await pool.query('UPDATE users SET suspended = TRUE WHERE id = $1', [
+      seededAdminId,
     ]);
 
-    // Now the second admin IS the last active admin.
-    // Attempting to suspend them from the seeded admin's token must be blocked.
-    // (The seeded admin's JWT is still valid even though they are now suspended
-    // because the route only checks RBAC role, not the suspended flag.)
-    const res = await inject('PATCH', `/api/users/${secondAdminId}/suspend`, {
-      payload: {},
-    });
+    const res = await inject(
+      'PATCH',
+      `/api/v1/users/${secondAdminId}/suspend`,
+      { payload: {} }
+    );
 
-    expect(res.statusCode).toBe(400);
-    const body = JSON.parse(res.body);
-    expect(body.error).toBe('Cannot suspend the last active admin');
-
-    // Restore the seeded admin so subsequent tests can use them normally
-    await pool.query('UPDATE users SET suspended = FALSE WHERE email = $1', [
-      SEEDED_ADMIN_EMAIL,
-    ]);
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body).error).toBe('User unavailable');
   });
 
   // ── Test 3 ────────────────────────────────────────────────────────────────
-  it('should return 200 when suspending an admin while multiple active admins exist', async () => {
-    // Both admins are currently active
-    const res = await inject('PATCH', `/api/users/${secondAdminId}/suspend`, {
-      payload: {},
-    });
-
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(body.message).toBe('Suspended');
-
-    // Restore for later tests
-    await inject('PATCH', `/api/users/${secondAdminId}/activate`, {
-      payload: {},
-    });
+  it('should reject suspending any Admin account', async () => {
+    const res = await inject(
+      'PATCH',
+      `/api/v1/users/${secondAdminId}/suspend`,
+      { payload: {} }
+    );
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error).toBe(
+      'Admin accounts cannot be suspended.'
+    );
   });
-
   // ── Test 4 ────────────────────────────────────────────────────────────────
   it('should return 200 when suspending an intern', async () => {
-    const res = await inject('PATCH', `/api/users/${internId}/suspend`, {
+    const res = await inject('PATCH', `/api/v1/users/${internId}/suspend`, {
       payload: {},
     });
 
@@ -276,7 +285,7 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
   // ── Test 5 ────────────────────────────────────────────────────────────────
   it('should return 200 when unsuspending (activating) a user', async () => {
     // The intern was suspended in test 4
-    const res = await inject('PATCH', `/api/users/${internId}/activate`, {
+    const res = await inject('PATCH', `/api/v1/users/${internId}/activate`, {
       payload: {},
     });
 
@@ -287,10 +296,10 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
 
   // ── Test 6 ────────────────────────────────────────────────────────────────
   it('should throw a DB exception when directly updating the last active admin via SQL', async () => {
-    // Suspend the second admin so only the seeded admin is active
-    await inject('PATCH', `/api/users/${secondAdminId}/suspend`, {
-      payload: {},
-    });
+    // Suspend the second admin directly while two admins are active.
+    await pool.query('UPDATE users SET suspended = TRUE WHERE id = $1', [
+      secondAdminId,
+    ]);
 
     // Attempt direct SQL bypass of the application layer — trigger must fire
     await expect(
@@ -300,8 +309,8 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
     ).rejects.toThrow('Cannot suspend the last active admin');
 
     // Restore the second admin
-    await inject('PATCH', `/api/users/${secondAdminId}/activate`, {
-      payload: {},
-    });
+    await pool.query('UPDATE users SET suspended = FALSE WHERE id = $1', [
+      secondAdminId,
+    ]);
   });
 });

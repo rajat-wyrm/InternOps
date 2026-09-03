@@ -4,14 +4,15 @@ import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import { QUERY_KEYS } from '../constants/queryKeys';
-import { Card, StatCard } from '../components/ui';
+import { Card, StatCard, ApiErrorState } from '../components/ui';
+import { getTeamRoleBreakdown } from '../utils/teamRoleBreakdown';
 
 function attendancePct(m) {
-  const total = Number(m.attendance_total) || 0;
-  if (!total) return null;
-
-  const score = Number(m.present_count) + Number(m.half_day_count) * 0.5;
-  return Math.round((score / total) * 100);
+  const total = Number(m.attendance_total);
+  const present = Number(m.present_count);
+  if (!Number.isFinite(total) || total <= 0) return null;
+  if (!Number.isFinite(present) || present < 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((present / total) * 100)));
 }
 
 function QuickAction({ to, icon, label, tint, description }) {
@@ -41,6 +42,8 @@ function ManagerHome({ user }) {
     data: team = [],
     isLoading,
     isError,
+    error,
+    refetch,
   } = useQuery({
     queryKey: QUERY_KEYS.TEAM_MEMBERS,
     queryFn: () => api.get('/team/members').then((res) => res.data),
@@ -54,21 +57,40 @@ function ManagerHome({ user }) {
 
   if (isError) {
     return (
-      <p className="text-red-500 dark:text-red-400">
-        Failed to load dashboard data.
-      </p>
+      <ApiErrorState
+        error={error}
+        title="Failed to load dashboard data"
+        fallback="Unable to load your team dashboard. Please try again."
+        onRetry={refetch}
+      />
     );
   }
 
   const active = team.filter(
     (m) => !m.suspended && (m.internship_status || 'ACTIVE') === 'ACTIVE'
   ).length;
+  const seniorTlCount = team.filter(
+    (member) => member.role === 'SENIOR_TL'
+  ).length;
 
-  const pcts = team.map(attendancePct).filter((p) => p !== null);
+  const tlCount = team.filter((member) => member.role === 'TL').length;
 
-  const avgAtt = pcts.length
-    ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)
+  const captainCount = team.filter(
+    (member) => member.role === 'CAPTAIN'
+  ).length;
+
+  const internCount = team.filter((member) => member.role === 'INTERN').length;
+  const isAdmin = user?.role === 'ADMIN';
+  const memberBreakdown = getTeamRoleBreakdown(user?.role, team);
+  const pcts = team
+    .map(attendancePct)
+    .filter((percentage) => Number.isFinite(percentage));
+  const averageAttendance = pcts.length
+    ? Math.round(
+        pcts.reduce((sum, percentage) => sum + percentage, 0) / pcts.length
+      )
     : null;
+  const avgAtt = Number.isFinite(averageAttendance) ? averageAttendance : null;
 
   const ratings = team
     .map((m) => m.avg_rating)
@@ -93,7 +115,7 @@ function ManagerHome({ user }) {
         </p>
 
         <h1 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Welcome, {user?.fullName || user?.email}
+          Welcome, {user?.full_name || user?.email}
         </h1>
 
         <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-2 max-w-2xl">
@@ -105,8 +127,36 @@ function ManagerHome({ user }) {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
-          label="Team members"
+          label={isAdmin ? 'Total team members' : 'Team members'}
           value={team.length}
+          sub={
+            memberBreakdown.length ? (
+              <span className="block leading-5">
+                {memberBreakdown.map((row, rowIndex) => (
+                  <span
+                    key={row.map(({ role }) => role).join('-')}
+                    className={rowIndex > 0 ? 'block' : 'block'}
+                  >
+                    {row.map(({ role, count, label }, itemIndex) => (
+                      <span
+                        key={role}
+                        className="inline-block whitespace-nowrap"
+                      >
+                        {itemIndex > 0 && (
+                          <span className="mx-2 font-extrabold text-indigo-400 dark:text-indigo-300">
+                            •
+                          </span>
+                        )}
+                        {count} {label}
+                      </span>
+                    ))}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              'No team members'
+            )
+          }
           icon="👥"
           gradient="from-indigo-500 to-blue-600"
         />
@@ -148,10 +198,10 @@ function ManagerHome({ user }) {
             </div>
 
             <Link
-              to="/team"
+              to="/analytics"
               className="text-indigo-600 dark:text-indigo-400 text-sm font-bold hover:underline shrink-0"
             >
-              View team →
+              View analytics →
             </Link>
           </div>
 
@@ -243,10 +293,12 @@ function InternHome({ user }) {
     data: stats,
     isLoading,
     isError,
+    error,
+    refetch,
   } = useQuery({
     queryKey: ['internHome', user?.id],
     queryFn: async () => {
-      const [att, ratings] = await Promise.all([
+      const [attResult, ratingsResult] = await Promise.allSettled([
         api
           .get(
             `/attendance/${user.id}/stats?month=${
@@ -257,7 +309,16 @@ function InternHome({ user }) {
         api.get(`/ratings/${user.id}`).then((r) => r.data),
       ]);
 
-      return { att, ratings };
+      const att = attResult.status === 'fulfilled' ? attResult.value : null;
+      const attError =
+        attResult.status === 'rejected' ? attResult.reason : null;
+
+      const ratings =
+        ratingsResult.status === 'fulfilled' ? ratingsResult.value : null;
+      const ratingsError =
+        ratingsResult.status === 'rejected' ? ratingsResult.reason : null;
+
+      return { att, attError, ratings, ratingsError };
     },
     enabled: !!user,
   });
@@ -270,21 +331,30 @@ function InternHome({ user }) {
 
   if (isError) {
     return (
-      <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-200 p-4 rounded-2xl border border-red-200 dark:border-red-900/60">
-        Failed to load your dashboard data. Please refresh or contact your
-        manager.
-      </div>
+      <ApiErrorState
+        error={error}
+        title="Failed to load dashboard data"
+        fallback="Unable to load your dashboard. Please try again."
+        onRetry={refetch}
+      />
     );
   }
 
-  const att = stats?.att || [];
-  const ratings = stats?.ratings || [];
+  const att = stats?.att;
+  const attError = stats?.attError;
+  const ratings = stats?.ratings;
+  const attData = Array.isArray(att) ? att : [];
+  const ratingsData = Array.isArray(ratings) ? ratings : [];
 
-  const avg = ratings.length
-    ? (ratings.reduce((a, r) => a + r.score, 0) / ratings.length).toFixed(1)
+  const avg = ratingsData.length
+    ? (
+        ratingsData.reduce((a, r) => a + r.score, 0) / ratingsData.length
+      ).toFixed(1)
     : '—';
 
-  const present = att.find((s) => s.status === 'PRESENT')?.count || 0;
+  const present = att
+    ? attData.find((s) => s.status === 'PRESENT')?.count || 0
+    : '—';
 
   return (
     <div className="animate-fade-in-up text-slate-900 dark:text-white">
@@ -295,7 +365,7 @@ function InternHome({ user }) {
         </p>
 
         <h1 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Welcome, {user?.fullName || user?.email}
+          Welcome, {user?.full_name || user?.email}
         </h1>
 
         <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-2 max-w-2xl">
@@ -316,7 +386,7 @@ function InternHome({ user }) {
 
         <StatCard
           label="My avg rating"
-          value={avg}
+          value={ratings !== null ? avg : '—'}
           sub="out of 10"
           icon="⭐"
           gradient="from-amber-400 to-orange-500"
@@ -324,7 +394,7 @@ function InternHome({ user }) {
 
         <StatCard
           label="Total ratings"
-          value={ratings.length}
+          value={ratings !== null ? ratingsData.length : '—'}
           icon="📊"
           gradient="from-indigo-500 to-blue-600"
         />
@@ -335,7 +405,7 @@ function InternHome({ user }) {
         <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
           <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
             <h3 className="font-extrabold text-xl text-slate-900 dark:text-white flex items-center gap-2">
-              📅 This month&apos;s attendance
+              📅 This month's attendance
             </h3>
 
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -343,7 +413,13 @@ function InternHome({ user }) {
             </p>
           </div>
 
-          {att.length === 0 ? (
+          {attError ? (
+            <ApiErrorState
+              error={attError}
+              title="Failed to load attendance records"
+              fallback="Unable to load attendance records. Please try again."
+            />
+          ) : attData.length === 0 ? (
             <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-center py-8 px-4">
               <p className="text-slate-800 dark:text-white font-extrabold">
                 No records yet
@@ -355,7 +431,7 @@ function InternHome({ user }) {
             </div>
           ) : (
             <div className="space-y-2">
-              {att.map((s) => (
+              {attData.map((s) => (
                 <div
                   key={s.status}
                   className="flex justify-between items-center text-sm py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70"
@@ -431,6 +507,8 @@ export default function Home() {
     data: me,
     isLoading,
     isError,
+    error,
+    refetch,
   } = useQuery({
     queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
@@ -444,13 +522,16 @@ export default function Home() {
 
   if (isError) {
     return (
-      <p className="text-red-500 dark:text-red-400">
-        Error loading profile. Please refresh.
-      </p>
+      <ApiErrorState
+        error={error}
+        title="Failed to load profile"
+        fallback="Unable to load your profile. Please try again."
+        onRetry={refetch}
+      />
     );
   }
 
-  const u = { ...user, fullName: me?.full_name || user?.fullName };
+  const u = { ...user, full_name: me?.full_name || user?.full_name };
 
   const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(
     user?.role

@@ -17,6 +17,7 @@ const repo = require('./repository');
 const { forgotPassword, resetPassword } = require('./resetService');
 const { toSchema } = require('../../utils/schemaHelper');
 const isProduction = process.env.NODE_ENV === 'production';
+const isTestEnv = process.env.NODE_ENV === 'test';
 const pLimit = require('p-limit');
 
 async function routes(fastify) {
@@ -24,10 +25,11 @@ async function routes(fastify) {
   fastify.post(
     '/register',
     {
-      preHandler: [auth, rbac('ADMIN'), sanitize],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
       schema: {
         tags: ['Authentication'],
-        description: 'Register a new user (Admin only)',
+        description:
+          'Register a user within the requester role and department scope',
         body: {
           type: 'object',
           required: ['email', 'password', 'role'],
@@ -36,26 +38,25 @@ async function routes(fastify) {
             password: { type: 'string', minLength: 8 },
             role: {
               type: 'string',
-              enum: ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+              enum: [
+                'ADMIN',
+                'MANAGEMENT',
+                'HR',
+                'SENIOR_TL',
+                'TL',
+                'CAPTAIN',
+                'INTERN',
+              ],
             },
             managerId: { type: 'string', format: 'uuid' },
             departmentId: { type: 'string', format: 'uuid' },
-            fullName: { type: 'string' },
+            full_name: { type: 'string' },
           },
         },
       },
     },
     async (req, reply) => {
-      const schema = z.object({
-        email: z.string().email(),
-        password: z.string().min(8),
-        role: z.enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
-        managerId: z.string().uuid().optional(),
-        departmentId: z.string().uuid().optional(),
-        fullName: z.string().optional(),
-      });
-      const data = schema.parse(req.body);
-      const user = await service.register(data, req.user);
+      const user = await service.register(req.body, req.user);
       return reply.status(201).send(user);
     }
   );
@@ -80,12 +81,20 @@ async function routes(fastify) {
                 type: 'object',
                 required: ['email', 'password', 'role'],
                 properties: {
-                  fullName: { type: 'string' },
+                  full_name: { type: 'string' },
                   email: { type: 'string', format: 'email' },
                   password: { type: 'string', minLength: 8 },
                   role: {
                     type: 'string',
-                    enum: ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+                    enum: [
+                      'ADMIN',
+                      'MANAGEMENT',
+                      'HR',
+                      'SENIOR_TL',
+                      'TL',
+                      'CAPTAIN',
+                      'INTERN',
+                    ],
                   },
                   managerId: { type: 'string', format: 'uuid' },
                   departmentId: { type: 'string', format: 'uuid' },
@@ -124,16 +133,7 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const userSchema = z.object({
-        email: z.string().email(),
-        password: z.string().min(8),
-        role: z.enum(['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
-        managerId: z.string().uuid().optional(),
-        departmentId: z.string().uuid().optional(),
-        fullName: z.string().optional(),
-      });
-      const schema = z.object({ users: z.array(userSchema).min(1).max(100) });
-      const { users } = schema.parse(req.body);
+      const { users } = req.body;
 
       const ROLE_HIERARCHY = ['INTERN', 'CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'];
       const callerLevel = ROLE_HIERARCHY.indexOf(req.user.role);
@@ -212,23 +212,21 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      const { email, password } = z
-        .object({ email: z.string().email(), password: z.string() })
-        .parse(req.body);
+      const { email, password } = req.body;
       const userAgent = req.headers['user-agent'];
       const result = await service.login(email, password, req.ip, userAgent);
       reply.setCookie('refreshToken', result.refreshToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: 'strict',
-        path: '/api/auth/refresh',
+        sameSite: isProduction ? 'none' : 'lax',
+        path: '/api/v1/auth/refresh',
       });
 
       rotateAndSetCsrf(req, reply, result.user.id);
 
       req.auditOnResponse = {
         userId: result.user.id,
-        action: 'LOGIN',
+        action: 'LOGIN_SUCCESS',
         resourceType: 'auth',
         resourceId: result.user.id,
         ipAddress: req.ip,
@@ -243,7 +241,12 @@ async function routes(fastify) {
       reply.send(response);
 
       req.log.info(
-        { action: 'LOGIN', userId: result.user.id, ip: req.ip, userAgent },
+        {
+          action: 'LOGIN_SUCCESS',
+          userId: result.user.id,
+          ip: req.ip,
+          userAgent,
+        },
         'login success'
       );
     }
@@ -268,8 +271,8 @@ async function routes(fastify) {
       reply.setCookie('refreshToken', tokens.refreshToken, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: 'strict',
-        path: '/api/auth/refresh',
+        sameSite: isProduction ? 'none' : 'lax',
+        path: '/api/v1/auth/refresh',
       });
 
       return {
@@ -311,14 +314,7 @@ async function routes(fastify) {
         req.headers['user-agent']
       );
 
-      reply.clearCookie('refreshToken', { path: '/api/auth/refresh' });
-
-      req.auditOnResponse = {
-        userId: req.user.id,
-        action: 'LOGOUT',
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-      };
+      reply.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
 
       rotateAndSetCsrf(req, reply, null);
       return { message: 'Logged out' };
@@ -331,12 +327,6 @@ async function routes(fastify) {
     { schema: { tags: ['Authentication'], description: 'Get CSRF token' } },
     async (req, reply) => {
       const csrfToken = generateToken(req, reply);
-      reply.setCookie('csrf-token', csrfToken, {
-        httpOnly: false,
-        secure: isProduction,
-        sameSite: 'strict',
-        path: '/',
-      });
       return { csrfToken };
     }
   );
@@ -395,10 +385,24 @@ async function routes(fastify) {
           properties: { email: { type: 'string', format: 'email' } },
         },
       },
+      config: {
+        rateLimit: isTestEnv
+          ? false
+          : {
+              max: 2,
+              timeWindow: '5 minutes',
+            },
+      },
     },
     async (req, reply) => {
       const { email } = z.object({ email: z.string().email() }).parse(req.body);
-      await forgotPassword(email, audit.extractRequestInfo(req));
+      const auditLogData = await forgotPassword(
+        email,
+        audit.extractRequestInfo(req)
+      );
+      if (auditLogData) {
+        req.auditOnResponse = auditLogData;
+      }
       return { message: 'If that email exists, a reset link has been sent.' };
     }
   );
@@ -420,12 +424,27 @@ async function routes(fastify) {
           },
         },
       },
+      config: {
+        rateLimit: isTestEnv
+          ? false
+          : {
+              max: 5,
+              timeWindow: '1 minute',
+            },
+      },
     },
     async (req, reply) => {
       const { token, newPassword } = z
         .object({ token: z.string(), newPassword: z.string().min(8) })
         .parse(req.body);
-      await resetPassword(token, newPassword, audit.extractRequestInfo(req));
+      const auditLogData = await resetPassword(
+        token,
+        newPassword,
+        audit.extractRequestInfo(req)
+      );
+      if (auditLogData) {
+        req.auditOnResponse = auditLogData;
+      }
       return {
         message:
           'Password reset successful. Please log in with your new password.',

@@ -42,9 +42,15 @@ describe('Email Service', () => {
         text: 'Test body',
       });
 
-      expect(result).toBeDefined();
-      expect(result.messageId).toMatch(/^console-/);
-      expect(result.accepted).toContain('test@example.com');
+      expect(result).toEqual({
+        accepted: ['test@example.com'],
+        messageId: expect.any(String),
+        rejected: [],
+      });
+
+      // No queue – metrics updated immediately
+      const metrics = freshEmailService.getMetrics();
+      expect(metrics.sent).toBe(1);
 
       process.env.SMTP_HOST = originalHost;
       process.env.SMTP_USER = originalUser;
@@ -80,8 +86,11 @@ describe('Email Service', () => {
         'user@example.com',
         'token123'
       );
-      expect(result).toBeDefined();
-      expect(result.accepted).toContain('user@example.com');
+      expect(result).toEqual({
+        accepted: ['user@example.com'],
+        messageId: expect.any(String),
+        rejected: [],
+      });
     });
 
     it('should render account-verification template', async () => {
