@@ -1,38 +1,78 @@
 const PERMISSIONS = {
   ADMIN: ['all'],
+
+  MANAGEMENT: ['read:team', 'read:attendance', 'read:reports', 'read:tasks'],
+
+  HR: [
+    'read:users',
+    'write:users',
+    'read:team',
+    'write:team',
+    'read:attendance',
+    'write:attendance',
+    'read:tasks',
+    'write:tasks',
+    'read:reports',
+  ],
+
   SENIOR_TL: [
     'read:team',
     'write:team',
     'read:attendance',
     'read:reports',
     'manage:team',
+    'read:tasks',
+    'write:tasks',
   ],
-  TL: ['read:team', 'write:team', 'read:attendance'],
-  CAPTAIN: ['read:team'],
-  INTERN: ['read:own_profile'],
+
+  TL: [
+    'read:team',
+    'write:team',
+    'read:attendance',
+    'read:tasks',
+    'write:tasks',
+  ],
+
+  CAPTAIN: ['read:team', 'read:tasks', 'write:tasks'],
+
+  INTERN: [
+    'read:own_profile',
+    'read:own_attendance',
+    'write:own_attendance',
+    'read:own_tasks',
+    'write:own_tasks',
+  ],
 };
 
-// By using '...requirements', we can accept multiple arguments (like in the previous code)
 function rbac(...requirements) {
   return (req, reply, done) => {
     const userRole = req.user?.role;
+
+    if (!userRole) {
+      return reply.status(401).send({
+        error: 'Unauthorized',
+        message: 'User role is missing',
+      });
+    }
+
     const allowedActions = PERMISSIONS[userRole] || [];
 
-    // If the user is ADMIN, let them proceed directly
-    if (allowedActions.includes('all') || userRole === 'ADMIN') {
+    // ADMIN has complete access
+    if (allowedActions.includes('all')) {
       return done();
     }
 
-    // Check if any of the passed requirements matches an allowed action or if the user's role matches the requirement.
-    const hasPermission = requirements.some(
-      (reqItem) => allowedActions.includes(reqItem) || userRole === reqItem
-    );
+    const hasPermission = requirements.some((requirement) => {
+      return allowedActions.includes(requirement) || userRole === requirement;
+    });
 
     if (hasPermission) {
       return done();
     }
 
-    return reply.status(403).send({ error: 'Forbidden' });
+    return reply.status(403).send({
+      error: 'Forbidden',
+    });
   };
 }
 

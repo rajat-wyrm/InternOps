@@ -2,6 +2,11 @@
 // connection and reset the seeded admin password to its known value so
 // every test suite starts from the same state. This protects against
 // cascading failures where a previous run left the password changed.
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+const { activateTestDatabase } = require('../src/config/testDatabase');
+activateTestDatabase();
+
 const argon2 = require('argon2');
 const pool = require('../src/config/db');
 
@@ -16,7 +21,7 @@ module.exports = async function globalSetup() {
 
     const hash = await argon2.hash(SEEDED_ADMIN_PASSWORD);
     await pool.query(
-      'UPDATE users SET password_hash = $1 WHERE lower(email) = lower($2)',
+      'UPDATE users SET password_hash = $1, suspended = FALSE, deleted_at = NULL, must_change_password = FALSE WHERE lower(email) = lower($2)',
       [hash, SEEDED_ADMIN_EMAIL]
     );
 

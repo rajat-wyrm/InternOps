@@ -70,6 +70,16 @@ describe('Login Component Tests', () => {
     expect(screen.getByText(/Forgot Password\?/i)).toBeInTheDocument();
   });
 
+  it('keeps clear spacing around the Forgot Password link', () => {
+    const { container } = renderLogin();
+    const link = screen.getByRole('link', { name: /Forgot Password[?]/i });
+    expect(link).toHaveClass('inline-flex', 'py-1', 'text-white/55');
+    expect(link.parentElement).toHaveClass('mt-2', 'justify-end');
+    expect(
+      container.querySelector('input[type="password"]')
+    ).toBeInTheDocument();
+  });
+
   it('validates empty inputs and displays error', async () => {
     const { container } = renderLogin();
 
@@ -81,6 +91,57 @@ describe('Login Component Tests', () => {
     ).toBeInTheDocument();
   });
 
+  it('removes spaces from email and password input', () => {
+    const { container } = renderLogin();
+    const emailInput = container.querySelector('input[type="email"]');
+    const passwordInput = container.querySelector('input[type="password"]');
+    fireEvent.change(emailInput, { target: { value: ' test @example.com ' } });
+    fireEvent.change(passwordInput, { target: { value: 'pass word 123' } });
+    expect(emailInput).toHaveValue('test@example.com');
+    expect(passwordInput).toHaveValue('password123');
+    expect(
+      screen.queryByText('Email and password cannot contain spaces')
+    ).not.toBeInTheDocument();
+  });
+
+  it('silently blocks the Space key in both credential fields', () => {
+    const { container } = renderLogin();
+    for (const input of container.querySelectorAll('input')) {
+      const event = new KeyboardEvent('keydown', {
+        key: ' ',
+        bubbles: true,
+        cancelable: true,
+      });
+      input.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    expect(
+      screen.queryByText('Email and password cannot contain spaces')
+    ).not.toBeInTheDocument();
+  });
+
+  it('normalizes email before login', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        accessToken: 'validToken',
+        user: { id: '1', email: 'test@example.com', role: 'ADMIN' },
+      },
+    });
+    const { container } = renderLogin();
+    fireEvent.change(container.querySelector('input[type="email"]'), {
+      target: { value: 'TEST@EXAMPLE.COM' },
+    });
+    fireEvent.change(container.querySelector('input[type="password"]'), {
+      target: { value: 'password123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Log In/i }));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/auth/login', {
+        email: 'test@example.com',
+        password: 'password123',
+      });
+    });
+  });
   it('handles API error response gracefully', async () => {
     api.post.mockRejectedValue({
       response: {

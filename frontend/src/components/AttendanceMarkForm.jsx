@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { Card, Btn, Input } from './ui';
@@ -21,6 +21,11 @@ export default function AttendanceMarkForm({
   const [departmentId, setDepartmentId] = useState(propDeptId || '');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  useEffect(() => {
+    if (!propDeptId || propDeptId === departmentId) return;
+    setDepartmentId(propDeptId);
+    setForm((current) => ({ ...current, userId: '' }));
+  }, [propDeptId, departmentId]);
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
@@ -90,7 +95,7 @@ export default function AttendanceMarkForm({
   const statusOptions = [
     { value: 'PRESENT', label: 'Present' },
     { value: 'ABSENT', label: 'Absent' },
-    { value: 'HALF_DAY', label: 'Half Day' },
+    { value: 'INFORMED', label: 'Informed absence' },
   ];
 
   return (

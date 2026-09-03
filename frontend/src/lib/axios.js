@@ -1,7 +1,9 @@
 import axios from 'axios';
 import { toast } from 'sonner';
+import { captureException } from './sentry';
+import { getApiErrorInfo, getApiErrorMessage } from './apiError';
 
-function getBaseUrl() {
+export function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
   if (!raw) return '/api/v1';
   let url = raw.trim();
@@ -35,34 +37,6 @@ const api = axios.create({
   timeout: 15000,
 });
 
-function getApiErrorMessage(responseData) {
-  if (!responseData) return null;
-  if (typeof responseData === 'string') return responseData;
-  if (typeof responseData.error === 'string' && responseData.error.trim()) {
-    return responseData.error.trim();
-  }
-  if (typeof responseData.message === 'string' && responseData.message.trim()) {
-    return responseData.message.trim();
-  }
-  if (typeof responseData.detail === 'string' && responseData.detail.trim()) {
-    return responseData.detail.trim();
-  }
-  if (
-    typeof responseData.description === 'string' &&
-    responseData.description.trim()
-  ) {
-    return responseData.description.trim();
-  }
-  if (Array.isArray(responseData.errors) && responseData.errors.length) {
-    const firstError = responseData.errors[0];
-    if (typeof firstError === 'string') return firstError;
-    if (typeof firstError?.message === 'string' && firstError.message.trim()) {
-      return firstError.message.trim();
-    }
-  }
-  return null;
-}
-
 function shouldShowGlobalToast(err) {
   const original = err.config || {};
   const isAuthRoute =
@@ -79,30 +53,75 @@ function shouldShowGlobalToast(err) {
   );
 }
 
+// Classifies a failed AI chat request (POST /ai/chat) into a single,
+// user-friendly message. Callers that show this message inline should mark
+// their request config with `_suppressGlobalError: true` so the global
+// response interceptor below does not *also* toast a second, generic error
+// for the same failure (see issue #1795).
+function getAiChatErrorMessage(err) {
+  if (!err?.response) {
+    if (err?.code === 'ECONNABORTED') {
+      return {
+        message: 'The AI assistant took too long to respond. Please try again.',
+        retryable: true,
+      };
+    }
+    return {
+      message:
+        'Unable to reach the AI assistant. Check your connection and try again.',
+      retryable: true,
+    };
+  }
+
+  const status = err.response.status;
+
+  if (status === 401 || status === 403) {
+    return {
+      message: "You don't have access to the AI assistant right now.",
+      retryable: false,
+    };
+  }
+
+  if (status === 429) {
+    const responseData = err.response.data;
+    const hasServerMessage = Boolean(
+      responseData &&
+      (responseData.error ||
+        responseData.message ||
+        responseData.detail ||
+        responseData.description ||
+        responseData.details?.length ||
+        responseData.errors?.length)
+    );
+    return {
+      message: hasServerMessage
+        ? getApiErrorMessage(err)
+        : "You've reached the AI assistant's usage limit. Please try again later.",
+      retryable: false,
+    };
+  }
+
+  if (status >= 500) {
+    return {
+      message:
+        'The AI assistant is temporarily unavailable. Please try again in a moment.',
+      retryable: true,
+    };
+  }
+
+  const serverMessage = getApiErrorMessage(err);
+  return {
+    message:
+      serverMessage || 'Could not process that request. Please try rephrasing.',
+    retryable: false,
+  };
+}
+
 function notifyGlobalApiError(err) {
   if (!shouldShowGlobalToast(err)) {
     return;
   }
-
-  if (!err.response) {
-    const networkMessage =
-      err.code === 'ECONNABORTED'
-        ? 'The request timed out. Please check your connection and try again.'
-        : 'Unable to connect to the server. Check your internet connection and try again.';
-
-    toast.error(networkMessage);
-    return;
-  }
-
-  const status = err.response.status;
-  const serverMessage = getApiErrorMessage(err.response.data);
-  const message =
-    status >= 500
-      ? 'Something went wrong on our side. Please try again later.'
-      : serverMessage ||
-        'Request failed. Please check your input and try again.';
-
-  toast.error(message);
+  toast.error(getApiErrorMessage(err));
 }
 
 // The backend's CSRF guard requires the X-CSRF-Token header on mutating
@@ -249,6 +268,18 @@ api.interceptors.response.use(
       err.config?.url
     );
 
+    const errorStatus = err.response?.status;
+    if (errorStatus >= 500) {
+      captureException(err, {
+        tags: {
+          source: 'api',
+          statusCode: String(errorStatus),
+          route: err.config?.url,
+        },
+        extra: { responseData: err.response?.data },
+      });
+    }
+
     const original = err.config || {};
     const status = err.response?.status;
 
@@ -335,10 +366,14 @@ api.interceptors.response.use(
       }
     }
 
+    const errorInfo = getApiErrorInfo(err);
+    err.userMessage = errorInfo.message;
+    err.errorCode = errorInfo.code;
+    err.requestId = errorInfo.requestId;
     notifyGlobalApiError(err);
     return Promise.reject(err);
   }
 );
 
 export default api;
-export { clearCsrfToken };
+export { clearCsrfToken, getAiChatErrorMessage, getApiErrorMessage };

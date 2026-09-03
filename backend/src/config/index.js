@@ -1,6 +1,7 @@
 require('dotenv').config();
 const pino = require('pino');
 const { z } = require('zod');
+const { resolveDatabaseUrl } = require('./testDatabase');
 
 const log = pino(
   process.env.NODE_ENV === 'development'
@@ -106,7 +107,7 @@ module.exports = {
   port: env.PORT,
   host: process.env.HOST || '0.0.0.0',
   nodeEnv: process.env.NODE_ENV,
-  databaseUrl: process.env.DATABASE_URL,
+  databaseUrl: resolveDatabaseUrl(process.env),
   dbPoolMax: parseInt(process.env.DB_POOL_MAX, 10) || 20,
   jwt: {
     secret: process.env.JWT_SECRET,
@@ -171,6 +172,10 @@ module.exports = {
     rateLimitPerRecipient: parseInt(process.env.EMAIL_RATE_LIMIT, 10) || 5,
     rateLimitWindowMs: parseInt(process.env.EMAIL_RATE_WINDOW, 10) || 60000,
     bounceCheckEnabled: process.env.EMAIL_BOUNCE_CHECK === 'true',
+  },
+  sentry: {
+    dsn: process.env.SENTRY_DSN || null,
+    tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
   },
   websocket: {
     maxUnauthenticatedConnections:

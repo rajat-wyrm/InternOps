@@ -12,6 +12,7 @@ from app.providers.groq import GroqProvider
 from app.providers.anthropic import AnthropicProvider
 from app.providers.deepseek import DeepSeekProvider
 from app.providers.huggingface import HuggingFaceProvider
+from app.providers.nvidia import NvidiaProvider
 
 
 def __getattr__(name: str):
@@ -33,6 +34,7 @@ __all__ = [
     "AnthropicProvider",
     "DeepSeekProvider",
     "HuggingFaceProvider",
+    "NvidiaProvider",
     "AIOrchestrator",
     "ai_orchestrator",
 ]

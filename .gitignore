@@ -27,7 +27,7 @@ secrets/
 backend/.env
 backend/.env.*
 
-InternOps/
+# InternOps/
 internops-diagnostic-report.txt
 internops-crash.log
 server-debug.log

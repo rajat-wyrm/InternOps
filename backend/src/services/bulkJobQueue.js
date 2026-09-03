@@ -82,6 +82,7 @@ class BulkJobQueueService {
     this.worker = null;
     this.connection = null;
     this.isBullMQActive = false;
+    this.initialized = false;
   }
 
   async init() {
@@ -251,7 +252,16 @@ class BulkJobQueueService {
           'Failed to recover pending bulk jobs'
         );
       });
+    } finally {
+      this.initialized = true;
     }
+  }
+
+  getStatus() {
+    return {
+      mode: this.isBullMQActive ? 'bullmq' : 'direct',
+      initialized: this.initialized,
+    };
   }
 
   /**

@@ -92,6 +92,7 @@ export function useFullPipeline() {
 
 export function useBulkAIGenerate() {
   const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async (payload) => {
       const { data } = await api.post(
@@ -114,6 +115,15 @@ export function useBulkAIJobStatus(jobId) {
       return data;
     },
     enabled: !!jobId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.data?.status;
+
+      if (status === 'completed' || status === 'failed') {
+        return false;
+      }
+
+      return 3000;
+    },
   });
 }
 

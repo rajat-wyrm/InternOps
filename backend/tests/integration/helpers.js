@@ -15,7 +15,7 @@ async function resetSeededAdminPassword() {
   // Store the mocked hash format directly so it works with both real and mocked argon2.
   // Tests run with mocked argon2, which will verify this hash correctly.
   await pool.query(
-    'UPDATE users SET password_hash = $1 WHERE lower(email) = lower($2)',
+    'UPDATE users SET password_hash = $1, suspended = FALSE, deleted_at = NULL, must_change_password = FALSE WHERE lower(email) = lower($2)',
     [SEEDED_ADMIN_MOCKED_HASH, SEEDED_ADMIN_EMAIL]
   );
 }

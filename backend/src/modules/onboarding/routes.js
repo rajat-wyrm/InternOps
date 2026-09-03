@@ -1,120 +1,216 @@
 'use strict';
 
+const {
+  sanitizationMiddleware: sanitize,
+} = require('../../middleware/sanitize');
+const { z } = require('zod');
+const { toSchema } = require('../../utils/schemaHelper');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
-const svc = require('./service');
+const repo = require('./repository');
+const { extractRequestInfo } = require('../../utils/audit');
+const { generateAIResponse } = require('../../services/aiProviderService');
 
-async function routes(fastify) {
-  // ---------------------------------------------------------
-  // POST /api/v1/onboarding/generate
-  // Generate an AI-assisted onboarding checklist
-  // ---------------------------------------------------------
+const itemSchema = z.object({
+  title: z.string().min(1).max(255),
+  description: z.string().max(2000).optional(),
+  due_day_offset: z.number().int().optional(),
+  social_task_id: z.string().uuid().optional(),
+  position: z.number().int().optional(),
+});
+
+const generateSchema = z.object({
+  role: z.string().min(1).max(255),
+  department: z.string().max(255).optional(),
+});
+
+const saveTemplateSchema = z.object({
+  role: z.string().min(1).max(255),
+  department: z.string().max(255).optional(),
+  title: z.string().min(1).max(255),
+  items: z.array(itemSchema).min(1),
+});
+
+const createChecklistSchema = z.object({
+  internId: z.string().uuid(),
+  title: z.string().min(1).max(255),
+  role: z.string().min(1).max(255),
+  department: z.string().max(255).optional(),
+  items: z.array(itemSchema).min(1),
+});
+
+const updateChecklistSchema = z.object({
+  title: z.string().min(1).max(255).optional(),
+  role: z.string().min(1).max(255).optional(),
+  department: z.string().max(255).optional(),
+  items: z.array(itemSchema).optional(),
+});
+
+const completeItemSchema = z.object({
+  completed: z.boolean(),
+});
+
+const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL'];
+
+async function buildChecklistWithAI(role, department, userId) {
+  const prompt = `Generate an onboarding checklist for a new intern joining as "${role}"${
+    department ? ` in the "${department}" department` : ''
+  }. Return ONLY valid JSON, no markdown, no commentary, in this exact shape:
+{"title": string, "items": [{"title": string, "description": string, "due_day_offset": number}]}
+Include 5 to 10 items covering docs to read, people to meet, and first tasks. due_day_offset is the number of days after the intern's join date the item is due (0 = day one).`;
+
+  const result = await generateAIResponse({
+    userId,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  let parsed;
+
+  try {
+    const cleaned = result.content.replace(/```json|```/g, '').trim();
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    const error = new Error('AI returned an invalid checklist format');
+    error.statusCode = 502;
+    throw error;
+  }
+
+  if (!parsed.title || !Array.isArray(parsed.items)) {
+    const error = new Error('AI returned an invalid checklist format');
+    error.statusCode = 502;
+    throw error;
+  }
+
+  return {
+    title: parsed.title,
+    items: parsed.items.map((item, i) => ({
+      title: String(item.title || '').slice(0, 255),
+      description: item.description
+        ? String(item.description).slice(0, 2000)
+        : null,
+      due_day_offset: Number.isInteger(item.due_day_offset)
+        ? item.due_day_offset
+        : null,
+      position: i,
+    })),
+  };
+}
+
+module.exports = async function onboardingRoutes(fastify) {
+  // Generate an AI-assisted onboarding checklist.
   fastify.post(
     '/generate',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '1 minute',
+          keyGenerator: (req) => req.user?.id || req.ip,
+        },
+      },
       schema: {
         tags: ['Onboarding'],
-        description: 'Generate an AI-assisted onboarding checklist',
+        description: 'Generate an onboarding checklist draft via AI',
+        body: toSchema(generateSchema),
       },
+      preHandler: [auth, rbac(...MANAGER_ROLES), sanitize],
     },
     async (req, reply) => {
-      const { role, department } = req.body || {};
+      const parsed = generateSchema.safeParse(req.body);
 
-      if (
-        typeof role !== 'string' ||
-        !role.trim() ||
-        typeof department !== 'string' ||
-        !department.trim()
-      ) {
-        return reply
-          .status(400)
-          .send({ error: 'role and department are required' });
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
+      }
+
+      const { role, department } = parsed.data;
+
+      const existing = await repo.findTemplate(
+        role,
+        department || req.user.departmentId || null
+      );
+
+      if (existing) {
+        return { source: 'template', ...existing };
       }
 
       try {
-        return await svc.generateChecklist({
-          userId: req.user.id,
-          role: role.trim(),
-          department: department.trim(),
-        });
+        const draft = await buildChecklistWithAI(role, department, req.user.id);
+
+        return {
+          source: 'ai',
+          role,
+          department: department || null,
+          ...draft,
+        };
       } catch (error) {
         req.log.error(
-          { err: error },
-          'Failed to generate onboarding checklist'
+          { err: error.message },
+          'Onboarding AI generation failed'
         );
-        if (error.statusCode === 502)
-          return reply.status(502).send({ error: error.message });
-        if (error.statusCode === 413)
-          return reply
-            .status(413)
-            .send({ error: 'AI provider response too large' });
-        if (error instanceof SyntaxError)
-          return reply
-            .status(502)
-            .send({ error: 'AI returned an invalid checklist format' });
-        return reply.status(503).send({ error: 'AI service unavailable' });
+
+        return reply
+          .status(error.statusCode || 503)
+          .send({ error: error.message || 'AI service unavailable' });
       }
     }
   );
 
-  // ---------------------------------------------------------
-  // POST /api/v1/onboarding/templates
-  // Save an edited checklist as a reusable template
-  // ---------------------------------------------------------
+  // Save an edited draft as a reusable template.
   fastify.post(
     '/templates',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
       schema: {
         tags: ['Onboarding'],
-        description: 'Save an onboarding checklist as a reusable template',
+        description: 'Save a checklist as a reusable per-role template',
+        body: toSchema(saveTemplateSchema),
       },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
-      const { title, role, departmentId, items } = req.body || {};
+      const parsed = saveTemplateSchema.safeParse(req.body);
 
-      if (
-        typeof title !== 'string' ||
-        !title.trim() ||
-        typeof role !== 'string' ||
-        !role.trim()
-      ) {
-        return reply.status(400).send({ error: 'title and role are required' });
-      }
-
-      try {
-        const template = await svc.saveTemplate({
-          title: title.trim(),
-          role: role.trim(),
-          departmentId: departmentId || req.user.departmentId || null,
-          createdBy: req.user.id,
-          items,
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
         });
-        return reply.status(201).send(template);
-      } catch (error) {
-        if (error.statusCode === 400)
-          return reply.status(400).send({ error: error.message });
-        req.log.error({ err: error }, 'Failed to create onboarding template');
-        return reply
-          .status(500)
-          .send({ error: 'Failed to save onboarding template' });
       }
+
+      const { role, department, title, items } = parsed.data;
+
+      const template = await repo.createTemplate({
+        role,
+        departmentId: department || req.user.departmentId || null,
+        title,
+        createdBy: req.user.id,
+        items,
+      });
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        ...extractRequestInfo(req),
+        action: 'ONBOARDING_TEMPLATE_SAVED',
+        resourceType: 'onboarding_template',
+        resourceId: template.id,
+        details: { role, department },
+      };
+
+      return reply.status(201).send(template);
     }
   );
 
-  // ---------------------------------------------------------
-  // GET /api/v1/onboarding/templates/match
-  // Find reusable template for role + department
-  // ---------------------------------------------------------
+  // Find reusable template for role + department.
   fastify.get(
     '/templates/match',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
       schema: {
         tags: ['Onboarding'],
         description: 'Find a reusable onboarding template',
       },
+      preHandler: [auth, rbac(...MANAGER_ROLES)],
     },
     async (req, reply) => {
       const { role, departmentId } = req.query || {};
@@ -123,241 +219,205 @@ async function routes(fastify) {
         return reply.status(400).send({ error: 'role is required' });
       }
 
-      try {
-        const template = await svc.findTemplate({
-          role: role.trim(),
-          departmentId: departmentId || req.user.departmentId || null,
-        });
-        if (!template)
-          return reply
-            .status(404)
-            .send({ error: 'No onboarding template found' });
-        return template;
-      } catch (error) {
-        req.log.error({ err: error }, 'Failed to find onboarding template');
+      const template = await repo.findTemplate(
+        role.trim(),
+        departmentId || req.user.departmentId || null
+      );
+
+      if (!template) {
         return reply
-          .status(500)
-          .send({ error: 'Failed to retrieve onboarding template' });
+          .status(404)
+          .send({ error: 'No onboarding template found' });
       }
+
+      return template;
     }
   );
 
-  // ---------------------------------------------------------
-  // GET /api/v1/onboarding/templates/:templateId
-  // ---------------------------------------------------------
+  // Get a template by ID.
   fastify.get(
     '/templates/:templateId',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
+      preHandler: [auth, rbac(...MANAGER_ROLES)],
       schema: {
         tags: ['Onboarding'],
         description: 'Get an onboarding template by ID',
       },
     },
     async (req, reply) => {
-      try {
-        const template = await svc.getTemplateById(req.params.templateId);
-        if (!template)
-          return reply
-            .status(404)
-            .send({ error: 'Onboarding template not found' });
-        return template;
-      } catch (error) {
-        req.log.error({ err: error }, 'Failed to retrieve onboarding template');
+      const template = await repo.getTemplateById(req.params.templateId);
+
+      if (!template) {
         return reply
-          .status(500)
-          .send({ error: 'Failed to retrieve onboarding template' });
+          .status(404)
+          .send({ error: 'Onboarding template not found' });
       }
+
+      return template;
     }
   );
 
-  // ---------------------------------------------------------
-  // POST /api/v1/onboarding/checklists
-  // Attach edited checklist to an intern
-  // ---------------------------------------------------------
+  // Attach an onboarding checklist to an intern.
   fastify.post(
-    '/checklists',
+    '/',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
       schema: {
         tags: ['Onboarding'],
         description: 'Attach an onboarding checklist to an intern',
+        body: toSchema(createChecklistSchema),
       },
+      preHandler: [auth, rbac(...MANAGER_ROLES), sanitize],
     },
     async (req, reply) => {
-      const { internId, templateId, title, role, departmentId, items } =
-        req.body || {};
+      const parsed = createChecklistSchema.safeParse(req.body);
 
-      if (
-        !internId ||
-        typeof title !== 'string' ||
-        !title.trim() ||
-        typeof role !== 'string' ||
-        !role.trim()
-      ) {
-        return reply
-          .status(400)
-          .send({ error: 'internId, title and role are required' });
-      }
-
-      try {
-        const checklist = await svc.assignChecklist({
-          internId,
-          templateId: templateId || null,
-          title: title.trim(),
-          role: role.trim(),
-          departmentId: departmentId || req.user.departmentId || null,
-          assignedBy: req.user.id,
-          items,
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
         });
-        return reply.status(201).send(checklist);
-      } catch (error) {
-        if (error.statusCode === 400)
-          return reply.status(400).send({ error: error.message });
-        req.log.error({ err: error }, 'Failed to attach onboarding checklist');
-        return reply
-          .status(500)
-          .send({ error: 'Failed to attach onboarding checklist' });
       }
+
+      const { internId, title, role, department, items } = parsed.data;
+
+      const checklist = await repo.createChecklist({
+        internId,
+        title,
+        role,
+        departmentId: department || req.user.departmentId || null,
+        assignedBy: req.user.id,
+        items,
+      });
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        ...extractRequestInfo(req),
+        action: 'ONBOARDING_CHECKLIST_CREATED',
+        resourceType: 'onboarding_checklist',
+        resourceId: checklist.id,
+        details: { internId, role, department },
+      };
+
+      return reply.status(201).send(checklist);
     }
   );
 
-  // ---------------------------------------------------------
-  // GET /api/v1/onboarding/checklists/:checklistId
-  //
-  // Visible to:
-  // - assigned intern
-  // - direct manager
-  // - ADMIN / SENIOR_TL / TL
-  // ---------------------------------------------------------
-  fastify.get(
-    '/checklists/:checklistId',
+  // Edit an existing checklist.
+  fastify.patch(
+    '/:id',
     {
-      preHandler: [auth],
       schema: {
         tags: ['Onboarding'],
-        description: 'Get an onboarding checklist',
+        description: 'Edit an onboarding checklist',
+        body: toSchema(updateChecklistSchema),
       },
+      preHandler: [auth, rbac(...MANAGER_ROLES), sanitize],
     },
     async (req, reply) => {
-      try {
-        const checklist = await svc.getChecklistById(req.params.checklistId);
-        if (!checklist)
-          return reply
-            .status(404)
-            .send({ error: 'Onboarding checklist not found' });
+      const parsed = updateChecklistSchema.safeParse(req.body);
 
-        const privilegedRoles = ['ADMIN', 'SENIOR_TL', 'TL'];
-        const isIntern = checklist.intern_id === req.user.id;
-        const isDirectManager = checklist.manager_id === req.user.id;
-        const isPrivileged = privilegedRoles.includes(req.user.role);
-        if (!isIntern && !isDirectManager && !isPrivileged) {
-          return reply.status(403).send({ error: 'Forbidden' });
-        }
-        return checklist;
-      } catch (error) {
-        req.log.error(
-          { err: error },
-          'Failed to retrieve onboarding checklist'
-        );
-        return reply
-          .status(500)
-          .send({ error: 'Failed to retrieve onboarding checklist' });
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
       }
+
+      const { title, role, department, items } = parsed.data;
+
+      const checklist = await repo.updateChecklist(
+        req.params.id,
+        { title, role, department },
+        items
+      );
+
+      if (!checklist) {
+        return reply.status(404).send({ error: 'Checklist not found' });
+      }
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        ...extractRequestInfo(req),
+        action: 'ONBOARDING_CHECKLIST_UPDATED',
+        resourceType: 'onboarding_checklist',
+        resourceId: checklist.id,
+        details: {},
+      };
+
+      return checklist;
     }
   );
 
-  // ---------------------------------------------------------
-  // GET /api/v1/onboarding/interns/:internId/checklists
-  // ---------------------------------------------------------
+  // Get an intern's onboarding checklists.
   fastify.get(
-    '/interns/:internId/checklists',
+    '/intern/:internId',
     {
-      preHandler: [auth],
       schema: {
         tags: ['Onboarding'],
-        description: 'Get onboarding checklists for an intern',
+        description: "Get an intern's onboarding checklist",
       },
+      preHandler: [auth],
     },
     async (req, reply) => {
       const { internId } = req.params;
-      const privilegedRoles = ['ADMIN', 'SENIOR_TL', 'TL'];
+      const isSelf = req.user.id === internId;
+      const isManager = MANAGER_ROLES.includes(req.user.role);
 
-      if (
-        req.user.id !== internId &&
-        !privilegedRoles.includes(req.user.role)
-      ) {
+      if (!isSelf && !isManager) {
         return reply.status(403).send({ error: 'Forbidden' });
       }
 
-      try {
-        return await svc.getChecklistsForIntern(internId);
-      } catch (error) {
-        req.log.error(
-          { err: error },
-          'Failed to retrieve intern onboarding checklists'
-        );
-        return reply
-          .status(500)
-          .send({ error: 'Failed to retrieve onboarding checklists' });
+      const checklists = await repo.getChecklistsForIntern(internId);
+
+      if (!checklists.length) {
+        return reply.status(404).send({ error: 'No checklist found' });
       }
+
+      return checklists;
     }
   );
 
-  // ---------------------------------------------------------
-  // PATCH /api/v1/onboarding/checklists/:checklistId/items/:itemId
-  // Mark checklist item complete/incomplete
-  // ---------------------------------------------------------
+  // Mark a checklist item complete/incomplete.
   fastify.patch(
-    '/checklists/:checklistId/items/:itemId',
+    '/items/:itemId/complete',
     {
-      preHandler: [auth],
       schema: {
         tags: ['Onboarding'],
-        description: 'Update onboarding checklist item completion',
+        description: 'Toggle a checklist item as completed',
+        body: toSchema(completeItemSchema),
       },
+      preHandler: [auth, sanitize],
     },
     async (req, reply) => {
-      const { completed } = req.body || {};
+      const parsed = completeItemSchema.safeParse(req.body);
 
-      if (typeof completed !== 'boolean') {
-        return reply.status(400).send({ error: 'completed must be a boolean' });
-      }
-
-      try {
-        const checklist = await svc.getChecklistById(req.params.checklistId);
-        if (!checklist)
-          return reply
-            .status(404)
-            .send({ error: 'Onboarding checklist not found' });
-
-        const privilegedRoles = ['ADMIN', 'SENIOR_TL', 'TL'];
-        const isIntern = checklist.intern_id === req.user.id;
-        const isDirectManager = checklist.manager_id === req.user.id;
-        const isPrivileged = privilegedRoles.includes(req.user.role);
-        if (!isIntern && !isDirectManager && !isPrivileged) {
-          return reply.status(403).send({ error: 'Forbidden' });
-        }
-
-        const item = await svc.updateItemCompletion({
-          itemId: req.params.itemId,
-          checklistId: req.params.checklistId,
-          completed,
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
         });
-        if (!item)
-          return reply.status(404).send({ error: 'Checklist item not found' });
-        return item;
-      } catch (error) {
-        req.log.error(
-          { err: error },
-          'Failed to update onboarding checklist item'
-        );
-        return reply
-          .status(500)
-          .send({ error: 'Failed to update checklist item' });
       }
+
+      const item = await repo.updateChecklistItemCompletion({
+        itemId: req.params.itemId,
+        checklistId: req.body.checklistId,
+        completed: parsed.data.completed,
+      });
+
+      if (!item) {
+        return reply.status(404).send({ error: 'Checklist item not found' });
+      }
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        ...extractRequestInfo(req),
+        action: 'ONBOARDING_ITEM_TOGGLED',
+        resourceType: 'onboarding_checklist_item',
+        resourceId: item.id,
+        details: { completed: parsed.data.completed },
+      };
+
+      return item;
     }
   );
-}
-
-module.exports = routes;
+};

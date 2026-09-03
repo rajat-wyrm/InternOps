@@ -1,4 +1,5 @@
 const pool = require('../../config/db');
+const { assertActivityAllowed } = require('../team/lifecycle');
 
 /**
  * Insert a single proof submission row.
@@ -101,6 +102,11 @@ async function verifyProof(proofId, verifierId, verifierRole) {
  * Check whether a task is assigned to the given user (or unassigned).
  */
 async function isTaskAssignedToUser(taskId, userId) {
+  await assertActivityAllowed(
+    pool,
+    userId,
+    new Date().toISOString().slice(0, 10)
+  );
   const res = await pool.query(
     `SELECT 1 FROM social_tasks st
      WHERE st.id = $1 AND st.deleted_at IS NULL
@@ -167,6 +173,25 @@ async function getProof(proofId) {
 }
 
 /**
+ * Save the AI verification result for a proof submission.
+ */
+async function saveVerificationResult(proofId, verificationResult) {
+  const res = await pool.query(
+    `UPDATE proof_submissions
+     SET verification_result = $1
+     WHERE id = $2
+     RETURNING *`,
+    [verificationResult, proofId]
+  );
+
+  if (res.rowCount === 0) {
+    throw new Error('Proof not found');
+  }
+
+  return res.rows[0];
+}
+
+/**
  * Soft-delete a proof submission.
  */
 async function deleteProof(proofId) {
@@ -203,6 +228,7 @@ module.exports = {
   getProofsByTask,
   getProofsByIntern,
   getProof,
+  saveVerificationResult,
   deleteProof,
   getProofImage,
   deleteProofImage,

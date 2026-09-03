@@ -47,7 +47,7 @@ jest.mock('../../src/config/redis', () => ({
 }));
 
 const mockFetch = jest.fn();
-global.fetch = mockFetch;
+jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
 
 describe('AI Provider Service', () => {
   let aiService;
@@ -81,7 +81,7 @@ describe('AI Provider Service', () => {
 
     mockGetRedisClient.mockReset();
     mockFetch.mockReset();
-    global.fetch = mockFetch;
+    jest.spyOn(global, 'fetch').mockImplementation(mockFetch);
 
     aiService = require('../../src/services/aiProviderService');
   });
@@ -216,33 +216,21 @@ describe('AI Provider Service', () => {
 
     aiService = require('../../src/services/aiProviderService');
 
-    await expect(
-      aiService.generateAIResponse({
+    for (let i = 0; i < 4; i++) {
+      const res = await aiService.generateAIResponse({
         userId: 'user-3',
         messages: [{ role: 'user', content: 'Will fail' }],
-      })
-    ).rejects.toThrow('All AI providers unavailable');
-
-    await expect(
-      aiService.generateAIResponse({
-        userId: 'user-3',
-        messages: [{ role: 'user', content: 'Will fail' }],
-      })
-    ).rejects.toThrow('All AI providers unavailable');
-
-    await expect(
-      aiService.generateAIResponse({
-        userId: 'user-3',
-        messages: [{ role: 'user', content: 'Will fail' }],
-      })
-    ).rejects.toThrow('All AI providers unavailable');
-
-    await expect(
-      aiService.generateAIResponse({
-        userId: 'user-3',
-        messages: [{ role: 'user', content: 'Will fail' }],
-      })
-    ).rejects.toThrow('All AI providers unavailable');
+      });
+      expect(res).toMatchObject({
+        cached: false,
+        content: expect.stringContaining('temporarily unavailable'),
+        error: {
+          code: 'AI_SERVICE_UNAVAILABLE',
+          message: expect.any(String),
+          providers: expect.any(Array),
+        },
+      });
+    }
 
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
@@ -256,12 +244,11 @@ describe('AI Provider Service', () => {
 
     const hugeMessage = { role: 'user', content: 'x'.repeat(40000) };
 
-    await expect(
-      aiService.generateAIResponse({
-        userId: 'user-4',
-        messages: [hugeMessage],
-      })
-    ).rejects.toThrow('All AI providers unavailable');
+    const res = await aiService.generateAIResponse({
+      userId: 'user-4',
+      messages: [hugeMessage],
+    });
+    expect(res.error?.code).toBeDefined();
   });
 
   it('should recover and close the circuit breaker after the cooldown period (half-open)', async () => {
@@ -277,18 +264,18 @@ describe('AI Provider Service', () => {
 
       aiService = require('../../src/services/aiProviderService');
 
-      await expect(
-        aiService.generateAIResponse({ userId: 'u1', messages: [] })
-      ).rejects.toThrow();
-      await expect(
-        aiService.generateAIResponse({ userId: 'u1', messages: [] })
-      ).rejects.toThrow();
+      let res = await aiService.generateAIResponse({
+        userId: 'u1',
+        messages: [],
+      });
+      expect(res.error).toBeDefined();
+      res = await aiService.generateAIResponse({ userId: 'u1', messages: [] });
+      expect(res.error).toBeDefined();
 
       mockFetch.mockClear();
 
-      await expect(
-        aiService.generateAIResponse({ userId: 'u1', messages: [] })
-      ).rejects.toThrow();
+      res = await aiService.generateAIResponse({ userId: 'u1', messages: [] });
+      expect(res.error).toBeDefined();
       expect(mockFetch).not.toHaveBeenCalled();
 
       jest.advanceTimersByTime(5001);
@@ -351,6 +338,39 @@ describe('AI Provider Service', () => {
     expect(mockFetch.mock.calls[0][0]).toContain('api.openai.com');
   });
 
+  it('should attach per-provider failure reasons to the thrown error for diagnostics (#1795)', async () => {
+    jest.resetModules();
+    process.env.AI_PROVIDER_ORDER = 'gemini,groq';
+    mockConfig.ai.geminiKey = 'your-placeholder-key'; // treated as unconfigured
+    mockConfig.ai.groqKey = 'groq-key';
+    mockGetRedisClient.mockResolvedValue(null);
+    mockFetch.mockRejectedValue(new Error('groq unreachable'));
+
+    aiService = require('../../src/services/aiProviderService');
+
+    const res = await aiService.generateAIResponse({
+      userId: 'user-diag',
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+
+    expect(res.error).toBeDefined();
+    expect(res.error.message).toBe(
+      'All configured AI providers are unavailable.'
+    );
+    expect(Array.isArray(res.error.providers)).toBe(true);
+    expect(res.error.providers).toEqual([
+      { provider: 'gemini', reason: 'missing_api_key' },
+      {
+        provider: 'groq',
+        reason: 'groq unreachable',
+        code: 'AI_PROVIDER_NETWORK_ERROR',
+        statusCode: null,
+      },
+    ]);
+
+    mockConfig.ai.geminiKey = 'gemini-key';
+  });
+
   it('should enforce LRU cache eviction limits and TTL configurations', async () => {
     jest.clearAllMocks();
     jest.resetModules();
@@ -368,9 +388,11 @@ describe('AI Provider Service', () => {
 
     aiService._caches.get = jest.fn().mockReturnValue(undefined);
 
-    await expect(
-      aiService.generateAIResponse({ userId: 'cache-test-user', messages: [] })
-    ).rejects.toThrow();
+    const res = await aiService.generateAIResponse({
+      userId: 'cache-test-user',
+      messages: [],
+    });
+    expect(res.error).toBeDefined();
 
     expect(LRUCache).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -416,5 +438,56 @@ describe('AI Provider Service', () => {
     });
 
     expect(mockFetch).toHaveBeenCalledTimes(10);
+  });
+  it('should enforce the default 5MB response size limit when AI_MAX_RESPONSE_BYTES is not set', async () => {
+    jest.resetModules();
+    delete process.env.AI_MAX_RESPONSE_BYTES;
+    process.env.AI_PROVIDER_ORDER = 'groq';
+    mockGetRedisClient.mockResolvedValue(null);
+
+    // Default is 5MB
+    const oversizedLength = 5 * 1024 * 1024 + 1;
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: jest.fn().mockReturnValue(String(oversizedLength)) },
+      text: jest.fn().mockResolvedValue(''),
+    });
+
+    aiService = require('../../src/services/aiProviderService');
+
+    await expect(
+      aiService.generateAIResponse({
+        userId: 'size-test-user',
+        messages: [{ role: 'user', content: 'test' }],
+      })
+    ).rejects.toThrow('Content-Length exceeds 5242880 bytes');
+  });
+
+  it('should enforce the custom AI_MAX_RESPONSE_BYTES limit when it is set', async () => {
+    jest.resetModules();
+    process.env.AI_MAX_RESPONSE_BYTES = '1024'; // 1KB
+    process.env.AI_PROVIDER_ORDER = 'groq';
+    mockGetRedisClient.mockResolvedValue(null);
+
+    // Larger than 1KB
+    const oversizedLength = 2048;
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: jest.fn().mockReturnValue(String(oversizedLength)) },
+      text: jest.fn().mockResolvedValue(''),
+    });
+
+    aiService = require('../../src/services/aiProviderService');
+
+    await expect(
+      aiService.generateAIResponse({
+        userId: 'size-test-user',
+        messages: [{ role: 'user', content: 'test' }],
+      })
+    ).rejects.toThrow('Content-Length exceeds 1024 bytes');
   });
 });

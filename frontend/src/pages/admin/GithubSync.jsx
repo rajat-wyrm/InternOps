@@ -50,8 +50,9 @@ import {
 } from 'recharts';
 import api from '../../lib/axios';
 import { Card, Btn, Badge, Spinner } from '../../components/ui';
+import { getBaseUrl } from '../../lib/axios';
 
-const WEBHOOK_URL = `${window.location.origin}/api/v1/github/webhook`;
+const WEBHOOK_URL = `${getBaseUrl()}/github/webhook`;
 
 function CopyableField({ label, value, mono }) {
   const [copied, setCopied] = useState(false);
@@ -520,11 +521,11 @@ export default function GithubSync() {
 
       {settingsOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          className="internops-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm"
           onClick={() => setSettingsOpen(false)}
         >
           <div
-            className="w-full max-w-lg mx-4 p-6 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl"
+            className="internops-modal-panel w-full max-w-lg mx-4 p-6 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-5">

@@ -20,12 +20,38 @@ import {
   ApiErrorState,
 } from '../components/ui';
 
+const LEGACY_WARNING_PREFIXES = [
+  String.fromCharCode(226, 353, 160, 239, 184, 143),
+  String.fromCharCode(226, 353, 160, 239, 184),
+  String.fromCharCode(226, 353, 160),
+];
+export function normalizeNotificationMessage(message) {
+  if (typeof message !== 'string') return message;
+  const prefix = LEGACY_WARNING_PREFIXES.find((value) =>
+    message.startsWith(value)
+  );
+  return prefix ? `⚠️ ${message.slice(prefix.length).trimStart()}` : message;
+}
 function timeAgo(d) {
   const s = Math.floor((Date.now() - new Date(d)) / 1000);
   if (s < 60) return 'just now';
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return new Date(d).toLocaleDateString();
+}
+export function parseLoginFailureNotification(message) {
+  const normalized = normalizeNotificationMessage(message);
+  if (typeof normalized !== 'string') return null;
+  const match = normalized.match(
+    /User Issue:\s*Login Failed\s*User:\s*([^\s]+)\s*Issue:\s*(.+?)(?:\s+Time:\s*.+)?$/i
+  );
+  if (!match) return null;
+  return {
+    title: 'Login attempt failed',
+    description: 'An unsuccessful sign-in attempt was detected for an account.',
+    account: match[1],
+    reason: match[2].trim(),
+  };
 }
 
 export default function Notifications() {
@@ -46,23 +72,99 @@ export default function Notifications() {
 
   const markReadMut = useMutation({
     mutationFn: (id) => api.patch(`/notifications/${id}/read`),
-    onSuccess: invalidate,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: previousData.data.map((n) =>
+            n.id === id ? { ...n, read: true } : n
+          ),
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, id, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
+    onSettled: () => {
+      invalidate();
+    },
   });
 
   const markAllReadMut = useMutation({
     mutationFn: () => api.post('/notifications/read-all', {}),
-    onSuccess: invalidate,
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: previousData.data.map((n) => ({ ...n, read: true })),
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
+    onSettled: () => {
+      invalidate();
+    },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/notifications/${id}`),
-    onSuccess: invalidate,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: previousData.data.filter((n) => n.id !== id),
+          total: Math.max(0, previousData.total - 1),
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, id, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
+    onSettled: () => {
+      invalidate();
+    },
   });
 
   const deleteAllMut = useMutation({
     mutationFn: () => api.delete('/notifications/all'),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['notifications', page] });
+      const previousData = queryClient.getQueryData(['notifications', page]);
+      if (previousData) {
+        queryClient.setQueryData(['notifications', page], {
+          ...previousData,
+          data: [],
+          total: 0,
+        });
+      }
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['notifications', page], context.previousData);
+      }
+    },
     onSuccess: () => {
       setShowDeleteModal(false);
+    },
+    onSettled: () => {
       invalidate();
     },
   });
@@ -173,6 +275,7 @@ export default function Notifications() {
             const isDeletingThisNotification =
               deleteMut.isPending && deleteMut.variables === n.id;
 
+            const loginFailure = parseLoginFailureNotification(n.message);
             return (
               <Card
                 key={n.id}
@@ -193,21 +296,42 @@ export default function Notifications() {
                 </div>
 
                 <div className="flex-1 min-w-0 pt-0.5">
-                  <p
-                    className={`text-sm leading-relaxed ${
-                      n.read
-                        ? 'text-slate-700 dark:text-slate-300'
-                        : 'text-slate-900 dark:text-white font-bold'
-                    }`}
-                  >
-                    {n.message}
-                  </p>
-
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-2 font-medium flex items-center gap-1.5">
+                  {loginFailure ? (
+                    <div className="space-y-2">
+                      <div>
+                        <p className="font-extrabold text-slate-900 dark:text-white">
+                          {loginFailure.title}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                          {loginFailure.description}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                        <span>
+                          <strong className="text-slate-700 dark:text-slate-200">
+                            Account:
+                          </strong>{' '}
+                          {loginFailure.account}
+                        </span>
+                        <span>
+                          <strong className="text-slate-700 dark:text-slate-200">
+                            Reason:
+                          </strong>{' '}
+                          {loginFailure.reason}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p
+                      className={`text-sm leading-relaxed ${n.read ? 'text-slate-700 dark:text-slate-300' : 'font-bold text-slate-900 dark:text-white'}`}
+                    >
+                      {normalizeNotificationMessage(n.message)}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs font-medium text-slate-400 dark:text-slate-500">
                     {timeAgo(n.created_at)}
                   </p>
                 </div>
-
                 <div className="flex items-center gap-2 shrink-0 pt-1">
                   {!n.read && (
                     <button
@@ -223,7 +347,7 @@ export default function Notifications() {
                       ) : (
                         <>
                           <Check className="w-3.5 h-3.5" />
-                          Mark read
+                          Mark as read
                         </>
                       )}
                     </button>

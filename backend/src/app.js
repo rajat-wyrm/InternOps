@@ -1,6 +1,12 @@
 require('dotenv').config();
 const validateEnv = require('./config/validateEnv');
 validateEnv();
+const {
+  initSentry,
+  captureException: sentryCaptureException,
+  flushSentry,
+} = require('./config/sentry');
+initSentry();
 const auth = require('./middleware/auth');
 const rbac = require('./middleware/rbac');
 const path = require('path');
@@ -32,6 +38,7 @@ const app = Fastify({
 });
 
 // Layer 1: Register monitoring routes BEFORE global middleware to ensure observability
+
 app.get(
   '/metrics',
   {
@@ -53,7 +60,6 @@ app.get(
   },
   metrics.metricsEndpoint
 );
-
 app.get(
   '/health',
   {
@@ -333,6 +339,39 @@ app.addHook('onResponse', async (request, reply) => {
   }
 });
 
+function formatValidationPath(value) {
+  const parts = Array.isArray(value)
+    ? value
+    : String(value || '')
+        .replace(/^\//, '')
+        .split(/[./]/);
+  const field = parts.filter(Boolean).at(-1);
+  if (!field) return null;
+  return field
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/^./, (character) => character.toUpperCase());
+}
+function validationDetailMessage(detail) {
+  const message = detail?.message || 'is invalid';
+  const field = formatValidationPath(
+    detail?.path || detail?.instancePath || detail?.dataPath
+  );
+  return field ? `${field}: ${message}` : message;
+}
+function validationPayload(details, requestId) {
+  const validationDetails = details || [];
+  const validationMessage = validationDetails.length
+    ? validationDetailMessage(validationDetails[0])
+    : 'Please check the submitted values.';
+  return {
+    error: 'Validation error',
+    message: validationMessage,
+    code: 'VALIDATION_ERROR',
+    details: validationDetails,
+    requestId,
+  };
+}
 app.setErrorHandler((error, request, reply) => {
   if (error.validation) {
     request.log.warn(
@@ -349,14 +388,13 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Validation error'
     );
-    return reply.status(400).send({
-      error: 'Validation error',
-      details: error.validation.map((v) => ({
-        path: v.instancePath || v.dataPath,
-        message: v.message,
-        keyword: v.keyword,
-      })),
-    });
+    const validationDetails = error.validation.map((v) => ({
+      path: v.instancePath || v.dataPath,
+      message: v.message,
+      keyword: v.keyword,
+    }));
+    const payload = validationPayload(validationDetails, request.id);
+    return reply.status(400).send(payload);
   }
 
   if (error.name === 'ZodError' || Array.isArray(error.issues)) {
@@ -374,20 +412,23 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Zod validation error'
     );
-    return reply.status(400).send({
-      error: 'Validation error',
-      details: error.issues || [],
-    });
+    const validationDetails = error.issues || [];
+    const payload = validationPayload(validationDetails, request.id);
+    return reply.status(400).send(payload);
   }
 
   const statusCode = error.statusCode || 500;
   const isClientError = statusCode >= 400 && statusCode < 500;
   const isOperational = error.isOperational === true;
 
-  const clientMessage =
+  let clientMessage =
     isClientError || isOperational
       ? error.message || 'Request failed'
       : 'Internal Server Error';
+  const responseCode =
+    isClientError || isOperational
+      ? error.code || 'REQUEST_ERROR'
+      : 'INTERNAL_ERROR';
 
   const logPayload = {
     statusCode,
@@ -404,12 +445,24 @@ app.setErrorHandler((error, request, reply) => {
 
   if (statusCode >= 500) {
     request.log.error(logPayload, 'Unhandled server error');
+    sentryCaptureException(error, {
+      userId: request.user?.id || null,
+      tags: {
+        requestId: request.id,
+        route: request.url,
+        method: request.method,
+        statusCode: String(statusCode),
+      },
+    });
   } else {
     request.log.warn(logPayload, 'Request error');
   }
 
   return reply.status(statusCode).send({
     error: clientMessage,
+    message: clientMessage,
+    code: responseCode,
+    requestId: request.id,
   });
 });
 
@@ -419,9 +472,15 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 const bulkJobQueue = require('./services/bulkJobQueue');
+const {
+  checkDatabase,
+  integrationStatus,
+  writeStartupSummary,
+} = require('./utils/startupDiagnostics');
 
 const start = async () => {
   try {
+    const database = await checkDatabase(pool, config.databaseUrl);
     await app.listen({
       port: config.port,
       host: config.host,
@@ -429,10 +488,14 @@ const start = async () => {
     initializeWebSocket(app.server, app.log);
     await bulkJobQueue.init();
     await getRedisClient();
-    app.log.info(
-      { port: config.port },
-      `Server listening on port ${config.port}`
-    );
+    writeStartupSummary({
+      logger: app.log,
+      database,
+      redis: getRedisStatus(),
+      queue: bulkJobQueue.getStatus(),
+      integrations: integrationStatus(config),
+      port: config.port,
+    });
   } catch (err) {
     app.log.error(err);
     process.exit(1);
@@ -464,6 +527,7 @@ const gracefulShutdown = async (signal) => {
     }
 
     await pool.end();
+    await flushSentry(2000);
 
     try {
       githubSyncOrchestrator.shutdown();
@@ -487,6 +551,22 @@ const gracefulShutdown = async (signal) => {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('unhandledRejection', (reason) => {
+  app.log.error({ err: reason }, 'Unhandled promise rejection');
+  sentryCaptureException(
+    reason instanceof Error ? reason : new Error(String(reason)),
+    { extra: { type: 'unhandledRejection' } }
+  );
+});
+process.on('uncaughtException', (error) => {
+  app.log.error({ err: error }, 'Uncaught exception - process will exit');
+  sentryCaptureException(error, { extra: { type: 'uncaughtException' } });
+  const forceExit = setTimeout(() => process.exit(1), 3000);
+  flushSentry(2000).finally(() => {
+    clearTimeout(forceExit);
+    process.exit(1);
+  });
+});
 
 if (require.main === module) {
   start();

@@ -12,42 +12,56 @@ async function getUserSessions(userId) {
 
   if (redis) {
     const tokenHashes = await redis.sMembers(`user_tokens:${userId}`);
-    const sessions = [];
-    for (const hash of tokenHashes) {
-      const raw = await redis.get(`refresh_token:${hash}`);
-      if (raw) {
+
+    if (tokenHashes.length > 0) {
+      const keys = tokenHashes.map((hash) => `refresh_token:${hash}`);
+
+      const values = await redis.mGet(keys);
+
+      const sessions = [];
+
+      values.forEach((raw, index) => {
+        if (!raw) return;
+
+        const hash = tokenHashes[index];
+
         let createdAt = 'N/A';
+
         try {
           const parsed = JSON.parse(raw);
+
           if (parsed.createdAt) {
             createdAt = new Date(parsed.createdAt).toISOString();
           }
         } catch {}
+
         sessions.push({
           sessionId: hash,
           createdAt,
         });
-      }
-    }
+      });
 
-    // Only return if we actually found something in Redis
-    if (sessions.length > 0) {
-      return sessions;
+      if (sessions.length > 0) {
+        return sessions;
+      }
     }
   }
 
-  // If Redis was disabled OR Redis returned no sessions, fall back to Postgres
+  // Fall back to Postgres when Redis is unavailable
+  // or contains no valid sessions.
   const res = await pool.query(
     `SELECT id, token_hash, created_at, expires_at, revoked
      FROM refresh_tokens
-     WHERE user_id = $1 AND revoked = FALSE AND expires_at > NOW()
+     WHERE user_id = $1
+       AND revoked = FALSE
+       AND expires_at > NOW()
      ORDER BY created_at DESC`,
     [userId]
   );
 
   return res.rows.map((row) => ({
     sessionId: row.id,
-    createdAt: row.created_at || 'N/A', // Handle Postgres dates safely too
+    createdAt: row.created_at || 'N/A',
     expiresAt: row.expires_at,
   }));
 }

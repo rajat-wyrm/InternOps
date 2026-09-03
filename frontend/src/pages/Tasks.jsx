@@ -22,6 +22,7 @@ import {
   GitPullRequest as GithubIcon,
   Sparkles,
   AlertTriangle,
+  BarChart3,
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
@@ -724,6 +725,15 @@ export default function Tasks({
                 )}
 
                 <div className="flex flex-wrap items-center gap-2 mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  {canManageTask && (
+                    <Link
+                      to={`/admin/tasks/${t.id}`}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" /> Details & Analytics
+                    </Link>
+                  )}
+
                   {canVerify && (
                     <Btn
                       variant="outline"

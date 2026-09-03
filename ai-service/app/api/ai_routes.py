@@ -18,13 +18,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.auth import User, get_current_user
 from app.core.rate_limit import enforce_rate_limit
-from app.core.rbac import require_roles
+from app.core.rbac import require_permission
+from app.core.security import sanitize_prompt
 from app.core.usage import (
-from ..core.auth import User, get_current_user
-from ..core.rate_limit import enforce_rate_limit
-from ..core.rbac import require_permission
-from ..core.cache import cache_key, get_or_set
-from ..core.usage import (
     DAILY_AI_LIMIT,
     get_daily_usage_report,
     get_today_usage,
@@ -38,33 +34,46 @@ from app.models.ai import (
     ProviderResult,
     UsageResponse,
     GenerationRequest,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
 )
-from app.providers.base import AIProviderError, ProviderAPIError, ProviderRateLimitError
-from app.providers.registry import get_configured_providers_health, get_provider
+from app.core.cache import cache_key, get_or_set
+from app.providers import ai_orchestrator
+from app.providers.base import(
+  AIProviderError,
+  ProviderAPIError,
+  ProviderRateLimitError,
+)
+from app.providers.registry import (
+  get_configured_providers_health,
+  get_provider,
+)
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
 MAX_MESSAGES = 32
-MAX_MESSAGE_CHARS = 4000
+MAX_MESSAGE_CHARS = 2000
 MAX_TOTAL_CHARS = 32000
-
-
-def _messages_to_prompt(messages: List[dict]) -> str:
-    """Flatten a chat-style message list into a single prompt string."""
-    role_labels = {"user": "User", "assistant": "Assistant", "system": "System"}
-    return "\n\n".join(
-        f"{role_labels.get(m['role'], m['role'])}: {m['content']}" for m in messages
-    )
 
 
 async def call_provider(user_id: str, messages: List[dict]) -> ProviderResult:
     provider = get_provider()
-    prompt = _messages_to_prompt(messages)
-    content = await provider.generate_text(prompt)
+    primary_provider = provider.provider_name
+    model = provider.model_name
+    key = cache_key(primary_provider, model, messages, 0.7)
+
+    async def _compute():
+        content, used_provider = await ai_orchestrator.generate_chat_with_fallback(
+            messages
+        )
+        return {"content": content, "provider": used_provider}
+
+    res_dict, cached = await get_or_set(key, _compute)
+
     return ProviderResult(
-        provider=provider.provider_name,
-        cached=False,
-        content=content,
+        provider=res_dict["provider"],
+        cached=cached,
+        content=res_dict["content"],
     )
 
 
@@ -79,7 +88,7 @@ def get_provider_health() -> list:
     "/chat",
     response_model=ChatResponse,
     summary="Send chat message to AI",
-    dependencies=[Depends(require_roles("ADMIN", "SENIOR_TL", "TL"))],
+    dependencies=[Depends(require_permission("AI_CHAT"))],
 )
 async def chat(
     request: Request,
@@ -87,6 +96,19 @@ async def chat(
     current_user: User = Depends(get_current_user),
     _rate_limited: None = Depends(enforce_rate_limit),
 ):
+    # Sanitize prompt or messages
+    try:
+        if body.prompt:
+            body.prompt = sanitize_prompt(body.prompt)
+        if body.messages:
+            for msg in body.messages:
+                if msg.content:
+                    msg.content = sanitize_prompt(msg.content)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     
     final_messages: List[dict] = []
 
@@ -95,8 +117,11 @@ async def chat(
         # an invalid role fails FastAPI's own 422 validation before we
         # get here (equivalent to the JS 400 "Invalid message role").
         final_messages = [
-            {"role": msg.role.value, "content": (msg.content or "")[:2000]}
-            for msg in body.messages[:16]
+            {
+             "role": msg.role.value,
+             "content": (msg.content or "")[:MAX_MESSAGE_CHARS],
+            }
+            for msg in body.messages[:MAX_MESSAGES]
         ]
 
     if not final_messages and body.prompt:
@@ -169,18 +194,83 @@ async def chat(
 # ---------------------------------------------------------------------------
 @router.post(
     "/generate",
-    summary="Generate text with sanitized prompt",
+    summary="Generate text from a prompt or a structured conversation history",
     response_model=ProviderResult,
 )
 async def generate_text(request: GenerationRequest):
     provider = get_provider()
-    content = await provider.generate_text(request.prompt)
+
+    if request.messages:
+        # Preserve role/content structure instead of flattening the
+        # conversation into a single prompt string.
+        conversation = [
+            {"role": msg.role.value, "content": msg.content}
+            for msg in request.messages
+        ]
+        content = await provider.generate_chat(
+            conversation, temperature=request.temperature
+        )
+    else:
+        content = await provider.generate_text(
+            request.prompt, temperature=request.temperature
+        )
+
     return ProviderResult(
         provider=provider.provider_name,
         cached=False,
         content=content,
     )
 
+# ---------------------------------------------------------------------------
+# POST /ai/generate-image
+# ---------------------------------------------------------------------------
+@router.post(
+    "/generate-image",
+    summary="Generate an image from an assignment topic description",
+    response_model=ImageGenerationResponse,
+    dependencies=[Depends(require_permission("AI_IMAGE_GENERATION"))],
+)
+async def generate_image(
+    body: ImageGenerationRequest,
+    current_user: User = Depends(get_current_user),
+    _rate_limited: None = Depends(enforce_rate_limit),
+):
+    usage = await get_today_usage(current_user.id)
+    if usage >= DAILY_AI_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Daily AI usage limit exceeded",
+        )
+
+    try:
+        image_base64, used_provider = await ai_orchestrator.generate_image_with_fallback(
+            body.prompt
+        )
+        await increment_usage(current_user.id)
+        return ImageGenerationResponse(
+            provider=used_provider,
+            image_base64=image_base64,
+        )
+    except ProviderRateLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI provider rate limit exceeded",
+        )
+    except ProviderAPIError as error:
+        if error.status_code == 413:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="AI provider response too large",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI provider service unavailable",
+        )
+    except AIProviderError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Image generation service unavailable",
+        )
 
 # ---------------------------------------------------------------------------
 # GET /ai/health
@@ -189,17 +279,28 @@ async def generate_text(request: GenerationRequest):
     "/health",
     response_model=HealthResponse,
     summary="Check AI provider health",
-    dependencies=[Depends(require_roles("ADMIN"))],
+    dependencies=[Depends(require_permission("AI_HEALTH"))],
 )
 async def health():
-    providers = [
-        ProviderHealthEntry(
-            name=p["name"],
-            status="healthy" if p["available"] else "unhealthy",
-            lastErrorMessage=(p.get("lastError") or {}).get("message"),
+    from app.providers.orchestrator import get_circuit_breaker
+
+    raw_providers = get_provider_health()
+    providers = []
+    for p in raw_providers:
+        name = p["name"]
+        cb = get_circuit_breaker(name)
+        is_open = await cb.is_open()
+
+        status_str = "unhealthy" if is_open else p["status"]
+        last_err = "Circuit breaker open" if is_open else p["lastErrorMessage"]
+
+        providers.append(
+            ProviderHealthEntry(
+                name=name,
+                status=status_str,
+                lastErrorMessage=last_err,
+            )
         )
-        for p in get_provider_health()
-    ]
     return HealthResponse(providers=providers)
 
 
@@ -210,7 +311,7 @@ async def health():
     "/usage",
     response_model=UsageResponse,
     summary="Get AI usage report",
-    dependencies=[Depends(require_roles("ADMIN"))],
+    dependencies=[Depends(require_permission("AI_USAGE"))],
 )
 async def usage():
     report = await get_daily_usage_report()

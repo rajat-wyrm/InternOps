@@ -232,6 +232,7 @@ const EXEMPT = [
   '/api/v1/auth/forgot-password',
   '/api/v1/auth/reset-password',
   '/api/v1/github/webhook',
+  '/api/v1/client-error',
   '/docs',
   '/docs/json',
 ];

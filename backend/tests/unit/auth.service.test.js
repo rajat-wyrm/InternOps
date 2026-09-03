@@ -43,6 +43,9 @@ jest.mock('../../src/utils/hierarchy', () => ({
 jest.mock('../../src/modules/auth/verificationService', () => ({
   sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('../../src/modules/notifications/repository', () => ({
+  notifyAdmin: jest.fn().mockResolvedValue(undefined),
+}));
 
 jest.mock('../../src/config/redis', () => ({
   blacklistAccessToken: jest.fn(),
@@ -189,6 +192,7 @@ describe('Auth Service', () => {
           email: user.email,
           role: user.role,
           full_name: user.full_name,
+          mustChangePassword: false,
         },
       });
     });
@@ -286,6 +290,7 @@ describe('Auth Service', () => {
           email: user.email,
           role: user.role,
           full_name: user.full_name,
+          mustChangePassword: false,
         },
       });
     });

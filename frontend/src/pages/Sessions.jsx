@@ -2,13 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/auth';
-import {
-  Shield,
-  Monitor,
-  AlertTriangle,
-  Clock,
-  CalendarClock,
-} from 'lucide-react';
+import { Shield, Monitor, AlertTriangle } from 'lucide-react';
 import api from '../lib/axios';
 import {
   PageHeader,
@@ -139,7 +133,7 @@ export default function Sessions() {
         />
       ) : !sessions?.length ? (
         <EmptyState
-          icon="💻"
+          icon={<Monitor className="w-12 h-12 text-indigo-400/80 mx-auto" />}
           title="No active sessions"
           text="Signed-in devices will appear here."
         />
@@ -154,11 +148,18 @@ export default function Sessions() {
                 key={s.sessionId}
                 className="p-4 flex items-center gap-3 card-hover"
               >
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-slate-600 to-slate-800 text-white flex items-center justify-center text-xl">
-                  💻
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-slate-600 to-slate-800 text-white flex items-center justify-center">
+                  <Monitor className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-800 text-sm">Session</p>
+                  <p className="font-medium text-gray-800 dark:text-gray-100 text-sm flex items-center gap-2">
+                    Session
+                    {s.isCurrent && (
+                      <span className="text-[10px] uppercase font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded">
+                        Current
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-500">
                     Started{' '}
                     {s.createdAt === 'N/A'
@@ -173,8 +174,17 @@ export default function Sessions() {
                     <p className="text-xs text-gray-400">Expires: N/A</p>
                   )}
                 </div>
-                <Btn variant="outline" onClick={() => revokeMut.mutate(s)}>
-                  Revoke
+                <Btn
+                  variant="outline"
+                  disabled={revokeMut.isPending && revokingId === s.sessionId}
+                  onClick={() => {
+                    setRevokingId(s.sessionId);
+                    revokeMut.mutate(s);
+                  }}
+                >
+                  {revokeMut.isPending && revokingId === s.sessionId
+                    ? 'Revoking...'
+                    : 'Revoke'}
                 </Btn>
               </Card>
             );

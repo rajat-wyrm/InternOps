@@ -3,6 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Upload, Download, CheckCircle, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import api from '../../lib/axios';
+import { createPortal } from 'react-dom';
+import useBodyScrollLock from '../../hooks/useBodyScrollLock';
 
 const ROLES = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
@@ -54,6 +56,7 @@ function UserRow({ row }) {
 }
 
 export default function BulkUserModal({ open, onClose }) {
+  useBodyScrollLock(open);
   const queryClient = useQueryClient();
   const fileRef = useRef(null);
   const [rows, setRows] = useState([]);
@@ -140,29 +143,33 @@ export default function BulkUserModal({ open, onClose }) {
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl text-slate-800">
+  return createPortal(
+    <div className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 backdrop-blur-sm p-4">
+      <div className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-2xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg">
-              📋
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-green/10 text-lg dark:bg-brand-green/15">
+              <span aria-hidden="true">📋</span>
             </div>
+
             <div>
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
                 Bulk Add Users
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
                 Upload a CSV to add up to 100 users at once
               </p>
             </div>
           </div>
+
           <button
+            type="button"
             onClick={handleClose}
-            className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition"
+            aria-label="Close bulk add users"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
@@ -185,10 +192,10 @@ export default function BulkUserModal({ open, onClose }) {
             className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition
               ${
                 dragging
-                  ? 'border-emerald-500 bg-emerald-50'
+                  ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
                   : rows.length
-                    ? 'border-emerald-400 bg-emerald-50/60'
-                    : 'border-slate-300 bg-slate-50 hover:border-emerald-400 hover:bg-emerald-50/40'
+                    ? 'border-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/25'
+                    : 'border-slate-300 bg-slate-50 hover:border-emerald-400 hover:bg-emerald-50/40 dark:border-slate-600 dark:bg-slate-950/40 dark:hover:border-emerald-500 dark:hover:bg-emerald-950/20'
               }`}
           >
             <Upload
@@ -210,7 +217,7 @@ export default function BulkUserModal({ open, onClose }) {
                     ? 'Drop your CSV here'
                     : 'Drag & drop your CSV here'}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   or click to browse files
                 </p>
               </>
@@ -287,7 +294,7 @@ export default function BulkUserModal({ open, onClose }) {
             <button
               onClick={handleSubmit}
               disabled={!rows.length || bulkMutation.isPending}
-              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition disabled:opacity-50 text-sm"
+              className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-400"
             >
               {bulkMutation.isPending
                 ? 'Adding Users...'
@@ -296,6 +303,7 @@ export default function BulkUserModal({ open, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

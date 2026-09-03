@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 from typing import Any, Dict
@@ -35,7 +34,7 @@ class GeminiProvider(BaseAIProvider):
     def __init__(
         self,
         api_key: str,
-        model_name: str = "gemini-2.0-flash",
+        model_name: str = "gemini-2.5-flash",
         timeout: float = 15.0,
     ):
         super().__init__(api_key=api_key, model_name=model_name)
@@ -90,8 +89,36 @@ class GeminiProvider(BaseAIProvider):
                 self.provider_name,
             )
 
+    async def generate_image(self, prompt: str, **kwargs) -> str:
+        """Generate an image from a text prompt. Returns base64-encoded image data."""
+        image_model = kwargs.get("model_name", "gemini-3.1-flash-lite-image")
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{image_model}:generateContent"
+        )
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
+        }
+        response_data = await self._send_request_to_url(url, payload)
+        try:
+            parts = response_data["candidates"][0]["content"]["parts"]
+            for part in parts:
+                if "inlineData" in part:
+                    return part["inlineData"]["data"]  # base64 string
+            raise ProviderAPIError(
+                "Gemini response contained no image data", self.provider_name
+            )
+        except (KeyError, IndexError) as e:
+            raise ProviderAPIError(
+                f"Unexpected image response payload from Gemini: {e}", self.provider_name
+            )
+
     async def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        url = f"{self.base_url}?key={self.api_key}"
+        return await self._send_request_to_url(self.base_url, payload)
+
+    async def _send_request_to_url(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        url = f"{url}?key={self.api_key}"
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 async with client.stream("POST", url, json=payload) as response:
@@ -134,13 +161,3 @@ class GeminiProvider(BaseAIProvider):
             return json.loads(b"".join(chunks))
         except json.JSONDecodeError as e:
             raise ProviderAPIError(f"Gemini returned invalid JSON: {e}", self.provider_name)
-
-
-async def call_gemini(messages: list[dict]) -> str:
-    """
-    Send messages to Gemini API using the new GeminiProvider REST adapter.
-    """
-    from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
-    prompt = _build_prompt(messages)
-    provider = GeminiProvider(api_key=GEMINI_API_KEY, model_name=GEMINI_MODEL)
-    return await provider.generate_chat(prompt)

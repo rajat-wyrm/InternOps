@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const fs = require('fs').promises;
 const path = require('path');
 const pool = require('../config/db');
+const config = require('../config');
 const pLimit = require('p-limit');
 const logger = require('../logger');
 
@@ -347,9 +348,12 @@ function setupCronJobs() {
             },
           }
         );
-
         if (!response.ok) {
-          throw new Error(`FastAPI service returned status ${response.status}`);
+          const errorBody = await response.text();
+
+          throw new Error(
+            `FastAPI service returned status ${response.status}: ${errorBody}`
+          );
         }
 
         const data = await response.json();

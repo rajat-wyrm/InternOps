@@ -24,6 +24,7 @@ export default function UserActionMenu({
   const menuRef = useRef(null);
 
   const isSuspended = !!user.suspended;
+  const isProtectedAdmin = user.role === 'ADMIN';
   const isBusy = !!busy;
 
   useEffect(() => {
@@ -101,56 +102,60 @@ export default function UserActionMenu({
               Edit
             </button>
 
-            <div className="my-1.5 border-t border-slate-100 dark:border-slate-700" />
+            {!isProtectedAdmin && (
+              <>
+                <div className="my-1.5 border-t border-slate-100 dark:border-slate-700" />
 
-            {isSuspended ? (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  onActivate?.(user);
-                }}
-                className="w-full text-left flex items-center gap-3 px-3 py-2.5 text-sm font-bold text-emerald-700 dark:text-emerald-300 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
-              >
-                <span className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/60 flex items-center justify-center">
-                  <UserCheck className="w-4 h-4" />
-                </span>
-                Activate
-              </button>
-            ) : (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  onSuspend?.(user);
-                }}
-                className="w-full text-left flex items-center gap-3 px-3 py-2.5 text-sm font-bold text-amber-700 dark:text-amber-300 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
-              >
-                <span className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/60 flex items-center justify-center">
-                  <UserX className="w-4 h-4" />
-                </span>
-                Suspend
-              </button>
+                {isSuspended ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpen(false);
+                      onActivate?.(user);
+                    }}
+                    className="w-full text-left flex items-center gap-3 px-3 py-2.5 text-sm font-bold text-emerald-700 dark:text-emerald-300 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/60 flex items-center justify-center">
+                      <UserCheck className="w-4 h-4" />
+                    </span>
+                    Activate
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpen(false);
+                      onSuspend?.(user);
+                    }}
+                    className="w-full text-left flex items-center gap-3 px-3 py-2.5 text-sm font-bold text-amber-700 dark:text-amber-300 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
+                  >
+                    <span className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/60 flex items-center justify-center">
+                      <UserX className="w-4 h-4" />
+                    </span>
+                    Suspend
+                  </button>
+                )}
+
+                <div className="my-1.5 border-t border-slate-100 dark:border-slate-700" />
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    onDelete?.(user);
+                  }}
+                  className="w-full text-left flex items-center gap-3 px-3 py-2.5 text-sm font-bold text-red-700 dark:text-red-300 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                >
+                  <span className="w-8 h-8 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/60 flex items-center justify-center">
+                    <Trash2 className="w-4 h-4" />
+                  </span>
+                  Delete
+                </button>
+              </>
             )}
-
-            <div className="my-1.5 border-t border-slate-100 dark:border-slate-700" />
-
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onDelete?.(user);
-              }}
-              className="w-full text-left flex items-center gap-3 px-3 py-2.5 text-sm font-bold text-red-700 dark:text-red-300 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-            >
-              <span className="w-8 h-8 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-900/60 flex items-center justify-center">
-                <Trash2 className="w-4 h-4" />
-              </span>
-              Delete
-            </button>
           </div>
         </div>,
         document.body
