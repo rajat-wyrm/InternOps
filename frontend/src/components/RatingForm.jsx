@@ -20,10 +20,7 @@ export default function RatingForm() {
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
 
-  const {
-    data: suggestion,
-    isLoading: suggestionLoading,
-  } = useQuery({
+  const { data: suggestion, isLoading: suggestionLoading } = useQuery({
     queryKey: ['ratingSuggestion', userId],
     queryFn: () =>
       api.get(`/ratings/suggestions/${userId}`).then((res) => res.data),
@@ -156,9 +153,7 @@ export default function RatingForm() {
 
           <div
             className={`rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-3 ${
-              rateMutation.isPending
-                ? 'opacity-60 pointer-events-none'
-                : ''
+              rateMutation.isPending ? 'opacity-60 pointer-events-none' : ''
             }`}
           >
             <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
