@@ -179,22 +179,20 @@ export default function Profile() {
 
   const displayName = profile?.full_name || 'Unnamed User';
   const displayEmail = profile?.email || '';
- const avatarElement = avatarUrl ? (
-  <img
-    src={avatarUrl}
-    alt="avatar"
-    className="w-24 h-24 md:w-28 md:h-28 rounded-3xl object-cover border-4 border-white dark:border-slate-90"
-    onError={(e) => {
-      // your error handling
-    }}
-  />
-) : null;
-  
- (
+  const avatarElement = avatarUrl ? (
+    <img
+      src={avatarUrl}
+      alt="avatar"
+      className="w-24 h-24 md:w-28 md:h-28 rounded-3xl object-cover border-4 border-white dark:border-slate-90"
+      onError={(e) => {
+        // your error handling
+      }}
+    />
+  ) : null;
+
   <div className="w-24 h-24 md:w-28 md:h-28 rounded-3xl bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white flex items-center justify-center text-4xl font-extrabold border-4 border-white dark:border-slate-900 shadow-xl">
     {initials(profile?.full_name, profile?.email)}
-  </div>
-)} 
+  </div>;
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in-up">
@@ -203,7 +201,7 @@ export default function Profile() {
         <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
           <User className="w-6 h-6" />
         </div>
-
+        );
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             My Profile
@@ -254,17 +252,17 @@ export default function Profile() {
               <div className="flex flex-col md:flex-row md:items-center gap-5">
                 {/* Avatar */}
                 <div className="relative shrink-0">
-                 {avatarUrl ? (
-  <img
-    src={avatarUrl}
-    alt={`${displayName} avatar`}
-    className="w-24 h-24 md:w-28 md:h-28 rounded-3xl object-cover border-4 border-white dark:border-slate-900 shadow-xl bg-white dark:bg-slate-900"
-    onError={(e) => {
-      e.currentTarget.style.display = 'none';
-    }}
-  />
-) : ( 
-          <div className="w-24 h-24 md:w-28 md:h-28 rounded-3xl bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white flex items-center justify-center text-4xl font-extrabold border-4 border-white dark:border-slate-900 shadow-xl">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={`${displayName} avatar`}
+                      className="w-24 h-24 md:w-28 md:h-28 rounded-3xl object-cover border-4 border-white dark:border-slate-900 shadow-xl bg-white dark:bg-slate-900"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-24 h-24 md:w-28 md:h-28 rounded-3xl bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white flex items-center justify-center text-4xl font-extrabold border-4 border-white dark:border-slate-900 shadow-xl">
                       {initials(profile?.full_name, profile?.email)}
                     </div>
                   )}
@@ -479,4 +477,4 @@ export default function Profile() {
       </div>
     </div>
   );
-  
+}
