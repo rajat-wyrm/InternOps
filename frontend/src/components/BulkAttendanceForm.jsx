@@ -51,7 +51,7 @@ export default function BulkAttendanceForm({
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
       setError('');
-setMsg(`✓ Marked ${variables.entries.length} members`);
+      setMsg(`✓ Marked ${variables.entries.length} members`);
       setSelectedUsers([]);
       setRemarks('');
       setFillMissing(false);

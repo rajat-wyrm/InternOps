@@ -77,9 +77,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
   }, [propDeptId, departmentId]);
 
   useEffect(() => {
-    const suggestedScore = Number(
-      suggestion?.recommendation?.suggestedScore
-    );
+    const suggestedScore = Number(suggestion?.recommendation?.suggestedScore);
 
     if (Number.isFinite(suggestedScore) && suggestedScore >= 1) {
       setScore(Math.min(10, Math.max(1, Math.round(suggestedScore))));
@@ -320,9 +318,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
       <form onSubmit={handleFormSubmit} className="space-y-6">
         {/* Department + Team Member */}
         <div
-          className={`grid grid-cols-1 gap-4 ${
-            roster ? '' : 'md:grid-cols-2'
-          }`}
+          className={`grid grid-cols-1 gap-4 ${roster ? '' : 'md:grid-cols-2'}`}
         >
           {!roster && (
             <div className="min-w-0">
@@ -362,9 +358,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
                     : 'Select department first...'
               }
               className="w-full"
-              disabled={
-                rateMutation.isPending || (!roster && !departmentId)
-              }
+              disabled={rateMutation.isPending || (!roster && !departmentId)}
               searchable={true}
             />
           </div>
