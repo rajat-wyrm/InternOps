@@ -57,7 +57,7 @@ function verifyAccessToken(t) {
     algorithms: ['HS256'],
   });
 
-  if (decoded.typ && decoded.typ !== 'access') {
+  if (decoded.typ !== 'access') {
     throw new Error('Token type mismatch: expected access');
   }
 
@@ -69,7 +69,7 @@ function verifyRefreshToken(t) {
     algorithms: ['HS256'],
   });
 
-  if (decoded.typ && decoded.typ !== 'refresh') {
+  if (decoded.typ !== 'refresh') {
     throw new Error('Token type mismatch: expected refresh');
   }
 
