@@ -1,6 +1,7 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
+import { getApiErrorMessage } from '../utils/apiError';
 import { Card, Btn, Input } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDatePicker from './CustomDatePicker';
@@ -36,14 +37,14 @@ export default function AttendanceMarkForm() {
         queryKey: ['attendance'],
       });
       setError('');
-      setMsg('✓ Attendance marked');
-      // Reset only the member + remarks fields — keep the same date and
+      setMsg('Ã¢Å“â€œ Attendance marked');
+      // Reset only the member + remarks fields Ã¢â‚¬â€ keep the same date and
       // status so consecutive marks for a single day are quick. The
       // date/status reset when the user changes them manually.
       setForm((f) => ({ ...f, userId: '', remarks: '' }));
       setTimeout(() => setMsg(''), 2000);
     },
-    onError: (err) => setError(err.response?.data?.error || 'Failed'),
+    onError: (err) => setError(getApiErrorMessage(err, 'Failed')),
   });
 
   const today = new Date().toISOString().slice(0, 10);
@@ -66,7 +67,7 @@ export default function AttendanceMarkForm() {
     <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
       <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
         <div className="w-11 h-11 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300 flex items-center justify-center border border-emerald-100 dark:border-emerald-900/60">
-          <span className="text-lg font-extrabold">✓</span>
+          <span className="text-lg font-extrabold">Ã¢Å“â€œ</span>
         </div>
 
         <div>

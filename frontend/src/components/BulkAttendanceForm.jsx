@@ -1,6 +1,7 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
+import { getApiErrorMessage } from '../utils/apiError';
 import { Card, Btn, Input } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDatePicker from './CustomDatePicker';
@@ -30,12 +31,12 @@ export default function BulkAttendanceForm() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
       setError('');
-      setMsg(`✓ Marked ${selectedUsers.length} members`);
+      setMsg(`Ã¢Å“â€œ Marked ${selectedUsers.length} members`);
       setSelectedUsers([]);
       setRemarks('');
       setTimeout(() => setMsg(''), 2500);
     },
-    onError: (err) => setError(err.response?.data?.error || 'Bulk mark failed'),
+    onError: (err) => setError(getApiErrorMessage(err, 'Bulk mark failed')),
   });
 
   const team = reports ?? [];
@@ -99,7 +100,7 @@ export default function BulkAttendanceForm() {
     <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
       <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
         <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 flex items-center justify-center border border-blue-100 dark:border-blue-900/60">
-          <span className="text-lg font-extrabold">✓</span>
+          <span className="text-lg font-extrabold">Ã¢Å“â€œ</span>
         </div>
 
         <div>

@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
+import { getApiErrorMessage } from '../utils/apiError';
 import { Card, Btn, Textarea } from './ui';
 import RatingSuggestionCard from './RatingSuggestionCard';
 import CustomSelect from './CustomSelect';
 
 export default function RatingForm() {
   const queryClient = useQueryClient();
+
   const [userId, setUserId] = useState('');
   const [score, setScore] = useState(10);
   const [remarks, setRemarks] = useState('');
@@ -18,7 +20,10 @@ export default function RatingForm() {
     queryFn: () => api.get('/team/members').then((res) => res.data),
   });
 
-  const { data: suggestion, isLoading: suggestionLoading } = useQuery({
+  const {
+    data: suggestion,
+    isLoading: suggestionLoading,
+  } = useQuery({
     queryKey: ['ratingSuggestion', userId],
     queryFn: () =>
       api.get(`/ratings/suggestions/${userId}`).then((res) => res.data),
@@ -33,16 +38,26 @@ export default function RatingForm() {
 
   const rateMutation = useMutation({
     mutationFn: (data) => api.post('/ratings', data),
+
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ratings'] });
+      queryClient.invalidateQueries({
+        queryKey: ['ratings'],
+      });
+
       setError('');
       setMsg('✓ Rating submitted');
       setRemarks('');
       setUserId('');
       setScore(10);
-      setTimeout(() => setMsg(''), 2000);
+
+      setTimeout(() => {
+        setMsg('');
+      }, 2000);
     },
-    onError: (err) => setError(err.response?.data?.error || 'Failed'),
+
+    onError: (err) => {
+      setError(getApiErrorMessage(err, 'Failed to submit rating'));
+    },
   });
 
   const memberOptions = [
@@ -53,47 +68,65 @@ export default function RatingForm() {
     })),
   ];
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    setError('');
+    setMsg('');
+
+    if (!userId) {
+      setError('Please select a team member');
+      return;
+    }
+
+    rateMutation.mutate({
+      rated_user_id: userId,
+      score,
+      remarks,
+    });
+  };
+
   return (
     <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+      {/* Header */}
       <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
         <div className="w-11 h-11 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300 flex items-center justify-center border border-amber-100 dark:border-amber-900/60">
-          ⭐
+          <span className="text-lg font-extrabold">⭐</span>
         </div>
 
         <div>
           <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
             Rate a Team Member
           </h3>
+
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Select a member, choose a score, and submit feedback.
           </p>
         </div>
       </div>
 
+      {/* Error message */}
       {error && (
         <div className="text-rose-700 dark:text-rose-300 text-sm mb-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/60 px-4 py-3 rounded-2xl font-medium">
           {error}
         </div>
       )}
 
+      {/* Success message */}
       {msg && (
         <div className="text-emerald-700 dark:text-emerald-300 text-sm mb-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/60 px-4 py-3 rounded-2xl font-medium">
           {msg}
         </div>
       )}
 
+      {/* Rating suggestion */}
       <RatingSuggestionCard
         suggestion={suggestion}
         loading={suggestionLoading}
       />
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          rateMutation.mutate({ rated_user_id: userId, score, remarks });
-        }}
-        className="space-y-5"
-      >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Team Member */}
         <div>
           <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
             Team Member
@@ -109,6 +142,7 @@ export default function RatingForm() {
           />
         </div>
 
+        {/* Score */}
         <div>
           <div className="flex items-center justify-between gap-3 mb-2">
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
@@ -121,7 +155,11 @@ export default function RatingForm() {
           </div>
 
           <div
-            className={`rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-3 ${rateMutation.isPending ? 'opacity-60 pointer-events-none' : ''}`}
+            className={`rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 p-3 ${
+              rateMutation.isPending
+                ? 'opacity-60 pointer-events-none'
+                : ''
+            }`}
           >
             <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
@@ -129,6 +167,7 @@ export default function RatingForm() {
                   type="button"
                   key={n}
                   onClick={() => setScore(n)}
+                  disabled={rateMutation.isPending}
                   className={`h-10 rounded-2xl text-sm font-extrabold transition-all border ${
                     score === n
                       ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white border-transparent shadow-lg shadow-indigo-200/60 dark:shadow-none'
@@ -157,6 +196,7 @@ export default function RatingForm() {
           </div>
         </div>
 
+        {/* Remarks */}
         <div>
           <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
             Remarks / Feedback
@@ -171,6 +211,7 @@ export default function RatingForm() {
           />
         </div>
 
+        {/* Submit */}
         <Btn
           variant="success"
           type="submit"
