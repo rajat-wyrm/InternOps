@@ -14,6 +14,8 @@ const UPLOAD_DIR = path.join(
   'certificates'
 );
 
+const MAX_BULK_CERTIFICATES = 500;
+
 // Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -141,12 +143,25 @@ async function deleteCertificate(id) {
 
   return repo.deleteCertificate(id);
 }
-
 // ============================================================
 // Bulk Generation Service
 // ============================================================
 
 async function startBulkGeneration(data, userId) {
+  if (!Array.isArray(data.certificates)) {
+    const error = new Error('certificates must be an array');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (data.certificates.length > MAX_BULK_CERTIFICATES) {
+    const error = new Error(
+      `Cannot generate more than ${MAX_BULK_CERTIFICATES} certificates at once`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
   const job = await repo.createBulkJob(
     {
       template_id: data.template_id,
