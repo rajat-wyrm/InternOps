@@ -23,7 +23,17 @@ import EditUserModal from '../../components/admin/EditUserModal';
 import DeleteUserModal from '../../components/admin/DeleteUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
+import WorkbookImportModal from '../../components/admin/WorkbookImportModal';
 import InternStatCards from '../../components/admin/InternStatCards';
+import InternsByDomainChart from '../../components/admin/InternsByDomainChart';
+
+const ROLE_LABEL = {
+  ADMIN: 'Admin',
+  SENIOR_TL: 'Senior TL',
+  TL: 'TL',
+  CAPTAIN: 'Captain',
+  INTERN: 'Intern',
+};
 
 const ROLE_COLOR = {
   ADMIN:
@@ -270,6 +280,9 @@ export default function AdminDashboard() {
 
       {/* Intern Summary Statistic Cards */}
       <InternStatCards />
+
+      {/* Interns by Domain Chart */}
+      <InternsByDomainChart />
 
       {/* Search and Filters */}
       <Card className="p-5 md:p-6 mb-6 border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
