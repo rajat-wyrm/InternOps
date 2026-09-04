@@ -12,18 +12,18 @@ import {
   X,
 } from 'lucide-react';
 import api from '../../lib/axios';
+import useAuthStore from '../../store/auth';
 import CustomSelect from '../CustomSelect';
 
 const ROLE_OPTIONS = [
   { value: '', label: 'Select Role' },
-  { value: 'SENIOR_TL', label: 'Senior TL' },
   { value: 'TL', label: 'TL' },
   { value: 'CAPTAIN', label: 'Captain' },
   { value: 'INTERN', label: 'Intern' },
 ];
 
 const LABELS = {
-  fullName: 'Full Name',
+  full_name: 'Full Name',
   emailAddress: 'Email Address',
   temporaryPassword: 'Temporary Password',
   userRole: 'User Role',
@@ -32,8 +32,17 @@ const LABELS = {
 };
 
 export default function CreateUserModal({ open, onClose }) {
+  const currentUser = useAuthStore((state) => state.user);
+  const isAdmin = currentUser?.role === 'ADMIN';
+  const allowedRoleOptions = isAdmin
+    ? ROLE_OPTIONS
+    : ROLE_OPTIONS.filter((option) =>
+        currentUser?.role === 'SENIOR_TL'
+          ? ['TL', 'CAPTAIN', 'INTERN'].includes(option.value)
+          : ['CAPTAIN', 'INTERN'].includes(option.value)
+      );
   const queryClient = useQueryClient();
-  const [fullName, setFullName] = useState('');
+  const [full_name, setfull_name] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -47,6 +56,10 @@ export default function CreateUserModal({ open, onClose }) {
     if (!open) return undefined;
 
     document.body.classList.add('modal-open');
+
+    if (!isAdmin && currentUser?.departmentId) {
+      setDepartmentId(currentUser.departmentId);
+    }
 
     return () => {
       document.body.classList.remove('modal-open');
@@ -110,7 +123,7 @@ export default function CreateUserModal({ open, onClose }) {
     })),
   ];
 
-  const showManagerSelection = ['INTERN', 'CAPTAIN', 'TL'].includes(role);
+  const showManagerSelection = ['INTERN', 'CAPTAIN'].includes(role);
 
   // Register mutation
   const registerMutation = useMutation({
@@ -124,7 +137,7 @@ export default function CreateUserModal({ open, onClose }) {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
 
       // Reset form
-      setFullName('');
+      setfull_name('');
       setEmail('');
       setPassword('');
       setRole('');
@@ -152,7 +165,7 @@ export default function CreateUserModal({ open, onClose }) {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (!fullName.trim()) return setError('Full Name is required');
+    if (!full_name.trim()) return setError('Full Name is required');
     if (!email.trim()) return setError('Email is required');
     if (!password) return setError('Temporary Password is required');
     if (password.length < 8)
@@ -160,11 +173,13 @@ export default function CreateUserModal({ open, onClose }) {
     if (!role) return setError('Role is required');
 
     const payload = {
-      fullName,
+      full_name,
       email,
       password,
       role,
-      departmentId: departmentId || undefined,
+      departmentId: isAdmin
+        ? departmentId || undefined
+        : currentUser?.departmentId,
       managerId: managerId || undefined,
     };
 
@@ -181,11 +196,11 @@ export default function CreateUserModal({ open, onClose }) {
 
   const modal = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in"
+      className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 backdrop-blur-sm p-4"
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-3xl max-h-[88vh] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl animate-scale-up text-slate-900 dark:text-white overflow-hidden flex flex-col"
+        className="internops-modal-panel w-full max-w-3xl max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl animate-scale-up text-slate-900 dark:text-white overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -233,15 +248,15 @@ export default function CreateUserModal({ open, onClose }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Full Name */}
               <div>
-                <label className={labelClass}>{LABELS.fullName}</label>
+                <label className={labelClass}>{LABELS.full_name}</label>
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
                     type="text"
                     required
                     placeholder="John Doe"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    value={full_name}
+                    onChange={(e) => setfull_name(e.target.value)}
                     className={inputClass}
                   />
                 </div>
@@ -303,7 +318,7 @@ export default function CreateUserModal({ open, onClose }) {
                       setRole(value);
                       setManagerId(''); // Reset manager on role change
                     }}
-                    options={ROLE_OPTIONS}
+                    options={allowedRoleOptions}
                     placeholder="Select Role"
                     disabled={registerMutation.isPending}
                     className="[&>button]:pl-11"
@@ -321,8 +336,8 @@ export default function CreateUserModal({ open, onClose }) {
                     value={departmentId}
                     onChange={setDepartmentId}
                     options={departmentOptions}
+                    disabled={!isAdmin || registerMutation.isPending}
                     placeholder="Select Dept"
-                    disabled={registerMutation.isPending}
                     className="[&>button]:pl-11"
                   />
                 </div>

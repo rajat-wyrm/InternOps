@@ -2,7 +2,9 @@ const cron = require('node-cron');
 const fs = require('fs').promises;
 const path = require('path');
 const pool = require('../config/db');
+const config = require('../config');
 const pLimit = require('p-limit');
+const logger = require('../logger');
 
 let cleanupRunning = false;
 let reminderRunning = false;
@@ -15,32 +17,29 @@ const emailService = require('../services/email');
 function setupCronJobs() {
   try {
     cron.schedule('0 * * * *', async () => {
+      // Create a child logger for this cron execution
+      const jobLogger = logger.child({
+        correlationId: `cron-${Date.now()}`,
+        job: 'proof-image-cleanup',
+      });
+
       if (cleanupRunning) {
-        console.warn(
-          JSON.stringify({
-            job: 'proof-image-cleanup',
-            message: 'Cleanup already running. Skipping...',
-          })
-        );
+        jobLogger.warn('Cleanup already running. Skipping...');
         return;
       }
 
       cleanupRunning = true;
-
-      const jobName = 'proof-image-cleanup';
       const startTime = Date.now();
 
-      console.info(
-        JSON.stringify({
-          job: jobName,
+      jobLogger.info(
+        {
           startedAt: new Date(startTime),
-        }),
+        },
         'Cron job started'
       );
 
       try {
         const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
         const uploadsRoot = path.resolve(__dirname, '..', '..', 'uploads');
 
         let totalProcessed = 0;
@@ -52,9 +51,9 @@ function setupCronJobs() {
             `
             SELECT id, image_path
             FROM proof_submissions
-           WHERE status = 'VERIFIED'
-            AND verified_at < $1
-            AND image_path IS NOT NULL
+            WHERE status = 'VERIFIED'
+              AND verified_at < $1
+              AND image_path IS NOT NULL
             ORDER BY id
             LIMIT $2
             `,
@@ -81,8 +80,12 @@ function setupCronJobs() {
                 const relative = path.relative(uploadsRoot, filePath);
 
                 if (relative.startsWith('..') || path.isAbsolute(relative)) {
-                  console.error(
-                    `Invalid path for record ${row.id}: ${row.image_path}`
+                  jobLogger.error(
+                    {
+                      recordId: row.id,
+                      imagePath: row.image_path,
+                    },
+                    'Invalid image path'
                   );
                   return;
                 }
@@ -92,8 +95,12 @@ function setupCronJobs() {
                   filesDeleted++;
                 } catch (err) {
                   if (err.code !== 'ENOENT') {
-                    console.error(
-                      `Failed deleting ${row.image_path}: ${err.message}`
+                    jobLogger.error(
+                      {
+                        err,
+                        imagePath: row.image_path,
+                      },
+                      'Failed deleting image'
                     );
                     return;
                   }
@@ -106,7 +113,10 @@ function setupCronJobs() {
 
           results.forEach((result) => {
             if (result.status === 'rejected') {
-              console.error(result.reason);
+              jobLogger.error(
+                { err: result.reason },
+                'Promise rejected while processing cleanup'
+              );
             }
           });
 
@@ -128,23 +138,20 @@ function setupCronJobs() {
           }
         }
 
-        console.info(
-          JSON.stringify({
-            job: jobName,
+        jobLogger.info(
+          {
             durationMs: Date.now() - startTime,
             recordsProcessed: totalProcessed,
             filesDeleted,
             databaseRowsUpdated: totalUpdated,
-          }),
+          },
           'Cron job completed'
         );
       } catch (err) {
-        console.error(
-          JSON.stringify({
-            job: jobName,
-            err: err.message,
-            stack: err.stack,
-          }),
+        jobLogger.error(
+          {
+            err,
+          },
           'Cron job failed'
         );
       } finally {
@@ -153,26 +160,24 @@ function setupCronJobs() {
     });
 
     cron.schedule('5 * * * *', async () => {
+      // Create a child logger for this cron execution
+      const jobLogger = logger.child({
+        correlationId: `cron-${Date.now()}`,
+        job: 'deadline-reminder',
+      });
+
       if (reminderRunning) {
-        console.warn(
-          JSON.stringify({
-            job: 'deadline-reminder',
-            message: 'Reminder job already running. Skipping...',
-          })
-        );
+        jobLogger.warn('Reminder job already running. Skipping...');
         return;
       }
 
       reminderRunning = true;
-
-      const jobName = 'deadline-reminder';
       const startTime = Date.now();
 
-      console.info(
-        JSON.stringify({
-          job: jobName,
+      jobLogger.info(
+        {
           startedAt: new Date(startTime),
-        }),
+        },
         'Cron job started'
       );
 
@@ -201,12 +206,11 @@ function setupCronJobs() {
         );
 
         if (pendingTasks.length === 0) {
-          console.info(
-            JSON.stringify({
-              job: jobName,
+          jobLogger.info(
+            {
               durationMs: Date.now() - startTime,
               remindersSent: 0,
-            }),
+            },
             'Cron job completed'
           );
           return;
@@ -251,15 +255,15 @@ function setupCronJobs() {
                 actionUrl: `${appUrl}/tasks`,
                 actionText: 'Submit Proof',
               });
+
               remindersSent++;
             } catch (err) {
-              console.error(
-                JSON.stringify({
-                  job: jobName,
+              jobLogger.error(
+                {
+                  err,
                   taskId: task.taskId,
                   internId: intern.id,
-                  err: err.message,
-                }),
+                },
                 'Failed to send reminder email'
               );
             }
@@ -279,35 +283,103 @@ function setupCronJobs() {
           );
         }
 
-        console.info(
-          JSON.stringify({
-            job: jobName,
+        jobLogger.info(
+          {
             durationMs: Date.now() - startTime,
             tasksWithPendingSubmissions: deadlineHourMap.size,
             remindersSent,
-          }),
+          },
           'Cron job completed'
         );
       } catch (err) {
-        console.error(
-          JSON.stringify({
-            job: jobName,
-            err: err.message,
-            stack: err.stack,
-          }),
+        jobLogger.error(
+          {
+            err,
+          },
           'Cron job failed'
         );
       } finally {
         reminderRunning = false;
       }
     });
+
+    let anomalyRunning = false;
+
+    // AI Attendance Anomaly Detection Job - Nightly at 2:00 AM
+    cron.schedule('0 2 * * *', async () => {
+      const jobLogger = logger.child({
+        correlationId: `cron-${Date.now()}`,
+        job: 'attendance-anomaly-detection',
+      });
+
+      if (anomalyRunning) {
+        jobLogger.warn('Anomaly detection job already running. Skipping...');
+        return;
+      }
+
+      anomalyRunning = true;
+      const startTime = Date.now();
+
+      jobLogger.info(
+        {
+          startedAt: new Date(startTime),
+        },
+        'Cron job started'
+      );
+
+      try {
+        const { generateAccessToken } = require('./tokens');
+        const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+
+        // System access token signed as Admin role for service-to-service call
+        const systemToken = generateAccessToken({
+          id: '00000000-0000-0000-0000-000000000000',
+          role: 'ADMIN',
+          department_id: null,
+        });
+
+        const response = await fetch(
+          `${baseUrl}/api/v1/attendance/anomalies/analyze`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${systemToken}`,
+            },
+          }
+        );
+        if (!response.ok) {
+          const errorBody = await response.text();
+
+          throw new Error(
+            `FastAPI service returned status ${response.status}: ${errorBody}`
+          );
+        }
+
+        const data = await response.json();
+        jobLogger.info(
+          {
+            durationMs: Date.now() - startTime,
+            response: data,
+          },
+          'Cron job completed'
+        );
+      } catch (err) {
+        jobLogger.error(
+          {
+            err: err.message,
+          },
+          'Cron job failed'
+        );
+      } finally {
+        anomalyRunning = false;
+      }
+    });
   } catch (err) {
-    console.error(
-      JSON.stringify({
-        job: 'cron-initialization',
-        err: err.message,
-        stack: err.stack,
-      }),
+    logger.error(
+      {
+        err,
+      },
       'Failed to initialize cron jobs'
     );
   }

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { toast } from 'sonner';
+import api from '../../lib/axios';
 import {
   Plus,
   Download,
@@ -27,6 +29,7 @@ import {
   ConfirmationModal,
 } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
+import useBodyScrollLock from '../../hooks/useBodyScrollLock';
 
 const CERTIFICATE_TYPES = [
   { value: 'completion', label: 'Completion' },
@@ -54,7 +57,15 @@ export default function Certificates() {
   const [showModal, setShowModal] = useState(false);
   const [certToDelete, setCertToDelete] = useState(null);
 
-  const { data: certsData, isLoading } = useCertificates({ search });
+  const {
+    data: certsData,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useCertificates({
+    search,
+  });
   const certificates = certsData?.data || [];
   const { data: templatesData, isLoading: templatesLoading } = useTemplates();
   const templates = templatesData?.data || [];
@@ -76,11 +87,29 @@ export default function Certificates() {
     });
   };
 
-  const handleDownload = (cert) => {
-    window.open(
-      cert.download_url || `/api/certificates/${cert.id}/download`,
-      '_blank'
-    );
+  const handleDownload = async (cert) => {
+    try {
+      if (cert.pdf_url) {
+        // Find base URL without /api/v1
+        let baseUrl = api.defaults.baseURL || '';
+        if (baseUrl.endsWith('/api/v1')) baseUrl = baseUrl.slice(0, -7);
+        window.open(`${baseUrl}${cert.pdf_url}`, '_blank');
+        return;
+      }
+
+      const res = await api.get(`/certificates/${cert.id}/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `certificate-${cert.id}.pdf`;
+      a.click();
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error('Download failed', err);
+      toast.error('Failed to download certificate. Please try again.');
+    }
   };
 
   return (
@@ -143,7 +172,19 @@ export default function Certificates() {
       </Card>
 
       {/* Certificates Table */}
-      {isLoading ? (
+      {isError ? (
+        <Card className="p-6">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-red-600">
+              Failed to load certificates
+            </h3>
+
+            <Btn className="mt-4" onClick={() => refetch()}>
+              Retry
+            </Btn>
+          </div>
+        </Card>
+      ) : isLoading ? (
         <Spinner label="Loading certificates..." />
       ) : filteredCertificates.length === 0 ? (
         <EmptyState
@@ -273,6 +314,7 @@ function GenerateCertificateModal({
     certificate_type: 'completion',
     template_id: '',
   });
+  useBodyScrollLock(isOpen, { blurBackground: true });
 
   const templateOptions = [
     {
@@ -302,6 +344,7 @@ function GenerateCertificateModal({
     generateMutation.mutate(formData, {
       onSuccess: () => {
         onClose();
+
         setFormData({
           recipient_name: '',
           recipient_email: '',
@@ -312,21 +355,29 @@ function GenerateCertificateModal({
           template_id: '',
         });
       },
+
+      onError: (err) => {
+        alert(
+          err?.response?.data?.error ||
+            err?.response?.data?.message ||
+            err?.message ||
+            'Failed to generate certificate.'
+        );
+      },
     });
   };
 
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg max-h-[90vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
+    <div className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center p-4">
+      <div className="internops-modal-panel w-full max-w-lg max-h-[90vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
         <div className="shrink-0 p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white shadow-lg">
                 <Award className="w-5 h-5" />
               </div>
-
               <div>
                 <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
                   Generate Certificate

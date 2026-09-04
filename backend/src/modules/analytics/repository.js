@@ -50,7 +50,7 @@ async function userCountsByRole() {
   return res.rows;
 }
 
-async function topPerformers(role, limit = 10) {
+async function topPerformers(role, limit = 10, departmentId = null) {
   // Do NOT return email — it is unnecessary PII for a leaderboard. Callers
   // that need to contact a user can do so via the existing user API.
   const res = await pool.query(
@@ -66,11 +66,12 @@ async function topPerformers(role, limit = 10) {
       AND r.deleted_at IS NULL
     WHERE u.role = $1
       AND u.deleted_at IS NULL
+      AND ($3::uuid IS NULL OR u.department_id = $3)
     GROUP BY u.id, u.full_name
     ORDER BY avg_rating DESC NULLS LAST
     LIMIT $2
     `,
-    [role, limit]
+    [role, limit, departmentId]
   );
 
   return res.rows;

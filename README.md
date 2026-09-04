@@ -23,6 +23,11 @@ InternOps is an enterprise-grade workforce management platform designed to strea
 - Fastify
 - PostgreSQL (Raw SQL)
 
+**AI Service**
+
+- Python 3.10+
+- AI Models & Integrations
+
 **Frontend**
 
 - React
@@ -49,16 +54,14 @@ InternOps is an enterprise-grade workforce management platform designed to strea
 
 ## ⚡ Quick Start
 
-## Local Development Setup
-
-1. Clone the repository.
+### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/rajat-wyrm/InternOps.git
 cd InternOps
 ```
 
-2. Configure the backend.
+### 2. Set up the backend
 
 ```bash
 cd backend
@@ -66,41 +69,58 @@ npm install
 cp .env.example .env
 ```
 
-3. Edit the `.env` file and provide all required credentials.
-
-4. Run database migration and seed the database.
+Edit `.env` and fill in your credentials (see [Environment Variables](#environment-variables)), then run migrations and seed the database:
 
 ```bash
+# Run from inside backend/
 npm run migrate
 npm run seed
-```
-
-5. Start the backend server.
-
-```bash
 npm run dev
+
+# OR run from the project root:
+npm run migrate --workspace=backend
+npm run seed --workspace=backend
+npm run dev --workspace=backend
 ```
 
-6. Start the frontend.
+### 3. Set up the AI Service
+
+In a new terminal:
 
 ```bash
-cd ../frontend
+cd ai-service
+python -m venv .venv
+# Activate: source .venv/bin/activate (macOS/Linux) or .venv\Scripts\activate (Windows)
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+Set the required API keys inside `.env` to enable AI features.
+
+### 4. Set up the frontend
+
+In a new terminal:
+
+```bash
+cd frontend
 npm install
 cp .env.example .env
-npm run dev
 ```
 
-7. Open the application in your browser.
+Set `VITE_API_BASE_URL` in `.env`, then start the dev server:
+
+```bash
+# Run from inside frontend/
+npm run dev
+
+# OR run from the project root:
+npm run dev --workspace=frontend
+```
+
+### 5. Open the app
 
 ```
 http://localhost:5173
-```
-
-### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd InternOps
 ```
 
 ---
@@ -139,46 +159,13 @@ The file is organized into the following sections:
 
 Copy `backend/.env.example` to `.env` and replace the example values with your own credentials before starting the application.
 
-### 2. Setup Backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env
-# Fill in your DB credentials and secrets
-npm run migrate
-npm run seed
-npm run dev
-```
-
----
-
-### 3. Setup Frontend
-
-```bash
-cd frontend
-npm install
-cp .env.example .env
-# Fill in your VITE_API_BASE_URL
-npm run dev
-```
-
----
-
-## 🌐 Access the Application
-
-Open your browser and go to:
-
-```
-http://localhost:5173
-```
-
 ---
 
 ## 📁 Project Structure
 
 ```plaintext
 InternOps/
+├── ai-service/    # Standalone Python AI Service
 ├── backend/       # Fastify REST API, Services, Repositories
 ├── frontend/      # React + Vite web application
 ```
@@ -187,29 +174,28 @@ InternOps/
 
 ## Available npm Scripts
 
-### Backend
+### Backend (`cd backend`)
 
-| Command | Description |
+| Command           | Description                          |
+| ----------------- | ------------------------------------ |
+| `npm run dev`     | Start the backend development server |
+| `npm run migrate` | Run database migrations              |
+| `npm run seed`    | Seed the database with initial data  |
 
-|---------|-------------|
+### Frontend (`cd frontend`)
 
-| `npm run dev` | Start the backend development server |
+| Command           | Description                       |
+| ----------------- | --------------------------------- |
+| `npm run dev`     | Start the Vite development server |
+| `npm run build`   | Build the production application  |
+| `npm run preview` | Preview the production build      |
 
-| `npm run migrate` | Run database migrations |
+### AI Service (`cd ai-service`)
 
-| `npm run seed` | Seed the database with initial data |
-
-### Frontend
-
-| Command | Description |
-
-|---------|-------------|
-
-| `npm run dev` | Start the Vite development server |
-
-| `npm run build` | Build the production application |
-
-| `npm run preview` | Preview the production build |
+| Command                                   | Description                          |
+| ----------------------------------------- | ------------------------------------ |
+| `python -m uvicorn app.main:app --reload` | Start the FastAPI development server |
+| `pytest`                                  | Run the Python test suite            |
 
 ---
 
@@ -245,5 +231,10 @@ InternOps/
 
 This project was developed for efficient intern operations management.  
 All rights reserved.
+---
+
+## Security
+
+Please refer to [SECURITY.md](SECURITY.md) for information about reporting security vulnerabilities.
 
 👉 View our history of updates in the **[CHANGELOG.md](CHANGELOG.md)**.

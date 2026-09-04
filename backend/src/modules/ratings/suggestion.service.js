@@ -74,7 +74,7 @@ async function getSuggestionData(userId) {
     throw new Error('User not found');
   }
 
-  const allowedRoles = ['TL', 'CAPTAIN', 'INTERN'];
+  const allowedRoles = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
   if (!allowedRoles.includes(user.role)) {
     throw new Error('Unsupported role for rating suggestion');

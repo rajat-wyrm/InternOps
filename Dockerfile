@@ -7,7 +7,6 @@ FROM node:18-alpine
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY backend/ .
-COPY backend/.env .env
 
 EXPOSE 5000
 CMD ["node", "src/app.js"]

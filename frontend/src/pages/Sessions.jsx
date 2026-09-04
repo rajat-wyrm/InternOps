@@ -1,19 +1,28 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import {
-  Shield,
-  Monitor,
-  AlertTriangle,
-  Clock,
-  CalendarClock,
-} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import useAuthStore from '../store/auth';
+import { Shield, Monitor, AlertTriangle } from 'lucide-react';
 import api from '../lib/axios';
-import { PageHeader, Card, Btn, EmptyState, Spinner } from '../components/ui';
-
+import {
+  PageHeader,
+  Card,
+  Btn,
+  EmptyState,
+  Spinner,
+  ApiErrorState,
+} from '../components/ui';
 export default function Sessions() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
-  const { data: sessions, isLoading } = useQuery({
+  const {
+    data: sessions,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['sessions'],
     queryFn: () => api.get('/sessions/me').then((res) => res.data),
   });
@@ -22,9 +31,15 @@ export default function Sessions() {
   const [revokingId, setRevokingId] = useState(null);
 
   const revokeMut = useMutation({
-    mutationFn: (sessionId) => api.delete(`/sessions/me/${sessionId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    mutationFn: (session) => api.delete(`/sessions/me/${session.sessionId}`),
+    onSuccess: (_, session) => {
+      if (session.isCurrent) {
+        const store = useAuthStore.getState();
+        store.logout();
+        navigate('/login', { replace: true });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      }
     },
     onSettled: () => {
       setRevokingId(null);
@@ -37,7 +52,7 @@ export default function Sessions() {
       // Clear in-memory auth state before redirect (#941)
       const store = useAuthStore.getState();
       store.logout();
-      window.location.href = '/login';
+      navigate('/login', { replace: true });
     },
   });
 
@@ -109,9 +124,16 @@ export default function Sessions() {
 
       {isLoading ? (
         <Spinner />
+      ) : isError ? (
+        <ApiErrorState
+          error={error}
+          title="Failed to load sessions"
+          fallback="Unable to fetch your active sessions."
+          onRetry={refetch}
+        />
       ) : !sessions?.length ? (
         <EmptyState
-          icon="💻"
+          icon={<Monitor className="w-12 h-12 text-indigo-400/80 mx-auto" />}
           title="No active sessions"
           text="Signed-in devices will appear here."
         />
@@ -126,11 +148,18 @@ export default function Sessions() {
                 key={s.sessionId}
                 className="p-4 flex items-center gap-3 card-hover"
               >
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-slate-600 to-slate-800 text-white flex items-center justify-center text-xl">
-                  💻
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-slate-600 to-slate-800 text-white flex items-center justify-center">
+                  <Monitor className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-800 text-sm">Session</p>
+                  <p className="font-medium text-gray-800 dark:text-gray-100 text-sm flex items-center gap-2">
+                    Session
+                    {s.isCurrent && (
+                      <span className="text-[10px] uppercase font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded">
+                        Current
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-500">
                     Started{' '}
                     {s.createdAt === 'N/A'
@@ -147,9 +176,15 @@ export default function Sessions() {
                 </div>
                 <Btn
                   variant="outline"
-                  onClick={() => revokeMut.mutate(s.sessionId)}
+                  disabled={revokeMut.isPending && revokingId === s.sessionId}
+                  onClick={() => {
+                    setRevokingId(s.sessionId);
+                    revokeMut.mutate(s);
+                  }}
                 >
-                  Revoke
+                  {revokeMut.isPending && revokingId === s.sessionId
+                    ? 'Revoking...'
+                    : 'Revoke'}
                 </Btn>
               </Card>
             );

@@ -13,12 +13,35 @@ async function noticesRoutes(fastify) {
   fastify.get(
     '/notices',
     {
-      schema: { tags: ['Notices'], description: 'Get all notices (admin)' },
+      schema: {
+        tags: ['Notices'],
+        description: 'Get all notices (admin)',
+
+        querystring: {
+          type: 'object',
+          properties: {
+            page: {
+              type: 'integer',
+              minimum: 1,
+              default: 1,
+            },
+            limit: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 100,
+              default: 50,
+            },
+          },
+        },
+      },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
     },
     async (req, reply) => {
       try {
-        const notices = await repo.getAllNotices();
+        const notices = await repo.getAllNotices({
+          page: req.query.page,
+          limit: req.query.limit,
+        });
         return reply.send(notices);
       } catch (err) {
         // If the notices table does not yet exist (migration pending on production)
@@ -69,15 +92,45 @@ async function noticesRoutes(fastify) {
             title: z.string().trim().min(1, 'Title is required'),
             content: z.string().trim().min(1, 'Content is required'),
             category: z
-              .enum(['GENERAL', 'REMINDER', 'ALERT', 'NEWS'])
+              .enum([
+                'GENERAL',
+                'REMINDER',
+                'ALERT',
+                'NEWS',
+                'INTERNSHIP',
+                'ANNOUNCEMENT',
+                'EVENT',
+                'IMPORTANT',
+                'DEADLINE',
+              ])
               .optional(),
+            image_url: z
+              .string()
+              .url()
+              .or(z.string().startsWith('/'))
+              .optional(),
+            action_button_text: z.string().max(50).optional(),
+            action_button_link: z
+              .string()
+              .url()
+              .or(z.string().startsWith('/'))
+              .optional(),
+            is_featured: z.boolean().optional(),
           })
         ),
       },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
     },
     async (req, reply) => {
-      const { title, content, category } = req.body;
+      const {
+        title,
+        content,
+        category,
+        image_url,
+        action_button_text,
+        action_button_link,
+        is_featured,
+      } = req.body;
       if (!title?.trim())
         return reply.status(400).send({ error: 'title is required' });
       if (!content?.trim())
@@ -87,6 +140,10 @@ async function noticesRoutes(fastify) {
         title: title.trim(),
         content: content.trim(),
         category: category ?? 'GENERAL',
+        image_url,
+        action_button_text,
+        action_button_link,
+        is_featured,
         createdBy: req.user.id,
       });
 
@@ -118,8 +175,30 @@ async function noticesRoutes(fastify) {
               .min(1, 'Content cannot be empty')
               .optional(),
             category: z
-              .enum(['GENERAL', 'REMINDER', 'ALERT', 'NEWS'])
+              .enum([
+                'GENERAL',
+                'REMINDER',
+                'ALERT',
+                'NEWS',
+                'INTERNSHIP',
+                'ANNOUNCEMENT',
+                'EVENT',
+                'IMPORTANT',
+                'DEADLINE',
+              ])
               .optional(),
+            image_url: z
+              .string()
+              .url()
+              .or(z.string().startsWith('/'))
+              .optional(),
+            action_button_text: z.string().max(50).optional(),
+            action_button_link: z
+              .string()
+              .url()
+              .or(z.string().startsWith('/'))
+              .optional(),
+            is_featured: z.boolean().optional(),
             is_active: z.boolean().optional(),
           })
         ),
@@ -128,7 +207,16 @@ async function noticesRoutes(fastify) {
     },
     async (req, reply) => {
       const { id } = req.params;
-      const { title, content, category, is_active } = req.body;
+      const {
+        title,
+        content,
+        category,
+        image_url,
+        action_button_text,
+        action_button_link,
+        is_featured,
+        is_active,
+      } = req.body;
 
       if (title !== undefined && !title.trim()) {
         return reply.status(400).send({
@@ -145,6 +233,10 @@ async function noticesRoutes(fastify) {
         title,
         content,
         category,
+        image_url,
+        action_button_text,
+        action_button_link,
+        is_featured,
         is_active,
       });
       if (!updated)
@@ -185,7 +277,9 @@ async function noticesRoutes(fastify) {
         resourceId: deleted.id,
         ...extractRequestInfo(req),
       };
-      return reply.status(204).send();
+      return reply.status(200).send({
+        success: true,
+      });
     }
   );
 }

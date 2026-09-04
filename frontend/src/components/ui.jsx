@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import useBodyScrollLock from '../hooks/useBodyScrollLock';
+import { getApiErrorMessage } from '../lib/apiError';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -70,25 +72,16 @@ export function UserAvatar({
   );
 }
 
-export function Card({ children, className = '', hover = false }) {
+export function Card({ children, className = '', hover = false, ...props }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:shadow-none text-slate-900 dark:text-white ${
+      {...props}
+      className={`relative overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-700 bg-gradient-to-br from-white via-white to-slate-50/80 dark:bg-none dark:bg-slate-900 shadow-[0_16px_38px_-24px_rgba(15,23,42,0.34),0_5px_14px_-10px_rgba(79,70,229,0.16)] dark:shadow-none text-slate-900 dark:text-white ${
         hover ? 'card-hover cursor-pointer' : ''
       } ${className}`}
     >
       {children}
     </div>
-  );
-}
-
-function getApiErrorMessage(error, fallback) {
-  return (
-    error?.response?.data?.error ||
-    error?.response?.data?.message ||
-    error?.message ||
-    fallback ||
-    'Something went wrong. Please try again.'
   );
 }
 
@@ -265,7 +258,9 @@ export function StatCard({
           </p>
 
           {sub && (
-            <p className="text-xs text-slate-500 dark:text-slate-500">{sub}</p>
+            <p className="mt-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {sub}
+            </p>
           )}
         </div>
 
@@ -297,11 +292,19 @@ export function EmptyState({ icon = '📭', title = 'Nothing here yet', text }) 
   );
 }
 
-export function Spinner({ label = 'Loading...' }) {
+export function Spinner({ label = 'Loading...', size = 'md' }) {
+  const spinnerSize =
+    {
+      sm: 'h-4 w-4 border-[2px]',
+      md: 'h-8 w-8 border-[3px]',
+      lg: 'h-12 w-12 border-[4px]',
+    }[size] || 'h-8 w-8 border-[3px]';
   return (
     <div className="flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400 py-8">
       <span className="relative inline-flex">
-        <span className="w-8 h-8 rounded-full border-[3px] border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin" />
+        <span
+          className={`rounded-full ${spinnerSize} border-slate-200 dark:border-slate-700 border-t-indigo-600 dark:border-t-indigo-300 animate-spin`}
+        />
         <span className="absolute inset-1 rounded-full border border-indigo-100 dark:border-indigo-900/60" />
       </span>
 
@@ -370,6 +373,7 @@ export function ConfirmationModal({
 }) {
   const modalRef = useRef(null);
   const previousActiveElementRef = useRef(null);
+  useBodyScrollLock(open, { blurBackground: true });
 
   const handleClose = () => {
     if (loading) return;
@@ -381,26 +385,6 @@ export function ConfirmationModal({
   useEffect(() => {
     handleCloseRef.current = handleClose;
   }, [handleClose]);
-
-  // Handle body scroll locking and background blurring
-  useEffect(() => {
-    const root = document.getElementById('root');
-
-    if (open) {
-      document.body.classList.add('modal-open');
-      if (root) root.classList.add('blur-sm', 'transition-all', 'duration-300');
-    } else {
-      document.body.classList.remove('modal-open');
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-    }
-
-    return () => {
-      document.body.classList.remove('modal-open');
-      if (root)
-        root.classList.remove('blur-sm', 'transition-all', 'duration-300');
-    };
-  }, [open]);
 
   // Focus trap implementation
   useEffect(() => {
@@ -475,13 +459,13 @@ export function ConfirmationModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center p-4"
       onClick={handleClose}
     >
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 outline-none"
+        className="internops-modal-panel w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-slate-200 dark:border-slate-700">

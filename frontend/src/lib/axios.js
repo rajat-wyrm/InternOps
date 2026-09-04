@@ -1,8 +1,11 @@
 import axios from 'axios';
+import { toast } from 'sonner';
+import { captureException } from './sentry';
+import { getApiErrorInfo, getApiErrorMessage } from './apiError';
 
-function getBaseUrl() {
+export function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
-  if (!raw) return '/api';
+  if (!raw) return '/api/v1';
   let url = raw.trim();
   if (!/^https?:\/\//i.test(url)) {
     console.warn(
@@ -12,6 +15,20 @@ function getBaseUrl() {
   }
   url = url.replace(/\/+$/, '');
 
+  // Normalize bare API URLs to the versioned backend path.
+  // This keeps API calls working correctly when VITE_API_URL is set to
+  // "http://localhost:5000", "http://localhost:5000/api", or "http://localhost:5000/api/v1".
+  const hasApiVersionPath = /\/api\/v\d+(?:\/|$)/i.test(url);
+  const hasApiOnlyPath = /\/api$/i.test(url);
+
+  if (!hasApiVersionPath) {
+    if (hasApiOnlyPath) {
+      url = url.replace(/\/api$/i, '/api/v1');
+    } else {
+      url = `${url}/api/v1`;
+    }
+  }
+
   return url;
 }
 const api = axios.create({
@@ -19,6 +36,93 @@ const api = axios.create({
   withCredentials: true,
   timeout: 15000,
 });
+
+function shouldShowGlobalToast(err) {
+  const original = err.config || {};
+  const isAuthRoute =
+    original.url &&
+    (original.url.includes('/auth/login') ||
+      original.url.includes('/auth/refresh') ||
+      original.url.includes('/auth/register'));
+
+  return !(
+    original._retry ||
+    original._suppressGlobalError ||
+    isAuthRoute ||
+    original.url?.includes('/auth/refresh')
+  );
+}
+
+// Classifies a failed AI chat request (POST /ai/chat) into a single,
+// user-friendly message. Callers that show this message inline should mark
+// their request config with `_suppressGlobalError: true` so the global
+// response interceptor below does not *also* toast a second, generic error
+// for the same failure (see issue #1795).
+function getAiChatErrorMessage(err) {
+  if (!err?.response) {
+    if (err?.code === 'ECONNABORTED') {
+      return {
+        message: 'The AI assistant took too long to respond. Please try again.',
+        retryable: true,
+      };
+    }
+    return {
+      message:
+        'Unable to reach the AI assistant. Check your connection and try again.',
+      retryable: true,
+    };
+  }
+
+  const status = err.response.status;
+
+  if (status === 401 || status === 403) {
+    return {
+      message: "You don't have access to the AI assistant right now.",
+      retryable: false,
+    };
+  }
+
+  if (status === 429) {
+    const responseData = err.response.data;
+    const hasServerMessage = Boolean(
+      responseData &&
+      (responseData.error ||
+        responseData.message ||
+        responseData.detail ||
+        responseData.description ||
+        responseData.details?.length ||
+        responseData.errors?.length)
+    );
+    return {
+      message: hasServerMessage
+        ? getApiErrorMessage(err)
+        : "You've reached the AI assistant's usage limit. Please try again later.",
+      retryable: false,
+    };
+  }
+
+  if (status >= 500) {
+    return {
+      message:
+        'The AI assistant is temporarily unavailable. Please try again in a moment.',
+      retryable: true,
+    };
+  }
+
+  const serverMessage = getApiErrorMessage(err);
+  return {
+    message:
+      serverMessage || 'Could not process that request. Please try rephrasing.',
+    retryable: false,
+  };
+}
+
+function notifyGlobalApiError(err) {
+  if (!shouldShowGlobalToast(err)) {
+    return;
+  }
+  toast.error(getApiErrorMessage(err));
+}
 
 // The backend's CSRF guard requires the X-CSRF-Token header on mutating
 // requests. We fetch a real token once and reuse it. If the call to obtain
@@ -141,34 +245,6 @@ function processQueue(error, token = null) {
   failedQueue = [];
 }
 
-function handleLogout() {
-  try {
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.removeItem('user');
-      } catch {
-        /* ignore localStorage unavailability */
-      }
-
-      clearCsrfToken();
-
-      try {
-        if (!window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login';
-        }
-      } catch {
-        /* ignore location assignment errors */
-      }
-    } else {
-      // If there's no window (SSR), still clear tokens in memory
-      clearCsrfToken();
-    }
-  } catch {
-    /* defensive: ensure logout doesn't throw */
-    clearCsrfToken();
-  }
-}
-
 api.interceptors.response.use(
   (res) => {
     const url = res.config?.url;
@@ -192,6 +268,18 @@ api.interceptors.response.use(
       err.config?.url
     );
 
+    const errorStatus = err.response?.status;
+    if (errorStatus >= 500) {
+      captureException(err, {
+        tags: {
+          source: 'api',
+          statusCode: String(errorStatus),
+          route: err.config?.url,
+        },
+        extra: { responseData: err.response?.data },
+      });
+    }
+
     const original = err.config || {};
     const status = err.response?.status;
 
@@ -201,7 +289,9 @@ api.interceptors.response.use(
         original.url.includes('/auth/refresh') ||
         original.url.includes('/auth/register'));
 
-    if (status === 401 && !original._retry && !isAuthRoute) {
+    const hasToken = !!getMemoryAccessToken();
+
+    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
       // Another refresh is already in flight — queue this request.
       if (isRefreshing) {
         original._retry = true;
@@ -223,7 +313,9 @@ api.interceptors.response.use(
         const newToken = refreshRes.data?.accessToken;
 
         if (newToken) {
-          const meRes = await api.get('/users/me');
+          const meRes = await api.get('/users/me', {
+            headers: { Authorization: `Bearer ${newToken}` },
+          });
           // Store refreshed token in memory only.
           if (_authStore) {
             _authStore
@@ -263,11 +355,9 @@ api.interceptors.response.use(
           }
         }
 
-        if (
-          typeof window !== 'undefined' &&
-          !window.location.pathname.startsWith('/login')
-        ) {
-          window.location.href = '/login';
+        // Emit an event that React Router can catch
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('auth:logout'));
         }
 
         return Promise.reject(refreshErr);
@@ -276,9 +366,14 @@ api.interceptors.response.use(
       }
     }
 
+    const errorInfo = getApiErrorInfo(err);
+    err.userMessage = errorInfo.message;
+    err.errorCode = errorInfo.code;
+    err.requestId = errorInfo.requestId;
+    notifyGlobalApiError(err);
     return Promise.reject(err);
   }
 );
 
 export default api;
-export { clearCsrfToken };
+export { clearCsrfToken, getAiChatErrorMessage, getApiErrorMessage };

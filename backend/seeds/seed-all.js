@@ -1,4 +1,15 @@
 require('dotenv').config();
+const SEED_ALL_CONFIRMATION = 'I UNDERSTAND THIS REPLACES DATABASE DATA';
+const environment = process.env.NODE_ENV || 'development';
+if (environment === 'production') {
+  throw new Error('seed-all.js is disabled in production');
+}
+if (process.env.ALLOW_DESTRUCTIVE_SEED !== SEED_ALL_CONFIRMATION) {
+  throw new Error(
+    'Refusing destructive seed. Set ALLOW_DESTRUCTIVE_SEED to the documented confirmation phrase.'
+  );
+}
+
 const pool = require('../src/config/db');
 const argon2 = require('argon2');
 const crypto = require('crypto');
@@ -18,11 +29,13 @@ async function seed() {
     // USERS
     // ============================================================
     console.log('Seeding users...');
-    const pw = await hash('Admin@123');
+    const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@internops.com';
+    const adminPass = process.env.SEED_ADMIN_PASSWORD || 'Admin@123';
+    const pw = await hash(adminPass);
     const users = [
       {
         id: uuid(),
-        email: 'admin@internops.com',
+        email: adminEmail,
         role: 'ADMIN',
         full_name: 'System Admin',
       },
@@ -145,7 +158,7 @@ async function seed() {
     // First ensure admin exists
     const adminCheck = await client.query(
       'SELECT id FROM users WHERE email = $1',
-      ['admin@internops.com']
+      [adminEmail]
     );
     if (adminCheck.rowCount === 0) {
       await client.query(
@@ -161,15 +174,13 @@ async function seed() {
         ]
       );
     }
-    await client.query('DELETE FROM users WHERE email != $1', [
-      'admin@internops.com',
-    ]);
+    await client.query('DELETE FROM users WHERE email != $1', [adminEmail]);
 
     for (const u of users) {
-      if (u.email === 'admin@internops.com') {
+      if (u.email === adminEmail) {
         await client.query(
-          'UPDATE users SET full_name = $1, role = $2 WHERE email = $3',
-          [u.full_name, u.role, u.email]
+          'UPDATE users SET full_name = $1, role = $2, password_hash = $3 WHERE email = $4',
+          [u.full_name, u.role, pw, u.email]
         );
       } else {
         await client.query(
@@ -389,29 +400,88 @@ async function seed() {
     console.log(`  ${meetings.length} meetings`);
 
     // ============================================================
-    // ATTENDANCE
+    // ATTENDANCE & EXEMPTIONS
     // ============================================================
-    console.log('Seeding attendance...');
-    const statuses = ['PRESENT', 'ABSENT', 'HALF_DAY'];
+    console.log('Seeding attendance & exemptions...');
     let attendanceCount = 0;
     await client.query('DELETE FROM attendance');
+    await client.query('DELETE FROM attendance_exemptions');
+    await client.query('DELETE FROM attendance_anomalies');
+
+    // 1. Seed global public holiday
+    const holidayDateStr = daysAgo(10).split('T')[0];
+    await client.query(
+      'INSERT INTO attendance_exemptions (id, user_id, exemption_date, exemption_type, description) VALUES ($1, NULL, $2, $3, $4)',
+      [uuid(), holidayDateStr, 'PUBLIC_HOLIDAY', 'National Day Holiday']
+    );
+
+    const uA = users.slice(9)[0]; // Repetitive late & suspicious consistency intern
+    const uB = users.slice(9)[1]; // Unusual absences & outlier intern
+
+    // 2. Seed personal leave for uA
+    const leaveDateStr = daysAgo(15).split('T')[0];
+    await client.query(
+      'INSERT INTO attendance_exemptions (id, user_id, exemption_date, exemption_type, description) VALUES ($1, $2, $3, $4, $5)',
+      [uuid(), uA.id, leaveDateStr, 'LEAVE', 'Approved Medical Leave']
+    );
+
+    // Seed 25 days of attendance history (excluding weekends)
     for (const u of users.slice(9)) {
-      for (let d = 0; d < 5; d++) {
+      let absencesSeeded = 0;
+
+      for (let d = 0; d < 25; d++) {
+        const dateStr = daysAgo(d).split('T')[0];
+        const dt = new Date(daysAgo(d));
+        const dayOfWeek = dt.getUTCDay(); // 0 is Sunday, 6 is Saturday
+
+        if (dayOfWeek === 0 || dayOfWeek === 6) continue; // skip weekends
+        if (dateStr === holidayDateStr) continue; // skip global holiday
+        if (u.id === uA.id && dateStr === leaveDateStr) continue; // skip leave day for uA
+
+        let status = 'PRESENT';
+        let arrival_time = null;
+
+        if (u.id === uA.id) {
+          // Intern A: Always present, always exactly at 09:15:00
+          status = 'PRESENT';
+          arrival_time = '09:15:00';
+        } else if (u.id === uB.id) {
+          // Intern B: High absences (seed 8 absences out of ~18 working days)
+          if (absencesSeeded < 8 && Math.random() < 0.5) {
+            status = 'ABSENT';
+            arrival_time = null;
+            absencesSeeded++;
+          } else {
+            status = 'PRESENT';
+            // Random present time between 08:50 and 09:10
+            const minute = 50 + Math.floor(Math.random() * 20);
+            const hour = minute >= 60 ? 9 : 8;
+            const minStr = String(minute % 60).padStart(2, '0');
+            arrival_time = `0${hour}:${minStr}:00`;
+          }
+        } else {
+          // Other interns: normal behavior
+          if (Math.random() < 0.08) {
+            status = 'ABSENT';
+            arrival_time = null;
+          } else {
+            status = 'PRESENT';
+            // Random normal arrival between 08:45 and 09:05
+            const minute = 45 + Math.floor(Math.random() * 20);
+            const hour = minute >= 60 ? 9 : 8;
+            const minStr = String(minute % 60).padStart(2, '0');
+            arrival_time = `0${hour}:${minStr}:00`;
+          }
+        }
+
         await client.query(
-          'INSERT INTO attendance (id, user_id, marked_by, date, status, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
-          [
-            uuid(),
-            u.id,
-            adminId,
-            daysAgo(d).split('T')[0],
-            randomItem(statuses),
-            now,
-          ]
+          'INSERT INTO attendance (id, user_id, marked_by, date, status, arrival_time, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+          [uuid(), u.id, adminId, dateStr, status, arrival_time, now]
         );
         attendanceCount++;
       }
     }
-    console.log(`  ${attendanceCount} attendance records`);
+    console.log(`  ${attendanceCount} attendance records seeded`);
 
     // ============================================================
     // RATINGS

@@ -13,6 +13,8 @@ import {
   useDesignSuggest,
   useDesignTemplates,
   useCertificatePreview,
+  useAvailableTones,
+  useSupportedLanguages,
 } from '../../hooks/useAICertificates';
 import {
   Sparkles,
@@ -25,7 +27,7 @@ import {
   Eye,
 } from 'lucide-react';
 
-const AVAILABLE_TONES = [
+const DEFAULT_AVAILABLE_TONES = [
   'Professional',
   'Formal',
   'Friendly',
@@ -33,7 +35,7 @@ const AVAILABLE_TONES = [
   'Casual',
 ];
 
-const SUPPORTED_LANGUAGES = [
+const DEFAULT_SUPPORTED_LANGUAGES = [
   'English',
   'Hindi',
   'Tamil',
@@ -103,10 +105,16 @@ export default function AICertificates() {
     { value: 'Participation', label: 'Participation' },
   ];
 
-  const toneOptions = AVAILABLE_TONES.map((tone) => ({
-    value: tone,
-    label: tone,
-  }));
+  const availableTonesQuery = useAvailableTones();
+  const supportedLanguagesQuery = useSupportedLanguages();
+
+  const toneOptions = (
+    availableTonesQuery.data?.data || DEFAULT_AVAILABLE_TONES
+  ).map((tone) => ({ value: tone, label: tone }));
+
+  const languageOptions = (
+    supportedLanguagesQuery.data?.data || DEFAULT_SUPPORTED_LANGUAGES
+  ).map((language) => ({ value: language, label: language }));
 
   const industryOptions = [
     'Technology',
@@ -133,11 +141,6 @@ export default function AICertificates() {
   ].map((style) => ({
     value: style,
     label: style,
-  }));
-
-  const languageOptions = SUPPORTED_LANGUAGES.map((language) => ({
-    value: language,
-    label: language,
   }));
 
   const audienceOptions = [

@@ -1,3 +1,4 @@
+const argon2 = require('argon2');
 const { UnauthorizedError } = require('../../utils/errors');
 const repo = require('./repository');
 const {
@@ -15,15 +16,56 @@ const {
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
 const { blacklistAccessToken } = require('../../config/redis');
+const { notifyAdmin } = require('../notifications/repository');
 
 const DUMMY_USER = {
   password_hash:
     '$argon2id$v=19$m=65536,t=3,p=4$8/VvKJehP9DGKtV1NP5p8g$z0S2q7BsbH2YY16pI0/jXvgI4ElwnccjvW3NNcCSsQk',
 };
+const { getRedisClient } = require('../../config/redis');
+const emailService = require('../../services/email');
 
 async function register(data, creator) {
-  // Default to the creator (admin) as manager if none was explicitly chosen,
-  // so users created via Admin > Users also show up in team/hierarchy views.
+  const allowedRolesByCreator = {
+    ADMIN: [
+      'ADMIN',
+      'MANAGEMENT',
+      'HR',
+      'SENIOR_TL',
+      'TL',
+      'CAPTAIN',
+      'INTERN',
+    ],
+    SENIOR_TL: ['TL', 'CAPTAIN', 'INTERN'],
+    TL: ['CAPTAIN', 'INTERN'],
+  };
+
+  const creatorRolePolicy = allowedRolesByCreator[creator.role];
+
+  if (creatorRolePolicy && !creatorRolePolicy.includes(data.role)) {
+    const error = new Error('You cannot create a user with this role');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (['SENIOR_TL', 'TL'].includes(creator.role)) {
+    if (!creator.departmentId) {
+      const error = new Error('Your account is not assigned to a department');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    if (data.departmentId && data.departmentId !== creator.departmentId) {
+      const error = new Error('You cannot create users in another department');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    data = { ...data, departmentId: creator.departmentId };
+  }
+
+  // Default to the creator as manager if none was explicitly chosen,
+  // so users created through the directory also appear in hierarchy views.
   const managerId =
     data.role === 'ADMIN'
       ? data.managerId || null
@@ -32,6 +74,16 @@ async function register(data, creator) {
   if (managerId) {
     const manager = await repo.findByIdRaw(managerId);
     if (!manager) throw new Error('Manager not found');
+
+    if (
+      creator.role !== 'ADMIN' &&
+      manager.department_id !== creator.departmentId
+    ) {
+      const error = new Error('Manager must belong to your department');
+      error.statusCode = 403;
+      throw error;
+    }
+
     if (!isValidStep(manager.role, data.role)) {
       throw new Error(
         `Invalid hierarchy: ${manager.role} cannot manage ${data.role}`
@@ -66,19 +118,16 @@ function publicUser(user) {
     id: user.id,
     email: user.email,
     role: user.role,
-    fullName: user.full_name,
+    full_name: user.full_name,
+    mustChangePassword: Boolean(user.must_change_password),
   };
 }
 
 async function login(email, password, ip, userAgent) {
-  try {
-    const currentAttempts = (await incrementAttempt(email, ip)) || 0;
+  let currentAttempts = 0;
 
-    if (currentAttempts > 5) {
-      throw new UnauthorizedError(
-        'Account temporarily locked. Please try again later.'
-      );
-    }
+  try {
+    currentAttempts = (await incrementAttempt(email, ip)) || 0;
   } catch (err) {
     console.error('Redis Brute Force Check Failed:', err);
 
@@ -87,13 +136,58 @@ async function login(email, password, ip, userAgent) {
     );
   }
 
+  if (currentAttempts > 5) {
+    const redis = await getRedisClient();
+    const notifyKey = `lockout-email:${email}`;
+
+    let alreadySent = null;
+
+    if (redis) {
+      alreadySent = await redis.get(notifyKey);
+    }
+
+    if (!alreadySent) {
+      const user = await repo.findByEmail(email);
+
+      if (user) {
+        await emailService.sendAccountLockoutNotification(email, {
+          ipAddress: ip,
+          timestamp: new Date().toISOString(),
+          failedAttempts: currentAttempts,
+        });
+      }
+
+      if (redis) {
+        await redis.set(notifyKey, '1', {
+          EX: 15 * 60,
+        });
+      }
+    }
+
+    // Notify admins about account lockout (fire-and-forget)
+    notifyAdmin(
+      `Account Locked\nUser: ${email}\nIssue: Too many failed login attempts (${currentAttempts})\nTime: ${new Date().toLocaleString()}`
+    ).catch(() => {});
+
+    throw new UnauthorizedError(
+      'Account temporarily locked. Please try again later.'
+    );
+  }
+
   const user = await repo.findByEmail(email);
 
   if (!user || user.suspended) {
-    // Always run argon2.verify even when user not found to flatten timing
-    const argon2 = require('argon2');
     await argon2.verify(DUMMY_HASH, password).catch(() => {});
     await recordLoginAttempt(email, ip, false).catch(() => {});
+
+    // Notify admins (fire-and-forget). Suspended users get a distinct message.
+    const issueType = user?.suspended
+      ? 'Account Suspended'
+      : 'Login Failed - User Not Found';
+    notifyAdmin(
+      `⚠️ User Issue: ${issueType}\nUser: ${email}\nTime: ${new Date().toLocaleString()}`
+    ).catch(() => {});
+
     throw new UnauthorizedError('Invalid credentials');
   }
 
@@ -101,11 +195,15 @@ async function login(email, password, ip, userAgent) {
 
   if (!valid) {
     await recordLoginAttempt(email, ip, false).catch(() => {});
+
+    // Notify admins about failed login (fire-and-forget)
+    notifyAdmin(
+      `⚠️ User Issue: Login Failed\nUser: ${email}\nIssue: Invalid password\nTime: ${new Date().toLocaleString()}`
+    ).catch(() => {});
+
     throw new UnauthorizedError('Invalid credentials');
   }
 
-  // Clear all prior failed attempts so attacker-seeded failures don't
-  // trigger a lockout for the legitimate user after a successful login.
   await clearFailedAttempts(email, ip);
   await recordLoginAttempt(email, ip, true);
 
@@ -133,7 +231,7 @@ async function refreshTokens(token, ip) {
 
   const hash = hashToken(token);
 
-  // Atomic claim — if two concurrent requests race, only one gets a userId back.
+  // Atomic claim - if two concurrent requests race, only one gets a userId back.
   // The second gets null and is rejected immediately, eliminating the TOCTOU window.
   const claimedUserId = await repo.claimRefreshToken(hash);
 
@@ -141,15 +239,27 @@ async function refreshTokens(token, ip) {
     throw new UnauthorizedError('Token revoked/expired');
   }
 
-  const user = await repo.findById(decoded.id);
+  // Ensure the claimed token belongs to the same user identified by the
+  // signed refresh token payload.
+  if (String(claimedUserId) !== String(decoded.id)) {
+    await repo.revokeAllUserTokensRedis(claimedUserId);
+    throw new UnauthorizedError('Invalid refresh token');
+  }
+
+  const user = await repo.findById(claimedUserId);
 
   if (!user || user.suspended) {
+    await repo.revokeAllUserTokensRedis(claimedUserId);
     throw new UnauthorizedError('User not found/suspended');
   }
 
   const newAccess = generateAccessToken(user);
   const newRefresh = generateRefreshToken(user);
   const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  // Revoke every existing refresh token for this user before storing the
+  // replacement. This prevents stolen sibling tokens from remaining usable.
+  await repo.revokeAllUserTokensRedis(user.id);
 
   await repo.storeRefreshTokenRedis(user.id, hashToken(newRefresh), newExpiry);
 

@@ -1,0 +1,166 @@
+name: Deployment Parity
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployment-parity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-parity:
+    name: Render parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NODE_ENV: test
+      LOG_LEVEL: silent
+      JWT_SECRET: deployment-parity-only-not-a-production-secret
+      DATABASE_URL: postgresql://deployment_parity:deployment_parity@127.0.0.1:5432/internops
+      TEST_DATABASE_URL: postgresql://deployment_parity:deployment_parity@127.0.0.1:5432/internops_test
+      REDIS_URL: ""
+
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Render Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies like Render
+        run: npm install --ignore-scripts=false
+
+      - name: Validate Render command scripts
+        run: |
+          node <<'NODE'
+          const pkg = require('./package.json');
+          for (const script of ['migrate', 'seed', 'start']) {
+            if (!pkg.scripts?.[script]) {
+              throw new Error(`Missing Render command script: ${script}`);
+            }
+          }
+          console.log('Render scripts exist. Seed and migrations are not executed in parity CI.');
+          NODE
+
+      - name: Validate migration filenames and unique prefixes
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const files = fs.readdirSync('migrations').filter((name) => name.endsWith('.sql')).sort();
+          const seen = new Map();
+          for (const file of files) {
+            if (!/^\d{3}_[a-z0-9_]+\.sql$/.test(file)) {
+              throw new Error(`Invalid migration filename: ${file}`);
+            }
+            const prefix = file.slice(0, 3);
+            if (seen.has(prefix)) {
+              throw new Error(`Duplicate migration prefix ${prefix}: ${seen.get(prefix)} and ${file}`);
+            }
+            seen.set(prefix, file);
+          }
+          console.log(`Validated ${files.length} migration files with unique prefixes.`);
+          NODE
+
+      - name: Reject changes to existing migrations
+        working-directory: .
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff --name-status --find-renames "$BASE_SHA"...HEAD -- backend/migrations > /tmp/migration-diff.txt
+          cat /tmp/migration-diff.txt
+          if awk 'NF && $1 != "A" { found=1 } END { exit found ? 0 : 1 }' /tmp/migration-diff.txt; then
+            echo "Existing migration files are immutable. Add a new uniquely numbered migration instead of modifying, renaming, or deleting one."
+            exit 1
+          fi
+
+      - name: Run backend lint
+        run: npm run lint
+
+      - name: Probe Render health endpoint safely
+        run: |
+          node <<'NODE'
+          const app = require('./src/app');
+          (async () => {
+            try {
+              const response = await app.inject({ method: 'GET', url: '/health' });
+              const body = response.json();
+              if (response.statusCode !== 200 || body.status !== 'ok') {
+                throw new Error(`Unexpected /health response: ${response.statusCode} ${response.body}`);
+              }
+              console.log('Render /health parity probe passed.');
+            } finally {
+              await app.close();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+  cloudflare-parity:
+    name: Cloudflare parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies cleanly
+        run: npm ci
+
+      - name: Build Cloudflare assets
+        run: npm run build
+
+      - name: Validate Cloudflare configuration
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const source = fs.readFileSync('wrangler.jsonc', 'utf8');
+          const withoutComments = source
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/^\s*\/\/.*$/gm, '');
+          const json = withoutComments.replace(/,\s*([}\]])/g, '$1');
+          const config = JSON.parse(json);
+          if (config.assets?.directory !== './dist') {
+            throw new Error(`Expected assets.directory to be ./dist, got ${config.assets?.directory}`);
+          }
+          if (config.assets?.not_found_handling !== 'single-page-application') {
+            throw new Error('Cloudflare SPA fallback must remain single-page-application.');
+          }
+          console.log('Cloudflare Wrangler configuration is valid.');
+          NODE
+
+      - name: Validate Cloudflare build artifacts
+        run: |
+          test -d dist
+          test -s dist/index.html
+          asset_count=$(find dist -type f | wc -l)
+          if [ "$asset_count" -lt 2 ]; then
+            echo "Cloudflare dist output contains too few files: $asset_count"
+            exit 1
+          fi
+          echo "Validated Cloudflare dist output with $asset_count files."
