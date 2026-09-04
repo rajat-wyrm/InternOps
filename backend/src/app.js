@@ -1,14 +1,22 @@
 require('dotenv').config();
 const validateEnv = require('./config/validateEnv');
 validateEnv();
+<<<<<<< HEAD
+
+=======
+>>>>>>> upstream/master
 const {
   initSentry,
   captureException: sentryCaptureException,
   flushSentry,
 } = require('./config/sentry');
 initSentry();
+<<<<<<< HEAD
+
+=======
 const auth = require('./middleware/auth');
 const rbac = require('./middleware/rbac');
+>>>>>>> upstream/master
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
@@ -114,9 +122,20 @@ app.get(
       redisStatus === 'connected' ||
       redisStatus === 'disabled';
     const healthy = checks.db && checks.redis;
+<<<<<<< HEAD
+
+    reply.status(healthy ? 200 : 503).send({
+      status: healthy ? 'healthy' : 'degraded',
+      checks,
+      uptime: Math.floor(process.uptime()),
+      version: require('../package.json').version,
+      timestamp: new Date().toISOString(),
+    });
+=======
     reply
       .status(healthy ? 200 : 503)
       .send({ status: healthy ? 'healthy' : 'degraded', checks });
+>>>>>>> upstream/master
   }
 );
 
@@ -445,6 +464,16 @@ app.setErrorHandler((error, request, reply) => {
 
   if (statusCode >= 500) {
     request.log.error(logPayload, 'Unhandled server error');
+<<<<<<< HEAD
+
+    // report errors to sentry
+    sentryCaptureException(error, {
+      userId: request.user?.id || null,
+      requestId: request.id,
+      route: request.url,
+      method: request.method,
+      statusCode,
+=======
     sentryCaptureException(error, {
       userId: request.user?.id || null,
       tags: {
@@ -453,6 +482,7 @@ app.setErrorHandler((error, request, reply) => {
         method: request.method,
         statusCode: String(statusCode),
       },
+>>>>>>> upstream/master
     });
   } else {
     request.log.warn(logPayload, 'Request error');
@@ -529,6 +559,11 @@ const gracefulShutdown = async (signal) => {
     await pool.end();
     await flushSentry(2000);
 
+<<<<<<< HEAD
+    // flush pending sentry events before exiting
+    await flushSentry(2000);
+
+=======
     try {
       githubSyncOrchestrator.shutdown();
     } catch (syncErr) {
@@ -536,6 +571,7 @@ const gracefulShutdown = async (signal) => {
     }
 
     clearTimeout(forceShutdown);
+>>>>>>> upstream/master
     app.log.info('Cleanup completed. Exiting now.');
     if (process.env.NODE_ENV !== 'test') {
       process.exit(0);
@@ -566,6 +602,25 @@ process.on('uncaughtException', (error) => {
     clearTimeout(forceExit);
     process.exit(1);
   });
+});
+
+// capture unhandled promise rejections and uncaught exceptions
+process.on('unhandledRejection', (reason) => {
+  app.log.error({ err: reason }, 'Unhandled promise rejection');
+  sentryCaptureException(
+    reason instanceof Error ? reason : new Error(String(reason)),
+    {
+      extra: { type: 'unhandledRejection' },
+    }
+  );
+});
+
+process.on('uncaughtException', (error) => {
+  app.log.error({ err: error }, 'Uncaught exception — process will exit');
+  sentryCaptureException(error, {
+    extra: { type: 'uncaughtException' },
+  });
+  flushSentry(2000).finally(() => process.exit(1));
 });
 
 if (require.main === module) {

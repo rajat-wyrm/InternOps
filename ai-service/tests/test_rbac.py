@@ -9,17 +9,20 @@ def test_admin_has_all_ai_permissions():
 
 def test_senior_tl_has_chat_permission_only():
     assert has_permission(["SENIOR_TL"], "AI_CHAT")
+    assert has_permission(["SENIOR_TL"], "AI_GENERATION")
     assert not has_permission(["SENIOR_TL"], "AI_HEALTH")
     assert not has_permission(["SENIOR_TL"], "AI_USAGE")
 
 
 def test_tl_has_chat_permission_only():
     assert has_permission(["TL"], "AI_CHAT")
+    assert has_permission(["TL"], "AI_GENERATION")
     assert not has_permission(["TL"], "AI_HEALTH")
     assert not has_permission(["TL"], "AI_USAGE")
 
 def test_user_has_no_ai_permissions():
     assert not has_permission(["USER"], "AI_CHAT")
+    assert not has_permission(["USER"], "AI_GENERATION")
     assert not has_permission(["USER"], "AI_HEALTH")
     assert not has_permission(["USER"], "AI_USAGE")
 

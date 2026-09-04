@@ -4,6 +4,7 @@ const { GoogleGenAI } = require('@google/genai');
 const config = require('../config');
 const { getRedisClient } = require('../config/redis');
 const { safeParseJSON } = require('../utils/promptCleaner');
+const { sanitizePrompt } = require('../utils/promptSecurity');
 
 const failureState = new Map();
 
@@ -357,14 +358,26 @@ async function callDeepSeek(messages) {
 }
 
 async function callGemini(messages) {
-  const prompt = buildPrompt(messages);
+  const systemMessages = messages
+    .filter((message) => message.role === 'system')
+    .map((message) => message.content)
+    .join('\n');
+  const contents = messages
+    .filter((message) => message.role !== 'system')
+    .map((message) => ({
+      role: message.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: message.content }],
+    }));
   const key = config.ai.geminiKey || '';
   const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
   const ai = new GoogleGenAI({ apiKey: key });
   const response = await ai.models.generateContent({
     model: modelName,
-    contents: prompt,
+    ...(systemMessages
+      ? { config: { systemInstruction: systemMessages } }
+      : {}),
+    contents,
   });
 
   const text = response.text;
@@ -377,7 +390,12 @@ async function callGemini(messages) {
 }
 
 async function callHuggingFace(messages) {
-  const prompt = buildPrompt(messages);
+  const prompt = messages
+    .map((message) => {
+      const role = message.role.toUpperCase();
+      return `<|${role}|>\n${message.content}\n<|END_${role}|>`;
+    })
+    .join('\n');
 
   const response = await fetchWithTimeout(
     `https://api-inference.huggingface.co/models/${
@@ -501,10 +519,17 @@ function createFallbackResponse(errors) {
 
 async function generateAIResponse({ userId, messages }) {
   const safeMessages = Array.isArray(messages) ? messages : [];
-  const sanitizedMessages = safeMessages.slice(-16).map((m) => ({
-    role: m.role,
-    content: String(m.content || '').slice(0, 2000),
-  }));
+  const sanitizedMessages = safeMessages.slice(-16).map((m) => {
+    const content =
+      m.role === 'user'
+        ? sanitizePrompt(m.content, { maxLength: 2000 })
+        : String(m.content || '').slice(0, 2000);
+
+    return {
+      role: m.role,
+      content,
+    };
+  });
 
   const payload = { userId, messages: sanitizedMessages };
   const cached = await getCachedResponse(payload);
@@ -606,6 +631,7 @@ module.exports = {
   generateAIImage,
   getProviderHealth,
   ResponseSizeLimitError,
+  buildPrompt,
   createFallbackResponse,
   // Exported for testing regression
   _caches: caches,
