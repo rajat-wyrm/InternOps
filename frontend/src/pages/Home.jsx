@@ -404,12 +404,12 @@ function InternHome({ user }) {
           gradient="from-amber-400 to-orange-500"
         />
 
-       <StatCard
-        label="Total ratings"
-        value={ratings !== null ? ratingsData.length : '—'}
-        icon={<BarChart3 />}
-        gradient="from-indigo-500 to-blue-600"
-      />
+        <StatCard
+          label="Total ratings"
+          value={ratings !== null ? ratingsData.length : '—'}
+          icon={<BarChart3 />}
+          gradient="from-indigo-500 to-blue-600"
+        />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
