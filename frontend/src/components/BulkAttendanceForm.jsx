@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
 import { Card, Btn, Input, ConfirmationModal } from './ui';
@@ -20,6 +20,12 @@ export default function BulkAttendanceForm({
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [pendingEntries, setPendingEntries] = useState(null);
+  useEffect(() => {
+    if (propDeptId) {
+      setDepartmentId(propDeptId);
+      setSelectedUsers([]);
+    }
+  }, [propDeptId]);
 
   const FILL_CONFIRM_THRESHOLD = 10;
 
@@ -30,28 +36,82 @@ export default function BulkAttendanceForm({
   });
 
   const { data: reports = [], isLoading: loadingReports } = useQuery({
-    queryKey: ['teamMembers', departmentId],
+    queryKey: ['attendanceMembers', departmentId],
     queryFn: () =>
       api
-        .get('/team/members', {
-          params: { department_id: departmentId || undefined },
+        .get('/attendance/authorized-members', {
+          params: departmentId ? { department_id: departmentId } : {},
         })
         .then((res) => res.data),
     enabled: !roster,
   });
-
   const bulkMutation = useMutation({
-    mutationFn: (data) => api.post('/attendance/bulk', data),
-    onSuccess: (_data, variables) => {
+    mutationFn: (data) =>
+      api.post('/attendance/bulk', data, {
+        _suppressGlobalError: true,
+      }),
+
+    onSuccess: (response, variables) => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
+
       setError('');
-      setMsg(`✓ Marked ${variables.entries.length} members`);
+
+      const count = response.data?.count ?? variables.entries.length;
+
+      setMsg(`✓ Marked ${count} members`);
+
       setSelectedUsers([]);
       setRemarks('');
       setFillMissing(false);
+
       setTimeout(() => setMsg(''), 2500);
     },
-    onError: (err) => setError(err.response?.data?.error || 'Bulk mark failed'),
+
+    onError: (err) => {
+      const statusCode = err.response?.status;
+      const serverMessage =
+        err.response?.data?.error || err.response?.data?.message;
+
+      if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
+        setError(
+          'The bulk attendance request took too long. Please try again.'
+        );
+        return;
+      }
+
+      if (!err.response) {
+        setError(
+          'Unable to reach the server. Please check your connection and try again.'
+        );
+        return;
+      }
+
+      if (statusCode === 400) {
+        setError(
+          serverMessage ||
+            'Invalid attendance data. Please check your selection.'
+        );
+        return;
+      }
+
+      if (statusCode === 403) {
+        setError(
+          serverMessage ||
+            'You are not authorized to mark attendance for one or more selected members.'
+        );
+        return;
+      }
+
+      if (statusCode === 500) {
+        setError(
+          serverMessage ||
+            'The server failed while marking bulk attendance. Please try again.'
+        );
+        return;
+      }
+
+      setError(serverMessage || 'Bulk attendance failed. Please try again.');
+    },
   });
 
   const effectiveReports = roster || reports;
@@ -108,9 +168,8 @@ export default function BulkAttendanceForm({
       user_id: uid,
       date,
       status,
-      remarks,
+      remarks: remarks.trim() || undefined,
     }));
-
     if (fillMissing) {
       const others = team.filter((u) => !selectedUsers.includes(u.id));
 

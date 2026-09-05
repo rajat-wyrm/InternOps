@@ -135,7 +135,7 @@ async function getMonthlyStats(userId, month, year) {
     `SELECT status, COUNT(*) as count
      FROM attendance
      WHERE user_id = $1
-       AND date >= $2
+       AND date >= $2f
        AND date <  $3
        AND deleted_at IS NULL
      GROUP BY status`,
@@ -144,24 +144,55 @@ async function getMonthlyStats(userId, month, year) {
 
   return res.rows;
 }
-
 async function bulkMark(entries, markedBy, client = pool) {
-  const out = [];
-
-  for (const e of entries) {
-    const r = await client.query(
-      `INSERT INTO attendance (user_id, marked_by, date, status, remarks)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (user_id, date)
-       DO UPDATE SET status=$4, marked_by=$2, remarks=$5, updated_at=NOW()
-       RETURNING *`,
-      [e.user_id, markedBy, e.date, e.status, e.remarks || null]
-    );
-
-    out.push(r.rows[0]);
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return [];
   }
 
-  return out;
+  // Remove duplicate user/date combinations.
+  // If the same user/date appears more than once, keep the last entry.
+  const uniqueEntries = Array.from(
+    new Map(
+      entries.map((entry) => [`${entry.user_id}:${entry.date}`, entry])
+    ).values()
+  );
+
+  // Build one bulk INSERT/UPSERT query instead of
+  // executing one query per attendance entry.
+  const values = [];
+  const placeholders = [];
+
+  uniqueEntries.forEach((entry, index) => {
+    const base = index * 5;
+
+    placeholders.push(
+      `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`
+    );
+
+    values.push(
+      entry.user_id,
+      markedBy,
+      entry.date,
+      entry.status,
+      entry.remarks || null
+    );
+  });
+
+  const result = await client.query(
+    `INSERT INTO attendance
+       (user_id, marked_by, date, status, remarks)
+     VALUES ${placeholders.join(', ')}
+     ON CONFLICT (user_id, date)
+     DO UPDATE SET
+       status = EXCLUDED.status,
+       marked_by = EXCLUDED.marked_by,
+       remarks = EXCLUDED.remarks,
+       updated_at = NOW()
+     RETURNING *`,
+    values
+  );
+
+  return result.rows;
 }
 
 // Returns the set of target ids that fall inside managerId's transitive
