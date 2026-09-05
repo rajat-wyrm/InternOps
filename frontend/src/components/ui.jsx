@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import useBodyScrollLock from '../hooks/useBodyScrollLock';
+import { getApiErrorMessage } from '../lib/apiError';
 // Shared, reusable UI building blocks for a consistent, polished, animated look.
 
 export function PageHeader({ title, subtitle, icon, actions }) {
@@ -75,22 +76,12 @@ export function Card({ children, className = '', hover = false, ...props }) {
   return (
     <div
       {...props}
-      className={`relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:shadow-none text-slate-900 dark:text-white ${
+      className={`relative overflow-hidden rounded-3xl border border-slate-200/90 dark:border-slate-700 bg-gradient-to-br from-white via-white to-slate-50/80 dark:bg-none dark:bg-slate-900 shadow-[0_16px_38px_-24px_rgba(15,23,42,0.34),0_5px_14px_-10px_rgba(79,70,229,0.16)] dark:shadow-none text-slate-900 dark:text-white ${
         hover ? 'card-hover cursor-pointer' : ''
       } ${className}`}
     >
       {children}
     </div>
-  );
-}
-
-function getApiErrorMessage(error, fallback) {
-  return (
-    error?.response?.data?.error ||
-    error?.response?.data?.message ||
-    error?.message ||
-    fallback ||
-    'Something went wrong. Please try again.'
   );
 }
 
@@ -267,7 +258,9 @@ export function StatCard({
           </p>
 
           {sub && (
-            <p className="text-xs text-slate-500 dark:text-slate-500">{sub}</p>
+            <p className="mt-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {sub}
+            </p>
           )}
         </div>
 
@@ -466,13 +459,13 @@ export function ConfirmationModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center p-4"
       onClick={handleClose}
     >
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 outline-none"
+        className="internops-modal-panel w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-slate-200 dark:border-slate-700">

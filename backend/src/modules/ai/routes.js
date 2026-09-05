@@ -9,6 +9,7 @@ const aiRepo = require('./repository');
 const config = require('../../config');
 const {
   generateAIResponse,
+  generateAIImage,
   getProviderHealth,
 } = require('../../services/aiProviderService');
 
@@ -134,9 +135,12 @@ async function routes(fastify) {
         });
       }
 
-      const usage = await aiRepo.getTodayUsage(req.user.id);
+      const usageRecord = await aiRepo.tryIncrementUsage(
+        req.user.id,
+        config.ai.dailyLimit
+      );
 
-      if (usage >= config.ai.dailyLimit) {
+      if (!usageRecord) {
         return reply.status(429).send({
           error: 'Daily AI usage limit exceeded',
         });
@@ -148,7 +152,10 @@ async function routes(fastify) {
           messages: finalMessages,
         });
 
-        await aiRepo.incrementUsage(req.user.id);
+        if (result.fallback) {
+          req.log.error({ error: result.error }, 'AI service unavailable');
+          return reply.status(503).send(result);
+        }
 
         return {
           provider: result.provider,
@@ -172,7 +179,78 @@ async function routes(fastify) {
       }
     }
   );
+  fastify.post(
+    '/generate-image',
+    {
+      schema: {
+        tags: ['AI'],
+        description: 'Generate an AI image from a task description',
+        body: {
+          type: 'object',
+          required: ['prompt'],
+          properties: {
+            prompt: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 4000,
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
+      bodyLimit: 2 * 1024 * 1024,
+      config: {
+        rateLimit: {
+          max: AI_CHAT_RATE_LIMIT,
+          timeWindow: '1 minute',
+          keyGenerator: (req) => req.user?.id || req.ip,
+        },
+      },
+    },
+    async (req, reply) => {
+      const prompt = String(req.body?.prompt || '').trim();
 
+      if (!prompt) {
+        return reply.status(400).send({
+          error: 'Prompt is required',
+        });
+      }
+
+      try {
+        const result = await generateAIImage({
+          prompt,
+          authorization: req.headers.authorization,
+        });
+
+        return {
+          provider: result.provider,
+          image_base64: result.image_base64,
+        };
+      } catch (error) {
+        if (error.statusCode === 429) {
+          return reply.status(429).send({
+            error: 'AI provider rate limit exceeded',
+          });
+        }
+
+        if (error.statusCode === 413) {
+          return reply.status(413).send({
+            error: 'AI provider response too large',
+          });
+        }
+
+        req.log.error(
+          { err: error.message, code: error.statusCode },
+          'AI image generation failed'
+        );
+
+        return reply.status(503).send({
+          error: 'Image generation service unavailable',
+        });
+      }
+    }
+  );
   fastify.get(
     '/health',
     {

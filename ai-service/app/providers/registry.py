@@ -6,19 +6,14 @@ to use, where the API key comes from) — that's added here rather than
 inside the adapters themselves, so the adapters stay focused purely on
 "how do I talk to this vendor."
 
-Env vars:
-  AI_PROVIDER       - "gemini" (default) or "openai"
-  GEMINI_API_KEY     - required if using gemini
-  OPENAI_API_KEY      - required if using openai
-  GEMINI_MODEL         - optional override (defaults to GeminiProvider's default)
-  OPENAI_MODEL          - optional override (defaults to OpenAIProvider's default)
+The default provider name comes from `settings.PRIMARY_AI_PROVIDER` (the
+same centralized, validated configuration source the orchestrator uses) —
+there is deliberately no separate `AI_PROVIDER` environment variable, so
+provider selection can't drift between code paths.
 
-TODO(providers): no fallback-to-secondary-provider logic yet (e.g. if
-gemini's key is missing/rate-limited, try openai) — every call currently
-uses a single configured provider. TODO(providers): no instance caching/
-pooling — a fresh adapter is built per call, which is fine for now since
-the adapters are lightweight (just holds an api_key + model_name + opens
-an httpx.AsyncClient per request), but worth revisiting under load.
+Env vars:
+  <PROVIDER>_API_KEY - required for each provider (HUGGINGFACE uses _TOKEN)
+  <PROVIDER>_MODEL   - optional override (defaults to adapter's default)
 """
 
 import os
@@ -27,20 +22,40 @@ from typing import Dict, Optional, Type
 from app.providers.base import AIProviderError, BaseAIProvider
 from app.providers.gemini import GeminiProvider
 from app.providers.openai import OpenAIProvider
+from app.providers.groq import GroqProvider
+from app.providers.anthropic import AnthropicProvider
+from app.providers.deepseek import DeepSeekProvider
+from app.providers.huggingface import HuggingFaceProvider
+from app.providers.nvidia import NvidiaProvider
 
 _PROVIDER_CLASSES: Dict[str, Type[BaseAIProvider]] = {
     "gemini": GeminiProvider,
     "openai": OpenAIProvider,
+    "groq": GroqProvider,
+    "anthropic": AnthropicProvider,
+    "deepseek": DeepSeekProvider,
+    "huggingface": HuggingFaceProvider,
+    "nvidia": NvidiaProvider,
 }
 
 _API_KEY_ENV_VAR: Dict[str, str] = {
     "gemini": "GEMINI_API_KEY",
     "openai": "OPENAI_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "huggingface": "HUGGINGFACE_TOKEN",
+    "nvidia": "NVIDIA_API_KEY",
 }
 
 _MODEL_ENV_VAR: Dict[str, str] = {
     "gemini": "GEMINI_MODEL",
     "openai": "OPENAI_MODEL",
+    "groq": "GROQ_MODEL",
+    "anthropic": "ANTHROPIC_MODEL",
+    "deepseek": "DEEPSEEK_MODEL",
+    "huggingface": "HUGGINGFACE_MODEL",
+    "nvidia": "NVIDIA_MODEL",
 }
 
 
@@ -74,28 +89,54 @@ def get_provider(name: Optional[str] = None) -> BaseAIProvider:
     API key configured — callers should let that propagate to the route's
     error handling rather than catching it here.
     """
-    return _build_provider(name or os.environ.get("AI_PROVIDER", "gemini"))
+    # Imported lazily to avoid a circular import: app.core.config's startup
+    # validation (validate_and_resolve) imports this module (has_adapter) to
+    # verify every active provider has a matching adapter.
+    from app.core.config import settings
+
+    return _build_provider(name or settings.PRIMARY_AI_PROVIDER)
+
+
+def has_adapter(name: str) -> bool:
+    """Check whether a provider adapter class is registered for the given name."""
+    return name.lower() in _PROVIDER_CLASSES
 
 
 def get_configured_providers_health() -> list:
-    """Lightweight config-presence health check.
+    """Return lightweight health information for configured providers.
 
     Reports whether each known provider has an API key configured. This
     does NOT make a live API call to the vendor — a real ping would cost
     quota/latency on every hit to /ai/health. Swap this out for an actual
-    `generate_text("ping")` call per provider if that tradeoff is wrong
+    `generate_chat("ping")` call per provider if that tradeoff is wrong
     for this service.
     """
+    import time
+    from app.providers.orchestrator import get_circuit_breaker
+
     report = []
+
     for name, key_var in _API_KEY_ENV_VAR.items():
         has_key = bool(os.environ.get(key_var))
+        cb = get_circuit_breaker(name)
+        is_circuit_open = cb.disabled_until is not None and time.time() < cb.disabled_until
+
+        if not has_key:
+            status = "unhealthy"
+            error_message = f"{key_var} is not configured"
+        elif is_circuit_open:
+            status = "unhealthy"
+            error_message = "Circuit breaker open"
+        else:
+            status = "healthy"
+            error_message = None
+
         report.append(
             {
                 "name": name,
-                "available": has_key,
-                "lastError": None
-                if has_key
-                else {"message": f"{key_var} is not configured"},
+                "status": status,
+                "lastErrorMessage": error_message,
             }
         )
+
     return report

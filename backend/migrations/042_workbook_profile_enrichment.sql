@@ -1,0 +1,5 @@
+BEGIN;
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS internship_domain VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS offer_letter_url TEXT;
+COMMIT;

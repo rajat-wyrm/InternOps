@@ -1,39 +1,83 @@
 import time
-from typing import Dict, List
 
-from fastapi import HTTPException, Request, status
+import redis.asyncio as redis
+from fastapi import Depends, HTTPException, Request, status
 
-from app.core.config import RATE_LIMIT_PER_MINUTE
+from app.core.auth import User, get_current_user
+from app.core.config import RATE_LIMIT_PER_MINUTE, REDIS_URL
+
+redis_client = redis.from_url(REDIS_URL) if REDIS_URL else None
+
+
 class RateLimiter:
-    """Simple in-memory sliding window rate limiter."""
-
     def __init__(self, requests_per_minute: int = RATE_LIMIT_PER_MINUTE):
         self.requests_per_minute = requests_per_minute
-        self.history: Dict[str, List[float]] = {}
-    async def check_rate_limit(self, request: Request):
-        # Identify the client (User ID header or IP address)
-        client_id = request.headers.get("X-User-ID") or request.client.host
+        self._hits: dict[str, list[float]] = {}
 
-        current_time = time.time()
-        window_start = current_time - 60
+    @property
+    def history(self) -> dict[str, list[float]]:
+        """Backward-compatible alias for the internal per-client hit log."""
+        return self._hits
 
-        # Keep only requests made in the last 60 seconds
-        timestamps = [
-            ts
-            for ts in self.history.get(client_id, [])
-            if ts > window_start
-        ]
-                # If the client has already reached the limit, reject the request
-        if len(timestamps) >= self.requests_per_minute:
+    async def check_rate_limit(
+        self,
+        request: Request,
+        current_user: User = Depends(get_current_user),
+    ):
+        client_id = (
+            current_user.id
+            if isinstance(current_user, User)
+            else (
+                request.client.host
+                if request and getattr(request, "client", None)
+                else "unknown"
+            )
+        )
+
+        # Use Redis when it is configured.
+        if redis_client is not None:
+            key = f"ai:ratelimit:{client_id}"
+
+            try:
+                count = await redis_client.incr(key)
+
+                if count == 1:
+                    await redis_client.expire(key, 60)
+
+                if count > self.requests_per_minute:
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail="AI request rate limit exceeded. Please wait before retrying.",
+                        headers={"Retry-After": "60"},
+                    )
+
+                return
+
+            except HTTPException:
+                raise
+            except redis.RedisError:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Rate limiter unavailable",
+                )
+
+        # In-memory fallback when Redis is not configured.
+        now = time.monotonic()
+        window_start = now - 60
+
+        hits = self._hits.setdefault(client_id, [])
+        hits[:] = [timestamp for timestamp in hits if timestamp > window_start]
+
+        if len(hits) >= self.requests_per_minute:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="AI request rate limit exceeded. Please wait before retrying.",
                 headers={"Retry-After": "60"},
             )
 
-        # Record the current request
-        timestamps.append(current_time)
+        hits.append(now)
 
-        # Save the updated history
-        self.history[client_id] = timestamps
+
 ai_rate_limiter = RateLimiter()
+# Backward-compatible alias so chat and other AI operations share the same limiter instance
+chat_rate_limiter = ai_rate_limiter

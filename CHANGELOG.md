@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+- Profile image removal with confirmation, default-avatar fallback, persistent backend cleanup, and success/error feedback.
+
 ### Added
 
 - API versioning infrastructure: all business routes are now namespaced under `/api/v1/` (`app.js`).
@@ -33,3 +35,19 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 - Multi-level image proof verification for task management.
 - Fastify REST API backend setup with raw PostgreSQL queries.
 - React frontend layout integrated with Vite and Tailwind CSS.
+
+## [Unreleased]
+
+### Added
+
+- API versioning infrastructure: ...
+- `src/routes.v2.js` skeleton ...
+- (aur bhi items...)
+- API Versioning Policy section in `CONTRIBUTING.md` (90-day sunset window, deprecation header format, v2 introduction guide).
+  👆 IS (aakhri Added) LINE KE BAAD ↓
+
+### Fixed
+
+- Avatar URLs now resolve against the API origin, fixing broken profile images in production where the frontend and API are on separate origins ([#1865](https://github.com/rajat-wyrm/InternOps/issues/1865)).
+
+## [v1.0.1] - 2026-07-09 👈 ye line apni jagah par NEECHE hi rahegi

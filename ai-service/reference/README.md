@@ -13,3 +13,5 @@
 > These JavaScript files are preserved only for historical reference and should **not** be used for new development.
 >
 > All production changes should be made in the Python implementation under `ai-service/app/`.
+
+---

@@ -17,24 +17,70 @@ const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
 const ASSIGNABLE_ROLES = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
 const detailFields = {
+  email: z.string().email().max(255).optional(),
+  department_id: z.string().uuid().nullable().optional(),
+  intern_code: z.string().max(100).nullable().optional(),
   full_name: z.string().max(255).optional(),
   phone: z.string().max(20).optional(),
   college: z.string().max(255).optional(),
   course: z.string().max(255).optional(),
   year_of_study: z.string().max(50).optional(),
   position: z.string().max(255).optional(),
+  internship_domain: z.string().max(255).optional(),
+  offer_letter_url: z.string().url().max(2000).nullable().optional(),
   joining_date: z.string().max(20).optional(),
+  lifecycle_effective_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+  completion_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+  extended_completion_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
   internship_status: z
-    .enum(['ACTIVE', 'COMPLETED', 'ON_HOLD', 'TERMINATED'])
+    .enum(['ACTIVE', 'COMPLETED', 'ON_HOLD', 'TERMINATED', 'DISCONTINUED'])
     .optional(),
   location: z.string().max(255).optional(),
   notes: z.string().max(2000).optional(),
 };
 
-const updateSchema = z.object(detailFields);
+const updateSchema = z.object(detailFields).superRefine((data, ctx) => {
+  if (
+    data.internship_status === 'COMPLETED' &&
+    !data.completion_date &&
+    !data.extended_completion_date
+  )
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['completion_date'],
+      message: 'Completion date is required',
+    });
+  if (
+    ['TERMINATED', 'DISCONTINUED'].includes(data.internship_status) &&
+    !data.lifecycle_effective_date
+  )
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['lifecycle_effective_date'],
+      message: 'Effective date is required',
+    });
+});
 const createSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z
+    .string()
+    .min(8)
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/,
+      'Password is too weak. Use at least 8 characters with uppercase, lowercase, number, and special character.'
+    ),
   role: z.enum(['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
   manager_id: z.string().uuid().optional(),
   department_id: z.string().uuid().optional(),
@@ -188,16 +234,46 @@ async function routes(fastify) {
           error: `You can only add members below your own role (${managerRole})`,
         });
       }
-      if (await repo.emailExists(data.email)) {
+      const normalizedEmail = data.email.trim().toLowerCase();
+      if (await repo.emailExists(normalizedEmail)) {
         return reply
           .status(409)
           .send({ error: 'A user with this email already exists' });
       }
 
-      const member = await repo.createMember({
-        ...data,
-        manager_id: managerId,
-      });
+      let member;
+      try {
+        member = await repo.createMember({
+          ...data,
+          email: normalizedEmail,
+          manager_id: managerId,
+        });
+      } catch (error) {
+        if (
+          error.code === '23505' &&
+          error.constraint === 'users_one_senior_tl_per_department'
+        ) {
+          return reply.status(409).send({
+            error: 'This department already has an active Senior TL',
+            code: 'DEPARTMENT_ALREADY_HAS_SENIOR_TL',
+          });
+        }
+        if (
+          error.code === '23514' &&
+          error.constraint === 'users_email_lowercase'
+        ) {
+          return reply.status(400).send({
+            error: 'Email addresses must be lowercase',
+            code: 'EMAIL_MUST_BE_LOWERCASE',
+          });
+        }
+        if (error.code === '23505') {
+          return reply
+            .status(409)
+            .send({ error: 'A user with this email already exists' });
+        }
+        throw error;
+      }
       req.auditOnResponse = {
         userId: req.user.id,
         action: 'MEMBER_CREATED',
@@ -258,7 +334,39 @@ async function routes(fastify) {
       const data = updateSchema.parse(req.body);
       const before = await repo.getMemberById(req.params.id);
       if (!before) return reply.status(404).send({ error: 'Member not found' });
-      const after = await repo.updateMember(req.params.id, data);
+      let normalizedData = data;
+      if (data.email !== undefined) {
+        const normalizedEmail = data.email.trim().toLowerCase();
+        if (
+          normalizedEmail !== before.email &&
+          (await repo.emailExists(normalizedEmail))
+        ) {
+          return reply.status(409).send({
+            error: 'A user with this email already exists',
+            code: 'EMAIL_ALREADY_EXISTS',
+          });
+        }
+        normalizedData = { ...data, email: normalizedEmail };
+      }
+      let after;
+      try {
+        after = await repo.updateMember(req.params.id, normalizedData);
+      } catch (error) {
+        if (error.code === '23505') {
+          const isEmail = String(error.constraint || '')
+            .toLowerCase()
+            .includes('email');
+          return reply.status(409).send({
+            error: isEmail
+              ? 'A user with this email already exists'
+              : 'A user with this Intern Code already exists',
+            code: isEmail
+              ? 'EMAIL_ALREADY_EXISTS'
+              : 'INTERN_CODE_ALREADY_EXISTS',
+          });
+        }
+        throw error;
+      }
       req.auditOnResponse = {
         userId: req.user.id,
         action: 'MEMBER_DETAILS_UPDATED',
@@ -324,6 +432,11 @@ async function routes(fastify) {
         .object({ role: z.enum(ASSIGNABLE_ROLES) })
         .parse(req.body);
 
+      if (role === 'SENIOR_TL') {
+        return reply.status(409).send({
+          error: 'Senior TL changes must use Departments → Replace Senior TL.',
+        });
+      }
       // A manager may never change their own role here.
       if (req.params.id === req.user.id) {
         return reply
@@ -470,6 +583,58 @@ async function routes(fastify) {
         }
         throw err;
       }
+    }
+  );
+
+  // Reset password of a member (within hierarchy).
+  fastify.patch(
+    '/members/:id/password',
+    {
+      preHandler: [auth, rbac(...MANAGER_ROLES), ownership('id'), sanitize],
+      schema: {
+        tags: ['Team'],
+        description: 'Update member password',
+        params: { type: 'object', properties: { id: { type: 'string' } } },
+        body: {
+          type: 'object',
+          required: ['password'],
+          properties: {
+            password: { type: 'string', minLength: 8 },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const { password } = z
+        .object({ password: z.string().min(8) })
+        .parse(req.body);
+
+      const before = await repo.getMemberById(req.params.id);
+      if (!before) return reply.status(404).send({ error: 'Member not found' });
+
+      // Prevent changing own password here
+      if (req.params.id === req.user.id) {
+        return reply.status(400).send({
+          error:
+            'Please use the profile settings page to change your own password.',
+        });
+      }
+
+      const argon2 = require('argon2');
+      const hash = await argon2.hash(password);
+
+      const authRepo = require('../auth/repository');
+      await authRepo.updatePassword(req.params.id, hash);
+
+      await createAuditLog({
+        userId: req.user.id,
+        action: 'MEMBER_PASSWORD_CHANGED',
+        resourceType: 'user',
+        resourceId: req.params.id,
+        ...extractRequestInfo(req),
+      });
+
+      return { message: 'Password updated successfully' };
     }
   );
 }

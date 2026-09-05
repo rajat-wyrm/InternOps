@@ -313,7 +313,11 @@ describe('Meetings Integration Tests', () => {
 
   describe('Attendee Management', () => {
     it('should add an attendee to the meeting and create an audit log entry', async () => {
-      const userRes = await pool.query('SELECT id FROM users LIMIT 1');
+      const userRes = await pool.query(
+        `SELECT id FROM users
+         WHERE suspended = FALSE AND deleted_at IS NULL
+         ORDER BY created_at ASC LIMIT 1`
+      );
       const userId = userRes.rows[0].id;
 
       const res = await inject(
@@ -339,7 +343,11 @@ describe('Meetings Integration Tests', () => {
     });
 
     it('should remove an attendee from the meeting and create an audit log entry', async () => {
-      const userRes = await pool.query('SELECT id FROM users LIMIT 1');
+      const userRes = await pool.query(
+        `SELECT id FROM users
+         WHERE suspended = FALSE AND deleted_at IS NULL
+         ORDER BY created_at ASC LIMIT 1`
+      );
       const userId = userRes.rows[0].id;
 
       const res = await inject(

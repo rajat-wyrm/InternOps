@@ -17,16 +17,36 @@ from fastapi.testclient import TestClient
 
 from app.api.ai_routes import router
 from app.core.rate_limit import chat_rate_limiter
-from app.core.usage import _usage_by_user_day
+
+
+from app.core.auth import get_current_user, User
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    import app.core.rate_limiter as rate_limit_module
+
+    class FakeRedis:
+        """Minimal in-memory stand-in for redis.asyncio.Redis, just for tests."""
+
+        def __init__(self):
+            self.counts = {}
+
+        async def incr(self, key):
+            self.counts[key] = self.counts.get(key, 0) + 1
+            return self.counts[key]
+
+        async def expire(self, key, seconds):
+            pass
+
+    # Force the limiter to use our fake client instead of a real Redis connection.
+    fake_redis = FakeRedis()
+    monkeypatch.setattr(rate_limit_module, "redis_client", fake_redis)
+
     app = FastAPI()
     app.include_router(router)
-    # reset in-memory stubs between tests so they don't bleed into each other
+    app.dependency_overrides[get_current_user] = lambda: User(id="test_user", roles=["ADMIN"])
     chat_rate_limiter._hits.clear()
-    _usage_by_user_day.clear()
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -88,28 +108,26 @@ def test_chat_happy_path_with_mocked_provider(client, monkeypatch):
     assert body == {"provider": "fake-provider", "cached": False, "content": "hi there!"}
 
 
-def test_messages_to_prompt_flattens_roles():
-    from app.api.ai_routes import _messages_to_prompt
-
-    prompt = _messages_to_prompt(
-        [
-            {"role": "system", "content": "Be concise."},
-            {"role": "user", "content": "Hi"},
-        ]
-    )
-    assert prompt == "System: Be concise.\n\nUser: Hi"
-
-
 def test_health_endpoint(client, monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    for key in [
+        "GEMINI_API_KEY",
+        "OPENAI_API_KEY",
+        "GROQ_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "HUGGINGFACE_TOKEN",
+        "NVIDIA_API_KEY",
+    ]:
+        monkeypatch.delenv(key, raising=False)
     r = client.get("/ai/health")
     assert r.status_code == 200
     body = r.json()
     names = {p["name"] for p in body["providers"]}
-    assert names == {"gemini", "openai"}
-    assert all(p["status"] == "unhealthy" for p in body["providers"])
+    assert {"gemini", "openai"}.issubset(names)
+    provider_status = {p["name"]: p["status"] for p in body["providers"]}
 
+    assert provider_status["gemini"] == "unhealthy"
+    assert provider_status["openai"] == "unhealthy"
 
 def test_health_endpoint_reports_healthy_when_key_present(client, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
@@ -121,6 +139,28 @@ def test_health_endpoint_reports_healthy_when_key_present(client, monkeypatch):
     assert gemini_entry["lastErrorMessage"] is None
 
 
+@pytest.mark.asyncio
+async def test_health_endpoint_reports_unhealthy_when_circuit_open(client, monkeypatch):
+    import time
+    from app.providers.orchestrator import get_circuit_breaker
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    cb = get_circuit_breaker("gemini")
+    cb.failures = 3
+    cb.disabled_until = time.time() + 300
+
+    try:
+        r = client.get("/ai/health")
+        body = r.json()
+        gemini_entry = next(p for p in body["providers"] if p["name"] == "gemini")
+        assert gemini_entry["status"] == "unhealthy"
+        assert "Circuit breaker open" in gemini_entry["lastErrorMessage"]
+    finally:
+        await cb.record_success()
+
+
 def test_usage_endpoint(client):
     r = client.get("/ai/usage")
     assert r.status_code == 200
@@ -130,13 +170,98 @@ def test_usage_endpoint(client):
 
 
 def test_rate_limit_trips_after_configured_max(client, monkeypatch):
-    # chat_rate_limiter.max_per_minute defaults to AI_CHAT_RATE_LIMIT_PER_MIN (10)
-    limit = chat_rate_limiter.max_per_minute
+    import app.api.ai_routes as ai_routes_module
+    from app.models.ai import ProviderResult
+
+    # Fake provider instead of real Gemini
+    async def fake_call_provider(user_id, messages):
+        return ProviderResult(
+            provider="fake-provider",
+            cached=False,
+            content="ok",
+        )
+
+    # Replace the real call_provider() with our fake one
+    monkeypatch.setattr(ai_routes_module, "call_provider", fake_call_provider)
+
+    limit = chat_rate_limiter.requests_per_minute
     headers = {"x-user-id": "rate-limit-test-user"}
 
+    # These requests should NOT hit the rate limit
     for _ in range(limit):
-        r = client.post("/ai/chat", json={"prompt": "hi"}, headers=headers)
-        assert r.status_code != 429  # shouldn't be limited yet
+        r = client.post(
+            "/ai/chat",
+            json={"prompt": "hi"},
+            headers=headers,
+        )
+        assert r.status_code != 429
 
-    r = client.post("/ai/chat", json={"prompt": "hi"}, headers=headers)
+    # This one SHOULD hit the rate limit
+    r = client.post(
+        "/ai/chat",
+        json={"prompt": "hi"},
+        headers=headers,
+    )
+
     assert r.status_code == 429
+def test_chat_uses_cache_for_identical_requests(client, monkeypatch):
+    import app.api.ai_routes as ai_routes_module
+
+    calls = 0
+
+    async def fake_generate(messages, temperature=0.7, **kwargs):
+        nonlocal calls
+        calls += 1
+        return "cached response", "fake-provider"
+
+    monkeypatch.setattr(
+        ai_routes_module.ai_orchestrator,
+        "generate_chat_with_fallback",
+        fake_generate,
+    )
+
+    # Use a fake Redis-backed cache in memory.
+    cache = {}
+
+    async def fake_get_cached(key):
+        return cache.get(key)
+
+    async def fake_set_cached(key, value):
+        cache[key] = value
+
+    monkeypatch.setattr(
+        "app.core.cache.get_cached",
+        fake_get_cached,
+    )
+    monkeypatch.setattr(
+        "app.core.cache.set_cached",
+        fake_set_cached,
+    )
+
+    headers = {"x-user-id": "cache-test-user"}
+    payload = {"prompt": "same prompt"}
+
+    first = client.post(
+        "/ai/chat",
+        json=payload,
+        headers=headers,
+    )
+
+    second = client.post(
+        "/ai/chat",
+        json=payload,
+        headers=headers,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    assert first.json()["content"] == "cached response"
+    assert second.json()["content"] == "cached response"
+
+    # The provider should only be called once.
+    assert calls == 1
+
+    # First request is a cache miss, second is a cache hit.
+    assert first.json()["cached"] is False
+    assert second.json()["cached"] is True

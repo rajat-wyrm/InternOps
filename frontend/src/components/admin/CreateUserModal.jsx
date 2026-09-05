@@ -12,11 +12,11 @@ import {
   X,
 } from 'lucide-react';
 import api from '../../lib/axios';
+import useAuthStore from '../../store/auth';
 import CustomSelect from '../CustomSelect';
 
 const ROLE_OPTIONS = [
   { value: '', label: 'Select Role' },
-  { value: 'SENIOR_TL', label: 'Senior TL' },
   { value: 'TL', label: 'TL' },
   { value: 'CAPTAIN', label: 'Captain' },
   { value: 'INTERN', label: 'Intern' },
@@ -32,6 +32,15 @@ const LABELS = {
 };
 
 export default function CreateUserModal({ open, onClose }) {
+  const currentUser = useAuthStore((state) => state.user);
+  const isAdmin = currentUser?.role === 'ADMIN';
+  const allowedRoleOptions = isAdmin
+    ? ROLE_OPTIONS
+    : ROLE_OPTIONS.filter((option) =>
+        currentUser?.role === 'SENIOR_TL'
+          ? ['TL', 'CAPTAIN', 'INTERN'].includes(option.value)
+          : ['CAPTAIN', 'INTERN'].includes(option.value)
+      );
   const queryClient = useQueryClient();
   const [full_name, setfull_name] = useState('');
   const [email, setEmail] = useState('');
@@ -47,6 +56,10 @@ export default function CreateUserModal({ open, onClose }) {
     if (!open) return undefined;
 
     document.body.classList.add('modal-open');
+
+    if (!isAdmin && currentUser?.departmentId) {
+      setDepartmentId(currentUser.departmentId);
+    }
 
     return () => {
       document.body.classList.remove('modal-open');
@@ -110,7 +123,7 @@ export default function CreateUserModal({ open, onClose }) {
     })),
   ];
 
-  const showManagerSelection = ['INTERN', 'CAPTAIN', 'TL'].includes(role);
+  const showManagerSelection = ['INTERN', 'CAPTAIN'].includes(role);
 
   // Register mutation
   const registerMutation = useMutation({
@@ -164,7 +177,9 @@ export default function CreateUserModal({ open, onClose }) {
       email,
       password,
       role,
-      departmentId: departmentId || undefined,
+      departmentId: isAdmin
+        ? departmentId || undefined
+        : currentUser?.departmentId,
       managerId: managerId || undefined,
     };
 
@@ -181,11 +196,11 @@ export default function CreateUserModal({ open, onClose }) {
 
   const modal = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in"
+      className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 backdrop-blur-sm p-4"
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-3xl max-h-[88vh] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl animate-scale-up text-slate-900 dark:text-white overflow-hidden flex flex-col"
+        className="internops-modal-panel w-full max-w-3xl max-h-[calc(100vh-2rem)] rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl animate-scale-up text-slate-900 dark:text-white overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -303,7 +318,7 @@ export default function CreateUserModal({ open, onClose }) {
                       setRole(value);
                       setManagerId(''); // Reset manager on role change
                     }}
-                    options={ROLE_OPTIONS}
+                    options={allowedRoleOptions}
                     placeholder="Select Role"
                     disabled={registerMutation.isPending}
                     className="[&>button]:pl-11"
@@ -321,8 +336,8 @@ export default function CreateUserModal({ open, onClose }) {
                     value={departmentId}
                     onChange={setDepartmentId}
                     options={departmentOptions}
+                    disabled={!isAdmin || registerMutation.isPending}
                     placeholder="Select Dept"
-                    disabled={registerMutation.isPending}
                     className="[&>button]:pl-11"
                   />
                 </div>

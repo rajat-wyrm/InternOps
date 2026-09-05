@@ -4,6 +4,7 @@ const { verifyAccessToken } = require('../utils/tokens');
 
 const SESSION_COOKIE = 'csrf-sid';
 const TOKEN_COOKIE = 'csrf-token';
+const ONE_DAY_IN_SECONDS = 24 * 60 * 60;
 
 function getSecret() {
   const secret = config.jwt?.secret;
@@ -49,6 +50,78 @@ function logCsrfWarn(request, details, message) {
   request.log?.warn(details, message);
 }
 
+function normalizeOrigin(value) {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return null;
+  }
+}
+
+function getTrustedOrigins() {
+  const origins = [];
+
+  const addValue = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach(addValue);
+    } else if (typeof val === 'string') {
+      if (val.includes(',')) {
+        val.split(',').forEach((v) => addValue(v.trim()));
+      } else {
+        const normalized = normalizeOrigin(val);
+        if (normalized && normalized !== '*') {
+          origins.push(normalized);
+        }
+      }
+    }
+  };
+
+  addValue(config.corsOrigin);
+  addValue(config.appUrl);
+
+  return [...new Set(origins)];
+}
+
+function isTrustedRequestOrigin(request) {
+  const originHeader = request.headers?.origin;
+  const refererHeader = request.headers?.referer;
+  const candidates = [originHeader, refererHeader].filter(Boolean);
+
+  if (!candidates.length) {
+    request.log?.warn(
+      { url: request.url, method: request.method },
+      'CSRF: no Origin or Referer header present — relying on CSRF token and bearer validation'
+    );
+    return true;
+  }
+
+  const trustedOrigins = new Set(getTrustedOrigins());
+  const isDev = config.nodeEnv !== 'production';
+
+  return candidates.some((candidate) => {
+    const normalized = normalizeOrigin(candidate);
+    if (!normalized) return false;
+
+    if (trustedOrigins.has(normalized)) {
+      return true;
+    }
+
+    if (isDev) {
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalized)) {
+        return true;
+      }
+    }
+
+    return false;
+  });
+}
+
 function readSession(request) {
   const cookies = parseCookies(request.headers.cookie);
   const raw = cookies[SESSION_COOKIE];
@@ -70,9 +143,11 @@ function writeSession(reply, sessionId, userId = null) {
   const signed = `${payload}.${sign(payload)}`;
   reply.setCookie(SESSION_COOKIE, signed, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    secure: config.cookie.secure,
+    sameSite: config.cookie.sameSite,
+    domain: config.cookie.domain,
     path: '/',
+    maxAge: ONE_DAY_IN_SECONDS, // 24 hours
   });
 }
 
@@ -88,9 +163,11 @@ function rotateAndSetCsrf(request, reply, userId = null) {
   const csrfToken = tokenFor(newSid);
   reply.setCookie(TOKEN_COOKIE, csrfToken, {
     httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    secure: config.cookie.secure,
+    sameSite: config.cookie.sameSite,
+    domain: config.cookie.domain,
     path: '/',
+    maxAge: ONE_DAY_IN_SECONDS, // 24 hours
   });
   return csrfToken;
 }
@@ -137,9 +214,11 @@ function generateToken(request, reply) {
   const token = getOrCreateToken(request, reply);
   reply.setCookie('csrf-token', token, {
     httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    secure: config.cookie.secure,
+    sameSite: config.cookie.sameSite,
+    domain: config.cookie.domain,
     path: '/',
+    maxAge: ONE_DAY_IN_SECONDS,
   });
   return token;
 }
@@ -150,6 +229,8 @@ const EXEMPT = [
   '/api/v1/auth/logout',
   '/api/v1/auth/forgot-password',
   '/api/v1/auth/reset-password',
+  '/api/v1/github/webhook',
+  '/api/v1/client-error',
   '/docs',
   '/docs/json',
 ];

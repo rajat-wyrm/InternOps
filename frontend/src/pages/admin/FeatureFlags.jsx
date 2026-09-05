@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import useFeatureFlagsStore from '../../store/featureFlags';
 
@@ -75,15 +76,15 @@ function EditModal({ flag, onClose, onSave, saving }) {
     });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="internops-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
         onClick={onClose}
       />
 
       {/* Panel */}
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-fade-in-up">
+      <div className="internops-modal-panel relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-fade-in-up">
         {/* Header gradient stripe */}
         <div className="h-1.5 w-full bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500" />
 
@@ -369,6 +370,8 @@ function FlagCard({ flag, onEdit, onKillSwitch, onEnable, toggling }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function FeatureFlags() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const qc = useQueryClient();
   const refreshStore = useFeatureFlagsStore((s) => s.refresh);
   const [editTarget, setEditTarget] = useState(null);
@@ -386,6 +389,7 @@ export default function FeatureFlags() {
     queryFn: () =>
       api.get('/feature-flags/definitions').then((r) => r.data.flags),
     staleTime: 10_000,
+    enabled: hydrated && !!accessToken,
   });
 
   const flags = data ?? [];
@@ -446,7 +450,7 @@ export default function FeatureFlags() {
   };
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* ── Toast ── */}
       {toast && (
         <div
