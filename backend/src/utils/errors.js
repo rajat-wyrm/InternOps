@@ -1,4 +1,4 @@
-﻿class AppError extends Error {
+class AppError extends Error {
   constructor(message, statusCode = 500, internalMessage = null) {
     super(message);
 
@@ -29,9 +29,23 @@ class ConflictError extends AppError {
   }
 }
 
+class NotFoundError extends AppError {
+  constructor(message = 'Not Found', internalMessage = null) {
+    super(message, 404, internalMessage);
+  }
+}
+
+class ForbiddenError extends AppError {
+  constructor(message = 'Forbidden', internalMessage = null) {
+    super(message, 403, internalMessage);
+  }
+}
+
 module.exports = {
   AppError,
   UnauthorizedError,
   BadRequestError,
   ConflictError,
+  NotFoundError,
+  ForbiddenError,
 };

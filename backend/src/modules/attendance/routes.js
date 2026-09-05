@@ -17,6 +17,12 @@ const {
 } = require('../notifications/repository');
 const pool = require('../../config/db');
 const { z } = require('zod');
+const { AppError } = require('../../utils/errors');
+
+// Zod schema that accepts a numeric integer id (as a string from URL params).
+const idParamSchema = z
+  .string()
+  .regex(/^\d+$/, ':id must be a positive integer');
 
 async function routes(fastify) {
   // Mark attendance (manager roles; target must be in the requester's hierarchy)
@@ -334,6 +340,118 @@ async function routes(fastify) {
       } catch (err) {
         req.log.error(err, 'Error in GET /attendance/:userId');
         return reply.status(500).send({ error: 'Internal server error' });
+      }
+    }
+  );
+
+  // Get a single attendance record by its PK (ownership-scoped)
+  fastify.get(
+    '/record/:id',
+    {
+      schema: {
+        tags: ['Attendance'],
+        description: 'Get a single attendance record by ID',
+      },
+      preHandler: [auth],
+    },
+    async (req, reply) => {
+      // --- Input validation: :id must be a positive integer ---
+      const paramCheck = idParamSchema.safeParse(req.params.id);
+      if (!paramCheck.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: paramCheck.error.issues,
+        });
+      }
+      const attendanceId = req.params.id;
+
+      try {
+        // repo.getAttendanceById always returns a consistent payload that
+        // includes marked_by_name regardless of the caller's role.
+        // ADMIN passes null as requesterId to bypass ownership checks.
+        const requesterId = req.user.role === 'ADMIN' ? null : req.user.id;
+        const record = await repo.getAttendanceById(attendanceId, requesterId);
+        return reply.send(record);
+      } catch (err) {
+        if (err instanceof AppError) {
+          return reply.status(err.statusCode).send({ error: err.message });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // Update a single attendance record by PK (ownership-scoped, fixes IDOR #1393)
+  fastify.patch(
+    '/record/:id',
+    {
+      schema: {
+        tags: ['Attendance'],
+        description: 'Update an attendance record',
+      },
+      preHandler: [auth, sanitize],
+    },
+    async (req, reply) => {
+      // --- Input validation: :id must be a positive integer ---
+      const paramCheck = idParamSchema.safeParse(req.params.id);
+      if (!paramCheck.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: paramCheck.error.issues,
+        });
+      }
+      const attendanceId = req.params.id;
+
+      const schema = z
+        .object({
+          status: z.enum(['PRESENT', 'ABSENT', 'HALF_DAY']).optional(),
+          remarks: z.string().max(500).optional(),
+        })
+        .refine((d) => d.status !== undefined || d.remarks !== undefined, {
+          message: 'At least one of status or remarks must be provided',
+        });
+
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply
+          .status(400)
+          .send({ error: 'Validation failed', details: parsed.error.issues });
+      }
+
+      const { status, remarks } = parsed.data;
+
+      try {
+        const updated = await dbTx(async (client) => {
+          // updateAttendanceById throws NotFoundError or ForbiddenError on
+          // access failure; the transaction will be rolled back automatically.
+          const row = await repo.updateAttendanceById(
+            attendanceId,
+            req.user.id,
+            { status, remarks },
+            client
+          );
+
+          await createAuditLog(
+            {
+              userId: req.user.id,
+              ...extractRequestInfo(req),
+              action: 'ATTENDANCE_UPDATED',
+              resourceType: 'attendance',
+              resourceId: attendanceId,
+              details: { status, remarks },
+            },
+            client
+          );
+
+          return row;
+        });
+
+        return reply.status(200).send(updated);
+      } catch (err) {
+        if (err instanceof AppError) {
+          return reply.status(err.statusCode).send({ error: err.message });
+        }
+        throw err;
       }
     }
   );

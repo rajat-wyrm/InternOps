@@ -59,6 +59,42 @@ def _get_key_attr(provider_name: str) -> str:
         return "HUGGINGFACE_TOKEN"
     return f"{provider_clean.upper()}_API_KEY"
 
+# Maximum AI requests allowed per minute for a user/client
+RATE_LIMIT_PER_MINUTE = int(
+    os.getenv("RATE_LIMIT_PER_MINUTE", "15")
+)
+import os
+import warnings
+from typing import Any, List, Optional
+from dotenv import load_dotenv
+from pydantic import field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load .env file using dotenv to ensure os.environ is populated
+load_dotenv()
+
+# ==============================================================================
+# Centralized Configuration Constraints
+# ==============================================================================
+SUPPORTED_PROVIDERS = {"gemini", "groq", "openai", "anthropic", "deepseek", "huggingface"}
+
+DEFAULT_MODELS = {
+    "gemini": "gemini-2.5-flash",
+    "groq": "llama-3.3-70b-versatile",
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-3-5-sonnet-latest",
+    "deepseek": "deepseek-chat",
+    "huggingface": "meta-llama/Llama-3-8b-instruct"
+}
+
+PLACEHOLDER_KEYS = {
+    "your_gemini_api_key",
+    "your_groq_api_key",
+    "your_openai_api_key",
+    "your_anthropic_api_key",
+    "your_deepseek_api_key",
+    "your_huggingface_token"
+}
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
