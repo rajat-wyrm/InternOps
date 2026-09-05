@@ -242,7 +242,10 @@ async function csrfCheck(request, reply) {
   }
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
   if (!request.url) return;
-  const path = request.routerPath ?? request.routeOptions?.url ?? request.url.split('?')[0].split('#')[0];
+  const path =
+    request.routerPath ??
+    request.routeOptions?.url ??
+    request.url.split('?')[0].split('#')[0];
   if (EXEMPT.includes(path)) return;
 
   const headerToken = request.headers['x-csrf-token'];
