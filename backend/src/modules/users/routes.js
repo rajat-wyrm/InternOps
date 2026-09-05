@@ -22,7 +22,15 @@ const listUsersQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-const USER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
+const USER_ROLES = [
+  'ADMIN',
+  'MANAGEMENT',
+  'HR',
+  'SENIOR_TL',
+  'TL',
+  'CAPTAIN',
+  'INTERN',
+];
 
 const updateUserSchema = z
   .object({

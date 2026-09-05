@@ -13,7 +13,17 @@ const updateFlagSchema = z.object({
   enabled: z.boolean().optional(),
   rolloutPct: z.number().int().min(0).max(100).optional(),
   allowedRoles: z
-    .array(z.enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']))
+    .array(
+      z.enum([
+        'ADMIN',
+        'MANAGEMENT',
+        'HR',
+        'SENIOR_TL',
+        'TL',
+        'CAPTAIN',
+        'INTERN',
+      ])
+    )
     .nullable()
     .optional(),
   description: z.string().max(500).optional(),

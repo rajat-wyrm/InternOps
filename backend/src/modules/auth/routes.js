@@ -37,7 +37,15 @@ async function routes(fastify) {
             password: { type: 'string', minLength: 8 },
             role: {
               type: 'string',
-              enum: ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+              enum: [
+                'ADMIN',
+                'MANAGEMENT',
+                'HR',
+                'SENIOR_TL',
+                'TL',
+                'CAPTAIN',
+                'INTERN',
+              ],
             },
             managerId: { type: 'string', format: 'uuid' },
             departmentId: { type: 'string', format: 'uuid' },
@@ -77,7 +85,15 @@ async function routes(fastify) {
                   password: { type: 'string', minLength: 8 },
                   role: {
                     type: 'string',
-                    enum: ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+                    enum: [
+                      'ADMIN',
+                      'MANAGEMENT',
+                      'HR',
+                      'SENIOR_TL',
+                      'TL',
+                      'CAPTAIN',
+                      'INTERN',
+                    ],
                   },
                   managerId: { type: 'string', format: 'uuid' },
                   departmentId: { type: 'string', format: 'uuid' },
