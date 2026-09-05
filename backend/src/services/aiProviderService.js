@@ -14,6 +14,9 @@ const COOLDOWN_MS = Number(
 const CACHE_TTL_MS = Number(process.env.AI_CACHE_TTL_MS || 5 * 60 * 1000);
 const CACHE_MAX_ENTRIES = Number(process.env.AI_CACHE_MAX_ENTRIES || 500);
 
+// Maximum allowed size for AI provider responses.
+// We use a 5MB default cap because some payloads (e.g. base64 image generation via FastAPI)
+// can exceed the previous 2MB limit. This protects against stream-amplification OOM attacks.
 const MAX_AI_RESPONSE_BYTES = Number(
   process.env.AI_MAX_RESPONSE_BYTES || 5 * 1024 * 1024
 );
