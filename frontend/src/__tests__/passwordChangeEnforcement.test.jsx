@@ -17,9 +17,9 @@ describe('first-login password enforcement', () => {
     const source = read('App.jsx');
     expect(source).toContain('if (refreshedUser?.mustChangePassword)');
     expect(source).toContain('resetFlags();');
-    expect(source).toContain('await fetchFlags();');
+    expect(source).toMatch(/Promise\.resolve\(fetchFlags\(\)\)\.catch/);
     expect(source.indexOf('resetFlags();')).toBeLessThan(
-      source.indexOf('await fetchFlags();')
+      source.indexOf('Promise.resolve(fetchFlags())')
     );
   });
 
@@ -28,10 +28,12 @@ describe('first-login password enforcement', () => {
     expect(source).toContain(
       'if (!accessToken || user?.mustChangePassword) return undefined;'
     );
-    expect(source).toContain(
-      'enabled: isDepartmentScopedRole && !user?.mustChangePassword'
+    expect(source).toMatch(
+      /enabled:\s*!!accessToken\s*&&\s*isDepartmentScopedRole\s*&&\s*!user\?\.mustChangePassword/
     );
-    expect(source).toContain('enabled: !!user && !user?.mustChangePassword');
+    expect(source).toMatch(
+      /enabled:\s*!!accessToken\s*&&\s*!!user\s*&&\s*!user\?\.mustChangePassword/
+    );
     expect(source).toContain(
       '[accessToken, queryClient, user?.mustChangePassword]'
     );
@@ -39,9 +41,10 @@ describe('first-login password enforcement', () => {
 
   test('redirects temporary-password login to Profile', () => {
     const source = read('pages/Login.jsx');
-    expect(source).toContain(
-      "navigate(data.user?.mustChangePassword ? '/profile' : '/')"
+    expect(source).toMatch(
+      /navigate\(data\.user\?\.mustChangePassword\s*\?\s*['"]\/profile['"]\s*:\s*safeDestination/
     );
+    expect(source).toContain('replace: true');
   });
 
   test('shows instructions and clears the local flag after success', () => {

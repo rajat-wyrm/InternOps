@@ -13,6 +13,8 @@ import {
   ApiErrorState,
 } from '../components/ui';
 export default function Sessions() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -25,6 +27,7 @@ export default function Sessions() {
   } = useQuery({
     queryKey: ['sessions'],
     queryFn: () => api.get('/sessions/me').then((res) => res.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const [confirming, setConfirming] = useState(false);
@@ -57,7 +60,7 @@ export default function Sessions() {
   });
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       <PageHeader
         title="Active Sessions"
         icon={

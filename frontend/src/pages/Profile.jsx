@@ -32,6 +32,7 @@ import {
 } from '../components/ui';
 import useAuthStore from '../store/auth';
 import useFeatureFlagsStore from '../store/featureFlags';
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 
 const ROLE_COLOR = {
   ADMIN: 'purple',
@@ -68,6 +69,8 @@ function initials(name, email) {
 }
 
 export default function Profile() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -91,6 +94,7 @@ export default function Profile() {
   } = useQuery({
     queryKey: ['myProfile'],
     queryFn: () => api.get('/users/me').then((res) => res.data),
+    enabled: hydrated && !!accessToken,
   });
 
   useEffect(() => {
@@ -224,17 +228,12 @@ export default function Profile() {
   const isStrongPassword = Object.values(passwordChecks).every(Boolean);
   const passwordsMatch =
     confirmPassword.length > 0 && newPassword === confirmPassword;
-  if (isLoading) {
-    return (
-      <div className="flex justify-center p-12">
-        <Spinner label="Loading profile..." />
-      </div>
-    );
-  }
-
+  useRouteInitialLoading(
+    !isError && (!hydrated || !accessToken || isLoading || !profile)
+  );
   if (isError) {
     return (
-      <div className="mx-auto max-w-7xl animate-fade-in-up">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-5 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
             <User className="w-6 h-6" />
@@ -306,7 +305,7 @@ export default function Profile() {
   ];
 
   return (
-    <div className="mx-auto max-w-7xl animate-fade-in-up">
+    <div className="mx-auto max-w-7xl">
       {/* Professional Header Block */}
       <div className="mb-5 flex items-center gap-3">
         <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">

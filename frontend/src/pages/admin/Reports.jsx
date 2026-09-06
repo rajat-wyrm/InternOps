@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import { PageHeader, Card, Badge, Spinner } from '../../components/ui';
 import CustomDatePicker from '../../components/CustomDatePicker';
@@ -19,6 +20,8 @@ const STATUS_COLOR = {
 };
 
 export default function Reports() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const today = new Date().toISOString().slice(0, 10);
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
@@ -46,6 +49,7 @@ export default function Reports() {
   const tasksQuery = useQuery({
     queryKey: ['reportTasks'],
     queryFn: () => api.get('/reports/task-completion').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const attendanceData = attendanceQuery.data || [];

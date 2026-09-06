@@ -107,6 +107,11 @@ async function getMemberById(id) {
 }
 
 const EDITABLE_FIELDS = [
+  'email',
+  'department_id',
+  'intern_code',
+  'internship_domain',
+  'offer_letter_url',
   'full_name',
   'phone',
   'college',
@@ -127,7 +132,13 @@ async function updateMember(id, data) {
   const params = [];
   for (const field of EDITABLE_FIELDS) {
     if (data[field] !== undefined) {
-      params.push(data[field] === '' ? null : data[field]);
+      const value =
+        field === 'email' && typeof data[field] === 'string'
+          ? data[field].trim().toLowerCase()
+          : data[field] === ''
+            ? null
+            : data[field];
+      params.push(value);
       sets.push(`${field} = $${params.length}`);
     }
   }

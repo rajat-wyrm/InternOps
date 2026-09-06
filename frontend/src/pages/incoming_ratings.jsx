@@ -180,6 +180,8 @@ export default function Ratings({
   deptId: propDeptId,
   roster = [],
 } = {}) {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const { deptId: routeDeptId } = useParams();
   const deptId = propDeptId || routeDeptId;
   const user = useAuthStore((s) => s.user);
@@ -246,7 +248,7 @@ export default function Ratings({
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
-    enabled: isManager && !isProjectView,
+    enabled: hydrated && !!accessToken && isManager && !isProjectView,
   });
 
   const {
@@ -272,7 +274,7 @@ export default function Ratings({
   } = useQuery({
     queryKey: ['ratings', viewUserId],
     queryFn: () => api.get(`/ratings/${viewUserId}`).then((res) => res.data),
-    enabled: !!viewUserId && !viewAll,
+    enabled: hydrated && !!accessToken && !!viewUserId && !viewAll,
   });
 
   const handleViewDepartmentChange = (dId) => {
@@ -453,7 +455,7 @@ export default function Ratings({
   }, [baseMembers, search, statusFilter, ratingFilter, eligibilityFilter]);
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* Admin Department Navigation Context Banner */}
       {isAdmin && activeDeptId && !isProjectView && (
         <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-indigo-500/20 animate-fade-in">

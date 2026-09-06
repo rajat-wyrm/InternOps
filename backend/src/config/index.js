@@ -86,6 +86,17 @@ function buildRedisConfig() {
   };
 }
 
+function buildCookieConfig() {
+  const production = process.env.NODE_ENV === 'production';
+  const sameSite = (
+    process.env.COOKIE_SAME_SITE || (production ? 'none' : 'lax')
+  ).toLowerCase();
+  const secure = process.env.COOKIE_SECURE
+    ? process.env.COOKIE_SECURE === 'true'
+    : production;
+  const domain = process.env.COOKIE_DOMAIN?.trim() || undefined;
+  return { secure, sameSite, domain };
+}
 function resolveRefreshSecret() {
   const secret = process.env.JWT_REFRESH_SECRET;
 
@@ -123,6 +134,7 @@ module.exports = {
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   appUrl:
     process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
+  cookie: buildCookieConfig(),
   redis: buildRedisConfig(),
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,

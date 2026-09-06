@@ -30,6 +30,8 @@ describe('Home dashboard', () => {
           email: 'admin@internops.test',
           full_name: 'Admin User',
         },
+        accessToken: 'test-access-token',
+        hydrated: true,
       })
     );
 

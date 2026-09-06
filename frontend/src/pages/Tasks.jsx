@@ -52,6 +52,8 @@ export default function Tasks({
   deptId: propDeptId,
   roster = [],
 } = {}) {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const { deptId: routeDeptId } = useParams();
   const deptId = propDeptId || routeDeptId;
   const { user } = useAuthStore();
@@ -106,7 +108,7 @@ export default function Tasks({
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
-    enabled: isAdmin,
+    enabled: hydrated && !!accessToken && isAdmin,
   });
 
   const activeDepartment = departments.find((d) => d.id === activeDeptId);
@@ -132,13 +134,13 @@ export default function Tasks({
     queryKey: ['proofs', selectedProofTaskId],
     queryFn: () =>
       api.get(`/proofs/task/${selectedProofTaskId}`).then((res) => res.data),
-    enabled: !!selectedProofTaskId,
+    enabled: hydrated && !!accessToken && !!selectedProofTaskId,
   });
 
   const { data: myProofs } = useQuery({
     queryKey: ['myProofs'],
     queryFn: () => api.get('/proofs/my').then((res) => res.data),
-    enabled: user?.role === 'INTERN',
+    enabled: hydrated && !!accessToken && user?.role === 'INTERN',
   });
 
   const submitMutation = useMutation({
@@ -311,7 +313,7 @@ export default function Tasks({
   };
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* Admin Department Navigation Context Banner */}
       {isAdmin && activeDeptId && !isProjectView && (
         <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-indigo-500/20 animate-fade-in">

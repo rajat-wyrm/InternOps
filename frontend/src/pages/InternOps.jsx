@@ -25,6 +25,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
+import useAuthStore from '../store/auth';
 import api from '../lib/axios';
 import {
   Card,
@@ -51,6 +52,8 @@ const STATUS_ICONS = {
 };
 
 export default function InternOps() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -80,6 +83,7 @@ export default function InternOps() {
       api
         .get('/internops/summary', { params: { startDate, endDate } })
         .then((res) => res.data),
+    enabled: hydrated && !!accessToken,
     staleTime: 30 * 1000, // cache for 30s
   });
 
@@ -203,7 +207,7 @@ export default function InternOps() {
   }, [interns, selectedInternId]);
 
   return (
-    <div className="relative min-h-[80vh] animate-fade-in-up text-slate-900 dark:text-white">
+    <div className="relative min-h-[80vh] text-slate-900 dark:text-white">
       {/* Header Block */}
       <PageHeader
         title="InternOps"

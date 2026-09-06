@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Loader2,
 } from 'lucide-react';
+import useAuthStore from '../store/auth';
 import api from '../lib/axios';
 import {
   Card,
@@ -55,6 +56,8 @@ export function parseLoginFailureNotification(message) {
 }
 
 export default function Notifications() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -65,6 +68,7 @@ export default function Notifications() {
       api.get(`/notifications?page=${page}&limit=20`).then((res) => res.data),
     refetchInterval: 30000,
     refetchIntervalInBackground: false,
+    enabled: hydrated && !!accessToken,
   });
 
   const invalidate = () =>
@@ -186,7 +190,7 @@ export default function Notifications() {
   );
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* Professional Header Block */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
         <div className="flex items-center gap-4">

@@ -192,7 +192,9 @@ describe('Login Component Tests', () => {
         email: 'test@example.com',
         password: 'password123',
       });
-      expect(mockNavigate).toHaveBeenCalledWith('/');
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard', {
+        replace: true,
+      });
     });
   });
 });

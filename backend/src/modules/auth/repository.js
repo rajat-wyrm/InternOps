@@ -235,6 +235,173 @@ async function claimRefreshToken(tokenHash) {
   return rows[0]?.user_id ?? null;
 }
 
+async function rotateRefreshTokenWithRecovery({
+  consumedTokenHash,
+  userId,
+  replacementTokenHash,
+  replacementExpiresAt,
+  clientFingerprint,
+  encryptedPayload,
+  recoveryExpiresAt,
+}) {
+  let client;
+
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const claimResult = await client.query(
+      `UPDATE refresh_tokens
+       SET revoked = TRUE
+       WHERE token_hash = $1
+         AND revoked = FALSE
+         AND expires_at > NOW()
+       RETURNING user_id`,
+      [consumedTokenHash]
+    );
+
+    if (claimResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    const claimedUserId = claimResult.rows[0].user_id;
+
+    if (String(claimedUserId) !== String(userId)) {
+      await client.query('ROLLBACK');
+      return {
+        claimedUserId,
+        rotated: false,
+      };
+    }
+    // Once the replacement token is used successfully, the browser proved it
+    // received the rotated cookie. The predecessor no longer needs recovery.
+    await client.query(
+      `DELETE FROM refresh_token_recovery
+       WHERE replacement_token_hash = $1`,
+      [consumedTokenHash]
+    );
+
+    await client.query(
+      `UPDATE refresh_tokens
+       SET revoked = TRUE
+       WHERE user_id = $1
+         AND revoked = FALSE`,
+      [userId]
+    );
+
+    await client.query(
+      `INSERT INTO refresh_tokens
+       (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [userId, replacementTokenHash, replacementExpiresAt]
+    );
+
+    await client.query(
+      `INSERT INTO refresh_token_recovery (
+         consumed_token_hash,
+         user_id,
+         replacement_token_hash,
+         client_fingerprint,
+         encrypted_payload,
+         expires_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (consumed_token_hash)
+       DO UPDATE SET
+         user_id = EXCLUDED.user_id,
+         replacement_token_hash =
+           EXCLUDED.replacement_token_hash,
+         client_fingerprint =
+           EXCLUDED.client_fingerprint,
+         encrypted_payload =
+           EXCLUDED.encrypted_payload,
+         expires_at = EXCLUDED.expires_at,
+         created_at = NOW()`,
+      [
+        consumedTokenHash,
+        userId,
+        replacementTokenHash,
+        clientFingerprint,
+        encryptedPayload,
+        recoveryExpiresAt,
+      ]
+    );
+
+    await client.query(
+      `DELETE FROM refresh_token_recovery
+       WHERE expires_at <= NOW()`
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      claimedUserId,
+      rotated: true,
+    };
+  } catch (error) {
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+    }
+
+    throw error;
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+}
+
+async function getRefreshRecoveryPostgres(consumedTokenHash) {
+  const result = await pool.query(
+    `SELECT
+       recovery.user_id,
+       recovery.client_fingerprint,
+       recovery.encrypted_payload,
+       recovery.replacement_token_hash
+     FROM refresh_token_recovery recovery
+     INNER JOIN refresh_tokens replacement
+       ON replacement.token_hash =
+          recovery.replacement_token_hash
+     WHERE recovery.consumed_token_hash = $1
+       AND recovery.expires_at > NOW()
+       AND replacement.revoked = FALSE
+       AND replacement.expires_at > NOW()
+     LIMIT 1`,
+    [consumedTokenHash]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function cacheRefreshToken(userId, tokenHash, expiresAt) {
+  try {
+    const redis = await getRedisClient();
+
+    if (!redis) return false;
+
+    const ttl = Math.max(
+      1,
+      Math.floor((expiresAt.getTime() - Date.now()) / 1000)
+    );
+
+    await redis.set(
+      `refresh_token:${tokenHash}`,
+      JSON.stringify({
+        userId,
+        createdAt: Date.now(),
+      }),
+      { EX: ttl }
+    );
+
+    await redis.sAdd(`user_tokens:${userId}`, tokenHash);
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function revokeRefreshTokenRedis(tokenHash) {
   const redis = await getRedisClient();
   if (redis) {
@@ -324,4 +491,7 @@ module.exports = {
   getRefreshTokenRedis,
   validateRefreshToken,
   claimRefreshToken,
+  rotateRefreshTokenWithRecovery: rotateRefreshTokenWithRecovery,
+  getRefreshRecoveryPostgres: getRefreshRecoveryPostgres,
+  cacheRefreshToken: cacheRefreshToken,
 };

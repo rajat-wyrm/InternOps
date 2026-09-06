@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Mail,
   Lock,
@@ -191,6 +191,7 @@ function NoticeList() {
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -211,7 +212,17 @@ export default function Login() {
       api.post('/auth/login', creds).then((res) => res.data),
     onSuccess: (data) => {
       setAuth({ accessToken: data.accessToken, user: data.user });
-      navigate(data.user?.mustChangePassword ? '/profile' : '/');
+      const requestedPath = location.state?.from?.pathname;
+      const safeDestination =
+        typeof requestedPath === 'string' &&
+        requestedPath.startsWith('/') &&
+        !requestedPath.startsWith('//') &&
+        requestedPath !== '/login'
+          ? `${requestedPath}${location.state?.from?.search || ''}${location.state?.from?.hash || ''}`
+          : '/dashboard';
+      navigate(data.user?.mustChangePassword ? '/profile' : safeDestination, {
+        replace: true,
+      });
     },
     onError: (err) => setError(err.response?.data?.error || 'Login failed'),
   });

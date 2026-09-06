@@ -158,7 +158,6 @@ html:not(.dark) :where(input, textarea, select)[class~='bg-white'] {
   transform: translateY(-3px);
   box-shadow: 0 12px 30px -10px rgba(79, 70, 229, 0.25);
 }
-
 /* Consistent dropdown arrow spacing across the whole app */
 select:not([multiple]) {
   appearance: none;

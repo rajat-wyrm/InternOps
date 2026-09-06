@@ -17,6 +17,9 @@ const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
 const ASSIGNABLE_ROLES = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
 const detailFields = {
+  email: z.string().email().max(255).optional(),
+  department_id: z.string().uuid().nullable().optional(),
+  intern_code: z.string().max(100).nullable().optional(),
   full_name: z.string().max(255).optional(),
   phone: z.string().max(20).optional(),
   college: z.string().max(255).optional(),
@@ -331,7 +334,39 @@ async function routes(fastify) {
       const data = updateSchema.parse(req.body);
       const before = await repo.getMemberById(req.params.id);
       if (!before) return reply.status(404).send({ error: 'Member not found' });
-      const after = await repo.updateMember(req.params.id, data);
+      let normalizedData = data;
+      if (data.email !== undefined) {
+        const normalizedEmail = data.email.trim().toLowerCase();
+        if (
+          normalizedEmail !== before.email &&
+          (await repo.emailExists(normalizedEmail))
+        ) {
+          return reply.status(409).send({
+            error: 'A user with this email already exists',
+            code: 'EMAIL_ALREADY_EXISTS',
+          });
+        }
+        normalizedData = { ...data, email: normalizedEmail };
+      }
+      let after;
+      try {
+        after = await repo.updateMember(req.params.id, normalizedData);
+      } catch (error) {
+        if (error.code === '23505') {
+          const isEmail = String(error.constraint || '')
+            .toLowerCase()
+            .includes('email');
+          return reply.status(409).send({
+            error: isEmail
+              ? 'A user with this email already exists'
+              : 'A user with this Intern Code already exists',
+            code: isEmail
+              ? 'EMAIL_ALREADY_EXISTS'
+              : 'INTERN_CODE_ALREADY_EXISTS',
+          });
+        }
+        throw error;
+      }
       req.auditOnResponse = {
         userId: req.user.id,
         action: 'MEMBER_DETAILS_UPDATED',
