@@ -14,7 +14,7 @@ def get_redis_client():
     from . import rate_limiter
 
     return rate_limiter.redis_client
-headers = {"x-user-id": "rate-limit-test-user"}
+
 
 async def enforce_rate_limit(
     request: Request,
@@ -27,4 +27,4 @@ async def enforce_rate_limit(
     await chat_rate_limiter.check_rate_limit(
         request=request,
         current_user=user,
-    )
+    )
