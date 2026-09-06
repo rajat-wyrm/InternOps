@@ -27,14 +27,6 @@ import WorkbookImportModal from '../../components/admin/WorkbookImportModal';
 import InternStatCards from '../../components/admin/InternStatCards';
 import InternsByDomainChart from '../../components/admin/InternsByDomainChart';
 
-const ROLE_LABEL = {
-  ADMIN: 'Admin',
-  SENIOR_TL: 'Senior TL',
-  TL: 'TL',
-  CAPTAIN: 'Captain',
-  INTERN: 'Intern',
-};
-
 const ROLE_COLOR = {
   ADMIN:
     'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60',
@@ -277,7 +269,6 @@ export default function AdminDashboard() {
           </button>
         </div>
       </div>
-
       {/* Intern Summary Statistic Cards */}
       <InternStatCards />
 
@@ -285,6 +276,7 @@ export default function AdminDashboard() {
       <InternsByDomainChart />
 
       {/* Search and Filters */}
+
       <Card className="p-5 md:p-6 mb-6 border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
           <div className="flex items-center gap-3">
