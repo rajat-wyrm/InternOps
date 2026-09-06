@@ -9,33 +9,43 @@ const log = pino(
 );
 
 function buildRedisConfig() {
-  const restUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-
   const explicitHost = process.env.REDIS_HOST;
   const explicitPort = parseInt(process.env.REDIS_PORT, 10) || 6379;
   const explicitUsername = process.env.REDIS_USERNAME || 'default';
   const explicitPassword = process.env.REDIS_PASSWORD;
 
-  if (explicitHost && explicitPassword) {
+  if (explicitHost) {
+    const isLocalHost =
+      explicitHost === 'localhost' ||
+      explicitHost === '127.0.0.1' ||
+      explicitHost === 'redis';
+
+    const useTls =
+      process.env.REDIS_TLS !== undefined
+        ? process.env.REDIS_TLS === 'true'
+        : !isLocalHost;
+
     return {
       enabled: true,
       host: explicitHost,
       port: explicitPort,
       username: explicitUsername,
-      password: explicitPassword,
-      tls: process.env.REDIS_TLS !== 'false',
+      password: explicitPassword || undefined,
+      tls: useTls,
     };
   }
 
-  if (!restUrl || !token) {
+  const restUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (!restUrl || !token || restUrl === 'your-redis-url') {
     return {
       enabled: false,
       host: null,
       port: 6379,
       username: 'default',
       password: null,
-      tls: true,
+      tls: false,
     };
   }
 
@@ -61,7 +71,7 @@ function buildRedisConfig() {
       port: 6379,
       username: 'default',
       password: null,
-      tls: true,
+      tls: false,
     };
   }
 
@@ -76,17 +86,13 @@ function buildRedisConfig() {
 }
 
 function resolveRefreshSecret() {
-  const independent = process.env.JWT_REFRESH_SECRET;
-  if (independent && independent.trim() !== '') return independent;
+  const secret = process.env.JWT_REFRESH_SECRET;
 
-  if (process.env.NODE_ENV !== 'test') {
-    log.warn(
-      'JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
-    );
+  if (!secret || secret.trim() === '') {
+    throw new Error('JWT_REFRESH_SECRET is not configured');
   }
-  return process.env.JWT_SECRET
-    ? `${process.env.JWT_SECRET}_refresh`
-    : undefined;
+
+  return secret;
 }
 
 const envSchema = z.object({

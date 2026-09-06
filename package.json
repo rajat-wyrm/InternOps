@@ -18,7 +18,8 @@
     "format": "prettier --write .",
     "clean": "rimraf node_modules && npm run clean --workspaces --if-present",
     "reinstall": "npm run clean && npm install",
-    "prepare": "husky"
+    "prepare": "husky",
+    "prompt-test": "pytest ai-service/app/tests"
   },
   "workspaces": [
     "frontend",
@@ -37,7 +38,10 @@
   },
   "homepage": "https://github.com/rajat-wyrm/InternOps#readme",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "concurrently": "^10.0.3",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.9.5",

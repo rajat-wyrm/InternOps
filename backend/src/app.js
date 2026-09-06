@@ -1,6 +1,8 @@
 require('dotenv').config();
 const validateEnv = require('./config/validateEnv');
 validateEnv();
+const auth = require('./middleware/auth');
+const rbac = require('./middleware/rbac');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
@@ -10,12 +12,11 @@ const metrics = require('./utils/metrics');
 const { initializeWebSocket, getIO } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
 const { getRedisStatus } = require('./config/redis');
-const authenticate = require('./middleware/auth');
-const rbac = require('./middleware/rbac');
 const { csrfMiddleware } = require('./middleware/csrf');
 const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
 const { setupCronJobs } = require('./utils/cron');
+const githubSyncOrchestrator = require('./modules/github-sync/orchestrator');
 
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
@@ -31,34 +32,39 @@ const app = Fastify({
 });
 
 // Layer 1: Register monitoring routes BEFORE global middleware to ensure observability
-app.get(
-  '/metrics',
-  {
-    config: {
-      rateLimit: false,
-    },
-  },
-  metrics.metricsEndpoint
-);
-
-app.get(
-  '/health',
-  {
-    config: {
-      rateLimit: false,
-    },
-  },
+preHandler: ([
+  auth,
+  rbac('ADMIN'),
   async (req, reply) => {
-    const redisStatus = getRedisStatus();
-    if (process.env.NODE_ENV === 'test') {
+    const authHeader = req.headers.authorization;
+    const expectedToken = `Bearer ${process.env.METRICS_TOKEN}`;
+
+    if (authHeader !== expectedToken) {
+      return reply.status(404).send();
+    }
+  },
+],
+  app.get(
+    '/health',
+    {
+      config: {
+        rateLimit: false,
+      },
+    },
+    async (req, reply) => {
+      const redisStatus = getRedisStatus();
+      if (process.env.NODE_ENV === 'test') {
+        return reply.send({ status: 'ok' });
+      }
+      if (redisStatus === 'disconnected') {
+        return reply
+          .status(503)
+          .send({ status: 'degraded', redis: 'disconnected' });
+      }
       return reply.send({ status: 'ok' });
     }
-    if (redisStatus === 'disconnected') {
-      return reply.status(503).send({ status: 'degraded' });
-    }
-    return reply.send({ status: 'ok' });
-  }
-);
+  ));
+
 app.get(
   '/health/db',
   {
@@ -109,7 +115,6 @@ app.get(
 
 app.register(require('@fastify/cors'), {
   origin: (origin, cb) => {
-    // In development mode, allow any localhost or 127.0.0.1 port
     if (config.nodeEnv !== 'production') {
       if (
         !origin ||
@@ -129,7 +134,9 @@ app.register(require('@fastify/cors'), {
       return cb(null, true);
     }
 
-    return cb(new Error('Not allowed by CORS'), false);
+    const corsError = new Error('Not allowed by CORS');
+    corsError.statusCode = 403;
+    return cb(corsError, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -155,7 +162,6 @@ app.register(require('@fastify/compress'), {
   encodings: ['gzip', 'deflate', 'br'],
 });
 
-//  Register once globally — no Redis dependency
 app.register(require('@fastify/rate-limit'), {
   global: true,
   max: config.rateLimit.globalMax,
@@ -169,8 +175,7 @@ app.addHook('preHandler', async (request, reply) => {
 
   return csrfMiddleware(request, reply);
 });
-// Sanitize all string fields in body, query, and params using sanitize-html
-// (allowlist of zero tags) to prevent XSS. Runs after body parsing.
+
 app.addHook('preHandler', sanitizationMiddleware);
 
 app.register(require('@fastify/multipart'), {
@@ -219,7 +224,6 @@ if (process.env.NODE_ENV !== 'test') {
   });
 
   const authMiddleware = require('./middleware/auth');
-  const rbac = require('./middleware/rbac');
 
   app.register(require('@fastify/swagger-ui'), {
     routePrefix: '/api-docs',
@@ -236,9 +240,7 @@ if (process.env.NODE_ENV !== 'test') {
     },
   });
 
-  // Dynamically ensure all routes have complete schema definitions (including response schemas)
   app.addHook('onRoute', (routeOptions) => {
-    // Only apply to our business API routes
     if (!routeOptions.url.startsWith('/api/')) return;
 
     routeOptions.schema = routeOptions.schema || {};
@@ -276,13 +278,7 @@ if (process.env.NODE_ENV !== 'test') {
   });
 }
 
-// ---- API routes (delegated to dedicated router factory) ----
-// v1 — stable; all existing clients target this prefix.
 app.register(require('./routes'), { prefix: '/api/v1' });
-
-// v2 — introduced alongside v1 so both are served concurrently.
-// Breaking changes land here; v1 receives Deprecation+Sunset headers
-// via the onSend hook in routes.js once V1_DEPRECATED=true is set.
 app.register(require('./routes.v2'), { prefix: '/api/v2' });
 
 app.get('/', async (req, reply) => {
@@ -321,8 +317,6 @@ app.addHook('onResponse', async (request, reply) => {
   metrics.observeHttpRequest(request, reply, request.startTime);
 
   if (!request?.auditOnResponse) return;
-
-  // Only emit audit log for successful responses (status codes 2xx)
   if (reply.statusCode >= 200 && reply.statusCode < 300) {
     try {
       await createAuditLog(request.auditOnResponse);
@@ -336,8 +330,6 @@ app.addHook('onResponse', async (request, reply) => {
 });
 
 app.setErrorHandler((error, request, reply) => {
-  // Fastify AJV validation errors from schema.body / params / querystring.
-  // These are safe to return as structured client-facing validation errors.
   if (error.validation) {
     request.log.warn(
       {
@@ -363,8 +355,6 @@ app.setErrorHandler((error, request, reply) => {
     });
   }
 
-  // Zod validation errors.
-  // Return validation details, but do not expose stack traces or internal debug info.
   if (error.name === 'ZodError' || Array.isArray(error.issues)) {
     request.log.warn(
       {
@@ -386,8 +376,6 @@ app.setErrorHandler((error, request, reply) => {
     });
   }
 
-  // Preserve safe messages for explicit HTTP/client errors and AppError instances.
-  // Hide internal details for unexpected server errors.
   const statusCode = error.statusCode || 500;
   const isClientError = statusCode >= 400 && statusCode < 500;
   const isOperational = error.isOperational === true;
@@ -423,7 +411,10 @@ app.setErrorHandler((error, request, reply) => {
 
 if (process.env.NODE_ENV !== 'test') {
   setupCronJobs();
+  githubSyncOrchestrator.initialize();
 }
+
+const bulkJobQueue = require('./services/bulkJobQueue');
 
 const start = async () => {
   try {
@@ -432,6 +423,7 @@ const start = async () => {
       host: config.host,
     });
     initializeWebSocket(app.server, app.log);
+    await bulkJobQueue.init();
     app.log.info(
       { port: config.port },
       `Server listening on port ${config.port}`
@@ -453,10 +445,8 @@ const gracefulShutdown = async (signal) => {
   }, SHUTDOWN_TIMEOUT);
 
   try {
-    // Stop accepting new requests and finish in-flight requests
     await app.close();
 
-    // Close WebSocket server if initialized
     try {
       const io = getIO();
       if (io) {
@@ -468,8 +458,13 @@ const gracefulShutdown = async (signal) => {
       app.log.warn({ err: wsErr }, 'Error closing WebSocket server');
     }
 
-    // Close database pool connections
     await pool.end();
+
+    try {
+      githubSyncOrchestrator.shutdown();
+    } catch (syncErr) {
+      app.log.warn({ err: syncErr }, 'Error shutting down GitHub sync');
+    }
 
     clearTimeout(forceShutdown);
     app.log.info('Cleanup completed. Exiting now.');

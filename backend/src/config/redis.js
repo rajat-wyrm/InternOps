@@ -5,6 +5,9 @@ const logger = require('../logger');
 let client = null;
 let clientPromise = null;
 let redisConnected = false;
+let listenersAttached = false;
+let reconnectDelay = 1000;
+const MAX_RECONNECT_DELAY = 30000;
 
 function getSafeRedisError(err) {
   return {
@@ -17,21 +20,32 @@ function getSafeRedisError(err) {
 function buildRedisClientOptions() {
   const redisConfig = config.redis;
 
-  if (!redisConfig?.enabled || !redisConfig.host || !redisConfig.password) {
+  if (!redisConfig?.enabled || !redisConfig.host) {
     return null;
   }
 
-  return {
+  const options = {
     username: redisConfig.username || 'default',
-    password: redisConfig.password,
     socket: {
       host: redisConfig.host,
       port: redisConfig.port || 6379,
-      tls: redisConfig.tls !== false,
+      tls: redisConfig.tls !== false && process.env.REDIS_TLS === 'true',
       connectTimeout: 1000,
       reconnectStrategy: false,
     },
   };
+
+  if (redisConfig.password) {
+    options.password = redisConfig.password;
+  }
+
+  return options;
+}
+function scheduleReconnect() {
+  setTimeout(() => {
+    clientPromise = null;
+    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+  }, reconnectDelay).unref();
 }
 
 async function getRedisClient() {
@@ -44,39 +58,65 @@ async function getRedisClient() {
   if (clientPromise) return clientPromise;
 
   clientPromise = (async () => {
+    let c = null;
+
     try {
-      const c = redis.createClient(redisOptions);
+      c = redis.createClient(redisOptions);
 
-      c.on('error', (err) => {
-        logger.warn(
-          { err: getSafeRedisError(err), name: 'redis_error' },
-          'Redis connection error'
-        );
-      });
+      if (!listenersAttached) {
+        c.on('error', (err) => {
+          logger.warn(
+            {
+              err: getSafeRedisError(err),
+              name: 'redis_error',
+            },
+            'Redis connection error'
+          );
+        });
 
-      c.on('disconnect', () => {
-        redisConnected = false;
-        logger.warn('Redis disconnected');
-      });
+        c.on('disconnect', () => {
+          redisConnected = false;
+          client = null;
+          clientPromise = null;
 
-      c.on('connect', () => {
-        redisConnected = true;
-        logger.info('Redis connected');
-      });
+          logger.warn('Redis disconnected');
+        });
+
+        c.on('connect', () => {
+          redisConnected = true;
+          logger.info('Redis connected');
+        });
+
+        listenersAttached = true;
+      }
 
       await c.connect();
+
       client = c;
+      redisConnected = true;
+      reconnectDelay = 1000;
+
       return client;
     } catch (err) {
-      logger.warn(
-        { err: getSafeRedisError(err), name: 'redis_unavailable' },
-        'Redis unavailable - continuing without it'
-      );
+      logger.warn('Redis unavailable - continuing in fallback mode');
+
+      redisConnected = false;
+
+      if (c) {
+        try {
+          await c.disconnect();
+        } catch (discErr) {
+          // Ignore disconnect errors
+        }
+      }
 
       client = null;
+      clientPromise = null;
+      listenersAttached = false;
+      redisConnected = false;
 
-      // Do NOT reset clientPromise here. Keep the settled-null promise so each
-      // subsequent call returns null immediately instead of retrying repeatedly.
+      scheduleReconnect();
+
       return null;
     }
   })();
@@ -101,7 +141,18 @@ async function blacklistAccessToken(jti, ttl) {
 
 async function isAccessTokenBlacklisted(jti) {
   const client = await getRedisClient();
-  if (!client) return false;
+
+  if (!client) {
+    logger.error(
+      { jti },
+
+      'Redis unavailable — cannot verify token revocation status'
+    );
+
+    // Fail closed: treat token as revoked when revocation cannot be verified.
+
+    return process.env.NODE_ENV !== 'test';
+  }
 
   return (await client.exists(`blacklist:${jti}`)) === 1;
 }
