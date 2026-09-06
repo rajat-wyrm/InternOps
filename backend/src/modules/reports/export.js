@@ -43,7 +43,10 @@ async function routes(fastify) {
   fastify.get(
     '/attendance-detail-csv',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')],
+      preHandler: [
+        auth,
+        rbac('ADMIN', 'MANAGEMENT', 'HR', 'SENIOR_TL', 'TL', 'CAPTAIN'),
+      ],
       schema: {
         tags: ['Reports'],
         description: 'Export detailed historical attendance CSV',
@@ -86,7 +89,7 @@ async function routes(fastify) {
   fastify.get(
     '/attendance-csv',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'MANAGEMENT', 'HR', 'SENIOR_TL')],
       schema: {
         tags: ['Reports'],
         description: 'Export attendance as CSV',
@@ -111,7 +114,7 @@ async function routes(fastify) {
   fastify.get(
     '/ratings-csv',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'MANAGEMENT', 'HR', 'SENIOR_TL')],
       schema: {
         tags: ['Reports'],
         description: 'Export ratings as CSV',
@@ -141,7 +144,7 @@ async function routes(fastify) {
   fastify.get(
     '/tasks-csv',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'MANAGEMENT', 'HR', 'SENIOR_TL')],
       schema: {
         tags: ['Reports'],
         description: 'Export task completion as CSV',

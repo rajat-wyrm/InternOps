@@ -17,6 +17,9 @@ import CustomSelect from '../CustomSelect';
 
 const ROLE_OPTIONS = [
   { value: '', label: 'Select Role' },
+  { value: 'MANAGEMENT', label: 'Management' },
+  { value: 'HR', label: 'HR' },
+  { value: 'SENIOR_TL', label: 'Senior TL' },
   { value: 'TL', label: 'TL' },
   { value: 'CAPTAIN', label: 'Captain' },
   { value: 'INTERN', label: 'Intern' },

@@ -13,7 +13,7 @@ async function routes(fastify) {
   fastify.get(
     '/overview',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'MANAGEMENT', 'SENIOR_TL')],
       schema: { tags: ['Analytics'], description: 'Get user overview counts' },
     },
     async () => {
@@ -85,7 +85,7 @@ async function routes(fastify) {
   fastify.get(
     '/department-attendance',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'MANAGEMENT', 'SENIOR_TL')],
       schema: {
         tags: ['Analytics'],
         description: 'Get department attendance rate',
@@ -194,7 +194,7 @@ async function routes(fastify) {
   fastify.get(
     '/attendance-trends',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      preHandler: [auth, rbac('ADMIN', 'MANAGEMENT', 'SENIOR_TL')],
       schema: {
         tags: ['Analytics'],
         description: 'Get attendance trends',

@@ -25,7 +25,7 @@ async function routes(fastify) {
   fastify.post(
     '/register',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'HR'), sanitize],
       schema: {
         tags: ['Authentication'],
         description:
@@ -56,6 +56,12 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
+      if (req.user.role === 'HR' && req.body.role === 'ADMIN') {
+        return reply
+          .status(403)
+          .send({ error: 'HR cannot create an Admin user' });
+      }
+
       const user = await service.register(req.body, req.user);
       return reply.status(201).send(user);
     }

@@ -375,7 +375,7 @@ async function routes(fastify) {
     '/authorized-members',
     {
       schema: { tags: ['Attendance'], description: 'Get members I can view' },
-      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN')],
+      preHandler: [auth, rbac('read:attendance')],
     },
     async (req, reply) => {
       try {

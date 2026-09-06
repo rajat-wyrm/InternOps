@@ -1,25 +1,18 @@
-import {
-  Routes,
-  Route,
-  Navigate,
-  useLocation,
-  useNavigate,
-} from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
 import DashboardLayout from './layouts/DashboardLayout';
 import useAuthStore from './store/auth';
 import useFeatureFlagsStore from './store/featureFlags';
-import { refreshSession } from './lib/axios';
+import api from './lib/axios';
 import RoleGuard from './components/RoleGuard';
 import ErrorBoundary from './components/ErrorBoundary';
-const HR = lazy(() => import('./pages/HR'));
-import Dashboard from './pages/Dashboard';
-import Login from './pages/Login';
-import RouteRefreshSkeleton from './components/loading/RouteRefreshSkeleton';
+import HR from './pages/HR';
 
 // Lazy load page components
+const Login = lazy(() => import('./pages/Login'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Tasks = lazy(() => import('./pages/Tasks'));
 const Attendance = lazy(() => import('./pages/Attendance'));
 const Ratings = lazy(() => import('./pages/Ratings'));
@@ -30,9 +23,6 @@ const Meetings = lazy(() => import('./pages/Meetings'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const InternOpsAssistant = lazy(
   () => import('./components/InternOpsAssistant')
-);
-const PerformanceIntelligence = lazy(
-  () => import('./pages/PerformanceIntelligence')
 );
 const InternOps = lazy(() => import('./pages/InternOps'));
 const Reports = lazy(() => import('./pages/admin/Reports'));
@@ -56,32 +46,27 @@ const ProjectDetailPage = lazy(() => import('./pages/admin/ProjectDetailPage'));
 const TaskDetails = lazy(() => import('./pages/admin/TaskDetails'));
 
 function PageLoader() {
-  return <RouteRefreshSkeleton />;
-}
-function PublicLazyPage({ children }) {
-  return <Suspense fallback={<PageLoader />}>{children}</Suspense>;
+  return (
+    <div className="flex items-center justify-center min-h-[50vh] w-full">
+      <div
+        className="h-12 w-12 animate-spin rounded-full border-4 border-slate-300 border-t-indigo-600 dark:border-slate-700 dark:border-t-indigo-400"
+        role="status"
+        aria-label="Loading"
+      />
+    </div>
+  );
 }
 
 let bootRefreshPromise = null;
 
 function Private({ children }) {
-  const location = useLocation();
   const token = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
   const hydrated = useAuthStore((s) => s.hydrated);
-  const impersonation = useAuthStore((s) => s.impersonation);
 
-  if (!hydrated) {
-    return user ? children : null;
-  }
-  if (!token) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
-  if (
-    user?.mustChangePassword &&
-    !impersonation &&
-    window.location.pathname !== '/profile'
-  ) {
+  if (!hydrated) return null;
+  if (!token) return <Navigate to="/login" replace />;
+  if (user?.mustChangePassword && window.location.pathname !== '/profile') {
     return <Navigate to="/profile" replace />;
   }
 
@@ -111,20 +96,21 @@ export default function App() {
 
   useEffect(() => {
     if (!bootRefreshPromise) {
-      bootRefreshPromise = refreshSession().then(
-        async ({ user: refreshedUser }) => {
-          // Feature flags are protected resources. Temporary-password accounts
-          // may access only Profile until the required password change succeeds.
-          if (refreshedUser?.mustChangePassword) {
-            resetFlags();
-          } else {
-            Promise.resolve(fetchFlags()).catch(() => {
-              // Feature flags use their own safe defaults and must not block boot.
-            });
-          }
-          return refreshedUser;
+      bootRefreshPromise = api.post('/auth/refresh', {}).then(async (res) => {
+        const refreshedUser = res.data.user;
+        setAuth({
+          accessToken: res.data.accessToken,
+          user: refreshedUser,
+        });
+        // Feature flags are protected resources. Temporary-password accounts
+        // may access only Profile until the required password change succeeds.
+        if (refreshedUser?.mustChangePassword) {
+          resetFlags();
+        } else {
+          await fetchFlags();
         }
-      );
+        return res;
+      });
     }
 
     bootRefreshPromise
@@ -178,7 +164,7 @@ export default function App() {
     );
   }
 
-  if (!hydrated && !useAuthStore.getState().user) {
+  if (!hydrated) {
     return (
       <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50 to-blue-50 dark:from-slate-950 dark:via-indigo-950 dark:to-blue-950 text-slate-800 dark:text-white overflow-hidden animate-fade-in">
         {/* Background Decor Grid */}
@@ -239,261 +225,251 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/forgot-password"
-          element={
-            <PublicLazyPage>
-              <ForgotPassword />
-            </PublicLazyPage>
-          }
-        />
-        <Route
-          path="/reset-password"
-          element={
-            <PublicLazyPage>
-              <ResetPassword />
-            </PublicLazyPage>
-          }
-        />
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* SINGLE LAYOUT WRAPPER FOR ALL AUTHENTICATED PAGES */}
-        <Route
-          path="/"
-          element={
-            <Private>
-              <DashboardLayout />
-            </Private>
-          }
-        >
-          <Route index element={<Navigate to="dashboard" replace />} />
+          {/* SINGLE LAYOUT WRAPPER FOR ALL AUTHENTICATED PAGES */}
+          <Route
+            path="/"
+            element={
+              <Private>
+                <DashboardLayout />
+              </Private>
+            }
+          >
+            <Route index element={<Navigate to="dashboard" replace />} />
 
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="tasks" element={<Tasks />} />
-          <Route
-            path="tasks/:taskId"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
-                <TaskDetails />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="admin/tasks/:taskId"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
-                <TaskDetails />
-              </RoleGuard>
-            }
-          />
-          <Route path="attendance" element={<Attendance />} />
-          <Route path="ratings" element={<Ratings />} />
-          <Route path="meetings" element={<Meetings />} />
-          <Route path="team" element={<Team />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="tasks" element={<Tasks />} />
+            <Route
+              path="tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
+            <Route path="attendance" element={<Attendance />} />
+            <Route path="ratings" element={<Ratings />} />
+            <Route path="meetings" element={<Meetings />} />
+            <Route path="team" element={<Team />} />
 
-          <Route
-            path="hr"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'HR']}>
-                <HR />
-              </RoleGuard>
-            }
-          />
+            <Route
+              path="hr"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'HR']}>
+                  <HR />
+                </RoleGuard>
+              }
+            />
 
-          <Route path="profile" element={<Profile />} />
-          <Route path="sessions" element={<Sessions />} />
-          <Route path="notifications" element={<Notifications />} />
-          <Route path="assistant" element={<InternOpsAssistant />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="sessions" element={<Sessions />} />
+            <Route path="notifications" element={<Notifications />} />
+            <Route path="assistant" element={<InternOpsAssistant />} />
 
-          <Route
-            path="performance-intelligence"
-            element={<PerformanceIntelligence />}
-          />
-          {/* Admin/Manager Routes */}
-          <Route
-            path="internops"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
-                <InternOps />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="reports"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
-                <Reports />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="report-templates"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
-                <ReportTemplates />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="notices"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
-                <Notices />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="analytics"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
-                <Analytics />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="exports"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
-                <Exports />
-              </RoleGuard>
-            }
-          />
+            {/* Admin/Manager Routes */}
+            <Route
+              path="internops"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <InternOps />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="reports"
+              element={
+                <RoleGuard
+                  allowedRoles={['ADMIN', 'MANAGEMENT', 'HR', 'SENIOR_TL']}
+                >
+                  <Reports />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="report-templates"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <ReportTemplates />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="notices"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <Notices />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="analytics"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'MANAGEMENT', 'SENIOR_TL']}>
+                  <Analytics />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="exports"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <Exports />
+                </RoleGuard>
+              }
+            />
 
-          <Route
-            path="admin"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
-                <AdminDashboard />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="departments"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
-                <Departments />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="admin/departments"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
-                <Departments />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="departments/:deptId/projects"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
-                <ProjectsPage />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="departments/:deptId/projects/:leadId"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
-                <ProjectDetailPage />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="admin/departments/:deptId/attendance"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
-                <Attendance />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="admin/departments/:deptId/ratings"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
-                <Ratings />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="admin/departments/:deptId/tasks"
-            element={
-              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
-                <Tasks />
-              </RoleGuard>
-            }
-          />
+            <Route
+              path="admin"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
+                  <AdminDashboard />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="departments"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
+                  <Departments />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/departments"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
+                  <Departments />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="departments/:deptId/projects"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
+                  <ProjectsPage />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="departments/:deptId/projects/:leadId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
+                  <ProjectDetailPage />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/departments/:deptId/attendance"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
+                  <Attendance />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/departments/:deptId/ratings"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
+                  <Ratings />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/departments/:deptId/tasks"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL']}>
+                  <Tasks />
+                </RoleGuard>
+              }
+            />
 
-          <Route
-            path="audit"
-            element={
-              <RoleGuard allowedRoles={['ADMIN']}>
-                <AuditLog />
-              </RoleGuard>
-            }
-          />
+            <Route
+              path="audit"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <AuditLog />
+                </RoleGuard>
+              }
+            />
 
-          {/* Certificate & Canva Routes (Admin only) */}
-          <Route
-            path="quick-generate"
-            element={
-              <RoleGuard allowedRoles={['ADMIN']}>
-                <QuickGenerate />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="certificates"
-            element={
-              <RoleGuard allowedRoles={['ADMIN']}>
-                <Certificates />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="bulk-generate"
-            element={
-              <RoleGuard allowedRoles={['ADMIN']}>
-                <BulkGenerate />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="canva-templates"
-            element={
-              <RoleGuard allowedRoles={['ADMIN']}>
-                <CanvaTemplates />
-              </RoleGuard>
-            }
-          />
-          <Route path="canva-templates/callback" element={<CanvaCallback />} />
-          <Route
-            path="ai-certificates"
-            element={
-              <RoleGuard allowedRoles={['ADMIN']}>
-                <AICertificates />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="feature-flags"
-            element={
-              <RoleGuard allowedRoles={['ADMIN']}>
-                <FeatureFlags />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="github-sync"
-            element={
-              <RoleGuard allowedRoles={['ADMIN']}>
-                <GithubSync />
-              </RoleGuard>
-            }
-          />
-        </Route>
-      </Routes>
+            {/* Certificate & Canva Routes (Admin only) */}
+            <Route
+              path="quick-generate"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <QuickGenerate />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="certificates"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <Certificates />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="bulk-generate"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <BulkGenerate />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="canva-templates"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <CanvaTemplates />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="canva-templates/callback"
+              element={<CanvaCallback />}
+            />
+            <Route
+              path="ai-certificates"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <AICertificates />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="feature-flags"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <FeatureFlags />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="github-sync"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <GithubSync />
+                </RoleGuard>
+              }
+            />
+          </Route>
+        </Routes>
+      </Suspense>
     </ErrorBoundary>
   );
 }

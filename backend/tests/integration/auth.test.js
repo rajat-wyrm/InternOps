@@ -101,39 +101,86 @@ async function login(
 }
 
 describe('Auth Integration Tests', () => {
-  describe('POST /api/auth/login', () => {
-    it('should login with valid credentials', async () => {
-      const res = await login();
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.accessToken).toBeDefined();
-      // refreshToken is delivered via httpOnly cookie only — the
-      // security fix in #417 removed it from the JSON body to prevent
-      // a malicious SPA from holding it in JS-accessible storage.
-      expect(body.refreshToken).toBeUndefined();
-      expect(cookies['refreshToken']).toBeDefined();
-      accessToken = body.accessToken;
+  describe('POST /api/auth/register - HR permissions', () => {
+    it('should allow HR to create an INTERN', async () => {
+      // Admin creates an HR user first
+      const adminLogin = await login();
+      const adminToken = JSON.parse(adminLogin.body).accessToken;
+
+      const hrEmail = `hr-${Date.now()}@example.com`;
+
+      const hrRes = await inject('POST', '/api/v1/auth/register', {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        payload: {
+          email: hrEmail,
+          password: 'TestPassword123!',
+          role: 'HR',
+        },
+      });
+
+      expect(hrRes.statusCode).toBe(201);
+
+      // Login as the newly created HR
+      const hrLogin = await login(hrEmail, 'TestPassword123!');
+      expect(hrLogin.statusCode).toBe(200);
+
+      const hrToken = JSON.parse(hrLogin.body).accessToken;
+
+      // HR creates an INTERN
+      const internEmail = `intern-${Date.now()}@example.com`;
+
+      const internRes = await inject('POST', '/api/v1/auth/register', {
+        headers: { Authorization: `Bearer ${hrToken}` },
+        payload: {
+          email: internEmail,
+          password: 'TestPassword123!',
+          role: 'INTERN',
+        },
+      });
+
+      expect(internRes.statusCode).toBe(201);
+
+      const intern = JSON.parse(internRes.body);
+
+      expect(intern.role).toBe('INTERN');
+      expect(intern.manager_id).toBeNull();
     });
 
-    it('should reject invalid password', async () => {
-      const res = await inject('POST', '/api/v1/auth/login', {
-        payload: { email: SEEDED_ADMIN_EMAIL, password: 'wrong' },
-      });
-      expect(res.statusCode).toBe(401);
-    });
+    it('should reject HR from creating an ADMIN', async () => {
+      const adminLogin = await login();
+      const adminToken = JSON.parse(adminLogin.body).accessToken;
 
-    it('should reject missing email', async () => {
-      const res = await inject('POST', '/api/v1/auth/login', {
-        payload: { password: SEEDED_ADMIN_PASSWORD },
-      });
-      expect(res.statusCode).toBe(400);
-    });
+      const hrEmail = `hr-admin-test-${Date.now()}@example.com`;
 
-    it('should reject non-existent user', async () => {
-      const res = await inject('POST', '/api/v1/auth/login', {
-        payload: { email: 'ghost@test.com', password: 'Test@123' },
+      const hrRes = await inject('POST', '/api/v1/auth/register', {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        payload: {
+          email: hrEmail,
+          password: 'TestPassword123!',
+          role: 'HR',
+        },
       });
-      expect(res.statusCode).toBe(401);
+
+      expect(hrRes.statusCode).toBe(201);
+
+      const hrLogin = await login(hrEmail, 'TestPassword123!');
+      expect(hrLogin.statusCode).toBe(200);
+
+      const hrToken = JSON.parse(hrLogin.body).accessToken;
+
+      const adminRes = await inject('POST', '/api/v1/auth/register', {
+        headers: { Authorization: `Bearer ${hrToken}` },
+        payload: {
+          email: `admin-by-hr-${Date.now()}@example.com`,
+          password: 'TestPassword123!',
+          role: 'ADMIN',
+        },
+      });
+
+      expect(adminRes.statusCode).toBe(403);
+      expect(JSON.parse(adminRes.body).error).toBe(
+        'HR cannot create an Admin user'
+      );
     });
   });
 

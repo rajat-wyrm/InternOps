@@ -16,6 +16,9 @@ import CustomSelect from '../CustomSelect';
 import useAuthStore from '../../store/auth';
 
 const ROLE_OPTIONS = [
+  { value: 'MANAGEMENT', label: 'Management' },
+  { value: 'HR', label: 'HR' },
+  { value: 'SENIOR_TL', label: 'Senior TL' },
   { value: 'TL', label: 'TL' },
   { value: 'CAPTAIN', label: 'Captain' },
   { value: 'INTERN', label: 'Intern' },

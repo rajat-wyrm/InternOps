@@ -40,6 +40,8 @@ function refreshClientFingerprint(ip, userAgent) {
 }
 
 async function register(data, creator) {
+  const nonHierarchyRoles = ['HR', 'MANAGEMENT'];
+
   const allowedRolesByCreator = {
     ADMIN: [
       'ADMIN',
@@ -81,9 +83,12 @@ async function register(data, creator) {
   // Default to the creator as manager if none was explicitly chosen,
   // so users created through the directory also appear in hierarchy views.
   const managerId =
-    data.role === 'ADMIN'
-      ? data.managerId || null
-      : data.managerId || creator.id;
+    data.managerId ||
+    (data.role === 'ADMIN' ||
+    nonHierarchyRoles.includes(data.role) ||
+    creator.role === 'HR'
+      ? null
+      : creator.id);
 
   if (managerId) {
     const manager = await repo.findByIdRaw(managerId);
