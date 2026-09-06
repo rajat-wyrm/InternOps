@@ -219,6 +219,15 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------
 
 describe('PATCH /api/users/:id/suspend — Issue #468', () => {
+  beforeEach(async () => {
+    await pool.query(
+      `UPDATE users
+       SET suspended = FALSE, deleted_at = NULL, role = (CASE WHEN id = $3 THEN 'INTERN' ELSE 'ADMIN' END)::user_role
+       WHERE id = ANY($1::uuid[]) OR id = $2`,
+      [[seededAdminId, secondAdminId], internId, internId]
+    );
+  });
+
   // ── Test 1 ────────────────────────────────────────────────────────────────
   it('should return 400 when an admin tries to suspend themselves', async () => {
     const res = await inject(
@@ -235,56 +244,33 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
   });
 
   // ── Test 2 ────────────────────────────────────────────────────────────────
-  it('should return 400 when trying to suspend the last active admin', async () => {
-    // Suspend the seeded admin directly via SQL so no app-level guard fires,
-    // leaving the second admin as the only active admin.
-    await pool.query('UPDATE users SET suspended = TRUE WHERE email = $1', [
-      SEEDED_ADMIN_EMAIL,
+  it('rejects a token after its admin account is suspended', async () => {
+    await pool.query('UPDATE users SET suspended = TRUE WHERE id = $1', [
+      seededAdminId,
     ]);
 
-    // Now the second admin IS the last active admin.
-    // Attempting to suspend them from the seeded admin's token must be blocked.
-    // (The seeded admin's JWT is still valid even though they are now suspended
-    // because the route only checks RBAC role, not the suspended flag.)
     const res = await inject(
       'PATCH',
       `/api/v1/users/${secondAdminId}/suspend`,
-      {
-        payload: {},
-      }
+      { payload: {} }
     );
 
-    expect(res.statusCode).toBe(400);
-    const body = JSON.parse(res.body);
-    expect(body.error).toBe('Cannot suspend the last active admin');
-
-    // Restore the seeded admin so subsequent tests can use them normally
-    await pool.query('UPDATE users SET suspended = FALSE WHERE email = $1', [
-      SEEDED_ADMIN_EMAIL,
-    ]);
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body).error).toBe('User unavailable');
   });
 
   // ── Test 3 ────────────────────────────────────────────────────────────────
-  it('should return 200 when suspending an admin while multiple active admins exist', async () => {
-    // Both admins are currently active
+  it('should reject suspending any Admin account', async () => {
     const res = await inject(
       'PATCH',
       `/api/v1/users/${secondAdminId}/suspend`,
-      {
-        payload: {},
-      }
+      { payload: {} }
     );
-
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    expect(body.message).toBe('Suspended');
-
-    // Restore for later tests
-    await inject('PATCH', `/api/v1/users/${secondAdminId}/activate`, {
-      payload: {},
-    });
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error).toBe(
+      'Admin accounts cannot be suspended.'
+    );
   });
-
   // ── Test 4 ────────────────────────────────────────────────────────────────
   it('should return 200 when suspending an intern', async () => {
     const res = await inject('PATCH', `/api/v1/users/${internId}/suspend`, {
@@ -310,10 +296,10 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
 
   // ── Test 6 ────────────────────────────────────────────────────────────────
   it('should throw a DB exception when directly updating the last active admin via SQL', async () => {
-    // Suspend the second admin so only the seeded admin is active
-    await inject('PATCH', `/api/v1/users/${secondAdminId}/suspend`, {
-      payload: {},
-    });
+    // Suspend the second admin directly while two admins are active.
+    await pool.query('UPDATE users SET suspended = TRUE WHERE id = $1', [
+      secondAdminId,
+    ]);
 
     // Attempt direct SQL bypass of the application layer — trigger must fire
     await expect(
@@ -323,8 +309,8 @@ describe('PATCH /api/users/:id/suspend — Issue #468', () => {
     ).rejects.toThrow('Cannot suspend the last active admin');
 
     // Restore the second admin
-    await inject('PATCH', `/api/v1/users/${secondAdminId}/activate`, {
-      payload: {},
-    });
+    await pool.query('UPDATE users SET suspended = FALSE WHERE id = $1', [
+      secondAdminId,
+    ]);
   });
 });

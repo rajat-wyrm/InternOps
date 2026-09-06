@@ -47,14 +47,22 @@ class BaseAIProvider(ABC):
         """Returns the canonical string name of the provider."""
         return self.__class__.__name__.removesuffix("Provider").lower()
 
+    async def generate_text(self, prompt: str, temperature: float = 0.7, **kwargs) -> str:
+        """Generate text output from a single prompt string."""
+        return await self.generate_chat(
+            [{"role": "user", "content": prompt}],
+            temperature=temperature,
+            **kwargs,
+        )
+
     @abstractmethod
-    async def generate_text(
+    async def generate_chat(
         self,
-        prompt: str,
+        messages: list[dict],
         temperature: float = 0.7,
         **kwargs,
     ) -> str:
-        """Generate unstructured text output from the provider."""
+        """Generate text output from a structured conversation history."""
         pass
 
     @abstractmethod
@@ -67,3 +75,15 @@ class BaseAIProvider(ABC):
     ) -> Dict[str, Any]:
         """Generate structured JSON response adhering to a target schema."""
         pass
+
+    async def generate_image(self, prompt: str, size: str = "1024x1024", **kwargs) -> Dict[str, Any]:
+        """Generate an image from a text prompt.
+
+        Not every adapter backs a vendor with image-generation support, so the
+        base implementation raises a domain error rather than being abstract.
+        Providers that do support it (currently OpenAI) override this.
+        """
+        raise AIProviderError(
+            f"Image generation is not supported by the '{self.provider_name}' provider.",
+            self.provider_name,
+        )

@@ -1,12 +1,3 @@
-"""Adapter for Google Gemini REST API.
-
-Mirrors the guardrails used in the Node `aiProviderService.js` reference:
-request timeout, streamed response with a byte-size cap (instead of
-buffering the full body via `.json()`), and vendor-error -> domain-error
-mapping (429 -> rate limit, other non-2xx -> API error, network/timeout ->
-timeout error).
-"""
-
 import json
 import os
 from typing import Any, Dict
@@ -24,6 +15,17 @@ from app.providers.base import (
 # provider adapters here use the same default so behavior is consistent
 # across both services).
 MAX_RESPONSE_BYTES = int(os.environ.get("AI_MAX_RESPONSE_BYTES", 2 * 1024 * 1024))
+MAX_MESSAGES = 32
+MAX_MESSAGE_CHARS = 4000
+
+
+def _build_prompt(messages: list[dict]) -> str:
+    parts = []
+    for msg in messages[:MAX_MESSAGES]:
+        role = msg.get("role", "user")
+        content = str(msg.get("content", ""))[:MAX_MESSAGE_CHARS]
+        parts.append(f"{role.capitalize()}: {content}")
+    return "\n".join(parts)
 
 
 class GeminiProvider(BaseAIProvider):
@@ -32,7 +34,7 @@ class GeminiProvider(BaseAIProvider):
     def __init__(
         self,
         api_key: str,
-        model_name: str = "gemini-2.0-flash",
+        model_name: str = "gemini-2.5-flash",
         timeout: float = 15.0,
     ):
         super().__init__(api_key=api_key, model_name=model_name)
@@ -42,9 +44,17 @@ class GeminiProvider(BaseAIProvider):
             f"{self.model_name}:generateContent"
         )
 
-    async def generate_text(self, prompt: str, temperature: float = 0.7, **kwargs) -> str:
+    async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
+        contents = []
+        for msg in messages:
+            role = "model" if msg["role"] == "assistant" else "user"
+            contents.append({
+                "role": role,
+                "parts": [{"text": msg["content"]}]
+            })
+            
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
+            "contents": contents,
             "generationConfig": {"temperature": temperature},
         }
         response_data = await self._send_request(payload)
@@ -79,8 +89,36 @@ class GeminiProvider(BaseAIProvider):
                 self.provider_name,
             )
 
+    async def generate_image(self, prompt: str, **kwargs) -> str:
+        """Generate an image from a text prompt. Returns base64-encoded image data."""
+        image_model = kwargs.get("model_name", "gemini-3.1-flash-lite-image")
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{image_model}:generateContent"
+        )
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
+        }
+        response_data = await self._send_request_to_url(url, payload)
+        try:
+            parts = response_data["candidates"][0]["content"]["parts"]
+            for part in parts:
+                if "inlineData" in part:
+                    return part["inlineData"]["data"]  # base64 string
+            raise ProviderAPIError(
+                "Gemini response contained no image data", self.provider_name
+            )
+        except (KeyError, IndexError) as e:
+            raise ProviderAPIError(
+                f"Unexpected image response payload from Gemini: {e}", self.provider_name
+            )
+
     async def _send_request(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        url = f"{self.base_url}?key={self.api_key}"
+        return await self._send_request_to_url(self.base_url, payload)
+
+    async def _send_request_to_url(self, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        url = f"{url}?key={self.api_key}"
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 async with client.stream("POST", url, json=payload) as response:

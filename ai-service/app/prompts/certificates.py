@@ -72,3 +72,118 @@ def build_certificate_prompt(user_context: str) -> str:
         f"Input: {user_context}\n"
         f"Output JSON:"
     )
+
+
+def build_achievement_prompt(
+    recipient_name: str,
+    recognition_type: str,
+    core_achievement: str,
+    desired_tone: str,
+) -> str:
+    """Prompt for a short achievement statement (Group 1 - text generation)."""
+    return (
+        "Generate a professional achievement statement for a certificate.\n"
+        f"Recipient: {recipient_name}\n"
+        f"Recognition Type: {recognition_type}\n"
+        f"Achievement: {core_achievement}\n"
+        f"Tone: {desired_tone}\n\n"
+        "Provide a concise, professional achievement statement (2-3 sentences). "
+        "Return ONLY the statement text, no preamble, no quotes."
+    )
+
+
+def build_content_prompt(prompt: str, tone: str, content_type: str) -> str:
+    """Prompt for general certificate-related content generation."""
+    return (
+        f"Generate {content_type} content with a {tone} tone:\n"
+        f"{prompt}\n\n"
+        "Provide well-structured content appropriate for a certificate. "
+        "Return ONLY the generated text, no preamble."
+    )
+
+
+def build_tone_prompt(
+    certificate_type: str,
+    recipient_name: str,
+    company_name: str,
+    achievement: str,
+    tone: str,
+) -> str:
+    """Prompt for tone-customized certificate text (title/body/closing)."""
+    return (
+        "You are an expert certificate content writer.\n"
+        "Generate certificate text for:\n"
+        f"- Certificate Type: {certificate_type}\n"
+        f"- Recipient Name: {recipient_name}\n"
+        f"- Company Name: {company_name}\n"
+        f"- Achievement: {achievement}\n"
+        f"- Tone: {tone}\n"
+        'Return ONLY a JSON object with keys: "title", "body", "closing". No extra text.'
+    )
+
+
+def build_language_prompt(
+    certificate_type: str,
+    recipient_name: str,
+    company_name: str,
+    achievement: str,
+    language: str,
+) -> str:
+    """Prompt for multi-language certificate text generation."""
+    return (
+        "You are an expert multilingual certificate content writer.\n"
+        f"Generate certificate text in {language} language for:\n"
+        f"- Certificate Type: {certificate_type}\n"
+        f"- Recipient Name: {recipient_name} (do NOT translate the name)\n"
+        f"- Company Name: {company_name} (do NOT translate the name)\n"
+        f"- Achievement: {achievement}\n"
+        'Return ONLY a JSON object with keys: "title", "body", "closing", "language". '
+        "No extra text."
+    )
+
+
+def build_template_match_prompt(
+    certificate_type: str,
+    style: str,
+    industry: str,
+    template_names: str,
+) -> str:
+    """Prompt for matching a certificate request to an available design template."""
+    return (
+        f"Given a {certificate_type} certificate with {style} style for the "
+        f"{industry} industry:\n"
+        f"Available templates: {template_names}\n\n"
+        "Which template would be most appropriate? Return just the template name."
+    )
+
+
+def build_design_suggestion_prompt(
+    certificate_type: str,
+    industry: str,
+    style: str,
+    tone: str,
+    audience: str,
+    template_list: str,
+) -> str:
+    """Prompt for ranking design templates for a certificate request."""
+    return (
+        f"Given a {certificate_type} certificate for {industry} industry with "
+        f"{style} style and {tone} tone for {audience} audience:\n\n"
+        f"Available templates:\n{template_list}\n\n"
+        "Recommend the top 3 best template matches. For each, explain why it fits.\n"
+        'Return a JSON object with key "recommendations" containing an array of '
+        'objects with "name", "reason", and "confidence" (high/medium/low).'
+    )
+
+
+def build_beautify_prompt(name: str, company: str, achievement: str) -> str:
+    """Prompt used to lightly polish certificate text during validation."""
+    return (
+        "Rewrite the following certificate details into a single polished, "
+        "professional sentence suitable for printing on a certificate. "
+        "Do not invent new facts.\n"
+        f"Name: {name}\n"
+        f"Company: {company}\n"
+        f"Achievement: {achievement}\n\n"
+        "Return ONLY the resulting sentence, no preamble, no quotes."
+    )

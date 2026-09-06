@@ -12,7 +12,7 @@ import {
   Ban,
   Zap,
 } from 'lucide-react';
-import api from '../lib/axios';
+import api, { getAiChatErrorMessage } from '../lib/axios';
 import CustomSelect from './CustomSelect';
 
 const ROLES = ['Admin', 'Senior TL', 'TL', 'Captain', 'Intern'];
@@ -317,7 +317,9 @@ function getKBResponse(text) {
   }
   if (t.includes('audit') || t.includes('log')) return KB.audit;
 
-  return null;
+  return `I can help with InternOps-related questions such as ratings, attendance, tasks, proof verification, reports, sessions, meetings, permissions, and audit logs.
+
+  Please ask me something related to the InternOps platform.`;
 }
 
 function parseBold(text) {
@@ -625,22 +627,29 @@ ${perms.cannotDo.map((item) => `- ${item}`).join('\n')}`;
       try {
         const systemPrompt = `You are the InternOps Assistant. The user's current role is: ${role}. Give concise, role-aware answers about InternOps modules, permissions, ratings, attendance, tasks, reports, sessions, meetings, and audit logs.`;
 
-        const response = await api.post('/ai/chat', {
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt,
-            },
-            ...history.slice(-6).map((item) => ({
-              role: item.role === 'bot' ? 'assistant' : item.role,
-              content: item.content,
-            })),
-            {
-              role: 'user',
-              content: msg,
-            },
-          ],
-        });
+        const response = await api.post(
+          '/ai/chat',
+          {
+            messages: [
+              {
+                role: 'system',
+                content: systemPrompt,
+              },
+              ...history.slice(-6).map((item) => ({
+                role: item.role === 'bot' ? 'assistant' : item.role,
+                content: item.content,
+              })),
+              {
+                role: 'user',
+                content: msg,
+              },
+            ],
+          },
+          // The failure is already surfaced as an in-chat message below, so
+          // suppress the global error toast to avoid showing the user two
+          // separate error messages for the same failed request (#1795).
+          { _suppressGlobalError: true }
+        );
 
         const answer =
           response.data?.content ||
@@ -648,10 +657,14 @@ ${perms.cannotDo.map((item) => `- ${item}`).join('\n')}`;
 
         setIsTyping(false);
         addBotMessage(answer);
-      } catch {
+      } catch (err) {
         setIsTyping(false);
+        const { message, retryable } = getAiChatErrorMessage(err);
         addBotMessage(
-          '⚠️ Could not reach the AI service. Please check your connection and try again.'
+          `⚠️ ${message}`,
+          retryable
+            ? [{ label: 'Retry', onClick: () => handleSend(msg) }]
+            : null
         );
       }
     },
@@ -681,7 +694,12 @@ I can help you understand platform workflows, role permissions, and daily operat
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (
+      messagesEndRef.current &&
+      typeof messagesEndRef.current.scrollIntoView === 'function'
+    ) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isTyping]);
 
   const handleKeyDown = (event) => {

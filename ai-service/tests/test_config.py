@@ -19,7 +19,7 @@ def clean_env(monkeypatch):
     monkeypatch.setattr(pydantic_settings.sources.DotEnvSettingsSource, "__call__", lambda self: {})
 
     # Keep track of and remove any AI-service environment variables before each test
-    prefix_keys = ("GEMINI_", "GROQ_", "OPENAI_", "ANTHROPIC_", "DEEPSEEK_", "HUGGINGFACE_", "PRIMARY_", "FALLBACK_")
+    prefix_keys = ("GEMINI_", "GROQ_", "OPENAI_", "ANTHROPIC_", "DEEPSEEK_", "HUGGINGFACE_", "PRIMARY_", "FALLBACK_", "CORS_",)
     original = {k: os.environ.get(k) for k in os.environ if k.startswith(prefix_keys)}
     for k in original:
         if k in os.environ:
@@ -222,3 +222,19 @@ def test_backward_compatibility():
     assert cfg.PRIMARY_AI_PROVIDER == "gemini"
     assert cfg.GEMINI_API_KEY == "valid_gemini"
     assert cfg.GROQ_API_KEY == "valid_groq"
+
+def test_cors_origins_parses_comma_separated_string():
+    os.environ["PRIMARY_AI_PROVIDER"] = "gemini"
+    os.environ["GEMINI_API_KEY"] = "valid_gemini_key"
+    os.environ["JWT_SECRET"] = "test-secret"
+    os.environ["CORS_ORIGINS"] = (
+        "http://localhost:5173, http://localhost:3000"
+    )
+
+    cfg = reload_config()
+
+    assert cfg.settings.CORS_ORIGINS == [
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
+    

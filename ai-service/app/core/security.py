@@ -1,22 +1,30 @@
 import re
 
-# Block common injection patterns
 INJECTION_PATTERNS = [
     r"ignore (all )?previous instructions",
-    r"system prompt",
-    r"you are now",
-    r"<\|im_start\|>",
+    r"forget (all )?(prior|previous) (rules|prompts)",
+    r"you are now in (developer|dan|jailbreak) mode",
+    r"override (system|safety) settings",
+    r"system prompt:",
+    r"```system",
 ]
 
-def sanitize_prompt(user_input: str) -> str:
-    # 1. Check length
-    if len(user_input) > 2000:  # adjust limit
+def sanitize_user_input(text: str, max_length: int = 2000) -> str:
+    if not text or not text.strip():
+        raise ValueError("Prompt text cannot be empty.")
+
+    cleaned = text.strip()
+
+    if len(cleaned) > max_length:
         raise ValueError("Input too long")
-    
-    # 2. Check for injection patterns
+
     for pattern in INJECTION_PATTERNS:
-        if re.search(pattern, user_input, re.IGNORECASE):
-            raise ValueError("Potential prompt injection detected")
-    
-    # 3. Escape special chars if needed
-    return user_input.strip()
+        if re.search(pattern, cleaned, re.IGNORECASE):
+            raise ValueError("Security Violation: Input contains forbidden system override instructions.")
+
+    cleaned = cleaned.replace("```", "'''")
+    return cleaned
+
+
+def sanitize_prompt(text: str, max_length: int = 2000) -> str:
+    return sanitize_user_input(text, max_length)

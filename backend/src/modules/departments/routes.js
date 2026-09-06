@@ -48,13 +48,27 @@ async function routes(fastify) {
       preHandler: [auth],
       schema: { tags: ['Departments'], description: 'List all departments' },
     },
-    async () => repo.getAll()
+    async (req) => {
+      const departments = await repo.getAll();
+
+      if (req.user.role === 'ADMIN') {
+        return departments;
+      }
+
+      if (!req.user.departmentId) {
+        return [];
+      }
+
+      return departments.filter(
+        (department) => department.id === req.user.departmentId
+      );
+    }
   );
 
   fastify.get(
     '/:deptId/teams',
     {
-      preHandler: [auth, rbac('ADMIN')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
       schema: {
         tags: ['Departments'],
         description: 'List department teams by lead',
@@ -66,6 +80,12 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
+      if (
+        req.user.role !== 'ADMIN' &&
+        req.user.departmentId !== req.params.deptId
+      ) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
       const parsed = z
         .object({ deptId: z.string().uuid() })
         .safeParse(req.params);
@@ -81,6 +101,76 @@ async function routes(fastify) {
     }
   );
 
+  // Replace the single Senior TL without moving existing assignments.
+  fastify.post(
+    '/:deptId/senior-tl-handover',
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
+      schema: {
+        tags: ['Departments'],
+        description: 'Atomically replace the single department Senior TL',
+        params: {
+          type: 'object',
+          required: ['deptId'],
+          properties: { deptId: { type: 'string', format: 'uuid' } },
+        },
+        body: {
+          type: 'object',
+          required: ['outgoing_lead_id', 'replacement_id', 'outgoing_role'],
+          additionalProperties: false,
+          properties: {
+            outgoing_lead_id: { type: 'string', format: 'uuid' },
+            replacement_id: { type: 'string', format: 'uuid' },
+            outgoing_role: {
+              type: 'string',
+              enum: ['TL', 'CAPTAIN', 'INTERN'],
+            },
+            suspend_outgoing: { type: 'boolean', default: false },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      if (
+        req.user.role === 'SENIOR_TL' &&
+        req.user.departmentId !== req.params.deptId
+      ) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      const parsed = z
+        .object({
+          outgoing_lead_id: z.string().uuid(),
+          replacement_id: z.string().uuid(),
+          outgoing_role: z.enum(['TL', 'CAPTAIN', 'INTERN']),
+          suspend_outgoing: z.boolean().optional().default(false),
+        })
+        .safeParse(req.body);
+      if (!parsed.success)
+        return reply
+          .status(400)
+          .send({ error: 'Invalid Senior TL handover request' });
+      if (parsed.data.outgoing_lead_id === parsed.data.replacement_id) {
+        return reply
+          .status(400)
+          .send({ error: 'Replacement must be a different user' });
+      }
+      try {
+        return await service.handoverSeniorTl({
+          departmentId: req.params.deptId,
+          outgoingLeadId: parsed.data.outgoing_lead_id,
+          replacementId: parsed.data.replacement_id,
+          outgoingRole: parsed.data.outgoing_role,
+          actorId: req.user.id,
+          suspendOutgoing: parsed.data.suspend_outgoing,
+        });
+      } catch (error) {
+        if (error.statusCode)
+          return reply.status(error.statusCode).send({ error: error.message });
+        throw error;
+      }
+    }
+  );
   // Delete department
   fastify.delete(
     '/:id',
@@ -94,21 +184,31 @@ async function routes(fastify) {
           required: ['id'],
           properties: { id: { type: 'string', format: 'uuid' } },
         },
-        querystring: {
+        body: {
           type: 'object',
-          properties: { force: { type: 'string', enum: ['true', 'false'] } },
+          additionalProperties: false,
+          properties: { confirmation: { type: 'string', maxLength: 255 } },
         },
       },
     },
     async (req, reply) => {
-      const force = req.query?.force === 'true';
+      const confirmation = req.body?.confirmation?.trim() || null;
 
-      const result = await repo.deleteDepartment(req.params.id, force);
+      const result = await repo.deleteDepartment(
+        req.params.id,
 
-      if (!result.success) {
+        confirmation
+      );
+
+      if (result.notFound) {
+        return reply.status(404).send({ error: 'Department not found' });
+      }
+      if (result.confirmationRequired) {
         return reply.status(409).send({
-          error: `Department has ${result.userCount} assigned users. Reassign them first or use ?force=true.`,
+          error: `Department cannot be deleted: ${result.userCount} users are still assigned to it`,
+          code: 'DEPARTMENT_HAS_ASSIGNED_USERS',
           userCount: result.userCount,
+          roleCounts: result.roleCounts,
         });
       }
 
@@ -118,13 +218,15 @@ async function routes(fastify) {
         resourceType: 'department',
         resourceId: req.params.id,
         details: {
-          force,
+          removalMode: 'anonymize',
+          userCount: result.userCount,
         },
       };
 
       return {
         success: true,
-        force,
+        userCount: result.userCount,
+        roleCounts: result.roleCounts,
       };
     }
   );

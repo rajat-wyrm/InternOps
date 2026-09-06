@@ -3,7 +3,7 @@ from app.core.auth import User, get_current_user
 from app.core.rate_limiter import ai_rate_limiter
 from app.providers.orchestrator import ai_orchestrator
 from app.providers.base import AIProviderError, ProviderAPIError, ProviderRateLimitError
-
+from app.core.security import sanitize_prompt
 router = APIRouter()
 
 
@@ -18,18 +18,57 @@ async def generate_ai_content(
     """
     Generate AI content using the orchestrator with failover and circuit breaker.
 
+    Accepts either:
+      - a flat `prompt` / `user_input` string (single-turn), or
+      - a structured `messages` array (same shape as /ai/chat:
+        [{"role": "user"|"assistant"|"system", "content": "..."}])
+        so multi-turn conversation history is preserved instead of being
+        collapsed into a single prompt string.
+
     Requires a valid JWT in the Authorization header.
     Rate-limited per verified user id.
     """
-    prompt = payload.get("prompt") or payload.get("user_input")
-    if not prompt:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Prompt or user_input is required in payload",
-        )
+    raw_messages = payload.get("messages")
+
+    if raw_messages is not None:
+        if not isinstance(raw_messages, list) or not raw_messages:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="messages must be a non-empty list",
+            )
+
+        messages = []
+        for msg in raw_messages:
+            role = msg.get("role") if isinstance(msg, dict) else None
+            content = msg.get("content") if isinstance(msg, dict) else None
+            if role not in ("user", "assistant", "system") or not content:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Each message requires a valid role and non-empty content",
+                )
+            try:
+                content = sanitize_prompt(content)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+                )
+            messages.append({"role": role, "content": content})
+    else:
+        prompt = payload.get("prompt") or payload.get("user_input")
+        if not prompt:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Prompt or user_input is required in payload",
+            )
+        try:
+            prompt = sanitize_prompt(prompt)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+        messages = [{"role": "user", "content": prompt}]
 
     try:
-        content, provider_name = await ai_orchestrator.generate_text_with_fallback(prompt)
+        content, provider_name = await ai_orchestrator.generate_chat_with_fallback(messages)
         return {
             "status": "success",
             "provider": provider_name,
@@ -44,7 +83,7 @@ async def generate_ai_content(
     except ProviderAPIError as error:
         if error.status_code == 413:
             raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail="AI provider response too large",
             )
         raise HTTPException(

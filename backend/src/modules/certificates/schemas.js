@@ -23,29 +23,54 @@ const templateCreateSchema = z.object({
 
 const templateUpdateSchema = templateCreateSchema.partial();
 
-const certificateGenerateSchema = z.object({
-  template_id: z.string().uuid().optional(),
-  recipient_name: z.string().min(1).max(255),
-  recipient_email: z.string().email().optional(),
-  title: z.string().min(1).max(255).default('Certificate of Achievement'),
-  body: z.string().optional(),
-  issuer: z.string().max(255).optional(),
-  issue_date: z.string().optional(),
-  expiry_date: z.string().optional(),
-  certificate_type: z
-    .enum([
-      'appreciation',
-      'completion',
-      'excellence',
-      'participation',
-      'achievement',
-    ])
-    .default('achievement'),
-  metadata: z.record(z.any()).optional(),
-});
+const certificateGenerateSchema = z
+  .object({
+    template_id: z.string().uuid().optional(),
+    recipient_name: z.string().min(1).max(255),
+    recipient_email: z.string().email().optional(),
+    title: z.string().min(1).max(255).default('Certificate of Achievement'),
+    body: z.string().optional(),
+    issuer: z.string().max(255).optional(),
+    issue_date: z.string().optional(),
+    expiry_date: z.string().optional(),
+    certificate_type: z
+      .enum([
+        'appreciation',
+        'completion',
+        'excellence',
+        'participation',
+        'achievement',
+      ])
+      .default('achievement'),
+    metadata: z.record(z.any()).optional(),
+  })
+  .refine(
+    (data) => {
+      if (!data.issue_date || !data.expiry_date) {
+        return true;
+      }
+
+      const issueDate = new Date(data.issue_date);
+      const expiryDate = new Date(data.expiry_date);
+
+      if (
+        Number.isNaN(issueDate.getTime()) ||
+        Number.isNaN(expiryDate.getTime())
+      ) {
+        return false;
+      }
+
+      return expiryDate >= issueDate;
+    },
+    {
+      message: 'Expiry date cannot be before the issue date',
+      path: ['expiry_date'],
+    }
+  );
 
 const bulkGenerateSchema = z.object({
   template_id: z.string().uuid(),
+
   certificates: z
     .array(
       z.object({
@@ -68,6 +93,7 @@ const bulkGenerateSchema = z.object({
     )
     .min(1)
     .max(500),
+
   send_email: z.boolean().default(false),
   email_subject: z.string().max(500).optional(),
   email_body: z.string().optional(),

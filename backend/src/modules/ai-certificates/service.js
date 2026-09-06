@@ -248,20 +248,21 @@ async function runFullPipeline(data) {
     return result;
   } catch (error) {
     // Fallback to step-by-step processing
-    const validation = await validateCertificate({
-      name: data.name,
-      company: data.company,
-      achievement: data.achievement,
-      date: data.date,
-      use_ai: data.use_ai_beautify,
-    });
-
-    const achievement = await generateAchievementStatement({
-      recipient_name: data.name,
-      recognition_type: data.certificate_type,
-      core_achievement: data.achievement,
-      desired_tone: data.tone,
-    });
+    const [validation, achievement] = await Promise.all([
+      validateCertificate({
+        name: data.name,
+        company: data.company,
+        achievement: data.achievement,
+        date: data.date,
+        use_ai: data.use_ai_beautify,
+      }),
+      generateAchievementStatement({
+        recipient_name: data.name,
+        recognition_type: data.certificate_type,
+        core_achievement: data.achievement,
+        desired_tone: data.tone,
+      }),
+    ]);
 
     const templateMatch = await matchTemplate({
       certificate_type: data.certificate_type,

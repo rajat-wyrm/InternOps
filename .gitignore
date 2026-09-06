@@ -27,11 +27,12 @@ secrets/
 backend/.env
 backend/.env.*
 
-InternOps/
+# InternOps/
 internops-diagnostic-report.txt
 internops-crash.log
 server-debug.log
 backend-test-report.txt
+/ai-service/pytest_*.txt
 _dbtest.cjs
 _fix_async.cjs
 _fix_routes.cjs
@@ -42,6 +43,7 @@ db-test.js
 fix_async_done.js
 *.log
 *.err
+*.error
 *-report.txt
 
 # Docker volumes
@@ -59,3 +61,7 @@ scripts/backup-config.sh
 
 # Backup temp directory
 /tmp/internops-backup/
+
+# Graphify output directory (local development only)
+graphify-out/
+

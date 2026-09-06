@@ -5,23 +5,19 @@ const {
   generateRefreshToken,
   verifyAccessToken,
   verifyRefreshToken,
+  getAccessSecret,
+  getRefreshSecret,
 } = require('../../src/utils/tokens');
 
-const config = require('../../src/config');
-
-describe('Token utilities', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  describe('verifyAccessToken()', () => {
-    it('rejects a token when typ claim is missing', () => {
+describe('Token type validation', () => {
+  describe('verifyAccessToken', () => {
+    it('rejects a token with no typ claim', () => {
       const token = jwt.sign(
         {
-          id: 'user-1',
-          role: 'EMPLOYEE',
+          id: 123,
+          role: 'USER',
         },
-        config.jwt.secret,
+        getAccessSecret(),
         {
           algorithm: 'HS256',
         }
@@ -51,7 +47,7 @@ describe('Token utilities', () => {
           id: 'user-1',
           typ: 'refresh',
         },
-        config.jwt.secret,
+        getAccessSecret(),
         {
           algorithm: 'HS256',
         }
@@ -63,13 +59,13 @@ describe('Token utilities', () => {
     });
   });
 
-  describe('verifyRefreshToken()', () => {
-    it('rejects a token when typ claim is missing', () => {
+  describe('verifyRefreshToken', () => {
+    it('rejects a token with no typ claim', () => {
       const token = jwt.sign(
         {
-          id: 'user-1',
+          id: 123,
         },
-        config.jwt.refreshSecret,
+        getRefreshSecret(),
         {
           algorithm: 'HS256',
         }
@@ -97,7 +93,7 @@ describe('Token utilities', () => {
           id: 'user-1',
           typ: 'access',
         },
-        config.jwt.refreshSecret,
+        getRefreshSecret(),
         {
           algorithm: 'HS256',
         }

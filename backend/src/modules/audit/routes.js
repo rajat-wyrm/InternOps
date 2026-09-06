@@ -10,6 +10,7 @@ const repo = require('./repository');
 const AUDIT_COLUMN_MAP = {
   userId: 'al.user_id',
   resourceType: 'al.resource_type',
+  action: 'al.action',
 };
 
 const auditQuerySchema = z.object({
@@ -17,6 +18,24 @@ const auditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   userId: z.string().uuid().optional(),
   resourceType: z.string().trim().max(100).optional(),
+  action: z.string().trim().max(100).optional(),
+  search: z.string().trim().max(200).optional(),
+  startDate: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .refine((v) => !v || !Number.isNaN(Date.parse(v)), {
+      message: 'startDate must be a valid date',
+    }),
+  endDate: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .refine((v) => !v || !Number.isNaN(Date.parse(v)), {
+      message: 'endDate must be a valid date',
+    }),
 });
 
 async function routes(fastify) {
@@ -39,7 +58,16 @@ async function routes(fastify) {
         });
       }
 
-      const { page, limit, userId, resourceType } = parsed.data;
+      const {
+        page,
+        limit,
+        userId,
+        resourceType,
+        action,
+        search,
+        startDate,
+        endDate,
+      } = parsed.data;
       const offset = (page - 1) * limit;
 
       const conditions = [];
@@ -60,13 +88,39 @@ async function routes(fastify) {
         conditions.push(`${AUDIT_COLUMN_MAP.resourceType} = $${params.length}`);
       }
 
+      if (action) {
+        params.push(`%${action}%`);
+        conditions.push(`${AUDIT_COLUMN_MAP.action} ILIKE $${params.length}`);
+      }
+
+      if (search) {
+        params.push(`%${search}%`);
+        const searchIdx1 = params.length;
+        params.push(`%${search}%`);
+        const searchIdx2 = params.length;
+        conditions.push(
+          `(u.email ILIKE $${searchIdx1} OR u.full_name ILIKE $${searchIdx2})`
+        );
+      }
+
+      if (startDate) {
+        params.push(startDate);
+        conditions.push(`al.created_at >= $${params.length}`);
+      }
+
+      if (endDate) {
+        params.push(endDate);
+        conditions.push(`al.created_at <= $${params.length}`);
+      }
+
       const whereClause = conditions.length
         ? `WHERE ${conditions.join(' AND ')}`
         : '';
 
       // Fetch total matching records for pagination
+      const countJoin = search ? 'LEFT JOIN users u ON al.user_id = u.id' : '';
       const totalResult = await pool.query(
-        `SELECT COUNT(*) FROM audit_logs al ${whereClause}`,
+        `SELECT COUNT(*) FROM audit_logs al ${countJoin} ${whereClause}`,
         params
       );
       const total = Number(totalResult.rows[0].count);

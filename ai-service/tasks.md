@@ -19,6 +19,15 @@ These files from the existing Node.js backend are in `reference/` — port their
 2. **Chat API** (`POST /api/chat`) — multi-provider with failover
 3. **Provider health** (`GET /api/providers/health`)
 4. **Certificate endpoints** — port from `ai_certificates_service.js`
+   - Ported: input validation (with optional AI beautification), achievement/
+     content text generation, template matching, tone customization,
+     multi-language generation, design template listing/suggestion, and HTML
+     preview rendering — all routed through the existing `ai_orchestrator`
+     instead of the Node `aiProviderService`. See `app/services/certificates.py`.
+   - Not ported yet (needs infra `ai-service` doesn't have): bulk AI
+     certificate generation and PNG/PDF certificate rendering, both of which
+     depend on a certificates/bulk-job repository and a PDF-rendering
+     pipeline. Revisit once that persistence layer exists.
 5. **Rate limiting, usage tracking, streaming**
 6. **New features** — resume parsing, skill gap analysis, etc.
 7. **Docker, tests, security**

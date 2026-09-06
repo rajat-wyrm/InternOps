@@ -1,6 +1,7 @@
 require('dotenv').config();
 const pino = require('pino');
 const { z } = require('zod');
+const { resolveDatabaseUrl } = require('./testDatabase');
 
 const log = pino(
   process.env.NODE_ENV === 'development'
@@ -85,16 +86,30 @@ function buildRedisConfig() {
   };
 }
 
+function buildCookieConfig() {
+  const production = process.env.NODE_ENV === 'production';
+  const sameSite = (
+    process.env.COOKIE_SAME_SITE || (production ? 'none' : 'lax')
+  ).toLowerCase();
+  const secure = process.env.COOKIE_SECURE
+    ? process.env.COOKIE_SECURE === 'true'
+    : production;
+  const domain = process.env.COOKIE_DOMAIN?.trim() || undefined;
+  return { secure, sameSite, domain };
+}
 function resolveRefreshSecret() {
   const secret = process.env.JWT_REFRESH_SECRET;
 
   if (!secret || secret.trim() === '') {
-    throw new Error('JWT_REFRESH_SECRET is not configured');
+    console.warn(
+      '[Config] JWT_REFRESH_SECRET is not configured. Using derived secret from JWT_SECRET.'
+    );
+
+    return `${process.env.JWT_SECRET}_refresh`;
   }
 
   return secret;
 }
-
 const envSchema = z.object({
   PORT: z.coerce.number().default(5000),
 });
@@ -103,7 +118,7 @@ module.exports = {
   port: env.PORT,
   host: process.env.HOST || '0.0.0.0',
   nodeEnv: process.env.NODE_ENV,
-  databaseUrl: process.env.DATABASE_URL,
+  databaseUrl: resolveDatabaseUrl(process.env),
   dbPoolMax: parseInt(process.env.DB_POOL_MAX, 10) || 20,
   jwt: {
     secret: process.env.JWT_SECRET,
@@ -119,6 +134,7 @@ module.exports = {
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   appUrl:
     process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
+  cookie: buildCookieConfig(),
   redis: buildRedisConfig(),
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,
@@ -168,6 +184,10 @@ module.exports = {
     rateLimitPerRecipient: parseInt(process.env.EMAIL_RATE_LIMIT, 10) || 5,
     rateLimitWindowMs: parseInt(process.env.EMAIL_RATE_WINDOW, 10) || 60000,
     bounceCheckEnabled: process.env.EMAIL_BOUNCE_CHECK === 'true',
+  },
+  sentry: {
+    dsn: process.env.SENTRY_DSN || null,
+    tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
   },
   websocket: {
     maxUnauthenticatedConnections:

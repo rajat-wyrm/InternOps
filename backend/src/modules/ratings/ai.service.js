@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const config = require('../../config');
 const metrics = require('../../utils/metrics');
-const { clean_and_parse_json } = require('../../utils/promptCleaner');
+const { safeParseJSON } = require('../../utils/promptCleaner');
 
 let ratingsPrompt;
 try {
@@ -95,7 +95,15 @@ async function generateRatingSuggestion(data) {
   }
 
   const raw = result.response.text();
-  const parsed = clean_and_parse_json(raw);
+  const parsed = safeParseJSON(raw);
+
+  if (!parsed) {
+    return {
+      source: 'ai',
+      suggestedScore: null,
+      feedback: 'Unable to parse AI response',
+    };
+  }
 
   const score = Number(parsed.score);
   if (!Number.isInteger(score) || score < 1 || score > 10) {
@@ -116,8 +124,14 @@ async function generateRatingSuggestion(data) {
   }
 
   const wordCount = feedback.split(/\s+/).filter(Boolean).length;
-  if (wordCount < MIN_FEEDBACK_WORDS || wordCount > MAX_FEEDBACK_WORDS) {
+  if (wordCount > MAX_FEEDBACK_WORDS) {
     feedback = feedback.split(/\s+/).slice(0, MAX_FEEDBACK_WORDS).join(' ');
+  } else if (wordCount < MIN_FEEDBACK_WORDS) {
+    return {
+      source: 'ai',
+      suggestedScore: score,
+      feedback: 'AI feedback too short — regenerate or use fallback',
+    };
   }
 
   return {

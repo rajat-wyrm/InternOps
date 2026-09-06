@@ -1,17 +1,36 @@
-function clean_and_parse_json(raw) {
-  if (!raw || typeof raw !== 'string') return {};
+function removeMarkdownCodeFences(value) {
+  if (typeof value !== 'string') return '';
 
-  // Strip markdown fences and whitespace
-  let cleaned = raw.replace(/```json|```/g, '').trim();
+  return value
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+}
+
+function safeParseJSON(value) {
+  const cleaned = removeMarkdownCodeFences(value);
+
+  if (!cleaned) return null;
 
   try {
     return JSON.parse(cleaned);
-  } catch (err) {
-    return {
-      score: null,
-      reason: 'Parsing failed: ' + err.message,
-    };
+  } catch {
+    return null;
   }
 }
 
-module.exports = { clean_and_parse_json };
+function clean_and_parse_json(value) {
+  return (
+    safeParseJSON(value) || {
+      score: null,
+      reason: 'Parsing failed',
+    }
+  );
+}
+
+module.exports = {
+  clean_and_parse_json,
+  removeMarkdownCodeFences,
+  safeParseJSON,
+};

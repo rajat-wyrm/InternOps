@@ -29,12 +29,12 @@ const cache = new LRUCache({ max: 200, ttl: CACHE_TTL_MS });
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Deterministic 0-100 value from (userId + flagKey).
- * Using SHA-256 → first 4 bytes as a uint32 → modulo 101.
+ * Deterministic 0-99 value from (userId + flagKey).
+ * Using SHA-256 → first 4 bytes as a uint32 → modulo 100.
  * Same user always gets the same bucket for the same flag.
  * @param {string} userId
  * @param {string} flagKey
- * @returns {number} 0-100 inclusive
+ * @returns {number} 0-99 inclusive
  */
 function rolloutBucket(userId, flagKey) {
   const hash = crypto
@@ -43,7 +43,7 @@ function rolloutBucket(userId, flagKey) {
     .digest();
   // Read first 4 bytes as big-endian uint32
   const num = hash.readUInt32BE(0);
-  return num % 101; // 0-100 inclusive
+  return num % 100; // 0-99 inclusive
 }
 
 /**
@@ -113,8 +113,8 @@ async function isEnabled(flagKey, user = null) {
   }
 
   // 3. Percentage rollout — deterministic per-user bucket
-  // bucket is 0-100 inclusive. We exclude users whose bucket >= rolloutPct
-  // so that a rolloutPct of 50 passes exactly users in bucket [0, 49] (50%).
+  // bucket is 0-99 inclusive. We exclude users whose bucket >= rolloutPct
+  // so that a rolloutPct of 50 passes users in bucket [0, 49] (50%).
   if (flag.rolloutPct < 100) {
     if (!user?.id) return false; // Anonymous users not in rollout
     const bucket = rolloutBucket(user.id, flagKey);

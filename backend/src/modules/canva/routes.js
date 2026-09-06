@@ -1,9 +1,33 @@
+const crypto = require('crypto');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const featureFlagMiddleware = require('../../middleware/featureFlag');
 const audit = require('../../utils/audit');
 const service = require('./service');
 const repo = require('../certificates/repository');
+
+// In-process store for OAuth state values: userId → { state, expiresAt }
+// Single-use: deleted immediately after successful verification.
+const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const oauthStateStore = new Map();
+
+function storeState(userId) {
+  const state = crypto.randomBytes(16).toString('hex');
+  oauthStateStore.set(userId, { state, expiresAt: Date.now() + STATE_TTL_MS });
+  return state;
+}
+
+function consumeState(userId, incoming) {
+  const entry = oauthStateStore.get(userId);
+  oauthStateStore.delete(userId); // single-use regardless of outcome
+  if (!entry) return false;
+  if (Date.now() > entry.expiresAt) return false;
+  if (entry.state.length !== incoming.length) return false;
+  return crypto.timingSafeEqual(
+    Buffer.from(entry.state),
+    Buffer.from(incoming)
+  );
+}
 
 async function routes(fastify) {
   // All routes require authentication + admin role
@@ -22,8 +46,10 @@ async function routes(fastify) {
       },
     },
     async (req) => {
-      const url = service.getAuthUrl();
+      const state = storeState(req.user.id);
+      const url = service.getAuthUrl(state);
       if (!url) {
+        oauthStateStore.delete(req.user.id);
         return {
           success: false,
           error:
@@ -41,10 +67,16 @@ async function routes(fastify) {
       schema: { tags: ['Canva'], description: 'Canva OAuth callback handler' },
     },
     async (req, reply) => {
-      const { code, error } = req.query;
+      const { code, error, state } = req.query;
       if (error || !code) {
         return reply.redirect(
           `${process.env.APP_URL || 'http://localhost:5173'}/admin/canva-templates?error=${error || 'no_code'}`
+        );
+      }
+
+      if (!state || !consumeState(req.user.id, state)) {
+        return reply.redirect(
+          `${process.env.APP_URL || 'http://localhost:5173'}/admin/canva-templates?error=invalid_state`
         );
       }
 
@@ -181,3 +213,4 @@ async function routes(fastify) {
 }
 
 module.exports = routes;
+module.exports.oauthStateStore = oauthStateStore;

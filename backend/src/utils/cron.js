@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const fs = require('fs').promises;
 const path = require('path');
 const pool = require('../config/db');
+const config = require('../config');
 const pLimit = require('p-limit');
 const logger = require('../logger');
 
@@ -299,6 +300,79 @@ function setupCronJobs() {
         );
       } finally {
         reminderRunning = false;
+      }
+    });
+
+    let anomalyRunning = false;
+
+    // AI Attendance Anomaly Detection Job - Nightly at 2:00 AM
+    cron.schedule('0 2 * * *', async () => {
+      const jobLogger = logger.child({
+        correlationId: `cron-${Date.now()}`,
+        job: 'attendance-anomaly-detection',
+      });
+
+      if (anomalyRunning) {
+        jobLogger.warn('Anomaly detection job already running. Skipping...');
+        return;
+      }
+
+      anomalyRunning = true;
+      const startTime = Date.now();
+
+      jobLogger.info(
+        {
+          startedAt: new Date(startTime),
+        },
+        'Cron job started'
+      );
+
+      try {
+        const { generateAccessToken } = require('./tokens');
+        const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+
+        // System access token signed as Admin role for service-to-service call
+        const systemToken = generateAccessToken({
+          id: '00000000-0000-0000-0000-000000000000',
+          role: 'ADMIN',
+          department_id: null,
+        });
+
+        const response = await fetch(
+          `${baseUrl}/api/v1/attendance/anomalies/analyze`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${systemToken}`,
+            },
+          }
+        );
+        if (!response.ok) {
+          const errorBody = await response.text();
+
+          throw new Error(
+            `FastAPI service returned status ${response.status}: ${errorBody}`
+          );
+        }
+
+        const data = await response.json();
+        jobLogger.info(
+          {
+            durationMs: Date.now() - startTime,
+            response: data,
+          },
+          'Cron job completed'
+        );
+      } catch (err) {
+        jobLogger.error(
+          {
+            err: err.message,
+          },
+          'Cron job failed'
+        );
+      } finally {
+        anomalyRunning = false;
       }
     });
   } catch (err) {
