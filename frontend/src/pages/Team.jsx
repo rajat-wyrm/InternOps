@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
 import { resolveUploadUrl } from '../lib/uploadUrl';
 import useAuthStore from '../store/auth';
@@ -10,11 +11,14 @@ import {
   LayoutGrid,
   List,
   Users,
+  Eye,
+  ShieldCheck,
 } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
 import { ApiErrorState } from '../components/ui';
 import { getTeamRoleBreakdown } from '../utils/teamRoleBreakdown';
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 
 const ROLE_LABEL = {
   SENIOR_TL: 'Senior TL',
@@ -54,6 +58,8 @@ const STATUS_BADGE = {
     'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60',
   TERMINATED:
     'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60',
+  DISCONTINUED:
+    'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600',
 };
 
 // A manager may add any member ranked below themselves.
@@ -197,16 +203,58 @@ function RatingWithBadge({ value }) {
 }
 
 const EDIT_FIELDS = [
-  { key: 'full_name', label: 'Full name' },
-  { key: 'phone', label: 'Phone' },
-  { key: 'location', label: 'City / Location' },
-  { key: 'college', label: 'College' },
-  { key: 'course', label: 'Course' },
-  { key: 'year_of_study', label: 'Year of study' },
-  { key: 'position', label: 'Position / Designation' },
-  { key: 'joining_date', label: 'Joining date', type: 'date' },
-  { key: 'internship_status', label: 'Status', type: 'select' },
-  { key: 'notes', label: 'Notes', type: 'textarea' },
+  { key: 'full_name', label: 'Full name', section: 'Account' },
+  { key: 'email', label: 'Email', type: 'email', section: 'Account' },
+  { key: 'phone', label: 'Phone', section: 'Contact and education' },
+  {
+    key: 'location',
+    label: 'City / Location',
+    section: 'Contact and education',
+  },
+  { key: 'college', label: 'College', section: 'Contact and education' },
+  { key: 'course', label: 'Course', section: 'Contact and education' },
+  {
+    key: 'year_of_study',
+    label: 'Year of study',
+    section: 'Contact and education',
+  },
+  { key: 'position', label: 'Position / Designation', section: 'Organization' },
+  { key: 'intern_code', label: 'Intern Code', section: 'Organization' },
+  {
+    key: 'internship_domain',
+    label: 'Internship Domain',
+    section: 'Organization',
+  },
+  {
+    key: 'department_id',
+    label: 'Department',
+    type: 'department',
+    section: 'Organization',
+  },
+  {
+    key: 'joining_date',
+    label: 'Joining date',
+    type: 'date',
+    section: 'Internship dates',
+  },
+  {
+    key: 'internship_status',
+    label: 'Status',
+    type: 'select',
+    section: 'Internship dates',
+  },
+  {
+    key: 'offer_letter_url',
+    label: 'Offer Letter URL',
+    type: 'url',
+    section: 'Documents and notes',
+  },
+  {
+    key: 'notes',
+    label: 'Notes',
+    type: 'textarea',
+    section: 'Documents and notes',
+  },
 ];
 
 function StatCard({ label, value, sub }) {
@@ -652,7 +700,11 @@ function Row({ label, value }) {
     <div className="flex justify-between gap-4 py-2 border-b border-slate-100 dark:border-slate-700 last:border-0">
       <dt className="text-slate-500 dark:text-slate-400 shrink-0">{label}</dt>
       <dd className="text-slate-800 dark:text-slate-100 text-right break-words">
-        {value || <span className="text-slate-300 dark:text-slate-600">—</span>}
+        {value !== null && value !== undefined && value !== '' ? (
+          value
+        ) : (
+          <span className="text-slate-300 dark:text-slate-600">—</span>
+        )}
       </dd>
     </div>
   );
@@ -660,6 +712,7 @@ function Row({ label, value }) {
 
 function MemberDetail({ memberId, onClose }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
 
   const [form, setForm] = useState(null);
@@ -670,6 +723,9 @@ function MemberDetail({ memberId, onClose }) {
   const [newRole, setNewRole] = useState('');
   const [newManager, setNewManager] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showUserView, setShowUserView] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [viewReason, setViewReason] = useState('');
 
   const {
     data: teamMembers = [],
@@ -699,6 +755,11 @@ function MemberDetail({ memberId, onClose }) {
     if (member && !edit) {
       setForm({
         full_name: member.full_name || '',
+        email: member.email || '',
+        department_id: member.department_id || '',
+        intern_code: member.intern_code || '',
+        internship_domain: member.internship_domain || '',
+        offer_letter_url: member.offer_letter_url || '',
         phone: member.phone || '',
         location: member.location || '',
         college: member.college || '',
@@ -764,7 +825,7 @@ function MemberDetail({ memberId, onClose }) {
     }
 
     if (
-      form.internship_status === 'TERMINATED' &&
+      ['TERMINATED', 'DISCONTINUED'].includes(form.internship_status) &&
       !form.lifecycle_effective_date
     ) {
       setError('Effective date is required');
@@ -773,7 +834,7 @@ function MemberDetail({ memberId, onClose }) {
     }
 
     if (
-      form.internship_status === 'TERMINATED' &&
+      ['TERMINATED', 'DISCONTINUED'].includes(form.internship_status) &&
       form.lifecycle_effective_date > lifecycleToday
     ) {
       setError('Effective date cannot be in the future');
@@ -810,7 +871,9 @@ function MemberDetail({ memberId, onClose }) {
     if (form.internship_status === 'COMPLETED') {
       payload.lifecycle_effective_date = null;
       payload.extended_completion_date = null;
-    } else if (form.internship_status === 'TERMINATED') {
+    } else if (
+      ['TERMINATED', 'DISCONTINUED'].includes(form.internship_status)
+    ) {
       payload.completion_date = null;
       payload.extended_completion_date = null;
     } else if (form.internship_status === 'ACTIVE') {
@@ -876,13 +939,39 @@ function MemberDetail({ memberId, onClose }) {
     },
   });
 
+  const startUserViewMut = useMutation({
+    mutationFn: () =>
+      api.post('/auth/impersonation/start', {
+        targetUserId: memberId,
+        password: adminPassword,
+        reason: viewReason.trim(),
+      }),
+    onSuccess: ({ data }) => {
+      useAuthStore.getState().startImpersonation(data);
+      queryClient.clear();
+      navigate('/dashboard', { replace: true });
+    },
+    onError: (err) =>
+      setError(err.response?.data?.error || 'Unable to start user view'),
+  });
   const pct = member ? attendancePct(member) : null;
   const lifecycleToday = localDateValue();
 
-  const editStatusOptions = STATUS_OPTIONS.map((s) => ({
+  const editStatusOptions = [...STATUS_OPTIONS, 'DISCONTINUED'].map((s) => ({
     value: s,
-    label: s,
+    label: s.replace('_', ' '),
   }));
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/departments').then((response) => response.data),
+  });
+  const editDepartmentOptions = [
+    { value: '', label: '—' },
+    ...departments.map((department) => ({
+      value: department.id,
+      label: department.name,
+    })),
+  ];
 
   const manageRoleOptions = rolesBelow(user?.role).map((r) => ({
     value: r,
@@ -1045,6 +1134,19 @@ function MemberDetail({ memberId, onClose }) {
 
                   {!edit ? (
                     <dl className="space-y-1 text-sm">
+                      <Row label="Email" value={member.email} />
+                      <Row
+                        label="Role"
+                        value={ROLE_LABEL[member.role] || member.role}
+                      />
+                      <Row
+                        label="Account created"
+                        value={
+                          member.created_at
+                            ? new Date(member.created_at).toLocaleDateString()
+                            : null
+                        }
+                      />
                       <Row label="Reports to" value={member.manager_name} />
                       <Row label="Department" value={member.department_name} />
                       <Row label="Intern Code" value={member.intern_code} />
@@ -1066,30 +1168,36 @@ function MemberDetail({ memberId, onClose }) {
                             : null
                         }
                       />
-                      {member.lifecycle_effective_date && (
-                        <Row
-                          label="Lifecycle Effective Date"
-                          value={new Date(
-                            member.lifecycle_effective_date
-                          ).toLocaleDateString()}
-                        />
-                      )}
-                      {member.completion_date && (
-                        <Row
-                          label="Completion Date"
-                          value={new Date(
-                            member.completion_date
-                          ).toLocaleDateString()}
-                        />
-                      )}
-                      {member.extended_completion_date && (
-                        <Row
-                          label="Extended Completion Date"
-                          value={new Date(
-                            member.extended_completion_date
-                          ).toLocaleDateString()}
-                        />
-                      )}
+                      <Row
+                        label="Planned Completion Date"
+                        value={
+                          member.completion_date
+                            ? new Date(
+                                member.completion_date
+                              ).toLocaleDateString()
+                            : null
+                        }
+                      />
+                      <Row
+                        label="Extended Completion Date"
+                        value={
+                          member.extended_completion_date
+                            ? new Date(
+                                member.extended_completion_date
+                              ).toLocaleDateString()
+                            : null
+                        }
+                      />
+                      <Row
+                        label="Lifecycle Effective Date"
+                        value={
+                          member.lifecycle_effective_date
+                            ? new Date(
+                                member.lifecycle_effective_date
+                              ).toLocaleDateString()
+                            : null
+                        }
+                      />
                       <Row
                         label="Status"
                         value={
@@ -1117,10 +1225,10 @@ function MemberDetail({ memberId, onClose }) {
                           )
                         }
                       />
-                      {member.offer_letter_url && (
-                        <Row
-                          label="Offer Letter"
-                          value={
+                      <Row
+                        label="Offer Letter"
+                        value={
+                          member.offer_letter_url ? (
                             <a
                               href={member.offer_letter_url}
                               target="_blank"
@@ -1129,10 +1237,41 @@ function MemberDetail({ memberId, onClose }) {
                             >
                               View offer letter
                             </a>
-                          }
-                        />
-                      )}
+                          ) : null
+                        }
+                      />
                       <Row label="Notes" value={member.notes} />
+                      <Row
+                        label="Present records"
+                        value={member.present_count}
+                      />
+                      <Row
+                        label="Informed records"
+                        value={member.informed_count}
+                      />
+                      <Row label="Leave records" value={member.leave_count} />
+                      <Row
+                        label="Total attendance records"
+                        value={member.attendance_total}
+                      />
+                      <Row
+                        label="Average rating"
+                        value={
+                          member.avg_rating == null
+                            ? null
+                            : `${member.avg_rating}/10`
+                        }
+                      />
+                      <Row label="Rating count" value={member.rating_count} />
+                      <Row
+                        label="Verified tasks"
+                        value={member.verified_tasks}
+                      />
+                      <Row
+                        label="Pending proofs"
+                        value={member.pending_proofs}
+                      />
+                      <Row label="Total tasks" value={member.total_tasks} />
                     </dl>
                   ) : (
                     <div className="space-y-3">
@@ -1161,10 +1300,12 @@ function MemberDetail({ memberId, onClose }) {
                                       : value === 'ACTIVE'
                                         ? form.completion_date || ''
                                         : '',
-                                  lifecycle_effective_date:
-                                    value === 'TERMINATED'
-                                      ? lifecycleToday
-                                      : '',
+                                  lifecycle_effective_date: [
+                                    'TERMINATED',
+                                    'DISCONTINUED',
+                                  ].includes(value)
+                                    ? lifecycleToday
+                                    : '',
                                   extended_completion_date:
                                     value === 'ACTIVE'
                                       ? form.extended_completion_date || ''
@@ -1173,6 +1314,16 @@ function MemberDetail({ memberId, onClose }) {
                               }}
                               options={editStatusOptions}
                               placeholder="Select status"
+                              className="w-full"
+                            />
+                          ) : f.type === 'department' ? (
+                            <CustomSelect
+                              value={form[f.key]}
+                              onChange={(value) =>
+                                setForm({ ...form, [f.key]: value })
+                              }
+                              options={editDepartmentOptions}
+                              placeholder="Select department"
                               className="w-full"
                             />
                           ) : f.type === 'date' ? (
@@ -1186,7 +1337,7 @@ function MemberDetail({ memberId, onClose }) {
                             />
                           ) : (
                             <input
-                              type="text"
+                              type={f.type || 'text'}
                               className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-3 w-full rounded-2xl"
                               value={form[f.key]}
                               onChange={(e) =>
@@ -1236,8 +1387,16 @@ function MemberDetail({ memberId, onClose }) {
                           />
                         </Field>
                       )}
-                      {form.internship_status === 'TERMINATED' && (
-                        <Field label="Effective Date">
+                      {['TERMINATED', 'DISCONTINUED'].includes(
+                        form.internship_status
+                      ) && (
+                        <Field
+                          label={
+                            form.internship_status === 'TERMINATED'
+                              ? 'Termination Effective Date'
+                              : 'Discontinuation Effective Date'
+                          }
+                        >
                           <CustomDatePicker
                             value={form.lifecycle_effective_date}
                             onChange={(value) =>
@@ -1370,6 +1529,73 @@ function MemberDetail({ memberId, onClose }) {
                 </div>
               )}
 
+              {user?.role === 'ADMIN' && member.role !== 'ADMIN' && (
+                <button
+                  type="button"
+                  onClick={() => setShowUserView(true)}
+                  disabled={member.suspended}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-900"
+                >
+                  <Eye className="h-4 w-4" /> View as User
+                </button>
+              )}
+              {showUserView && (
+                <div className="rounded-3xl border border-indigo-200 bg-indigo-50 p-5 dark:border-indigo-800 dark:bg-indigo-950/40">
+                  <div className="mb-4 flex items-start gap-3">
+                    <ShieldCheck className="mt-0.5 h-5 w-5 text-indigo-600" />
+                    <div>
+                      <h4 className="font-extrabold">
+                        Start read-only user view?
+                      </h4>
+                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                        Re-enter the administrator password and explain the
+                        troubleshooting reason. Changes are blocked and the
+                        session expires after 10 minutes.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <input
+                      type="password"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      placeholder="Administrator password"
+                      className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    />
+                    <textarea
+                      value={viewReason}
+                      onChange={(e) => setViewReason(e.target.value)}
+                      placeholder="Reason for viewing this account"
+                      maxLength={300}
+                      rows={3}
+                      className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => startUserViewMut.mutate()}
+                        disabled={
+                          startUserViewMut.isPending ||
+                          !adminPassword ||
+                          viewReason.trim().length < 5
+                        }
+                        className="flex-1 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-extrabold text-white disabled:opacity-50"
+                      >
+                        {startUserViewMut.isPending
+                          ? 'Starting...'
+                          : 'View as User'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowUserView(false)}
+                        className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Suspend / activate */}
               <button
                 onClick={() => statusMut.mutate(!member.suspended)}
@@ -1522,6 +1748,8 @@ export default function Team() {
   }, [view]);
 
   const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const hydrated = useAuthStore((s) => s.hydrated);
   const canAdd = rolesBelow(user?.role).length > 0;
 
   const {
@@ -1533,6 +1761,7 @@ export default function Team() {
   } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const filtered = useMemo(() => {
@@ -1746,11 +1975,7 @@ export default function Team() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <p className="text-slate-600 dark:text-slate-300">Loading team...</p>
-    );
-  }
+  useRouteInitialLoading(!hydrated || !accessToken || isLoading);
 
   if (isError) {
     return (
@@ -1764,7 +1989,7 @@ export default function Team() {
   }
 
   return (
-    <div className="animate-fade-in-up">
+    <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
         {/* Left Side: Title and Icon */}
         <div className="flex items-center gap-4">

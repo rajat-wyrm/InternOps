@@ -33,7 +33,6 @@ from app.models.ai import (
     ProviderHealthEntry,
     ProviderResult,
     UsageResponse,
-    GenerationRequest,
     ImageGenerationRequest,
     ImageGenerationResponse,
 )
@@ -188,37 +187,6 @@ async def chat(
             detail="AI service unavailable",
         )
 
-
-# ---------------------------------------------------------------------------
-# POST /ai/generate
-# ---------------------------------------------------------------------------
-@router.post(
-    "/generate",
-    summary="Generate text from a prompt or a structured conversation history",
-    response_model=ProviderResult,
-)
-async def generate_text(request: GenerationRequest):
-    if request.messages:
-        # Preserve role/content structure instead of flattening the
-        # conversation into a single prompt string.
-        conversation = [
-            {"role": msg.role.value, "content": msg.content}
-            for msg in request.messages
-        ]
-        content, provider_name = await ai_orchestrator.generate_chat_with_fallback(
-            conversation,
-            temperature=request.temperature,
-        )
-    else:
-        content, provider_name = await ai_orchestrator.generate_text_with_fallback(
-            request.prompt,
-            temperature=request.temperature,
-        )
-    return ProviderResult(
-        provider=provider_name,
-        cached=False,
-        content=content,
-    )
 # ---------------------------------------------------------------------------
 # POST /ai/generate-image
 # ---------------------------------------------------------------------------

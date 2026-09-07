@@ -8,6 +8,7 @@ const PASSWORD_CHANGE_ALLOWED_ROUTES = new Set([
   'GET /api/v1/users/me',
   'PATCH /api/v1/users/me/password',
   'POST /api/v1/auth/logout',
+  'POST /api/v1/auth/impersonation/exit',
 ]);
 function requestRouteKey(request) {
   const route = request.routeOptions?.url || request.routerPath || '';
@@ -45,7 +46,20 @@ async function authMiddleware(request, reply) {
       jti: decoded.jti,
       exp: decoded.exp,
       mustChangePassword,
+      impersonatedBy: decoded.impersonatedBy || null,
+      impersonationReadOnly: Boolean(decoded.impersonationReadOnly),
     });
+    if (
+      decoded.impersonationReadOnly &&
+      !['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase()) &&
+      requestRouteKey(request) !== 'POST /api/v1/auth/impersonation/exit'
+    ) {
+      return reply.status(403).send({
+        error:
+          'This action is unavailable while viewing InternOps as another user.',
+        code: 'IMPERSONATION_READ_ONLY',
+      });
+    }
     if (
       mustChangePassword &&
       !PASSWORD_CHANGE_ALLOWED_ROUTES.has(requestRouteKey(request))

@@ -21,6 +21,60 @@ async function routes(fastify) {
     }
   );
 
+  const dateOnlySchema = z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must use YYYY-MM-DD')
+    .refine((value) => {
+      const parsed = new Date(`${value}T00:00:00.000Z`);
+      return (
+        !Number.isNaN(parsed.getTime()) &&
+        parsed.toISOString().slice(0, 10) === value
+      );
+    }, 'Date must be a valid calendar date');
+  const workspaceSchema = z
+    .object({
+      from: dateOnlySchema,
+      to: dateOnlySchema,
+      departmentId: z.string().uuid().optional(),
+    })
+    .refine((value) => value.from <= value.to, {
+      message: 'from must be before or equal to to',
+    });
+  fastify.get(
+    '/workspace',
+    {
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+      schema: {
+        tags: ['Analytics'],
+        description: 'Get the complete scoped analytics workspace',
+        querystring: toSchema(workspaceSchema),
+      },
+    },
+    async (req, reply) => {
+      const parsed = workspaceSchema.safeParse(req.query);
+      if (!parsed.success)
+        return reply
+          .status(400)
+          .send({ error: 'Validation failed', details: parsed.error.issues });
+      const requestedDepartment = parsed.data.departmentId || null;
+      if (
+        req.user.role !== 'ADMIN' &&
+        requestedDepartment &&
+        requestedDepartment !== req.user.departmentId
+      )
+        return reply
+          .status(403)
+          .send({ error: 'Access restricted to your own department' });
+      const departmentId =
+        req.user.role === 'ADMIN' ? requestedDepartment : req.user.departmentId;
+      return repo.getWorkspace({
+        from: parsed.data.from,
+        to: parsed.data.to,
+        departmentId,
+      });
+    }
+  );
+
   // Department attendance rate (admin/senior TL)
   const departmentAttendanceSchema = z.object({
     departmentId: z.string().uuid(),
@@ -58,12 +112,19 @@ async function routes(fastify) {
     }
   );
   // Top performers (Fully Secured & Optimized)
-  const topPerformersSchema = z.object({
-    role: z
-      .enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'])
-      .default('INTERN'),
-    limit: z.coerce.number().int().min(1).max(50).default(10),
-  });
+  const topPerformersSchema = z
+    .object({
+      role: z
+        .enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'])
+        .default('INTERN'),
+      limit: z.coerce.number().int().min(1).max(50).default(10),
+      departmentId: z.string().uuid().optional(),
+      from: dateOnlySchema.optional(),
+      to: dateOnlySchema.optional(),
+    })
+    .refine((value) => !value.from || !value.to || value.from <= value.to, {
+      message: 'from must be before or equal to to',
+    });
   fastify.get(
     '/top-performers',
     {
@@ -85,7 +146,13 @@ async function routes(fastify) {
         });
       }
 
-      const { role, limit } = result.data;
+      const {
+        role,
+        limit,
+        departmentId: requestedDepartment,
+        from,
+        to,
+      } = result.data;
 
       // 3. Define the strict ceiling matrix for visibility boundaries
       const permittedRoles = {
@@ -105,9 +172,17 @@ async function routes(fastify) {
 
       // 5. Execute secure repository fetch
       const departmentId =
-        req.user.role === 'ADMIN' ? null : req.user.departmentId;
+        req.user.role === 'ADMIN'
+          ? requestedDepartment || null
+          : req.user.departmentId;
 
-      return repo.topPerformers(role, limit, departmentId);
+      return repo.topPerformers(
+        role,
+        limit,
+        departmentId,
+        from || null,
+        to || null
+      );
     }
   );
 

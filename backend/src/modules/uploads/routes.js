@@ -11,6 +11,12 @@ const config = require('../../config');
 const ALLOWED = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 
 const ALLOWED_EXTS = ['.png', '.jpg', '.jpeg', '.webp'];
+const MIME_BY_EXT = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+};
 
 const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
@@ -131,6 +137,13 @@ async function routes(fastify) {
         });
 
         await repo.updateAvatarUrl(req.user.id, url);
+        await repo.saveImageMetadata(
+          req.user.id,
+          fileName,
+          url,
+          detectedMime,
+          buffer.length
+        );
       } catch (err) {
         // Remove the uploaded file if database persistence fails.
         try {
@@ -146,14 +159,6 @@ async function routes(fastify) {
 
         throw err;
       }
-
-      await repo.saveImageMetadata(
-        req.user.id,
-        fileName,
-        url,
-        detectedMime,
-        buffer.length
-      );
 
       return {
         success: true,
@@ -209,7 +214,16 @@ async function routes(fastify) {
         });
       }
 
-      return reply.send(fs.createReadStream(filePath));
+      const mimeType = MIME_BY_EXT[path.extname(safeFileName).toLowerCase()];
+      if (!mimeType) {
+        return reply.status(400).send({
+          error: 'Unsupported image type',
+        });
+      }
+      return reply
+        .header('Cross-Origin-Resource-Policy', 'cross-origin')
+        .type(mimeType)
+        .send(fs.createReadStream(filePath));
     }
   );
 

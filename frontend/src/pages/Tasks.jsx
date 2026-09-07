@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 import CreateTaskForm from '../components/CreateTaskForm';
 import CustomSelect from '../components/CustomSelect';
 import {
@@ -52,6 +53,8 @@ export default function Tasks({
   deptId: propDeptId,
   roster = [],
 } = {}) {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const { deptId: routeDeptId } = useParams();
   const deptId = propDeptId || routeDeptId;
   const { user } = useAuthStore();
@@ -106,7 +109,7 @@ export default function Tasks({
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
-    enabled: isAdmin,
+    enabled: hydrated && !!accessToken && isAdmin,
   });
 
   const activeDepartment = departments.find((d) => d.id === activeDeptId);
@@ -125,20 +128,25 @@ export default function Tasks({
           params: { department_id: activeDeptId || undefined },
         })
         .then((res) => res.data),
+    enabled: hydrated && !!accessToken,
     retry: 1,
   });
+
+  useRouteInitialLoading(
+    !tasksIsError && (!hydrated || !accessToken || isLoading || !tasks)
+  );
 
   const { data: proofs, refetch: refetchProofs } = useQuery({
     queryKey: ['proofs', selectedProofTaskId],
     queryFn: () =>
       api.get(`/proofs/task/${selectedProofTaskId}`).then((res) => res.data),
-    enabled: !!selectedProofTaskId,
+    enabled: hydrated && !!accessToken && !!selectedProofTaskId,
   });
 
   const { data: myProofs } = useQuery({
     queryKey: ['myProofs'],
     queryFn: () => api.get('/proofs/my').then((res) => res.data),
-    enabled: user?.role === 'INTERN',
+    enabled: hydrated && !!accessToken && user?.role === 'INTERN',
   });
 
   const submitMutation = useMutation({
@@ -311,7 +319,7 @@ export default function Tasks({
   };
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* Admin Department Navigation Context Banner */}
       {isAdmin && activeDeptId && !isProjectView && (
         <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-indigo-500/20 animate-fade-in">
@@ -417,16 +425,7 @@ export default function Tasks({
         </div>
       )}
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-          {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="p-5 md:p-6 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse h-48"
-            />
-          ))}
-        </div>
-      ) : tasksIsError ? (
+      {tasksIsError ? (
         <ApiErrorState
           error={tasksError}
           title="Failed to load tasks"
