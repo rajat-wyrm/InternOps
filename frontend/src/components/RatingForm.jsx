@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../lib/axios';
+import { getApiErrorMessage } from '../utils/apiError';
 import useAuthStore from '../store/auth';
 import { Card, Btn, Textarea } from './ui';
 import RatingSuggestionCard from './RatingSuggestionCard';
@@ -15,6 +16,7 @@ import {
 
 export default function RatingForm({ roster, departmentId: propDeptId }) {
   const queryClient = useQueryClient();
+
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'ADMIN';
 
@@ -22,13 +24,17 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
   const [userId, setUserId] = useState('');
   const [score, setScore] = useState(null);
   const [remarks, setRemarks] = useState('');
+
   const currentRatingPeriod = getCurrentFourWeekRatingPeriod();
   const currentMonth = currentRatingPeriod.month;
   const currentWeekIndex = currentRatingPeriod.index;
+
   const [ratingMonth, setRatingMonth] = useState(currentMonth);
   const periods = getFourWeekRatingPeriods(ratingMonth);
   const [ratingWeek, setRatingWeek] = useState(String(currentWeekIndex));
+
   const selectedPeriod = currentRatingPeriod.period;
+
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
@@ -65,11 +71,14 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
 
   useEffect(() => {
     if (!propDeptId || propDeptId === departmentId) return;
+
     setDepartmentId(propDeptId);
     setUserId('');
   }, [propDeptId, departmentId]);
+
   useEffect(() => {
     const suggestedScore = Number(suggestion?.recommendation?.suggestedScore);
+
     if (Number.isFinite(suggestedScore) && suggestedScore >= 1) {
       setScore(Math.min(10, Math.max(1, Math.round(suggestedScore))));
     }
@@ -77,18 +86,25 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
 
   useEffect(() => {
     if (!isModalOpen) return;
+
     const handleKey = (e) => {
-      if (e.key === 'Escape') setIsModalOpen(false);
+      if (e.key === 'Escape') {
+        setIsModalOpen(false);
+      }
     };
+
     document.addEventListener('keydown', handleKey);
+
     return () => document.removeEventListener('keydown', handleKey);
   }, [isModalOpen]);
 
   // Background scroll lock
   useEffect(() => {
     if (!isModalOpen) return;
+
     const original = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
     return () => {
       document.body.style.overflow = original;
     };
@@ -102,18 +118,31 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
 
   const rateMutation = useMutation({
     mutationFn: (data) => api.post('/ratings', data),
+
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ratings'] });
-      queryClient.invalidateQueries({ queryKey: ['memberHistory'] });
+      queryClient.invalidateQueries({
+        queryKey: ['ratings'],
+      });
+
+      queryClient.invalidateQueries({
+        queryKey: ['memberHistory'],
+      });
+
       setError('');
       setMsg('✓ Rating submitted');
       setRemarks('');
       setUserId('');
       setDepartmentId(propDeptId || '');
       setScore(null);
-      setTimeout(() => setMsg(''), 2000);
+
+      setTimeout(() => {
+        setMsg('');
+      }, 2000);
     },
-    onError: (err) => setError(err.response?.data?.error || 'Failed'),
+
+    onError: (err) => {
+      setError(getApiErrorMessage(err, 'Failed to submit rating'));
+    },
   });
 
   const departmentOptions = [
@@ -152,12 +181,25 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
-    if (!userId || score == null) return;
+
+    setError('');
+
+    if (!userId) {
+      setError('Please select a team member');
+      return;
+    }
+
+    if (score == null) {
+      setError('Please select a rating score');
+      return;
+    }
+
     setIsModalOpen(true);
   };
 
   const handleConfirmSubmit = () => {
     setIsModalOpen(false);
+
     rateMutation.mutate({
       rated_user_id: userId,
       score,
@@ -172,6 +214,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
       setIsModalOpen(false);
     }
   };
+
   const confirmModal =
     isModalOpen &&
     createPortal(
@@ -189,6 +232,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
             <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-100 dark:border-amber-900/40 text-lg">
               ⚠️
             </div>
+
             <h3
               id="rating-confirm-title"
               className="text-lg font-extrabold text-slate-900 dark:text-white"
@@ -196,6 +240,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
               Confirm Rating Submission
             </h3>
           </div>
+
           <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-6">
             Are you sure you want to submit a score of{' '}
             <strong className="text-indigo-600 dark:text-indigo-400">
@@ -205,6 +250,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
             <strong>{formatRatingPeriod(selectedPeriod)}</strong>? Ratings are
             permanent and immutable.
           </p>
+
           <div className="flex items-center justify-end gap-3">
             <Btn
               type="button"
@@ -214,6 +260,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
             >
               Cancel
             </Btn>
+
             <Btn
               type="button"
               variant="success"
@@ -230,31 +277,38 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
 
   return (
     <Card className="p-6 md:p-7 mb-6 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+      {/* Header */}
       <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
         <div className="w-11 h-11 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300 flex items-center justify-center border border-amber-100 dark:border-amber-900/60">
-          ⭐
+          <span className="text-lg font-extrabold">⭐</span>
         </div>
+
         <div>
           <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
             Rate a Team Member
           </h3>
+
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Select a member, choose a score, and submit feedback.
           </p>
         </div>
       </div>
 
+      {/* Error message */}
       {error && (
         <div className="text-rose-700 dark:text-rose-300 text-sm mb-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/60 px-4 py-3 rounded-2xl font-medium">
           {error}
         </div>
       )}
+
+      {/* Success message */}
       {msg && (
         <div className="text-emerald-700 dark:text-emerald-300 text-sm mb-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/60 px-4 py-3 rounded-2xl font-medium">
           {msg}
         </div>
       )}
 
+      {/* Rating suggestion */}
       <RatingSuggestionCard
         suggestion={suggestion}
         loading={suggestionLoading}
@@ -262,6 +316,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
       />
 
       <form onSubmit={handleFormSubmit} className="space-y-6">
+        {/* Department + Team Member */}
         <div
           className={`grid grid-cols-1 gap-4 ${roster ? '' : 'md:grid-cols-2'}`}
         >
@@ -270,6 +325,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
               <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
                 Department
               </label>
+
               <CustomSelect
                 value={departmentId}
                 onChange={handleDepartmentChange}
@@ -281,10 +337,12 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
               />
             </div>
           )}
+
           <div className="min-w-0">
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
               Team Member
             </label>
+
             <CustomSelect
               value={userId}
               onChange={(nextUserId) => {
@@ -305,11 +363,14 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
             />
           </div>
         </div>
+
+        {/* Rating Month + Week */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
               Rating Month
             </label>
+
             <CustomMonthPicker
               value={ratingMonth}
               onChange={(month) => {
@@ -323,10 +384,12 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
               disabled={rateMutation.isPending}
             />
           </div>
+
           <div>
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
               Rating Week
             </label>
+
             <CustomSelect
               value={ratingWeek}
               onChange={setRatingWeek}
@@ -342,11 +405,14 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
             />
           </div>
         </div>
+
+        {/* Score */}
         <div>
           <div className="flex items-center justify-between gap-3 mb-2">
             <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
               Score
             </label>
+
             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/60">
               {score == null ? 'Not selected' : `${score}/10`}
             </span>
@@ -363,6 +429,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
                   type="button"
                   key={n}
                   onClick={() => setScore(n)}
+                  disabled={rateMutation.isPending}
                   className={`h-10 rounded-2xl text-sm font-extrabold transition-all border ${
                     score === n
                       ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white border-transparent shadow-lg shadow-indigo-200/60 dark:shadow-none'
@@ -376,12 +443,14 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
                 </button>
               ))}
             </div>
+
             <div className="mt-3 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 transition-all"
                 style={{ width: `${(score || 0) * 10}%` }}
               />
             </div>
+
             <div className="flex justify-between mt-2 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               <span>Low</span>
               <span>Excellent</span>
@@ -389,10 +458,12 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
           </div>
         </div>
 
+        {/* Remarks */}
         <div>
           <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
             Remarks / Feedback
           </label>
+
           <Textarea
             placeholder="Remarks / feedback"
             rows={3}
@@ -402,6 +473,7 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
           />
         </div>
 
+        {/* Submit */}
         <div className="flex justify-end pt-1">
           <Btn
             variant="success"
