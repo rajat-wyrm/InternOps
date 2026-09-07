@@ -171,7 +171,7 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
     SELECT st.*
     FROM social_tasks st
     ${whereSql}
-    ORDER BY st.created_at DESC
+    ORDER BY st.github_issue_number DESC NULLS LAST, st.created_at DESC
     LIMIT $${params.length - 1}
     OFFSET $${params.length}
   `;

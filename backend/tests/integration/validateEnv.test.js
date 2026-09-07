@@ -55,6 +55,23 @@ describe('Environment Variable Validation Tests', () => {
     expect(warnMock).not.toHaveBeenCalled();
   });
 
+  it('should accept REDIS_HOST as an alternative to REDIS_URL', () => {
+    process.env.JWT_SECRET = 'secret';
+    process.env.DATABASE_URL = 'postgresql://localhost:5432/internops';
+    process.env.NODE_ENV = 'development';
+    delete process.env.REDIS_URL;
+    process.env.REDIS_HOST = 'localhost';
+    process.env.GOOGLE_CLIENT_ID = 'client-id';
+    process.env.EMAIL_API_KEY = 'api-key';
+
+    validateEnv();
+
+    expect(exitMock).not.toHaveBeenCalled();
+    expect(warnMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('• REDIS_URL')
+    );
+  });
+
   it('should terminate the process if JWT_SECRET is missing', () => {
     delete process.env.JWT_SECRET;
     process.env.DATABASE_URL = 'postgresql://localhost:5432';

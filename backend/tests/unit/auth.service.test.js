@@ -52,13 +52,24 @@ jest.mock('../../src/modules/notifications/repository', () => ({
   notifyAdmin: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock('../../src/config/redis', () => ({
-  blacklistAccessToken: jest.fn(),
-  getRedisClient: jest.fn().mockResolvedValue({
+jest.mock('../../src/config/redis', () => {
+  const redis = {
     get: jest.fn().mockResolvedValue('1'),
     set: jest.fn().mockResolvedValue(undefined),
-  }),
-}));
+  };
+  return {
+    blacklistAccessToken: jest.fn(),
+    runRedisOperation: jest.fn(
+      async (_feature, _fallback, operation, fallbackValue = null) => {
+        try {
+          return await operation(redis);
+        } catch {
+          return fallbackValue;
+        }
+      }
+    ),
+  };
+});
 
 jest.mock('argon2', () => ({
   verify: jest.fn().mockResolvedValue(true),
@@ -246,16 +257,28 @@ describe('Auth Service', () => {
       expect(recordLoginAttempt).not.toHaveBeenCalled();
     });
 
-    it('login() Redis/brute-force failure', async () => {
+    it('login() continues with database-backed protection when Redis fails', async () => {
+      const user = {
+        id: 'user-1',
+        email,
+        role: 'EMPLOYEE',
+        full_name: 'Test User',
+        suspended: false,
+      };
+
       incrementAttempt.mockRejectedValue(new Error('Redis failure'));
+      repo.findByEmail.mockResolvedValue(user);
+      repo.verifyPassword.mockResolvedValue(true);
+      repo.storeRefreshTokenRedis.mockResolvedValue(undefined);
 
       await expect(
         service.login(email, password, ip, userAgent)
-      ).rejects.toThrow(
-        'Login temporarily unavailable. Please try again later.'
-      );
-      expect(repo.findByEmail).not.toHaveBeenCalled();
-      expect(recordLoginAttempt).not.toHaveBeenCalled();
+      ).resolves.toMatchObject({
+        accessToken: 'mocked-access-token',
+        refreshToken: 'mocked-refresh-token',
+      });
+      expect(repo.findByEmail).toHaveBeenCalledWith(email);
+      expect(recordLoginAttempt).toHaveBeenCalledWith(email, ip, true);
     });
   });
 

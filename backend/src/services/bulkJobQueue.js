@@ -1,79 +1,50 @@
 const { Queue, Worker } = require('bullmq');
+const config = require('../config');
 const logger = require('../logger');
 const repo = require('../modules/certificates/repository');
 
 const QUEUE_NAME = 'bulk-certificate-generation';
 
 /**
- * Build BullMQ Redis connection from REDIS_URL.
- *
- * Render Key Value/Redis:
- *   redis://...
- *
- * TLS Redis:
- *   rediss://...
- *
- * BullMQ requires maxRetriesPerRequest to be null.
+ * Build BullMQ's connection from the same normalized Redis configuration used
+ * by the rest of the backend. This keeps REDIS_URL, REDIS_HOST, and Upstash
+ * configuration behavior consistent.
  */
 function getRedisConnection() {
-  const redisUrl = process.env.REDIS_URL;
+  const redisConfig = config.redis;
 
-  if (!redisUrl) {
+  if (!redisConfig?.enabled || !redisConfig.host) {
     logger.warn(
-      'REDIS_URL is not configured. BullMQ will run in direct-execution mode.'
+      'Redis is not configured. BullMQ will run in direct-execution mode.'
     );
     return null;
   }
 
-  try {
-    const url = new URL(redisUrl);
+  const connection = {
+    host: redisConfig.host,
+    port: redisConfig.port || 6379,
+    username: redisConfig.username || 'default',
+    password: redisConfig.password || undefined,
+    db: redisConfig.database || 0,
+    tls: redisConfig.tls ? {} : undefined,
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: false,
+    retryStrategy(times) {
+      return times > 2 ? null : 200;
+    },
+  };
 
-    const connection = {
-      host: url.hostname,
-      port: Number(url.port) || 6379,
+  logger.info(
+    {
+      host: connection.host,
+      port: connection.port,
+      tls: Boolean(connection.tls),
+      source: redisConfig.source,
+    },
+    'Redis connection configured for BullMQ'
+  );
 
-      username: url.username ? decodeURIComponent(url.username) : undefined,
-
-      password: url.password ? decodeURIComponent(url.password) : undefined,
-
-      // rediss:// = TLS
-      tls: url.protocol === 'rediss:' ? {} : undefined,
-
-      // Required by BullMQ for workers
-      maxRetriesPerRequest: null,
-
-      // Don't keep requests queued while Redis is unavailable
-      enableOfflineQueue: false,
-
-      retryStrategy(times) {
-        if (times > 2) {
-          return null;
-        }
-
-        return 200;
-      },
-    };
-
-    logger.info(
-      {
-        host: connection.host,
-        port: connection.port,
-        tls: Boolean(connection.tls),
-      },
-      'Redis connection configured for BullMQ'
-    );
-
-    return connection;
-  } catch (err) {
-    logger.warn(
-      {
-        err: err?.message || err,
-      },
-      'Invalid REDIS_URL. BullMQ will run in direct-execution mode.'
-    );
-
-    return null;
-  }
+  return connection;
 }
 
 class BulkJobQueueService {
@@ -91,7 +62,12 @@ class BulkJobQueueService {
 
       const bullmqEnabled = process.env.BULLMQ_ENABLED !== 'false';
 
-      if (this.connection && process.env.NODE_ENV !== 'test' && bullmqEnabled) {
+      if (
+        this.connection &&
+        config.redis.available &&
+        process.env.NODE_ENV !== 'test' &&
+        bullmqEnabled
+      ) {
         /*
          * Create BullMQ Queue
          */
@@ -218,6 +194,10 @@ class BulkJobQueueService {
         } else if (!this.connection) {
           logger.info(
             'Redis not configured. Running queue service in direct mode.'
+          );
+        } else if (!config.redis.available) {
+          logger.warn(
+            'Redis unavailable. Running queue service in direct mode.'
           );
         } else {
           logger.info(
