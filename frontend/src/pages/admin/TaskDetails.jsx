@@ -60,6 +60,8 @@ function initials(name, email) {
 }
 
 export default function TaskDetails() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const { taskId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -86,12 +88,13 @@ export default function TaskDetails() {
     queryKey: ['taskAnalytics', taskId],
     queryFn: () =>
       api.get(`/tasks/${taskId}/analytics`).then((res) => res.data),
-    enabled: !!taskId,
+    enabled: hydrated && !!accessToken && !!taskId,
   });
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const verifyMutation = useMutation({
@@ -210,7 +213,7 @@ export default function TaskDetails() {
 
   if (isError || !task) {
     return (
-      <div className="animate-fade-in-up">
+      <div className="">
         <Btn
           variant="outline"
           onClick={() => navigate('/tasks')}
@@ -229,7 +232,7 @@ export default function TaskDetails() {
   }
 
   return (
-    <div className="animate-fade-in-up space-y-7 pb-10">
+    <div className="space-y-7 pb-10">
       {/* Top Notification Toast */}
       {notification && (
         <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-200 flex items-center justify-between shadow-sm animate-fade-in">

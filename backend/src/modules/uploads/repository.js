@@ -162,5 +162,8 @@ module.exports = {
   getImagesByUserId,
   getImageById,
   softDeleteImage,
+  saveImageMetadata,
+  findImageByFileName,
+  deleteImageMetadata,
   deleteFile,
 };

@@ -29,6 +29,8 @@ const WEAK_PASSWORD_MESSAGE =
   'Password is too weak. Use at least 8 characters with uppercase, lowercase, number, and special character.';
 
 export default function ProjectsPage() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const currentUser = useAuthStore((state) => state.user);
   const isAdmin = currentUser?.role === 'ADMIN';
   const canOpenHierarchyCard = (team) =>
@@ -54,6 +56,7 @@ export default function ProjectsPage() {
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const {
@@ -64,7 +67,7 @@ export default function ProjectsPage() {
   } = useQuery({
     queryKey: ['departmentTeams', deptId],
     queryFn: () => api.get(`/departments/${deptId}/teams`).then((r) => r.data),
-    enabled: !!deptId,
+    enabled: hydrated && !!accessToken && !!deptId,
   });
 
   const createSeniorTlMutation = useMutation({
@@ -112,7 +115,7 @@ export default function ProjectsPage() {
     hasSeniorTl && (isAdmin || currentUser?.role === 'SENIOR_TL');
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       <div className="mb-5">
         {isAdmin && (
           <Btn

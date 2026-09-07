@@ -11,17 +11,20 @@ describe('Auth Store (Zustand) Unit Tests', () => {
     expect(state.accessToken).toBeNull();
     expect(state.user).toBeNull();
     expect(state.hydrated).toBe(false);
+    expect(state.authGeneration).toBeGreaterThanOrEqual(0);
   });
 
   it('updates state via setAuth', () => {
     const mockUser = { id: '1', email: 'test@example.com', role: 'ADMIN' };
     const mockToken = 'mockToken123';
 
+    const beforeGeneration = useAuthStore.getState().authGeneration;
     useAuthStore.getState().setAuth({ accessToken: mockToken, user: mockUser });
 
     const state = useAuthStore.getState();
     expect(state.accessToken).toBe(mockToken);
     expect(state.user).toEqual(mockUser);
+    expect(state.authGeneration).toBe(beforeGeneration + 1);
   });
 
   it('sets hydrated status', () => {

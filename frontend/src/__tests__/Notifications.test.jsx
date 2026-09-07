@@ -16,6 +16,7 @@ import Notifications, {
   parseLoginFailureNotification,
 } from '../pages/Notifications';
 import api from '../lib/axios';
+import useAuthStore from '../store/auth';
 
 vi.mock('../lib/axios', () => ({
   default: {
@@ -24,7 +25,9 @@ vi.mock('../lib/axios', () => ({
     post: vi.fn(),
     delete: vi.fn(),
   },
+  registerAuthStore: vi.fn(),
 }));
+vi.mock('../store/auth');
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -54,6 +57,9 @@ describe('login-failure notification presentation', () => {
 describe('Notifications Page Optimistic UI Updates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuthStore.mockImplementation((selector) =>
+      selector({ hydrated: true, accessToken: 'test-access-token' })
+    );
   });
 
   it('immediately updates marked notification to read state in the UI (optimistic update)', async () => {

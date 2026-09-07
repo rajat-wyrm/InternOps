@@ -158,7 +158,6 @@ html:not(.dark) :where(input, textarea, select)[class~='bg-white'] {
   transform: translateY(-3px);
   box-shadow: 0 12px 30px -10px rgba(79, 70, 229, 0.25);
 }
-
 /* Consistent dropdown arrow spacing across the whole app */
 select:not([multiple]) {
   appearance: none;
@@ -171,6 +170,25 @@ select:not([multiple]) {
   background-repeat: no-repeat;
   background-position: right 1rem center;
   background-size: 18px 18px;
+}
+
+/* Keep login credentials readable when Chromium autofills saved values. */
+.login-credential-input,
+.login-credential-input:-webkit-autofill,
+.login-credential-input:-webkit-autofill:hover,
+.login-credential-input:-webkit-autofill:focus,
+.login-credential-input:-webkit-autofill:active {
+  -webkit-text-fill-color: #f8fafc !important;
+  caret-color: #f8fafc;
+  box-shadow: 0 0 0 1000px #0f172a inset !important;
+  -webkit-box-shadow: 0 0 0 1000px #0f172a inset !important;
+  border-color: rgba(148, 163, 184, 0.42) !important;
+  transition: background-color 9999s ease-out 0s;
+}
+.login-credential-input:-moz-autofill {
+  color: #f8fafc !important;
+  background-color: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.42) !important;
 }
 
 /* ---- Global dark mode (overrides Tailwind utility classes app-wide) ---- */

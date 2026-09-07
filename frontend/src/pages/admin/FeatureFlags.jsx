@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import useFeatureFlagsStore from '../../store/featureFlags';
 
@@ -369,6 +370,8 @@ function FlagCard({ flag, onEdit, onKillSwitch, onEnable, toggling }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function FeatureFlags() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const qc = useQueryClient();
   const refreshStore = useFeatureFlagsStore((s) => s.refresh);
   const [editTarget, setEditTarget] = useState(null);
@@ -386,6 +389,7 @@ export default function FeatureFlags() {
     queryFn: () =>
       api.get('/feature-flags/definitions').then((r) => r.data.flags),
     staleTime: 10_000,
+    enabled: hydrated && !!accessToken,
   });
 
   const flags = data ?? [];
@@ -446,7 +450,7 @@ export default function FeatureFlags() {
   };
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* ── Toast ── */}
       {toast && (
         <div

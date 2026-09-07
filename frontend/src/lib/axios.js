@@ -193,11 +193,52 @@ let _authStore = null;
 
 export function registerAuthStore(store) {
   _authStore = store;
-  removeLegacyAuthStorage();
 }
 
 function getMemoryAccessToken() {
   return _authStore?.getState?.()?.accessToken || null;
+}
+let sharedRefreshPromise = null;
+async function performRefresh() {
+  const generation = _authStore?.getState?.().authGeneration ?? 0;
+  try {
+    const response = await api.post(
+      '/auth/refresh',
+      {},
+      { _isRefreshRequest: true }
+    );
+    const accessToken = response.data?.accessToken;
+    const user = response.data?.user;
+    if (!accessToken || !user)
+      throw new Error('Refresh returned incomplete session');
+    _authStore?.getState?.().setAuth({ accessToken, user });
+    clearCsrfToken();
+    return { accessToken, user };
+  } catch (error) {
+    const current = _authStore?.getState?.();
+    if (current && current.authGeneration === generation) {
+      current.logout();
+      if (typeof window !== 'undefined')
+        window.dispatchEvent(new Event('auth:logout'));
+    }
+    throw error;
+  }
+}
+export function refreshSession() {
+  if (sharedRefreshPromise) return sharedRefreshPromise;
+  const execute = () => performRefresh();
+  const coordinated =
+    typeof navigator !== 'undefined' && navigator.locks?.request
+      ? navigator.locks.request(
+          'internops-refresh-token',
+          { mode: 'exclusive' },
+          execute
+        )
+      : execute();
+  sharedRefreshPromise = Promise.resolve(coordinated).finally(() => {
+    sharedRefreshPromise = null;
+  });
+  return sharedRefreshPromise;
 }
 
 api.interceptors.request.use(async (config) => {
@@ -227,24 +268,7 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Silent refresh: when an access token expires, the server returns 401.
-// Before destroying the session, try the refresh-token flow once. The refresh
-// token is stored in an HttpOnly cookie, so JavaScript cannot read it.
-// The new access token is stored only in Zustand memory.
-let isRefreshing = false;
-let failedQueue = [];
-
-function processQueue(error, token = null) {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
-  });
-  failedQueue = [];
-}
-
+// Silent refresh is coordinated by refreshSession() for startup, interceptors, and browser tabs.
 api.interceptors.response.use(
   (res) => {
     const url = res.config?.url;
@@ -291,81 +315,29 @@ api.interceptors.response.use(
 
     const hasToken = !!getMemoryAccessToken();
 
-    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
-      // Another refresh is already in flight — queue this request.
-      if (isRefreshing) {
-        original._retry = true;
-
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        }).then((token) => {
-          original.headers = original.headers || {};
-          original.headers.Authorization = `Bearer ${token}`;
-          return api(original);
-        });
-      }
-
+    if (
+      status === 401 &&
+      !original._retry &&
+      !isAuthRoute &&
+      hasToken &&
+      _authStore?.getState?.().impersonation
+    ) {
       original._retry = true;
-      isRefreshing = true;
-
-      try {
-        const refreshRes = await api.post('/auth/refresh', {});
-        const newToken = refreshRes.data?.accessToken;
-
-        if (newToken) {
-          const meRes = await api.get('/users/me', {
-            headers: { Authorization: `Bearer ${newToken}` },
-          });
-          // Store refreshed token in memory only.
-          if (_authStore) {
-            _authStore
-              .getState()
-              .setAuth({ accessToken: newToken, user: meRes.data });
-          }
-
-          // The server rotated the refresh cookie. The CSRF token may also
-          // have changed, so reset it so the next request picks up a fresh one.
-          clearCsrfToken();
-          removeLegacyAuthStorage();
-
-          processQueue(null, newToken);
-
-          original.headers = original.headers || {};
-          original.headers.Authorization = `Bearer ${newToken}`;
-
-          return api(original);
-        }
-
-        throw new Error('Refresh returned no token');
-      } catch (refreshErr) {
-        processQueue(refreshErr);
-
-        if (_authStore) {
-          _authStore.getState().logout();
-        } else {
-          removeLegacyAuthStorage();
-          clearCsrfToken();
-
-          try {
-            if (typeof window !== 'undefined') {
-              window.localStorage.removeItem('user');
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-
-        // Emit an event that React Router can catch
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('auth:logout'));
-        }
-
-        return Promise.reject(refreshErr);
-      } finally {
-        isRefreshing = false;
+      _authStore.getState().exitImpersonation();
+      const adminToken = getMemoryAccessToken();
+      if (adminToken) {
+        original.headers = original.headers || {};
+        original.headers.Authorization = `Bearer ${adminToken}`;
+        return api(original);
       }
     }
-
+    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
+      original._retry = true;
+      const { accessToken } = await refreshSession();
+      original.headers = original.headers || {};
+      original.headers.Authorization = `Bearer ${accessToken}`;
+      return api(original);
+    }
     const errorInfo = getApiErrorInfo(err);
     err.userMessage = errorInfo.message;
     err.errorCode = errorInfo.code;
