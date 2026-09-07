@@ -16,6 +16,8 @@ const UPLOAD_DIR = path.join(
   'certificates'
 );
 
+const MAX_BULK_CERTIFICATES = 500;
+
 function safeSandbox(value, maxLen = 200) {
   if (value === null || value === undefined) return '';
   if (typeof value === 'number') {
@@ -24,7 +26,6 @@ function safeSandbox(value, maxLen = 200) {
   if (typeof value !== 'string') {
     return String(value).slice(0, maxLen);
   }
-
   return value
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -42,7 +43,6 @@ function sanitizeCertificatePromptData(data = {}) {
     language: safeSandbox(data.language || 'English', 50) || 'English',
   };
 }
-
 // Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -213,66 +213,68 @@ async function deleteCertificate(id) {
 
   return repo.deleteCertificate(id);
 }
-
 async function revokeCertificate(id, reason = null) {
   const cert = await repo.getCertificateById(id);
   if (!cert) return null;
   return repo.revokeCertificate(id, reason);
 }
-
 // ============================================================
 // Bulk Generation Service
 // ============================================================
 
 async function startBulkGeneration(data, userId) {
-  const MAX_BULK_CERTIFICATES = 500;
-
-  if (data.certificates.length > MAX_BULK_CERTIFICATES) {
-    const err = new Error(
-      `Bulk generation limit exceeded: maximum ${MAX_BULK_CERTIFICATES} certificates per request (received ${data.certificates.length})`
-    );
-    err.statusCode = 400;
-    throw err;
+  if (!Array.isArray(data.certificates)) {
+    const error = new Error('certificates must be an array');
+    error.statusCode = 400;
+    throw error;
   }
 
-  const job = await repo.createBulkJob(
-    {
-      template_id: data.template_id,
-      total_count: data.certificates.length,
-      send_email: data.send_email,
-      email_subject: data.email_subject,
-      email_body: data.email_body,
-      status: 'pending',
-      completed_count: 0,
-      failed_count: 0,
-    },
-    userId
-  );
-
-  const itemsToCreate = data.certificates.map((certData) => ({
-    bulk_job_id: job.id,
-    recipient_name: certData.recipient_name,
-    recipient_email: certData.recipient_email,
-    row_data: certData,
-    status: 'pending',
-  }));
-
-  await repo.createBulkJobItemsBatch(itemsToCreate);
-
-  const bulkJobQueue = require('../../services/bulkJobQueue');
-  bulkJobQueue.addJob(job.id, data, userId);
-
-  return {
-    success: true,
-    data: {
-      job_id: job.id,
-      total: data.certificates.length,
-      generated: 0,
-      failed: 0,
-      errors: [],
-    },
-  };
+  if (data.certificates.length > MAX_BULK_CERTIFICATES) {
+    const error = new Error(
+      `Bulk generation limit exceeded: maximum ${MAX_BULK_CERTIFICATES} certificates per request (received ${data.certificates.length})`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
 }
+
+const job = await repo.createBulkJob(
+  {
+    template_id: data.template_id,
+    total_count: data.certificates.length,
+    send_email: data.send_email,
+    email_subject: data.email_subject,
+    email_body: data.email_body,
+    status: 'pending',
+    completed_count: 0,
+    failed_count: 0,
+  },
+  userId
+);
+
+const itemsToCreate = data.certificates.map((certData) => ({
+  bulk_job_id: job.id,
+  recipient_name: certData.recipient_name,
+  recipient_email: certData.recipient_email,
+  row_data: certData,
+  status: 'pending',
+}));
+
+await repo.createBulkJobItemsBatch(itemsToCreate);
+
+const bulkJobQueue = require('../../services/bulkJobQueue');
+bulkJobQueue.addJob(job.id, data, userId);
+
+return {
+  success: true,
+  data: {
+    job_id: job.id,
+    total: data.certificates.length,
+    generated: 0,
+    failed: 0,
+    errors: [],
+  },
+};
 
 async function processBulkGeneration(jobId, initialData, userId, pLimiter) {
   const limit = pLimiter || pLimit(5);
