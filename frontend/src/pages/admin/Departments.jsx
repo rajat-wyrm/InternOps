@@ -26,6 +26,8 @@ import {
 } from '../../components/ui';
 
 export default function Departments() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const currentUser = useAuthStore((state) => state.user);
   const isAdmin = currentUser?.role === 'ADMIN';
   const queryClient = useQueryClient();
@@ -49,6 +51,7 @@ export default function Departments() {
   } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
   useEffect(() => {
@@ -133,7 +136,7 @@ export default function Departments() {
   }
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* Professional Header Block */}
       <PageHeader
         title="Departments"

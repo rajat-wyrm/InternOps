@@ -26,6 +26,10 @@ const envSchema = z.object({
     .string()
     .regex(/^\d+$/, 'PASSWORD_RESET_HOURLY_MAX must be a valid integer')
     .optional(),
+  COOKIE_SECURE: z.enum(['true', 'false']).optional(),
+  COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).optional(),
+  CORS_ORIGIN: z.string().url().optional(),
+  APP_URL: z.string().url().optional(),
 });
 
 function validateEnv() {

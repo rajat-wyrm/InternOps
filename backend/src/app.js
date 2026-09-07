@@ -38,6 +38,10 @@ const app = Fastify({
 });
 
 // Layer 1: Register monitoring routes BEFORE global middleware to ensure observability
+app.addHook('onRequest', metrics.trackActiveRequests);
+app.addHook('onRequest', async (request) => {
+  request.metricsStartTime = process.hrtime.bigint().toString();
+});
 
 app.get(
   '/metrics',
@@ -146,7 +150,7 @@ app.register(require('@fastify/cors'), {
     return cb(corsError, false);
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 });
 
@@ -194,6 +198,9 @@ app.register(require('@fastify/multipart'), {
 app.register(require('@fastify/static'), {
   root: path.join(__dirname, '..', config.uploadDir),
   prefix: '/uploads/',
+  setHeaders: (res) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  },
 });
 
 if (process.env.NODE_ENV !== 'test') {
@@ -306,12 +313,6 @@ app.get('/fallback', async (req, reply) => {
   `);
 });
 
-app.addHook('onRequest', metrics.trackActiveRequests);
-
-app.addHook('onRequest', async (request) => {
-  request.startTime = Date.now();
-});
-
 app.addHook('onRequest', async (request) => {
   request.log.info(
     {
@@ -324,7 +325,7 @@ app.addHook('onRequest', async (request) => {
 });
 
 app.addHook('onResponse', async (request, reply) => {
-  metrics.observeHttpRequest(request, reply, request.startTime);
+  metrics.observeHttpRequest(request, reply, request.metricsStartTime);
 
   if (!request?.auditOnResponse) return;
   if (reply.statusCode >= 200 && reply.statusCode < 300) {

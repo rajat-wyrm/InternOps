@@ -53,6 +53,7 @@
   "dependencies": {
     "@google/genai": "^2.16.0",
     "@sentry/react": "^10.73.0",
+    "@sentry/conventions": "^0.16.0",
     "bullmq": "^6.1.1",
     "color-name": "^2.1.1",
     "require-directory": "^2.1.1",

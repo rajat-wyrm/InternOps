@@ -35,6 +35,9 @@ async function routes(fastify, options) {
     prefix: '/reports/export',
   });
   fastify.register(require('./modules/ai/routes'), { prefix: '/ai' });
+  fastify.register(require('./modules/ai-performance/routes'), {
+    prefix: '/ai/performance',
+  });
   fastify.register(require('./modules/onboarding/routes'), {
     prefix: '/onboarding',
   });

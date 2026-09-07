@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import api from '../../lib/axios';
 import useAuthStore from '../../store/auth';
+import { ROLE_LABEL } from '../../constants/roles';
 import { Card, Spinner, EmptyState } from '../../components/ui';
 import UserActionMenu from '../../components/UserActionMenu';
 import CreateUserModal from '../../components/admin/CreateUserModal';
@@ -23,7 +24,7 @@ import EditUserModal from '../../components/admin/EditUserModal';
 import DeleteUserModal from '../../components/admin/DeleteUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
-import InternStatCards from '../../components/admin/InternStatCards';
+import WorkbookImportModal from '../../components/admin/WorkbookImportModal';
 
 const ROLE_COLOR = {
   ADMIN:
@@ -76,6 +77,8 @@ function initials(u) {
 }
 
 export default function AdminDashboard() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const currentUser = useAuthStore((state) => state.user);
   const isAdmin = currentUser?.role === 'ADMIN';
   const queryClient = useQueryClient();
@@ -111,7 +114,7 @@ export default function AdminDashboard() {
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data || []),
-    enabled: isAdmin,
+    enabled: hydrated && !!accessToken && isAdmin,
   });
   const departmentOptions = [
     { value: '', label: 'All departments' },
@@ -225,52 +228,48 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto animate-fade-in-up">
-      {/* Professional Header Block */}
-      <div className="mb-7 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+    <div className="max-w-7xl mx-auto">
+      {/* User Directory Header */}
+      <div className="mb-7 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200/70 dark:shadow-none">
-            <ShieldCheck className="w-6 h-6" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-200/70 dark:shadow-none">
+            <ShieldCheck className="h-6 w-6" />
           </div>
-
           <div>
-            <h1 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Welcome, System Admin
+            <p className="mb-1 text-xs font-extrabold uppercase tracking-[0.22em] text-indigo-600 dark:text-indigo-300">
+              Admin Panel
+            </p>
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white md:text-5xl">
+              User Directory
             </h1>
-
-            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-2">
-              Here is a quick overview of your team activity and performance.
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 md:text-base">
+              Manage all platform accounts, roles, and account status.
             </p>
           </div>
         </div>
-
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setWorkbookImportOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
+            className="flex items-center gap-2 rounded-lg bg-brand-green px-4 py-2 text-sm font-bold text-slate-950 shadow-md transition hover:opacity-90"
           >
             <span>Preview Workbook</span>
           </button>
           {isAdmin && (
             <button
               onClick={() => setBulkUserOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
+              className="flex items-center gap-2 rounded-lg bg-brand-green px-4 py-2 text-sm font-bold text-slate-950 shadow-md transition hover:opacity-90"
             >
               <span>+ Bulk Add</span>
             </button>
           )}
           <button
             onClick={() => setCreateUserOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
+            className="flex items-center gap-2 rounded-lg bg-brand-green px-4 py-2 text-sm font-bold text-slate-950 shadow-md transition hover:opacity-90"
           >
             <span>+ Add User</span>
           </button>
         </div>
       </div>
-
-      {/* Intern Summary Statistic Cards */}
-      <InternStatCards />
-
       {/* Search and Filters */}
       <Card className="p-5 md:p-6 mb-6 border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">

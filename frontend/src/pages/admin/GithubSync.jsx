@@ -48,6 +48,7 @@ import {
   AreaChart,
   Area,
 } from 'recharts';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import { Card, Btn, Badge, Spinner } from '../../components/ui';
 import { getBaseUrl } from '../../lib/axios';
@@ -281,6 +282,8 @@ function SetupGuide() {
 }
 
 export default function GithubSync() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
   const [showGuide, setShowGuide] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
@@ -292,6 +295,7 @@ export default function GithubSync() {
   });
   const [activeTab, setActiveTab] = useState('overview');
   const [cleanupDays, setCleanupDays] = useState(90);
+  const [analyticsDays, setAnalyticsDays] = useState(30);
 
   const {
     data: status,
@@ -301,36 +305,41 @@ export default function GithubSync() {
   } = useQuery({
     queryKey: ['github-sync-status'],
     queryFn: () => api.get('/github/status').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const { data: orchestratorStatus } = useQuery({
     queryKey: ['github-orchestrator'],
     queryFn: () => api.get('/github/orchestrator').then((r) => r.data),
     refetchInterval: 30000,
+    enabled: hydrated && !!accessToken,
   });
 
   const { data: rateLimit } = useQuery({
     queryKey: ['github-rate-limit'],
     queryFn: () => api.get('/github/rate-limit').then((r) => r.data),
     refetchInterval: 60000,
+    enabled: hydrated && !!accessToken,
   });
 
   const { data: logs, isLoading: logsLoading } = useQuery({
     queryKey: ['github-sync-logs'],
     queryFn: () => api.get('/github/logs?limit=50').then((r) => r.data),
     refetchInterval: 15000,
+    enabled: hydrated && !!accessToken,
   });
 
   const { data: counts } = useQuery({
     queryKey: ['github-sync-counts'],
     queryFn: () => api.get('/github/stats/count').then((r) => r.data),
     refetchInterval: 30000,
+    enabled: hydrated && !!accessToken,
   });
 
   const { data: issues, isLoading: issuesLoading } = useQuery({
     queryKey: ['github-synced-issues'],
     queryFn: () => api.get('/github/issues?limit=20').then((r) => r.data),
-    enabled: activeTab === 'issues',
+    enabled: hydrated && !!accessToken && activeTab === 'issues',
   });
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
@@ -339,13 +348,14 @@ export default function GithubSync() {
       api
         .get(`/github/stats/analytics?days=${analyticsDays}`)
         .then((r) => r.data),
-    enabled: activeTab === 'analytics',
+    enabled: hydrated && !!accessToken && activeTab === 'analytics',
     refetchInterval: 60000,
   });
 
   const { data: settingsData } = useQuery({
     queryKey: ['github-sync-settings'],
     queryFn: () => api.get('/github/settings').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const syncMutation = useMutation({
@@ -454,8 +464,6 @@ export default function GithubSync() {
     return <Badge color="yellow">Not Configured</Badge>;
   };
 
-  const [analyticsDays, setAnalyticsDays] = useState(30);
-
   const tabs = [
     { id: 'overview', label: 'Overview', icon: Activity },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
@@ -465,7 +473,7 @@ export default function GithubSync() {
   ];
 
   return (
-    <div className="animate-fade-in-up space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-gray-900 text-white flex items-center justify-center shadow-sm">

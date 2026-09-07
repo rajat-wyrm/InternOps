@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ScrollText, ChevronLeft, ChevronRight } from 'lucide-react';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import { Table, Badge, Spinner } from '../../components/ui';
 
@@ -13,6 +14,8 @@ function actionColor(a = '') {
 }
 
 export default function AuditLog() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const [page, setPage] = useState(1);
   const limit = 50;
 
@@ -22,6 +25,7 @@ export default function AuditLog() {
       api.get(`/audit?page=${page}&limit=${limit}`).then((res) => res.data),
     refetchInterval: 60000,
     refetchIntervalInBackground: false,
+    enabled: hydrated && !!accessToken,
   });
 
   const logs = data?.data || [];
@@ -29,7 +33,7 @@ export default function AuditLog() {
   const totalPages = Math.ceil(total / limit);
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* Professional Header Block */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
         <div className="flex items-center gap-4">

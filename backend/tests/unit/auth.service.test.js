@@ -8,6 +8,9 @@ jest.mock('../../src/modules/auth/repository', () => ({
   findById: jest.fn(),
   revokeRefreshTokenRedis: jest.fn(),
   revokeAllUserTokensRedis: jest.fn(),
+  rotateRefreshTokenWithRecovery: jest.fn(),
+  getRefreshRecoveryPostgres: jest.fn(),
+  cacheRefreshToken: jest.fn(),
 }));
 
 jest.mock('../../src/utils/errors', () => ({
@@ -24,6 +27,8 @@ jest.mock('../../src/utils/tokens', () => ({
   generateRefreshToken: jest.fn().mockReturnValue('mocked-refresh-token'),
   hashToken: jest.fn((token) => `mocked-hash:${token}`),
   verifyRefreshToken: jest.fn((token) => ({ id: 'user-1' })),
+  encryptRefreshRecovery: jest.fn(() => 'encrypted-recovery'),
+  decryptRefreshRecovery: jest.fn(),
 }));
 
 jest.mock('../../src/utils/audit', () => ({
@@ -255,34 +260,33 @@ describe('Auth Service', () => {
   });
 
   describe('refreshTokens()', () => {
-    it('refreshTokens() success', async () => {
-      const user = {
-        id: 'user-1',
-        email,
-        role: 'EMPLOYEE',
-        full_name: 'Test User',
-        suspended: false,
-      };
+    const user = {
+      id: 'user-1',
+      email,
+      role: 'EMPLOYEE',
+      full_name: 'Test User',
+      suspended: false,
+    };
 
-      verifyRefreshToken.mockReturnValue({ id: user.id });
-      repo.claimRefreshToken.mockResolvedValue(user.id);
+    beforeEach(() => {
+      verifyRefreshToken.mockReturnValue({
+        id: user.id,
+      });
+
       repo.findById.mockResolvedValue(user);
-      repo.storeRefreshTokenRedis.mockResolvedValue(undefined);
+    });
 
-      const result = await service.refreshTokens('valid-refresh', ip);
+    it('rotates and stores recovery transactionally', async () => {
+      repo.rotateRefreshTokenWithRecovery.mockResolvedValue({
+        claimedUserId: user.id,
+        rotated: true,
+      });
 
-      expect(verifyRefreshToken).toHaveBeenCalledWith('valid-refresh');
-      expect(hashToken).toHaveBeenCalledWith('valid-refresh');
-      expect(repo.claimRefreshToken).toHaveBeenCalledWith(
-        'mocked-hash:valid-refresh'
-      );
-      expect(repo.findById).toHaveBeenCalledWith(user.id);
-      expect(repo.storeRefreshTokenRedis).toHaveBeenCalledWith(
-        user.id,
-        'mocked-hash:mocked-refresh-token',
-        expect.any(Date)
-      );
-      expect(result).toEqual({
+      repo.cacheRefreshToken.mockResolvedValue(true);
+
+      await expect(
+        service.refreshTokens('valid-refresh', ip, userAgent)
+      ).resolves.toEqual({
         accessToken: 'mocked-access-token',
         refreshToken: 'mocked-refresh-token',
         user: {
@@ -293,46 +297,114 @@ describe('Auth Service', () => {
           mustChangePassword: false,
         },
       });
+
+      expect(repo.rotateRefreshTokenWithRecovery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          consumedTokenHash: 'mocked-hash:valid-refresh',
+          userId: user.id,
+          replacementTokenHash: 'mocked-hash:mocked-refresh-token',
+          encryptedPayload: 'encrypted-recovery',
+        })
+      );
+      const rotationArgs = repo.rotateRefreshTokenWithRecovery.mock.calls[0][0];
+      const recoveryLifetime =
+        rotationArgs.recoveryExpiresAt.getTime() - Date.now();
+      expect(recoveryLifetime).toBeGreaterThanOrEqual(19 * 60 * 1000);
+      expect(recoveryLifetime).toBeLessThanOrEqual(20 * 60 * 1000);
     });
 
-    it('refreshTokens() invalid token', async () => {
+    it('recovers from PostgreSQL when rotation was already claimed', async () => {
+      const recoveredSession = {
+        accessToken: 'recovered-access',
+        refreshToken: 'recovered-refresh',
+        user: {
+          id: user.id,
+          email,
+          role: user.role,
+        },
+      };
+
+      repo.rotateRefreshTokenWithRecovery.mockResolvedValue(null);
+
+      repo.getRefreshRecoveryPostgres.mockResolvedValue({
+        user_id: user.id,
+        client_fingerprint: require('crypto')
+          .createHash('sha256')
+          .update(`${ip}|${userAgent}`)
+          .digest('hex'),
+        replacement_token_hash: 'mocked-hash:recovered-refresh',
+        encrypted_payload: 'encrypted-recovery',
+      });
+
+      const { decryptRefreshRecovery } = require('../../src/utils/tokens');
+
+      decryptRefreshRecovery.mockReturnValue(recoveredSession);
+
+      await expect(
+        service.refreshTokens('used-refresh', ip, userAgent)
+      ).resolves.toEqual(recoveredSession);
+    });
+
+    it('rejects recovery for a different client', async () => {
+      repo.rotateRefreshTokenWithRecovery.mockResolvedValue(null);
+
+      repo.getRefreshRecoveryPostgres.mockResolvedValue({
+        user_id: user.id,
+        client_fingerprint: 'different-client',
+        replacement_token_hash: 'mocked-hash:recovered-refresh',
+        encrypted_payload: 'encrypted-recovery',
+      });
+
+      await expect(
+        service.refreshTokens('used-refresh', ip, userAgent)
+      ).rejects.toThrow('Token revoked/expired');
+    });
+
+    it('rejects a corrupted recovery payload', async () => {
+      repo.rotateRefreshTokenWithRecovery.mockResolvedValue(null);
+
+      repo.getRefreshRecoveryPostgres.mockResolvedValue({
+        user_id: user.id,
+        client_fingerprint: require('crypto')
+          .createHash('sha256')
+          .update(`${ip}|${userAgent}`)
+          .digest('hex'),
+        replacement_token_hash: 'mocked-hash:recovered-refresh',
+        encrypted_payload: 'corrupted',
+      });
+
+      const { decryptRefreshRecovery } = require('../../src/utils/tokens');
+
+      decryptRefreshRecovery.mockImplementation(() => {
+        throw new Error('Authentication failed');
+      });
+
+      await expect(
+        service.refreshTokens('used-refresh', ip, userAgent)
+      ).rejects.toThrow('Token revoked/expired');
+    });
+
+    it('rejects an invalid refresh token', async () => {
       verifyRefreshToken.mockImplementation(() => {
         throw new Error('Invalid payload');
       });
 
-      await expect(service.refreshTokens('bad-token', ip)).rejects.toThrow(
-        'Invalid refresh token'
-      );
-      expect(repo.claimRefreshToken).not.toHaveBeenCalled();
-    });
-
-    it('refreshTokens() revoked token', async () => {
-      verifyRefreshToken.mockReturnValue({ id: 'user-1' });
-      repo.claimRefreshToken.mockResolvedValue(null);
-
       await expect(
-        service.refreshTokens('revoked-refresh', ip)
-      ).rejects.toThrow('Token revoked/expired');
-      expect(repo.findById).not.toHaveBeenCalled();
+        service.refreshTokens('bad-token', ip, userAgent)
+      ).rejects.toThrow('Invalid refresh token');
     });
 
-    it('refreshTokens() suspended user', async () => {
-      const suspendedUser = {
-        id: 'user-1',
+    it('rejects a suspended user', async () => {
+      repo.findById.mockResolvedValue({
+        ...user,
         suspended: true,
-      };
-
-      verifyRefreshToken.mockReturnValue({ id: suspendedUser.id });
-      repo.claimRefreshToken.mockResolvedValue(suspendedUser.id);
-      repo.findById.mockResolvedValue(suspendedUser);
+      });
 
       await expect(
-        service.refreshTokens('suspended-refresh', ip)
+        service.refreshTokens('suspended-refresh', ip, userAgent)
       ).rejects.toThrow('User not found/suspended');
-      expect(repo.storeRefreshTokenRedis).not.toHaveBeenCalled();
     });
   });
-
   describe('logout()', () => {
     it('logout() success', async () => {
       verifyRefreshToken.mockReturnValue({ id: 'user-1' });
@@ -403,5 +475,25 @@ describe('Auth Service', () => {
       expect(repo.revokeRefreshTokenRedis).not.toHaveBeenCalled();
       expect(blacklistAccessToken).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('background refresh recovery lifecycle contract', () => {
+  it('keeps recovery through background suspension and retires it after replacement use', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const serviceSource = fs.readFileSync(
+      path.resolve(__dirname, '../../src/modules/auth/service.js'),
+      'utf8'
+    );
+    const repositorySource = fs.readFileSync(
+      path.resolve(__dirname, '../../src/modules/auth/repository.js'),
+      'utf8'
+    );
+    expect(serviceSource).toContain(
+      'const REFRESH_RECOVERY_SECONDS = 20 * 60;'
+    );
+    expect(repositorySource).toContain('WHERE replacement_token_hash = $1');
+    expect(repositorySource).toContain('[consumedTokenHash]');
   });
 });

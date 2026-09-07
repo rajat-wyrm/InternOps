@@ -306,6 +306,8 @@ function NoticeForm({
 }
 
 export default function Notices() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'ADMIN';
   const queryClient = useQueryClient();
@@ -349,6 +351,7 @@ export default function Notices() {
     },
     onError: (err) =>
       setFormError(err.response?.data?.error || 'Failed to create notice'),
+    enabled: hydrated && !!accessToken,
   });
 
   const updateMut = useMutation({
@@ -390,7 +393,7 @@ export default function Notices() {
   });
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       <ConfirmationModal
         open={!!noticeToDelete}
         title="Delete Notice"
