@@ -56,6 +56,7 @@ const ROLE_OPTIONS = [
   { value: 'TL', label: 'TL' },
   { value: 'CAPTAIN', label: 'Captain' },
   { value: 'INTERN', label: 'Intern' },
+  { value: 'HR', label: 'HR' },
 ];
 
 const STATUS_OPTIONS = [
