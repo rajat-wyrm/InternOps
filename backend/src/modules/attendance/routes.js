@@ -187,9 +187,9 @@ async function routes(fastify) {
           };
         });
 
-        const notificationsData = entries.map((e) => ({
-          user_id: e.user_id,
-          message: `Your attendance for ${e.date} has been marked as ${e.status}.`,
+        const notificationsData = results.map((attendance) => ({
+          user_id: attendance.user_id,
+          message: `Your attendance for ${attendance.date} has been marked as ${attendance.status}.`,
         }));
 
         const notifications = await bulkSend(notificationsData);
@@ -207,15 +207,62 @@ async function routes(fastify) {
           )
         );
 
-        await Promise.all(
-          results.map((attendance) =>
-            limit(async () => {
-              await notifyUser(attendance.user_id, 'attendance-marked', {
-                attendance,
-              });
+        // Return the attendance result without making the HTTP request wait
+        // for every websocket notification.
+        setImmediate(() => {
+          Promise.all(
+            notifications.map(async (notification) => {
+              try {
+                const unreadCount = await getUnreadCount(notification.user_id);
+
+                await notifyUser(
+                  notification.user_id,
+                  'notification-received',
+                  {
+                    notification,
+                    unreadCount,
+                  }
+                );
+              } catch (err) {
+                req.log.error(
+                  {
+                    err,
+                    userId: notification.user_id,
+                  },
+                  'Failed to send bulk attendance notification'
+                );
+              }
             })
-          )
-        );
+          ).catch((err) => {
+            req.log.error(
+              err,
+              'Unexpected error while processing bulk attendance notifications'
+            );
+          });
+
+          Promise.all(
+            results.map(async (attendance) => {
+              try {
+                await notifyUser(attendance.user_id, 'attendance-marked', {
+                  attendance,
+                });
+              } catch (err) {
+                req.log.error(
+                  {
+                    err,
+                    userId: attendance.user_id,
+                  },
+                  'Failed to send bulk attendance websocket update'
+                );
+              }
+            })
+          ).catch((err) => {
+            req.log.error(
+              err,
+              'Unexpected error while processing bulk attendance websocket updates'
+            );
+          });
+        });
 
         return {
           success: true,
