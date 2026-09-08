@@ -25,8 +25,6 @@ import DeleteUserModal from '../../components/admin/DeleteUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
 import WorkbookImportModal from '../../components/admin/WorkbookImportModal';
-import InternStatCards from '../../components/admin/InternStatCards';
-import InternsByDomainChart from '../../components/admin/InternsByDomainChart';
 
 const ROLE_COLOR = {
   ADMIN:
@@ -272,12 +270,6 @@ export default function AdminDashboard() {
           </button>
         </div>
       </div>
-
-      {/* Intern Summary Statistic Cards */}
-      <InternStatCards />
-
-      {/* Interns by Domain Chart */}
-      <InternsByDomainChart />
 
       {/* Search and Filters */}
 

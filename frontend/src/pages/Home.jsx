@@ -7,6 +7,7 @@ import { QUERY_KEYS } from '../constants/queryKeys';
 import { Card, StatCard, ApiErrorState } from '../components/ui';
 import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 import { getTeamRoleBreakdown } from '../utils/teamRoleBreakdown';
+import InternsByDomainChart from '../components/admin/InternsByDomainChart';
 
 function attendancePct(m) {
   const total = Number(m.attendance_total);
@@ -184,6 +185,8 @@ function ManagerHome({ user }) {
           gradient="from-amber-400 to-orange-500"
         />
       </div>
+
+      {isAdmin && <InternsByDomainChart />}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Needs Attention */}
