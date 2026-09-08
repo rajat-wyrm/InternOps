@@ -197,4 +197,28 @@ describe('Login Component Tests', () => {
       });
     });
   });
+
+  it('keeps credential icons readable and exposes the password toggle', () => {
+    const { container } = renderLogin();
+    const emailInput = container.querySelector('input[type="email"]');
+    const passwordInput = container.querySelector('input[type="password"]');
+    const fieldIcons = container.querySelectorAll('[data-login-field-icon]');
+
+    expect(emailInput).toHaveClass('login-credential-input');
+    expect(passwordInput).toHaveClass('login-credential-input');
+    expect(fieldIcons).toHaveLength(2);
+    expect(
+      screen.getByRole('button', { name: 'Show password' })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }));
+
+    expect(container.querySelector('input[type="text"]')).toHaveAttribute(
+      'id',
+      'password'
+    );
+    expect(
+      screen.getByRole('button', { name: 'Hide password' })
+    ).toBeInTheDocument();
+  });
 });

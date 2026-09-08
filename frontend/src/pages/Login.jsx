@@ -301,7 +301,10 @@ export default function Login() {
                 </label>
 
                 <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/45" />
+                  <Mail
+                    data-login-field-icon
+                    className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                  />
                   <input
                     id="email"
                     type="email"
@@ -314,7 +317,7 @@ export default function Login() {
                     placeholder="Enter your email"
                     aria-describedby={error ? 'login-error' : undefined}
                     aria-invalid={!!error}
-                    className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
+                    className="login-credential-input w-full rounded-2xl border border-white/15 bg-white/10 py-3 pl-12 pr-4 text-white outline-none transition placeholder:text-slate-500 focus:border-indigo-300/40 focus:ring-2 focus:ring-indigo-300/25"
                   />
                 </div>
               </div>
@@ -328,7 +331,10 @@ export default function Login() {
                 </label>
 
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/45" />
+                  <Lock
+                    data-login-field-icon
+                    className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                  />
                   <input
                     id="password"
                     type={show ? 'text' : 'password'}
@@ -341,13 +347,14 @@ export default function Login() {
                     placeholder="Enter your password"
                     aria-describedby={error ? 'login-error' : undefined}
                     aria-invalid={!!error}
-                    className="w-full pl-12 pr-12 py-3 rounded-2xl bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-indigo-300/25 transition"
+                    className="login-credential-input w-full rounded-2xl border border-white/15 bg-white/10 py-3 pl-12 pr-12 text-white outline-none transition placeholder:text-slate-500 focus:border-indigo-300/40 focus:ring-2 focus:ring-indigo-300/25"
                   />
 
                   <button
                     type="button"
                     onClick={() => setShow(!show)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/45"
+                    aria-label={show ? 'Hide password' : 'Show password'}
+                    className="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/60"
                   >
                     {show ? (
                       <EyeOff className="w-5 h-5" />

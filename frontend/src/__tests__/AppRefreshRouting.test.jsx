@@ -32,7 +32,7 @@ describe('refresh loading and route preservation contract', () => {
     expect(skeleton).not.toContain('fixed inset-x-0 top-0 z-[100] h-1');
   });
 
-  it('centralizes initial loading for Dashboard, Team, HR, and Profile', () => {
+  it('centralizes initial loading for Dashboard, Team, HR, Profile, Tasks, and Notifications', () => {
     const layout = read('src/layouts/DashboardLayout.jsx');
     const coordinator = read('src/components/loading/RouteInitialLoading.jsx');
     const pages = [
@@ -40,6 +40,8 @@ describe('refresh loading and route preservation contract', () => {
       read('src/pages/Team.jsx'),
       read('src/pages/HR.jsx'),
       read('src/pages/Profile.jsx'),
+      read('src/pages/Tasks.jsx'),
+      read('src/pages/Notifications.jsx'),
     ];
     expect(layout).toContain('COORDINATED_LOADING_ROUTES');
     expect(layout).toContain(
@@ -123,7 +125,7 @@ describe('refresh loading and route preservation contract', () => {
     const profile = read('src/pages/Profile.jsx');
     expect(profile).toContain('useRouteInitialLoading(');
     expect(profile).not.toContain('return <RouteRefreshSkeleton />');
-    expect(skeleton).toContain('function ProfileSkeleton()');
+    expect(skeleton).toContain('function ProfileSkeleton({ role })');
   });
   it('keeps the public Login route out of the dashboard skeleton fallback', () => {
     expect(app).toContain("import Login from './pages/Login';");
@@ -298,5 +300,72 @@ describe('refresh loading and route preservation contract', () => {
     );
     expect(coordinator).toContain("loading ? 'hidden'");
     expect(coordinator).toContain('reportLoading(Boolean(loading))');
+  });
+
+  it('keeps the exact Tasks skeleton until initial task data resolves', () => {
+    const layout = read('src/layouts/DashboardLayout.jsx');
+    const tasks = read('src/pages/Tasks.jsx');
+
+    expect(layout).toContain("'/tasks'");
+    expect(tasks).toContain(
+      "import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';"
+    );
+    expect(tasks).toContain('useRouteInitialLoading(');
+    expect(tasks).toContain('isLoading || !tasks');
+    expect(tasks).toContain('enabled: hydrated && !!accessToken');
+    expect(tasks).not.toContain('animate-pulse h-48');
+    expect(tasks).not.toContain('{isLoading ? (');
+
+    expect(skeleton).toContain('function Tasks({ department = false })');
+    expect(skeleton).toContain('h-[216px] self-start p-5 md:p-6');
+    expect(skeleton).toContain('h-12 w-12 shrink-0 rounded-2xl');
+    expect(skeleton).toContain('h-6 w-20 rounded-full');
+    expect(skeleton).toContain('h-6 w-16 rounded-full');
+    expect(skeleton).toContain('h-7 w-7 rounded-xl');
+    expect(skeleton).toContain('border-t border-slate-200 pt-4');
+    expect(skeleton).toContain('h-10 w-40 rounded-2xl');
+    expect(skeleton).toContain('h-10 w-32 rounded-2xl');
+
+    expect(tasks).toContain('grid grid-cols-1 xl:grid-cols-2 gap-5');
+    expect(tasks).toContain('p-5 md:p-6 card-hover');
+    expect(tasks).toContain('w-12 h-12 rounded-2xl');
+    expect(tasks).toContain('mt-5 pt-4 border-t');
+    expect(tasks).toContain('Details & Analytics');
+    expect(tasks).toContain('View proofs');
+  });
+
+  it('keeps the Notifications skeleton until notification data resolves', () => {
+    const layout = read('src/layouts/DashboardLayout.jsx');
+    const notifications = read('src/pages/Notifications.jsx');
+
+    expect(layout).toContain("'/notifications'");
+    expect(notifications).toContain('useRouteInitialLoading(');
+    expect(notifications).toContain('enabled: hydrated && !!accessToken');
+    expect(notifications).not.toContain('<Spinner />');
+    expect(skeleton).toContain('function NotificationsSkeleton()');
+    expect(skeleton).toContain('min-h-[145px] p-5');
+    expect(skeleton).toContain('h-11 w-11 shrink-0 rounded-2xl');
+    expect(skeleton).toContain('space-y-3');
+    expect(skeleton).toContain('h-5 w-24 rounded-md');
+    expect(skeleton).toContain('h-8 w-8 rounded-xl');
+  });
+
+  it('matches Profile account details to the authenticated role', () => {
+    const profile = read('src/pages/Profile.jsx');
+
+    expect(skeleton).toContain('function ProfileSkeleton({ role })');
+    expect(skeleton).toContain("role === 'ADMIN' ? 3");
+    expect(skeleton).toContain("role === 'SENIOR_TL' ? 5 : 4");
+    expect(skeleton).toContain('accountDetailCount === 3');
+    expect(skeleton).toContain("'sm:grid-cols-3 xl:w-[500px]'");
+    expect(skeleton).toContain("'sm:grid-cols-2 xl:w-[500px]'");
+    expect(skeleton).toContain('<ProfileSkeleton role={role} />');
+    expect(skeleton).toContain('mx-auto h-24 w-24 rounded-3xl');
+    expect(skeleton).toContain('lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]');
+
+    expect(profile).toContain('sm:grid-cols-3 xl:w-[500px]');
+    expect(profile).toContain('sm:grid-cols-2 xl:w-[500px]');
+    expect(profile).toContain('h-24 w-24 rounded-3xl');
+    expect(profile).toContain('lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]');
   });
 });

@@ -38,15 +38,15 @@ Be respectful, inclusive, and constructive. Harassment or exclusionary behaviour
 
 Make sure the following are installed on your machine before getting started:
 
-| Tool           | Minimum Version        | Notes                                                              |
-| -------------- | ---------------------- | ------------------------------------------------------------------ |
-| **Node.js**    | v18+ (v22 recommended) | [nodejs.org](https://nodejs.org)                                   |
-| **npm**        | v8+                    | Bundled with Node.js                                               |
-| **PostgreSQL** | v14+                   | [postgresql.org](https://www.postgresql.org)                       |
-| **Redis**      | —                      | Use [Upstash](https://upstash.com) (free tier) or a local instance |
-| **Git**        | Any recent version     | —                                                                  |
+| Tool           | Minimum Version        | Notes                                                             |
+| -------------- | ---------------------- | ----------------------------------------------------------------- |
+| **Node.js**    | v18+ (v22 recommended) | [nodejs.org](https://nodejs.org)                                  |
+| **npm**        | v8+                    | Bundled with Node.js                                              |
+| **PostgreSQL** | v14+                   | [postgresql.org](https://www.postgresql.org)                      |
+| **Redis**      | —                      | Optional; use a local instance or managed Redis for full features |
+| **Git**        | Any recent version     | —                                                                 |
 
-> **Note:** The project uses [Upstash Redis](https://upstash.com) (REST-based), so no local Redis daemon is required for development. Create a free Upstash account and copy the REST URL and token into your `.env`.
+> **Note:** Redis is optional for local development. Without it, the backend stays available but uses documented PostgreSQL, in-memory, and direct-execution fallbacks.
 
 ---
 
@@ -98,9 +98,8 @@ JWT_REFRESH_SECRET=your-strong-refresh-secret
 JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 
-# Upstash Redis (get from https://upstash.com)
-UPSTASH_REDIS_REST_URL=https://your-redis-url.upstash.io
-UPSTASH_REDIS_REST_TOKEN=your-redis-token
+# Redis (optional, but recommended for production and multi-instance deployments)
+REDIS_URL=redis://localhost:6379/0
 
 # CORS — must match the frontend dev server URL
 CORS_ORIGIN=http://localhost:5173
@@ -114,6 +113,26 @@ SEED_ADMIN_PASSWORD=Admin@123
 GEMINI_API_KEY=your-gemini-key
 GROQ_API_KEY=your-groq-key
 ```
+
+### Redis behavior
+
+Redis configuration is resolved in this order:
+
+1. `REDIS_URL` (recommended; use `rediss://` for TLS)
+2. `REDIS_HOST`, `REDIS_PORT`, `REDIS_USERNAME`, `REDIS_PASSWORD`, `REDIS_DB`, and `REDIS_TLS`
+3. `UPSTASH_REDIS_REST_URL` plus `UPSTASH_REDIS_REST_TOKEN` (legacy compatibility)
+
+When Redis is not configured or temporarily unavailable, the backend continues
+in degraded mode:
+
+- refresh-token and session operations fall back to PostgreSQL;
+- Redis-backed rate limits fall back to PostgreSQL or per-process memory;
+- bulk jobs run directly instead of through BullMQ;
+- access-token revocation checks fail open until the short-lived JWT expires;
+- WebSocket authentication continues with JWT validation but without shared
+  revocation state.
+
+Startup logs list each active fallback so the degraded behavior is not silent.
 
 **Run database migrations and seed data:**
 

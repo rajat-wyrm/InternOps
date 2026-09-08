@@ -2,7 +2,13 @@ import React from 'react';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import DashboardLayout from '../layouts/DashboardLayout';
@@ -411,6 +417,106 @@ describe('DashboardLayout Component Tests', () => {
     });
     expect(
       container.querySelector('img[src$="/uploads/cached-avatar.png"]')
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not show the default admin avatar before auth hydration', async () => {
+    api.get.mockImplementation(() => Promise.resolve({ data: {} }));
+    useAuthStore.setState({
+      accessToken: null,
+      hydrated: false,
+      user: {
+        id: '1',
+        email: 'admin@example.com',
+        role: 'ADMIN',
+        full_name: 'System Admin',
+      },
+    });
+
+    const { container } = renderLayout();
+
+    expect(
+      container.querySelector('img[src="/admin-default-avatar.svg"]')
+    ).not.toBeInTheDocument();
+
+    useAuthStore.setState({
+      accessToken: 'token',
+      hydrated: true,
+      user: {
+        id: '1',
+        email: 'admin@example.com',
+        role: 'ADMIN',
+        full_name: 'System Admin',
+        avatar_url: '/uploads/refreshed-avatar.png',
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll('img[src$="/uploads/refreshed-avatar.png"]')
+      ).toHaveLength(2);
+    });
+    expect(
+      container.querySelector('img[src="/admin-default-avatar.svg"]')
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps both account avatars neutral until the profile request resolves', async () => {
+    let resolveProfile;
+    api.get.mockImplementation((url) => {
+      if (url === '/users/me') {
+        return new Promise((resolve) => {
+          resolveProfile = resolve;
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    useAuthStore.setState({
+      accessToken: null,
+      hydrated: false,
+      user: {
+        id: '1',
+        email: 'admin@example.com',
+        role: 'ADMIN',
+        full_name: 'System Admin',
+      },
+    });
+
+    const { container } = renderLayout();
+    expect(screen.getAllByLabelText('Loading account avatar')).toHaveLength(2);
+    expect(
+      container.querySelector('img[src="/admin-default-avatar.svg"]')
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelector('header img[alt=""]')
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      useAuthStore.setState({ accessToken: 'token', hydrated: true });
+    });
+    expect(screen.getAllByLabelText('Loading account avatar')).toHaveLength(2);
+    expect(
+      container.querySelector('img[src="/admin-default-avatar.svg"]')
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveProfile({
+        data: {
+          full_name: 'System Admin',
+          avatar_url: '/uploads/final-avatar.png',
+        },
+      });
+    });
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll('img[src$="/uploads/final-avatar.png"]')
+      ).toHaveLength(2);
+    });
+    expect(
+      screen.queryByLabelText('Loading account avatar')
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelector('img[src="/admin-default-avatar.svg"]')
     ).not.toBeInTheDocument();
   });
 });

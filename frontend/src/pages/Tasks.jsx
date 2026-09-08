@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 import CreateTaskForm from '../components/CreateTaskForm';
 import CustomSelect from '../components/CustomSelect';
 import {
@@ -127,8 +128,13 @@ export default function Tasks({
           params: { department_id: activeDeptId || undefined },
         })
         .then((res) => res.data),
+    enabled: hydrated && !!accessToken,
     retry: 1,
   });
+
+  useRouteInitialLoading(
+    !tasksIsError && (!hydrated || !accessToken || isLoading || !tasks)
+  );
 
   const { data: proofs, refetch: refetchProofs } = useQuery({
     queryKey: ['proofs', selectedProofTaskId],
@@ -419,16 +425,7 @@ export default function Tasks({
         </div>
       )}
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-          {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="p-5 md:p-6 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse h-48"
-            />
-          ))}
-        </div>
-      ) : tasksIsError ? (
+      {tasksIsError ? (
         <ApiErrorState
           error={tasksError}
           title="Failed to load tasks"

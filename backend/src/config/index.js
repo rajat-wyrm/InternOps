@@ -10,6 +10,41 @@ const log = pino(
 );
 
 function buildRedisConfig() {
+  const redisUrl = process.env.REDIS_URL?.trim();
+
+  if (redisUrl) {
+    try {
+      const parsed = new URL(redisUrl);
+
+      if (!['redis:', 'rediss:'].includes(parsed.protocol)) {
+        throw new Error('REDIS_URL must use redis:// or rediss://');
+      }
+
+      const database = Number.parseInt(parsed.pathname.replace(/^\//, ''), 10);
+
+      return {
+        enabled: true,
+        available: false,
+        source: 'REDIS_URL',
+        host: parsed.hostname,
+        port: Number.parseInt(parsed.port, 10) || 6379,
+        username: parsed.username
+          ? decodeURIComponent(parsed.username)
+          : 'default',
+        password: parsed.password
+          ? decodeURIComponent(parsed.password)
+          : undefined,
+        database: Number.isInteger(database) ? database : 0,
+        tls: parsed.protocol === 'rediss:',
+      };
+    } catch (err) {
+      log.warn(
+        { err: err?.message },
+        'Invalid REDIS_URL; Redis-dependent features will use fallbacks'
+      );
+    }
+  }
+
   const explicitHost = process.env.REDIS_HOST;
   const explicitPort = parseInt(process.env.REDIS_PORT, 10) || 6379;
   const explicitUsername = process.env.REDIS_USERNAME || 'default';
@@ -28,10 +63,13 @@ function buildRedisConfig() {
 
     return {
       enabled: true,
+      available: false,
+      source: 'REDIS_HOST',
       host: explicitHost,
       port: explicitPort,
       username: explicitUsername,
       password: explicitPassword || undefined,
+      database: Number.parseInt(process.env.REDIS_DB, 10) || 0,
       tls: useTls,
     };
   }
@@ -42,10 +80,13 @@ function buildRedisConfig() {
   if (!restUrl || !token || restUrl === 'your-redis-url') {
     return {
       enabled: false,
+      available: false,
+      source: null,
       host: null,
       port: 6379,
       username: 'default',
       password: null,
+      database: 0,
       tls: false,
     };
   }
@@ -68,20 +109,26 @@ function buildRedisConfig() {
   if (!host) {
     return {
       enabled: false,
+      available: false,
+      source: null,
       host: null,
       port: 6379,
       username: 'default',
       password: null,
+      database: 0,
       tls: false,
     };
   }
 
   return {
     enabled: true,
+    available: false,
+    source: 'UPSTASH_REDIS_REST_URL',
     host,
     port: 6379,
     username: 'default',
     password: token,
+    database: 0,
     tls: true,
   };
 }

@@ -17,7 +17,11 @@ const pool = require('./config/db');
 const metrics = require('./utils/metrics');
 const { initializeWebSocket, getIO } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
-const { getRedisStatus, getRedisClient } = require('./config/redis');
+const {
+  getRedisStatus,
+  getRedisClient,
+  getRedisDegradedFeatures,
+} = require('./config/redis');
 const { csrfMiddleware } = require('./middleware/csrf');
 const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
@@ -100,30 +104,36 @@ app.get(
 );
 
 app.get(
-  '/health/full',
+  '/health/detailed',
   {
+    preHandler: [auth, rbac('ADMIN')],
     config: {
       rateLimit: false,
     },
   },
   async (req, reply) => {
     const checks = { db: false, redis: false };
+
     try {
       await pool.query('SELECT 1');
       checks.db = true;
     } catch {}
+
     const redisStatus = getRedisStatus();
+
     checks.redis =
       process.env.NODE_ENV === 'test' ||
       redisStatus === 'connected' ||
       redisStatus === 'disabled';
+
     const healthy = checks.db && checks.redis;
-    reply
-      .status(healthy ? 200 : 503)
-      .send({ status: healthy ? 'healthy' : 'degraded', checks });
+
+    reply.status(healthy ? 200 : 503).send({
+      status: healthy ? 'healthy' : 'degraded',
+      checks,
+    });
   }
 );
-
 app.register(require('@fastify/cors'), {
   origin: (origin, cb) => {
     if (config.nodeEnv !== 'production') {
@@ -487,12 +497,13 @@ const start = async () => {
       host: config.host,
     });
     initializeWebSocket(app.server, app.log);
-    await bulkJobQueue.init();
     await getRedisClient();
+    await bulkJobQueue.init();
     writeStartupSummary({
       logger: app.log,
       database,
       redis: getRedisStatus(),
+      degradedFeatures: getRedisDegradedFeatures(),
       queue: bulkJobQueue.getStatus(),
       integrations: integrationStatus(config),
       port: config.port,

@@ -134,6 +134,7 @@ http://localhost:5173
 | DATABASE_URL       | PostgreSQL database connection string | postgresql://user:password@localhost:5432/internops |
 | JWT_SECRET         | Secret key for JWT access tokens      | your-jwt-secret                                     |
 | JWT_REFRESH_SECRET | Secret key for JWT refresh tokens     | your-refresh-secret                                 |
+| REDIS_URL          | Optional Redis connection URL         | redis://localhost:6379/0                            |
 
 ### Complete Environment Variables
 
@@ -153,7 +154,7 @@ The file is organized into the following sections:
 - Fast2SMS
 - AI Services
 - Email (SMTP)
-- Redis (Upstash)
+- Redis (optional local or managed instance)
 - AI Cache
 - AI Chat Daily Limit
 

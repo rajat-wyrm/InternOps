@@ -20,14 +20,17 @@ const {
 } = require('../../middleware/bruteForce');
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
-const { blacklistAccessToken } = require('../../config/redis');
+const {
+  blacklistAccessToken,
+  runRedisOperation,
+} = require('../../config/redis');
 const { notifyAdmin } = require('../notifications/repository');
+const logger = require('../../logger');
 
 const DUMMY_USER = {
   password_hash:
     '$argon2id$v=19$m=65536,t=3,p=4$8/VvKJehP9DGKtV1NP5p8g$z0S2q7BsbH2YY16pI0/jXvgI4ElwnccjvW3NNcCSsQk',
 };
-const { getRedisClient } = require('../../config/redis');
 const emailService = require('../../services/email');
 
 const REFRESH_RECOVERY_SECONDS = 20 * 60;
@@ -148,22 +151,20 @@ async function login(email, password, ip, userAgent) {
   try {
     currentAttempts = (await incrementAttempt(email, ip)) || 0;
   } catch (err) {
-    console.error('Redis Brute Force Check Failed:', err);
-
-    throw new UnauthorizedError(
-      'Login temporarily unavailable. Please try again later.'
+    logger.warn(
+      { err: { name: err?.name, code: err?.code, message: err?.message } },
+      'Login rate-limit cache unavailable; continuing with database protection'
     );
+    currentAttempts = 0;
   }
 
   if (currentAttempts > 5) {
-    const redis = await getRedisClient();
     const notifyKey = `lockout-email:${email}`;
-
-    let alreadySent = null;
-
-    if (redis) {
-      alreadySent = await redis.get(notifyKey);
-    }
+    const alreadySent = await runRedisOperation(
+      'account-lockout notification deduplication',
+      'sending without cross-process deduplication',
+      (redis) => redis.get(notifyKey)
+    );
 
     if (!alreadySent) {
       const user = await repo.findByEmail(email);
@@ -176,11 +177,11 @@ async function login(email, password, ip, userAgent) {
         });
       }
 
-      if (redis) {
-        await redis.set(notifyKey, '1', {
-          EX: 15 * 60,
-        });
-      }
+      await runRedisOperation(
+        'account-lockout notification deduplication',
+        'continuing without a Redis deduplication marker',
+        (redis) => redis.set(notifyKey, '1', { EX: 15 * 60 })
+      );
     }
 
     // Notify admins about account lockout (fire-and-forget)

@@ -12,11 +12,11 @@ import {
 } from 'lucide-react';
 import useAuthStore from '../store/auth';
 import api from '../lib/axios';
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 import {
   Card,
   Btn,
   EmptyState,
-  Spinner,
   ConfirmationModal,
   ApiErrorState,
 } from '../components/ui';
@@ -70,6 +70,9 @@ export default function Notifications() {
     refetchIntervalInBackground: false,
     enabled: hydrated && !!accessToken,
   });
+  useRouteInitialLoading(
+    !isError && (!hydrated || !accessToken || isLoading || !data)
+  );
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ['notifications'] });
@@ -259,10 +262,6 @@ export default function Notifications() {
           fallback="Unable to load notifications. Please try again."
           onRetry={refetch}
         />
-      ) : isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner />
-        </div>
       ) : items.length === 0 ? (
         <EmptyState
           icon={

@@ -2,6 +2,7 @@ const {
   sanitizeDatabaseTarget,
   checkDatabase,
   integrationStatus,
+  writeStartupSummary,
 } = require('../../src/utils/startupDiagnostics');
 
 describe('startup diagnostics', () => {
@@ -38,5 +39,40 @@ describe('startup diagnostics', () => {
     });
     expect(result).toMatchObject({ email: true, ai: true, sentry: false });
     expect(JSON.stringify(result)).not.toContain('secret');
+  });
+
+  test('lists each degraded Redis feature at startup', () => {
+    const logger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+    };
+
+    writeStartupSummary({
+      logger,
+      database: {
+        provider: 'PostgreSQL',
+        database: 'internops_test',
+        host: 'localhost',
+        ssl: false,
+      },
+      redis: 'disabled',
+      degradedFeatures: [
+        {
+          feature: 'session cache',
+          fallback: 'PostgreSQL session storage',
+        },
+      ],
+      queue: { mode: 'direct', initialized: true },
+      integrations: {},
+      port: 5000,
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        feature: 'session cache',
+        fallback: 'PostgreSQL session storage',
+      },
+      '[DEGRADED] session cache: PostgreSQL session storage'
+    );
   });
 });
