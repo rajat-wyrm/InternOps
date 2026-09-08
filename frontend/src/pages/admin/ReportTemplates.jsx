@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 
 import {
@@ -65,6 +66,8 @@ function emptyForm() {
 }
 
 export default function ReportTemplates() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState(emptyForm());
@@ -84,6 +87,7 @@ export default function ReportTemplates() {
     queryKey: ['reportTemplates'],
 
     queryFn: () => api.get('/report-templates').then((res) => res.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const versionsQuery = useQuery({

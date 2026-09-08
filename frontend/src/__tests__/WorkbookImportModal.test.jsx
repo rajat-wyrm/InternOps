@@ -216,3 +216,49 @@ test('source supports reviewed database attendance conflict resolution', () => {
   expect(source).toContain('setDatabaseResolutions({});');
   expect(source).not.toContain("(conflict) => [conflict.id, 'KEEP_EXISTING']");
 });
+
+test('Users page imports and renders the workbook modal component', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../pages/admin/AdminDashboard.jsx'),
+    'utf8'
+  );
+  expect(source).toContain(
+    "import WorkbookImportModal from '../../components/admin/WorkbookImportModal';"
+  );
+  expect(source).toContain('<WorkbookImportModal');
+  expect(source).toContain('open={workbookImportOpen}');
+});
+
+test('Users page imports the shared role labels used while rendering rows', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../pages/admin/AdminDashboard.jsx'),
+    'utf8'
+  );
+  expect(source).toContain(
+    "import { ROLE_LABEL } from '../../constants/roles';"
+  );
+  expect(source).toContain('ROLE_LABEL[u.role]');
+});
+
+test('Users page keeps the deployed User Directory presentation', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../pages/admin/AdminDashboard.jsx'),
+    'utf8'
+  );
+  expect(source).toContain('Admin Panel');
+  expect(source).toContain('User Directory');
+  expect(source).toContain(
+    'Manage all platform accounts, roles, and account status.'
+  );
+  expect(source).not.toContain('Welcome, System Admin');
+  expect(source).not.toContain('<InternStatCards />');
+  expect(source).not.toContain(
+    "import InternStatCards from '../../components/admin/InternStatCards';"
+  );
+});

@@ -54,6 +54,8 @@ export default function Attendance({
   roster = [],
   onViewAllAttendance,
 } = {}) {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const { deptId: routeDeptId } = useParams();
   const deptId = propDeptId || routeDeptId;
   const user = useAuthStore((s) => s.user);
@@ -106,7 +108,7 @@ export default function Attendance({
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
-    enabled: isManager && !isProjectView,
+    enabled: hydrated && !!accessToken && isManager && !isProjectView,
   });
 
   // Managers can pick any team member; everyone can always see their own.

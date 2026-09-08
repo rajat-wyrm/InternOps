@@ -32,9 +32,23 @@ jest.mock('../../src/config', () => ({
   appUrl: 'http://localhost:3000',
 }));
 
-jest.mock('../../src/config/redis', () => ({
-  getRedisClient: jest.fn(),
-}));
+jest.mock('../../src/config/redis', () => {
+  const getRedisClient = jest.fn();
+  return {
+    getRedisClient,
+    runRedisOperation: jest.fn(
+      async (_feature, _fallback, operation, fallbackValue = null) => {
+        const redis = await getRedisClient();
+        if (!redis) return fallbackValue;
+        try {
+          return await operation(redis);
+        } catch {
+          return fallbackValue;
+        }
+      }
+    ),
+  };
+});
 
 jest.mock('../../src/config/db', () => ({
   query: jest.fn(),
@@ -148,6 +162,22 @@ describe('Email Service', () => {
     );
     expect(redis.incr).toHaveBeenCalledWith(`email_rl:${to}`);
     expect(redis.expire).not.toHaveBeenCalled();
+  });
+
+  it('should fall back to in-memory rate limiting when a Redis command fails', async () => {
+    const redis = {
+      incr: jest.fn().mockRejectedValue(new Error('Redis unavailable')),
+      expire: jest.fn(),
+    };
+    getRedisClient.mockResolvedValue(redis);
+    config.email.rateLimitPerRecipient = 1;
+
+    await emailService._checkRateLimit(to);
+
+    await expect(emailService._checkRateLimit(to)).rejects.toThrow(
+      `Rate limit exceeded for ${to}`
+    );
+    expect(redis.incr).toHaveBeenCalledTimes(2);
   });
 
   it('should prevent sending to addresses flagged as bounced', async () => {

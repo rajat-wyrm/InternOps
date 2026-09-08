@@ -53,6 +53,7 @@ function writeStartupSummary({
   logger,
   database,
   redis,
+  degradedFeatures = [],
   queue,
   integrations,
   port,
@@ -74,6 +75,12 @@ function writeStartupSummary({
     logger.warn('[WARN] Redis not configured; cache fallback is active');
   } else {
     logger.warn('[WARN] Redis unavailable; cache fallback is active');
+  }
+
+  if (redis !== 'connected') {
+    for (const { feature, fallback } of degradedFeatures) {
+      logger.warn({ feature, fallback }, `[DEGRADED] ${feature}: ${fallback}`);
+    }
   }
 
   const queueDetails = {

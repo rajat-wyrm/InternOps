@@ -1,12 +1,17 @@
 const argon2 = require('argon2');
+const crypto = require('crypto');
 const { UnauthorizedError } = require('../../utils/errors');
 const repo = require('./repository');
 const {
   generateAccessToken,
+  generateImpersonationAccessToken,
   generateRefreshToken,
   hashToken,
   verifyRefreshToken,
+  encryptRefreshRecovery,
+  decryptRefreshRecovery,
 } = require('../../utils/tokens');
+
 const { createAuditLog } = require('../../utils/audit');
 const {
   recordLoginAttempt,
@@ -15,15 +20,27 @@ const {
 } = require('../../middleware/bruteForce');
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
-const { blacklistAccessToken } = require('../../config/redis');
+const {
+  blacklistAccessToken,
+  runRedisOperation,
+} = require('../../config/redis');
 const { notifyAdmin } = require('../notifications/repository');
+const logger = require('../../logger');
 
 const DUMMY_USER = {
   password_hash:
     '$argon2id$v=19$m=65536,t=3,p=4$8/VvKJehP9DGKtV1NP5p8g$z0S2q7BsbH2YY16pI0/jXvgI4ElwnccjvW3NNcCSsQk',
 };
-const { getRedisClient } = require('../../config/redis');
 const emailService = require('../../services/email');
+
+const REFRESH_RECOVERY_SECONDS = 20 * 60;
+
+function refreshClientFingerprint(ip, userAgent) {
+  return crypto
+    .createHash('sha256')
+    .update(`${ip || ''}|${userAgent || ''}`)
+    .digest('hex');
+}
 
 async function register(data, creator) {
   const allowedRolesByCreator = {
@@ -129,22 +146,20 @@ async function login(email, password, ip, userAgent) {
   try {
     currentAttempts = (await incrementAttempt(email, ip)) || 0;
   } catch (err) {
-    console.error('Redis Brute Force Check Failed:', err);
-
-    throw new UnauthorizedError(
-      'Login temporarily unavailable. Please try again later.'
+    logger.warn(
+      { err: { name: err?.name, code: err?.code, message: err?.message } },
+      'Login rate-limit cache unavailable; continuing with database protection'
     );
+    currentAttempts = 0;
   }
 
   if (currentAttempts > 5) {
-    const redis = await getRedisClient();
     const notifyKey = `lockout-email:${email}`;
-
-    let alreadySent = null;
-
-    if (redis) {
-      alreadySent = await redis.get(notifyKey);
-    }
+    const alreadySent = await runRedisOperation(
+      'account-lockout notification deduplication',
+      'sending without cross-process deduplication',
+      (redis) => redis.get(notifyKey)
+    );
 
     if (!alreadySent) {
       const user = await repo.findByEmail(email);
@@ -157,11 +172,11 @@ async function login(email, password, ip, userAgent) {
         });
       }
 
-      if (redis) {
-        await redis.set(notifyKey, '1', {
-          EX: 15 * 60,
-        });
-      }
+      await runRedisOperation(
+        'account-lockout notification deduplication',
+        'continuing without a Redis deduplication marker',
+        (redis) => redis.set(notifyKey, '1', { EX: 15 * 60 })
+      );
     }
 
     // Notify admins about account lockout (fire-and-forget)
@@ -220,7 +235,7 @@ async function login(email, password, ip, userAgent) {
   };
 }
 
-async function refreshTokens(token, ip) {
+async function refreshTokens(token, ip, userAgent) {
   let decoded;
 
   try {
@@ -229,46 +244,96 @@ async function refreshTokens(token, ip) {
     throw new UnauthorizedError('Invalid refresh token');
   }
 
-  const hash = hashToken(token);
+  const consumedTokenHash = hashToken(token);
 
-  // Atomic claim - if two concurrent requests race, only one gets a userId back.
-  // The second gets null and is rejected immediately, eliminating the TOCTOU window.
-  const claimedUserId = await repo.claimRefreshToken(hash);
+  const fingerprint = refreshClientFingerprint(ip, userAgent);
 
-  if (!claimedUserId) {
-    throw new UnauthorizedError('Token revoked/expired');
-  }
-
-  // Ensure the claimed token belongs to the same user identified by the
-  // signed refresh token payload.
-  if (String(claimedUserId) !== String(decoded.id)) {
-    await repo.revokeAllUserTokensRedis(claimedUserId);
-    throw new UnauthorizedError('Invalid refresh token');
-  }
-
-  const user = await repo.findById(claimedUserId);
+  const user = await repo.findById(decoded.id);
 
   if (!user || user.suspended) {
-    await repo.revokeAllUserTokensRedis(claimedUserId);
+    await repo.revokeAllUserTokensRedis(decoded.id);
+
     throw new UnauthorizedError('User not found/suspended');
   }
 
-  const newAccess = generateAccessToken(user);
-  const newRefresh = generateRefreshToken(user);
-  const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const accessToken = generateAccessToken(user);
+  const refreshToken = generateRefreshToken(user);
+  const replacementTokenHash = hashToken(refreshToken);
 
-  // Revoke every existing refresh token for this user before storing the
-  // replacement. This prevents stolen sibling tokens from remaining usable.
-  await repo.revokeAllUserTokensRedis(user.id);
+  const publicSessionUser = publicUser(user);
 
-  await repo.storeRefreshTokenRedis(user.id, hashToken(newRefresh), newExpiry);
+  const replacementExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  return {
-    accessToken: newAccess,
-    refreshToken: newRefresh,
-    user: publicUser(user),
-  };
+  const recoveryExpiresAt = new Date(
+    Date.now() + REFRESH_RECOVERY_SECONDS * 1000
+  );
+
+  const encryptedPayload = encryptRefreshRecovery({
+    accessToken,
+    refreshToken,
+    user: publicSessionUser,
+  });
+
+  const rotation = await repo.rotateRefreshTokenWithRecovery({
+    consumedTokenHash,
+    userId: user.id,
+    replacementTokenHash,
+    replacementExpiresAt,
+    clientFingerprint: fingerprint,
+    encryptedPayload,
+    recoveryExpiresAt,
+  });
+
+  if (rotation?.rotated) {
+    await repo.cacheRefreshToken(
+      user.id,
+      replacementTokenHash,
+      replacementExpiresAt
+    );
+
+    return {
+      accessToken,
+      refreshToken,
+      user: publicSessionUser,
+    };
+  }
+
+  if (
+    rotation?.claimedUserId &&
+    String(rotation.claimedUserId) !== String(decoded.id)
+  ) {
+    throw new UnauthorizedError('Invalid refresh token');
+  }
+
+  const recovery = await repo.getRefreshRecoveryPostgres(consumedTokenHash);
+
+  const sameClient = recovery?.client_fingerprint === fingerprint;
+
+  const sameUser = String(recovery?.user_id) === String(decoded.id);
+
+  if (!sameClient || !sameUser) {
+    throw new UnauthorizedError('Token revoked/expired');
+  }
+
+  let recovered;
+
+  try {
+    recovered = decryptRefreshRecovery(recovery.encrypted_payload);
+  } catch {
+    throw new UnauthorizedError('Token revoked/expired');
+  }
+
+  if (!recovered?.accessToken || !recovered?.refreshToken || !recovered?.user) {
+    throw new UnauthorizedError('Token revoked/expired');
+  }
+
+  if (hashToken(recovered.refreshToken) !== recovery.replacement_token_hash) {
+    throw new UnauthorizedError('Token revoked/expired');
+  }
+
+  return recovered;
 }
+
 async function logout(
   token,
   authenticatedUserId,
@@ -307,4 +372,74 @@ async function logout(
   });
 }
 
-module.exports = { register, login, refreshTokens, logout };
+async function startImpersonation(
+  admin,
+  targetUserId,
+  password,
+  reason,
+  ip,
+  userAgent
+) {
+  if (admin.role !== 'ADMIN' || admin.impersonatedBy) {
+    const error = new Error(
+      'Only a signed-in administrator can view as a user'
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+  const [adminUser, target] = await Promise.all([
+    repo.findById(admin.id),
+    repo.findById(targetUserId),
+  ]);
+  if (!adminUser || !(await repo.verifyPassword(adminUser, password))) {
+    throw new UnauthorizedError('Administrator password is incorrect');
+  }
+  if (
+    !target ||
+    target.suspended ||
+    target.deleted_at ||
+    target.role === 'ADMIN'
+  ) {
+    const error = new Error('This account cannot be viewed');
+    error.statusCode = target ? 403 : 404;
+    throw error;
+  }
+  const accessToken = generateImpersonationAccessToken(target, adminUser);
+  await createAuditLog({
+    userId: adminUser.id,
+    action: 'IMPERSONATION_STARTED',
+    resourceType: 'user',
+    resourceId: target.id,
+    details: { reason, targetRole: target.role, readOnly: true },
+    ipAddress: ip,
+    userAgent,
+  });
+  return {
+    accessToken,
+    user: publicUser(target),
+    impersonation: {
+      admin: publicUser(adminUser),
+      reason,
+      expiresInSeconds: 600,
+    },
+  };
+}
+async function exitImpersonation(adminId, targetUserId, ip, userAgent) {
+  await createAuditLog({
+    userId: adminId,
+    action: 'IMPERSONATION_EXITED',
+    resourceType: 'user',
+    resourceId: targetUserId,
+    details: { readOnly: true },
+    ipAddress: ip,
+    userAgent,
+  });
+}
+module.exports = {
+  register,
+  login,
+  refreshTokens,
+  logout,
+  startImpersonation,
+  exitImpersonation,
+};

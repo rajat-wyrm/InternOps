@@ -35,6 +35,74 @@ def test_validate_endpoint_requires_auth(client):
     assert r.status_code == 401
 
 
+def test_generate_endpoint_requires_auth(client):
+    r = client.post(
+        "/certificates/generate",
+        json={"task": "Completed an internship project"},
+    )
+    assert r.status_code == 401
+
+
+def test_generate_endpoint_requires_permission(app):
+    app.dependency_overrides[get_current_user] = lambda: User(
+        id="test-user", roles=[]
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    r = client.post(
+        "/certificates/generate",
+        json={"task": "Completed an internship project"},
+    )
+    assert r.status_code == 403
+
+
+def test_generate_endpoint_success(admin_client, monkeypatch):
+    async def mock_generate(task):
+        return "Generated certificate design"
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.certificates.generate_certificate_design",
+        mock_generate,
+    )
+
+    r = admin_client.post(
+        "/certificates/generate",
+        json={"task": "Completed an internship project"},
+    )
+
+    assert r.status_code == 200
+    assert r.json() == {
+        "certificate_design": "Generated certificate design"
+    }
+def test_generate_endpoint_rate_limited(admin_client, monkeypatch):
+    async def mock_generate(task):
+        return "Generated certificate design"
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.certificates.generate_certificate_design",
+        mock_generate,
+    )
+
+    from app.api.v1.endpoints.certificates import ai_rate_limiter
+
+    ai_rate_limiter.history.clear()
+    ai_rate_limiter.requests_per_minute = 1
+
+    first = admin_client.post(
+        "/certificates/generate",
+        json={"task": "Completed an internship project"},
+    )
+    second = admin_client.post(
+        "/certificates/generate",
+        json={"task": "Completed another internship project"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+
+    ai_rate_limiter.requests_per_minute = 60
+    ai_rate_limiter.history.clear()
+    
 def test_validate_endpoint_success(admin_client, monkeypatch):
     async def mock_generate(messages):
         return "Polished sentence.", "mock-provider"

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-
+from app.core.rate_limiter import ai_rate_limiter
 from app.core.rbac import require_permission
 from app.models.certificates import (
     CertificatePreviewRequest,
@@ -34,7 +34,13 @@ router = APIRouter()
 _ADMIN_ONLY = [Depends(require_permission("AI_CERTIFICATES"))]
 
 
-@router.post("/generate")
+@router.post(
+    "/generate",
+    dependencies=[
+        Depends(ai_rate_limiter.check_rate_limit),
+        Depends(require_permission("AI_CERTIFICATES")),
+    ],
+)
 async def generate_certificate(request: CertificateRequest):
     result = await generate_certificate_design(request.task)
     return {

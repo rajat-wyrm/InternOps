@@ -22,6 +22,15 @@ def test_generate_endpoint_missing_prompt(client):
     assert r.status_code == 400
     assert "Prompt or user_input is required" in r.json()["detail"]
 
+def test_generate_endpoint_requires_authentication():
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    r = client.post("/generate", json={"prompt": "Write a poem"})
+
+    assert r.status_code == 401
+
 
 def test_generate_endpoint_success(client, monkeypatch):
     async def mock_generate(*args, **kwargs):

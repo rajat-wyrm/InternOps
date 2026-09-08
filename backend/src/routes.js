@@ -45,6 +45,7 @@ module.exports = async function routes(fastify, opts) {
     prefix: '/hierarchy',
   });
   fastify.register(require('./modules/team/routes'), { prefix: '/team' });
+  fastify.register(require('./modules/hr/routes'), { prefix: '/hr' });
   fastify.register(require('./modules/attendance/routes'), {
     prefix: '/attendance',
   });
@@ -89,6 +90,9 @@ module.exports = async function routes(fastify, opts) {
     prefix: '/reports/export',
   });
   fastify.register(require('./modules/ai/routes'), { prefix: '/ai' });
+  fastify.register(require('./modules/ai-performance/routes'), {
+    prefix: '/ai/performance',
+  });
   fastify.register(require('./modules/onboarding/routes'), {
     prefix: '/onboarding',
   });

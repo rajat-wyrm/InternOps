@@ -1,31 +1,36 @@
+```javascript
 require('dotenv').config();
+
 const validateEnv = require('./config/validateEnv');
 validateEnv();
-<<<<<<< HEAD
 
-=======
->>>>>>> upstream/master
 const {
   initSentry,
   captureException: sentryCaptureException,
   flushSentry,
 } = require('./config/sentry');
-initSentry();
-<<<<<<< HEAD
 
-=======
+initSentry();
+
 const auth = require('./middleware/auth');
 const rbac = require('./middleware/rbac');
->>>>>>> upstream/master
+
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
+
 const config = require('./config');
 const pool = require('./config/db');
 const metrics = require('./utils/metrics');
 const { initializeWebSocket, getIO } = require('./websocket');
 const noticesRoutes = require('./modules/notices/routes');
-const { getRedisStatus, getRedisClient } = require('./config/redis');
+
+const {
+  getRedisStatus,
+  getRedisClient,
+  getRedisDegradedFeatures,
+} = require('./config/redis');
+
 const { csrfMiddleware } = require('./middleware/csrf');
 const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
@@ -34,18 +39,37 @@ const githubSyncOrchestrator = require('./modules/github-sync/orchestrator');
 
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
+
   logger:
     config.nodeEnv === 'development'
       ? {
           transport: { target: 'pino-pretty' },
           level: process.env.LOG_LEVEL || 'info',
         }
-      : { level: process.env.LOG_LEVEL || 'info' },
+      : {
+          level: process.env.LOG_LEVEL || 'info',
+        },
+
   bodyLimit: 1048576,
+
   genReqId: () => uuidv4(),
 });
 
-// Layer 1: Register monitoring routes BEFORE global middleware to ensure observability
+
+// ---------------------------------------------------------------------------
+// Monitoring
+// ---------------------------------------------------------------------------
+
+app.addHook('onRequest', metrics.trackActiveRequests);
+
+app.addHook('onRequest', async (request) => {
+  request.metricsStartTime = process.hrtime.bigint().toString();
+});
+
+
+// ---------------------------------------------------------------------------
+// GET /metrics
+// ---------------------------------------------------------------------------
 
 app.get(
   '/metrics',
@@ -53,6 +77,7 @@ app.get(
     preHandler: [
       auth,
       rbac('ADMIN'),
+
       async (req, reply) => {
         const authHeader = req.headers.authorization;
         const expectedToken = `Bearer ${process.env.METRICS_TOKEN}`;
@@ -62,12 +87,20 @@ app.get(
         }
       },
     ],
+
     config: {
       rateLimit: false,
     },
   },
+
   metrics.metricsEndpoint
 );
+
+
+// ---------------------------------------------------------------------------
+// GET /health
+// ---------------------------------------------------------------------------
+
 app.get(
   '/health',
   {
@@ -75,10 +108,18 @@ app.get(
       rateLimit: false,
     },
   },
+
   async (req, reply) => {
-    return reply.send({ status: 'ok' });
+    return reply.send({
+      status: 'ok',
+    });
   }
 );
+
+
+// ---------------------------------------------------------------------------
+// GET /health/db
+// ---------------------------------------------------------------------------
 
 app.get(
   '/health/db',
@@ -87,9 +128,11 @@ app.get(
       rateLimit: false,
     },
   },
+
   async (req, reply) => {
     try {
       await pool.query('SELECT 1');
+
       reply.send({
         status: 'ok',
         db: 'connected',
@@ -103,41 +146,57 @@ app.get(
   }
 );
 
+
+// ---------------------------------------------------------------------------
+// GET /health/detailed
+// ---------------------------------------------------------------------------
+
 app.get(
-  '/health/full',
+  '/health/detailed',
   {
+    preHandler: [auth, rbac('ADMIN')],
+
     config: {
       rateLimit: false,
     },
   },
+
   async (req, reply) => {
-    const checks = { db: false, redis: false };
+    const checks = {
+      db: false,
+      redis: false,
+    };
+
     try {
       await pool.query('SELECT 1');
       checks.db = true;
     } catch {}
+
     const redisStatus = getRedisStatus();
+
     checks.redis =
       process.env.NODE_ENV === 'test' ||
       redisStatus === 'connected' ||
       redisStatus === 'disabled';
-    const healthy = checks.db && checks.redis;
-<<<<<<< HEAD
 
-    reply.status(healthy ? 200 : 503).send({
-      status: healthy ? 'healthy' : 'degraded',
-      checks,
-      uptime: Math.floor(process.uptime()),
-      version: require('../package.json').version,
-      timestamp: new Date().toISOString(),
-    });
-=======
+    const healthy = checks.db && checks.redis;
+
     reply
       .status(healthy ? 200 : 503)
-      .send({ status: healthy ? 'healthy' : 'degraded', checks });
->>>>>>> upstream/master
+      .send({
+        status: healthy ? 'healthy' : 'degraded',
+        checks,
+        uptime: Math.floor(process.uptime()),
+        version: require('../package.json').version,
+        timestamp: new Date().toISOString(),
+      });
   }
 );
+
+
+// ---------------------------------------------------------------------------
+// CORS
+// ---------------------------------------------------------------------------
 
 app.register(require('@fastify/cors'), {
   origin: (origin, cb) => {
@@ -152,8 +211,11 @@ app.register(require('@fastify/cors'), {
 
     const configured = Array.isArray(config.corsOrigin)
       ? config.corsOrigin
-      : typeof config.corsOrigin === 'string' && config.corsOrigin.includes(',')
-        ? config.corsOrigin.split(',').map((o) => o.trim())
+      : typeof config.corsOrigin === 'string' &&
+          config.corsOrigin.includes(',')
+        ? config.corsOrigin
+            .split(',')
+            .map((o) => o.trim())
         : [config.corsOrigin];
 
     if (!origin || configured.includes(origin)) {
@@ -162,12 +224,32 @@ app.register(require('@fastify/cors'), {
 
     const corsError = new Error('Not allowed by CORS');
     corsError.statusCode = 403;
+
     return cb(corsError, false);
   },
+
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+
+  methods: [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS',
+  ],
+
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-CSRF-Token',
+  ],
 });
+
+
+// ---------------------------------------------------------------------------
+// Helmet
+// ---------------------------------------------------------------------------
 
 app.register(require('@fastify/helmet'), {
   contentSecurityPolicy: {
@@ -183,10 +265,20 @@ app.register(require('@fastify/helmet'), {
   },
 });
 
+
+// ---------------------------------------------------------------------------
+// Compression
+// ---------------------------------------------------------------------------
+
 app.register(require('@fastify/compress'), {
   global: true,
   encodings: ['gzip', 'deflate', 'br'],
 });
+
+
+// ---------------------------------------------------------------------------
+// Rate limiting
+// ---------------------------------------------------------------------------
 
 app.register(require('@fastify/rate-limit'), {
   global: true,
@@ -194,15 +286,43 @@ app.register(require('@fastify/rate-limit'), {
   timeWindow: config.rateLimit.timeWindow,
 });
 
+
+// ---------------------------------------------------------------------------
+// Cookie
+// ---------------------------------------------------------------------------
+
 app.register(require('@fastify/cookie'));
+
+
+// ---------------------------------------------------------------------------
+// CSRF protection
+// ---------------------------------------------------------------------------
+
 app.addHook('preHandler', async (request, reply) => {
-  const path = request.routerPath ?? request.routeOptions?.url;
-  if (path === '/api/v1/auth/logout') return;
+  const routePath =
+    request.routerPath ?? request.routeOptions?.url;
+
+  if (routePath === '/api/v1/auth/logout') {
+    return;
+  }
 
   return csrfMiddleware(request, reply);
 });
 
-app.addHook('preHandler', sanitizationMiddleware);
+
+// ---------------------------------------------------------------------------
+// Sanitization
+// ---------------------------------------------------------------------------
+
+app.addHook(
+  'preHandler',
+  sanitizationMiddleware
+);
+
+
+// ---------------------------------------------------------------------------
+// Multipart
+// ---------------------------------------------------------------------------
 
 app.register(require('@fastify/multipart'), {
   limits: {
@@ -210,10 +330,32 @@ app.register(require('@fastify/multipart'), {
   },
 });
 
+
+// ---------------------------------------------------------------------------
+// Static files
+// ---------------------------------------------------------------------------
+
 app.register(require('@fastify/static'), {
-  root: path.join(__dirname, '..', config.uploadDir),
+  root: path.join(
+    __dirname,
+    '..',
+    config.uploadDir
+  ),
+
   prefix: '/uploads/',
+
+  setHeaders: (res) => {
+    res.setHeader(
+      'Cross-Origin-Resource-Policy',
+      'cross-origin'
+    );
+  },
 });
+
+
+// ---------------------------------------------------------------------------
+// Swagger
+// ---------------------------------------------------------------------------
 
 if (process.env.NODE_ENV !== 'test') {
   app.register(require('@fastify/swagger'), {
@@ -224,14 +366,20 @@ if (process.env.NODE_ENV !== 'test') {
         description:
           'All business routes are versioned under /api/v1/. Future breaking changes will be introduced under /api/v2/ alongside the existing version.',
       },
+
       servers: [
-        { url: '/api/v1', description: 'Current stable API (v1)' },
+        {
+          url: '/api/v1',
+          description: 'Current stable API (v1)',
+        },
+
         {
           url: '/api/v2',
           description:
             'Next API version (v2) — see CONTRIBUTING.md for migration guide',
         },
       ],
+
       components: {
         securitySchemes: {
           bearerAuth: {
@@ -241,6 +389,7 @@ if (process.env.NODE_ENV !== 'test') {
           },
         },
       },
+
       security: [
         {
           bearerAuth: [],
@@ -251,112 +400,222 @@ if (process.env.NODE_ENV !== 'test') {
 
   const authMiddleware = require('./middleware/auth');
 
-  app.register(require('@fastify/swagger-ui'), {
-    routePrefix: '/api-docs',
-    uiHooks: {
-      onRequest: function (request, reply, next) {
-        authMiddleware(request, reply)
-          .then(() => {
-            if (!reply.sent) {
-              rbac('ADMIN')(request, reply, next);
-            }
-          })
-          .catch(next);
-      },
-    },
-  });
+  app.register(
+    require('@fastify/swagger-ui'),
+    {
+      routePrefix: '/api-docs',
 
-  app.addHook('onRoute', (routeOptions) => {
-    if (!routeOptions.url.startsWith('/api/')) return;
-
-    routeOptions.schema = routeOptions.schema || {};
-    if (!routeOptions.schema.response) {
-      routeOptions.schema.response = {
-        200: {
-          description: 'Successful response',
+      uiHooks: {
+        onRequest: function (
+          request,
+          reply,
+          next
+        ) {
+          authMiddleware(request, reply)
+            .then(() => {
+              if (!reply.sent) {
+                rbac('ADMIN')(
+                  request,
+                  reply,
+                  next
+                );
+              }
+            })
+            .catch(next);
         },
-        400: {
-          description: 'Validation error',
-          type: 'object',
-          properties: {
-            error: { type: 'string' },
-            details: {
-              type: 'array',
-              items: {
-                type: 'object',
-                additionalProperties: true,
+      },
+    }
+  );
+
+
+  // -------------------------------------------------------------------------
+  // Swagger response schemas
+  // -------------------------------------------------------------------------
+
+  app.addHook(
+    'onRoute',
+    (routeOptions) => {
+      if (!routeOptions.url.startsWith('/api/')) {
+        return;
+      }
+
+      routeOptions.schema =
+        routeOptions.schema || {};
+
+      if (!routeOptions.schema.response) {
+        routeOptions.schema.response = {
+          200: {
+            description: 'Successful response',
+          },
+
+          400: {
+            description: 'Validation error',
+            type: 'object',
+
+            properties: {
+              error: {
+                type: 'string',
+              },
+
+              details: {
+                type: 'array',
+
+                items: {
+                  type: 'object',
+                  additionalProperties: true,
+                },
               },
             },
           },
-        },
-        401: {
-          description: 'Unauthorized',
-          type: 'object',
-          properties: { error: { type: 'string' } },
-        },
-        500: {
-          description: 'Internal Server Error',
-          type: 'object',
-          properties: { error: { type: 'string' } },
-        },
-      };
+
+          401: {
+            description: 'Unauthorized',
+            type: 'object',
+
+            properties: {
+              error: {
+                type: 'string',
+              },
+            },
+          },
+
+          500: {
+            description: 'Internal Server Error',
+            type: 'object',
+
+            properties: {
+              error: {
+                type: 'string',
+              },
+            },
+          },
+        };
+      }
     }
-  });
+  );
 }
 
-app.register(require('./routes'), { prefix: '/api/v1' });
-app.register(require('./routes.v2'), { prefix: '/api/v2' });
-app.register(require('./modules/github-sync/routes'), {
-  prefix: '/api/v1/github',
-});
 
-app.get('/', async (req, reply) => {
-  reply.redirect('/api-docs');
-});
+// ---------------------------------------------------------------------------
+// API Routes
+// ---------------------------------------------------------------------------
 
-app.get('/fallback', async (req, reply) => {
-  reply.type('text/html').send(`
-    <html>
-      <body style="font-family:sans-serif;padding:2em">
-        <h1>InternOps API</h1>
-        <a href="/api-docs">Swagger Docs</a>
-      </body>
-    </html>
-  `);
-});
+app.register(
+  require('./routes'),
+  {
+    prefix: '/api/v1',
+  }
+);
 
-app.addHook('onRequest', metrics.trackActiveRequests);
+app.register(
+  require('./routes.v2'),
+  {
+    prefix: '/api/v2',
+  }
+);
 
-app.addHook('onRequest', async (request) => {
-  request.startTime = Date.now();
-});
+app.register(
+  require('./modules/github-sync/routes'),
+  {
+    prefix: '/api/v1/github',
+  }
+);
 
-app.addHook('onRequest', async (request) => {
-  request.log.info(
-    {
-      reqId: request.id,
-      method: request.method,
-      url: request.url,
-    },
-    'incoming'
-  );
-});
 
-app.addHook('onResponse', async (request, reply) => {
-  metrics.observeHttpRequest(request, reply, request.startTime);
+// ---------------------------------------------------------------------------
+// Root route
+// ---------------------------------------------------------------------------
 
-  if (!request?.auditOnResponse) return;
-  if (reply.statusCode >= 200 && reply.statusCode < 300) {
-    try {
-      await createAuditLog(request.auditOnResponse);
-    } catch (err) {
-      request.log.error(
-        { err, audit: request.auditOnResponse },
-        'Failed to write deferred audit log'
-      );
+app.get(
+  '/',
+  async (req, reply) => {
+    reply.redirect('/api-docs');
+  }
+);
+
+
+// ---------------------------------------------------------------------------
+// Fallback route
+// ---------------------------------------------------------------------------
+
+app.get(
+  '/fallback',
+  async (req, reply) => {
+    reply
+      .type('text/html')
+      .send(`
+        <html>
+          <body style="font-family:sans-serif;padding:2em">
+            <h1>InternOps API</h1>
+            <a href="/api-docs">Swagger Docs</a>
+          </body>
+        </html>
+      `);
+  }
+);
+
+
+// ---------------------------------------------------------------------------
+// Request logging
+// ---------------------------------------------------------------------------
+
+app.addHook(
+  'onRequest',
+  async (request) => {
+    request.log.info(
+      {
+        reqId: request.id,
+        method: request.method,
+        url: request.url,
+      },
+      'incoming'
+    );
+  }
+);
+
+
+// ---------------------------------------------------------------------------
+// Response logging / deferred audit
+// ---------------------------------------------------------------------------
+
+app.addHook(
+  'onResponse',
+  async (request, reply) => {
+    metrics.observeHttpRequest(
+      request,
+      reply,
+      request.metricsStartTime
+    );
+
+    if (!request?.auditOnResponse) {
+      return;
+    }
+
+    if (
+      reply.statusCode >= 200 &&
+      reply.statusCode < 300
+    ) {
+      try {
+        await createAuditLog(
+          request.auditOnResponse
+        );
+      } catch (err) {
+        request.log.error(
+          {
+            err,
+            audit: request.auditOnResponse,
+          },
+          'Failed to write deferred audit log'
+        );
+      }
     }
   }
-});
+);
+
+
+// ---------------------------------------------------------------------------
+// Validation helpers
+// ---------------------------------------------------------------------------
 
 function formatValidationPath(value) {
   const parts = Array.isArray(value)
@@ -364,25 +623,59 @@ function formatValidationPath(value) {
     : String(value || '')
         .replace(/^\//, '')
         .split(/[./]/);
-  const field = parts.filter(Boolean).at(-1);
-  if (!field) return null;
+
+  const field = parts
+    .filter(Boolean)
+    .at(-1);
+
+  if (!field) {
+    return null;
+  }
+
   return field
     .replace(/[_-]+/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/^./, (character) => character.toUpperCase());
+    .replace(
+      /([a-z])([A-Z])/g,
+      '$1 $2'
+    )
+    .replace(
+      /^./,
+      (character) =>
+        character.toUpperCase()
+    );
 }
+
+
 function validationDetailMessage(detail) {
-  const message = detail?.message || 'is invalid';
+  const message =
+    detail?.message || 'is invalid';
+
   const field = formatValidationPath(
-    detail?.path || detail?.instancePath || detail?.dataPath
+    detail?.path ||
+      detail?.instancePath ||
+      detail?.dataPath
   );
-  return field ? `${field}: ${message}` : message;
+
+  return field
+    ? `${field}: ${message}`
+    : message;
 }
-function validationPayload(details, requestId) {
-  const validationDetails = details || [];
-  const validationMessage = validationDetails.length
-    ? validationDetailMessage(validationDetails[0])
-    : 'Please check the submitted values.';
+
+
+function validationPayload(
+  details,
+  requestId
+) {
+  const validationDetails =
+    details || [];
+
+  const validationMessage =
+    validationDetails.length
+      ? validationDetailMessage(
+          validationDetails[0]
+        )
+      : 'Please check the submitted values.';
+
   return {
     error: 'Validation error',
     message: validationMessage,
@@ -391,139 +684,230 @@ function validationPayload(details, requestId) {
     requestId,
   };
 }
-app.setErrorHandler((error, request, reply) => {
-  if (error.validation) {
-    request.log.warn(
-      {
-        statusCode: 400,
-        message: error.message,
-        validation: error.validation,
-        method: request.method,
-        url: request.url,
-        params: request.params,
-        query: request.query,
-        userId: request.user?.id || null,
-        role: request.user?.role || null,
-      },
-      'Validation error'
-    );
-    const validationDetails = error.validation.map((v) => ({
-      path: v.instancePath || v.dataPath,
-      message: v.message,
-      keyword: v.keyword,
-    }));
-    const payload = validationPayload(validationDetails, request.id);
-    return reply.status(400).send(payload);
-  }
 
-  if (error.name === 'ZodError' || Array.isArray(error.issues)) {
-    request.log.warn(
-      {
-        statusCode: 400,
-        message: error.message,
-        issues: error.issues || [],
-        method: request.method,
-        url: request.url,
-        params: request.params,
-        query: request.query,
-        userId: request.user?.id || null,
-        role: request.user?.role || null,
-      },
-      'Zod validation error'
-    );
-    const validationDetails = error.issues || [];
-    const payload = validationPayload(validationDetails, request.id);
-    return reply.status(400).send(payload);
-  }
 
-  const statusCode = error.statusCode || 500;
-  const isClientError = statusCode >= 400 && statusCode < 500;
-  const isOperational = error.isOperational === true;
+// ---------------------------------------------------------------------------
+// Global error handler
+// ---------------------------------------------------------------------------
 
-  let clientMessage =
-    isClientError || isOperational
-      ? error.message || 'Request failed'
-      : 'Internal Server Error';
-  const responseCode =
-    isClientError || isOperational
-      ? error.code || 'REQUEST_ERROR'
-      : 'INTERNAL_ERROR';
+app.setErrorHandler(
+  (error, request, reply) => {
+    // Fastify validation errors
+    if (error.validation) {
+      request.log.warn(
+        {
+          statusCode: 400,
+          message: error.message,
+          validation: error.validation,
+          method: request.method,
+          url: request.url,
+          params: request.params,
+          query: request.query,
+          userId:
+            request.user?.id || null,
+          role:
+            request.user?.role || null,
+        },
+        'Validation error'
+      );
 
-  const logPayload = {
-    statusCode,
-    message: error.message,
-    internalMessage: error.internalMessage || null,
-    stack: error.stack,
-    method: request.method,
-    url: request.url,
-    params: request.params,
-    query: request.query,
-    userId: request.user?.id || null,
-    role: request.user?.role || null,
-  };
+      const validationDetails =
+        error.validation.map((v) => ({
+          path:
+            v.instancePath ||
+            v.dataPath,
 
-  if (statusCode >= 500) {
-    request.log.error(logPayload, 'Unhandled server error');
-<<<<<<< HEAD
+          message: v.message,
+          keyword: v.keyword,
+        }));
 
-    // report errors to sentry
-    sentryCaptureException(error, {
-      userId: request.user?.id || null,
-      requestId: request.id,
-      route: request.url,
-      method: request.method,
+      const payload =
+        validationPayload(
+          validationDetails,
+          request.id
+        );
+
+      return reply
+        .status(400)
+        .send(payload);
+    }
+
+
+    // Zod validation errors
+    if (
+      error.name === 'ZodError' ||
+      Array.isArray(error.issues)
+    ) {
+      request.log.warn(
+        {
+          statusCode: 400,
+          message: error.message,
+          issues: error.issues || [],
+          method: request.method,
+          url: request.url,
+          params: request.params,
+          query: request.query,
+          userId:
+            request.user?.id || null,
+          role:
+            request.user?.role || null,
+        },
+        'Zod validation error'
+      );
+
+      const validationDetails =
+        error.issues || [];
+
+      const payload =
+        validationPayload(
+          validationDetails,
+          request.id
+        );
+
+      return reply
+        .status(400)
+        .send(payload);
+    }
+
+
+    // General errors
+    const statusCode =
+      error.statusCode || 500;
+
+    const isClientError =
+      statusCode >= 400 &&
+      statusCode < 500;
+
+    const isOperational =
+      error.isOperational === true;
+
+    const clientMessage =
+      isClientError || isOperational
+        ? error.message ||
+          'Request failed'
+        : 'Internal Server Error';
+
+    const responseCode =
+      isClientError || isOperational
+        ? error.code ||
+          'REQUEST_ERROR'
+        : 'INTERNAL_ERROR';
+
+
+    const logPayload = {
       statusCode,
-=======
-    sentryCaptureException(error, {
-      userId: request.user?.id || null,
-      tags: {
-        requestId: request.id,
-        route: request.url,
-        method: request.method,
-        statusCode: String(statusCode),
-      },
->>>>>>> upstream/master
-    });
-  } else {
-    request.log.warn(logPayload, 'Request error');
-  }
+      message: error.message,
+      internalMessage:
+        error.internalMessage || null,
+      stack: error.stack,
+      method: request.method,
+      url: request.url,
+      params: request.params,
+      query: request.query,
+      userId:
+        request.user?.id || null,
+      role:
+        request.user?.role || null,
+    };
 
-  return reply.status(statusCode).send({
-    error: clientMessage,
-    message: clientMessage,
-    code: responseCode,
-    requestId: request.id,
-  });
-});
+
+    if (statusCode >= 500) {
+      request.log.error(
+        logPayload,
+        'Unhandled server error'
+      );
+
+      sentryCaptureException(
+        error,
+        {
+          userId:
+            request.user?.id || null,
+
+          tags: {
+            requestId: request.id,
+            route: request.url,
+            method: request.method,
+            statusCode:
+              String(statusCode),
+          },
+        }
+      );
+    } else {
+      request.log.warn(
+        logPayload,
+        'Request error'
+      );
+    }
+
+
+    return reply
+      .status(statusCode)
+      .send({
+        error: clientMessage,
+        message: clientMessage,
+        code: responseCode,
+        requestId: request.id,
+      });
+  }
+);
+
+
+// ---------------------------------------------------------------------------
+// Background jobs
+// ---------------------------------------------------------------------------
 
 if (process.env.NODE_ENV !== 'test') {
   setupCronJobs();
   githubSyncOrchestrator.initialize();
 }
 
-const bulkJobQueue = require('./services/bulkJobQueue');
+
+// ---------------------------------------------------------------------------
+// Startup / diagnostics
+// ---------------------------------------------------------------------------
+
+const bulkJobQueue =
+  require('./services/bulkJobQueue');
+
 const {
   checkDatabase,
   integrationStatus,
   writeStartupSummary,
 } = require('./utils/startupDiagnostics');
 
+
 const start = async () => {
   try {
-    const database = await checkDatabase(pool, config.databaseUrl);
+    const database =
+      await checkDatabase(
+        pool,
+        config.databaseUrl
+      );
+
     await app.listen({
       port: config.port,
       host: config.host,
     });
-    initializeWebSocket(app.server, app.log);
-    await bulkJobQueue.init();
+
+    initializeWebSocket(
+      app.server,
+      app.log
+    );
+
     await getRedisClient();
+
+    await bulkJobQueue.init();
+
     writeStartupSummary({
       logger: app.log,
       database,
       redis: getRedisStatus(),
-      queue: bulkJobQueue.getStatus(),
-      integrations: integrationStatus(config),
+      degradedFeatures:
+        getRedisDegradedFeatures(),
+      queue:
+        bulkJobQueue.getStatus(),
+      integrations:
+        integrationStatus(config),
       port: config.port,
     });
   } catch (err) {
@@ -532,99 +916,198 @@ const start = async () => {
   }
 };
 
+
+// ---------------------------------------------------------------------------
+// Graceful shutdown
+// ---------------------------------------------------------------------------
+
 const SHUTDOWN_TIMEOUT = 20000;
 
-const gracefulShutdown = async (signal) => {
-  app.log.info({ signal }, `Received ${signal}, shutting down gracefully...`);
 
-  const forceShutdown = setTimeout(() => {
-    console.error('Shutdown timed out. Forcing exit.');
-    process.exit(1);
-  }, SHUTDOWN_TIMEOUT);
+const gracefulShutdown = async (
+  signal
+) => {
+  app.log.info(
+    { signal },
+    `Received ${signal}, shutting down gracefully...`
+  );
+
+  const forceShutdown =
+    setTimeout(() => {
+      console.error(
+        'Shutdown timed out. Forcing exit.'
+      );
+
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT);
+
 
   try {
     await app.close();
 
+
+    // Close WebSocket server
     try {
       const io = getIO();
+
       if (io) {
-        app.log.info('Closing WebSocket server...');
-        await new Promise((resolve) => io.close(resolve));
-        app.log.info('WebSocket server closed');
+        app.log.info(
+          'Closing WebSocket server...'
+        );
+
+        await new Promise(
+          (resolve) =>
+            io.close(resolve)
+        );
+
+        app.log.info(
+          'WebSocket server closed'
+        );
       }
     } catch (wsErr) {
-      app.log.warn({ err: wsErr }, 'Error closing WebSocket server');
+      app.log.warn(
+        {
+          err: wsErr,
+        },
+        'Error closing WebSocket server'
+      );
     }
 
+
+    // Close database
     await pool.end();
-    await flushSentry(2000);
 
-<<<<<<< HEAD
-    // flush pending sentry events before exiting
-    await flushSentry(2000);
 
-=======
+    // Shutdown GitHub sync
     try {
       githubSyncOrchestrator.shutdown();
     } catch (syncErr) {
-      app.log.warn({ err: syncErr }, 'Error shutting down GitHub sync');
+      app.log.warn(
+        {
+          err: syncErr,
+        },
+        'Error shutting down GitHub sync'
+      );
     }
 
+
+    // Flush Sentry events once
+    await flushSentry(2000);
+
+
     clearTimeout(forceShutdown);
->>>>>>> upstream/master
-    app.log.info('Cleanup completed. Exiting now.');
+
+    app.log.info(
+      'Cleanup completed. Exiting now.'
+    );
+
     if (process.env.NODE_ENV !== 'test') {
       process.exit(0);
     }
   } catch (err) {
-    app.log.error({ err }, 'Error during shutdown');
+    app.log.error(
+      {
+        err,
+      },
+      'Error during shutdown'
+    );
+
     clearTimeout(forceShutdown);
+
     if (process.env.NODE_ENV !== 'test') {
       process.exit(1);
     }
   }
 };
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('unhandledRejection', (reason) => {
-  app.log.error({ err: reason }, 'Unhandled promise rejection');
-  sentryCaptureException(
-    reason instanceof Error ? reason : new Error(String(reason)),
-    { extra: { type: 'unhandledRejection' } }
-  );
-});
-process.on('uncaughtException', (error) => {
-  app.log.error({ err: error }, 'Uncaught exception - process will exit');
-  sentryCaptureException(error, { extra: { type: 'uncaughtException' } });
-  const forceExit = setTimeout(() => process.exit(1), 3000);
-  flushSentry(2000).finally(() => {
-    clearTimeout(forceExit);
-    process.exit(1);
-  });
-});
 
-// capture unhandled promise rejections and uncaught exceptions
-process.on('unhandledRejection', (reason) => {
-  app.log.error({ err: reason }, 'Unhandled promise rejection');
-  sentryCaptureException(
-    reason instanceof Error ? reason : new Error(String(reason)),
-    {
-      extra: { type: 'unhandledRejection' },
-    }
-  );
-});
+// ---------------------------------------------------------------------------
+// Process signal handlers
+// ---------------------------------------------------------------------------
 
-process.on('uncaughtException', (error) => {
-  app.log.error({ err: error }, 'Uncaught exception — process will exit');
-  sentryCaptureException(error, {
-    extra: { type: 'uncaughtException' },
-  });
-  flushSentry(2000).finally(() => process.exit(1));
-});
+process.on(
+  'SIGTERM',
+  () => gracefulShutdown('SIGTERM')
+);
+
+process.on(
+  'SIGINT',
+  () => gracefulShutdown('SIGINT')
+);
+
+
+// ---------------------------------------------------------------------------
+// Unhandled promise rejection
+// ---------------------------------------------------------------------------
+
+process.on(
+  'unhandledRejection',
+  (reason) => {
+    app.log.error(
+      {
+        err: reason,
+      },
+      'Unhandled promise rejection'
+    );
+
+    sentryCaptureException(
+      reason instanceof Error
+        ? reason
+        : new Error(String(reason)),
+      {
+        extra: {
+          type: 'unhandledRejection',
+        },
+      }
+    );
+  }
+);
+
+
+// ---------------------------------------------------------------------------
+// Uncaught exception
+// ---------------------------------------------------------------------------
+
+process.on(
+  'uncaughtException',
+  (error) => {
+    app.log.error(
+      {
+        err: error,
+      },
+      'Uncaught exception - process will exit'
+    );
+
+    sentryCaptureException(
+      error,
+      {
+        extra: {
+          type: 'uncaughtException',
+        },
+      }
+    );
+
+    const forceExit =
+      setTimeout(
+        () => process.exit(1),
+        3000
+      );
+
+    flushSentry(2000).finally(() => {
+      clearTimeout(forceExit);
+      process.exit(1);
+    });
+  }
+);
+
+
+// ---------------------------------------------------------------------------
+// Start / export application
+// ---------------------------------------------------------------------------
 
 if (require.main === module) {
   start();
 } else {
   module.exports = app;
 }
+```

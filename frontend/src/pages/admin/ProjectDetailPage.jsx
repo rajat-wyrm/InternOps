@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, CalendarCheck, Star, Users } from 'lucide-react';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import { ROLE_LABEL } from '../../constants/roles';
 import {
@@ -30,6 +31,8 @@ function SummaryPill({ label, value }) {
 }
 
 export default function ProjectDetailPage() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const navigate = useNavigate();
   const { deptId, leadId } = useParams();
   const [tab, setTab] = useState('attendance');
@@ -38,12 +41,13 @@ export default function ProjectDetailPage() {
   const departmentsQuery = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const teamsQuery = useQuery({
     queryKey: ['departmentTeams', deptId],
     queryFn: () => api.get(`/departments/${deptId}/teams`).then((r) => r.data),
-    enabled: !!deptId,
+    enabled: hydrated && !!accessToken && !!deptId,
   });
 
   const rosterQuery = useQuery({
@@ -82,7 +86,7 @@ export default function ProjectDetailPage() {
   const error = departmentsQuery.error || teamsQuery.error || rosterQuery.error;
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       <div className="mb-5">
         <Btn
           variant="outline"

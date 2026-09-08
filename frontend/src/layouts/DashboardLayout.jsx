@@ -33,7 +33,16 @@ import {
   PanelLeftOpen,
 } from 'lucide-react';
 
-import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  memo,
+  Suspense,
+} from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
@@ -45,10 +54,13 @@ import useFeatureFlagsStore from '../store/featureFlags';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { ROLE_LABEL } from '../constants/roles';
 import FloatingChatbot from '../components/FloatingChatbot';
+import RouteRefreshSkeleton from '../components/loading/RouteRefreshSkeleton';
+import RouteInitialLoading from '../components/loading/RouteInitialLoading';
 
 const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
 const ADMIN_AND_SENIOR_TL_ROLES = ['ADMIN', 'SENIOR_TL'];
 const ADMIN_ONLY_ROLES = ['ADMIN'];
+const HR_ROLES = ['ADMIN', 'HR'];
 const DIRECTORY_ROLES = ['ADMIN', 'SENIOR_TL', 'TL'];
 
 const nav = [
@@ -70,7 +82,7 @@ const nav = [
     path: '/hr',
     label: 'HR',
     icon: BriefcaseBusiness,
-    allowedRoles: ADMIN_ONLY_ROLES,
+    allowedRoles: HR_ROLES,
   },
   {
     path: '/attendance',
@@ -99,6 +111,11 @@ const nav = [
     label: 'InternOps',
     icon: Building,
     allowedRoles: ADMIN_AND_SENIOR_TL_ROLES,
+  },
+  {
+    path: '/performance-intelligence',
+    label: 'AI Performance Review',
+    icon: Sparkles,
   },
   {
     path: '/reports',
@@ -200,15 +217,24 @@ const adminNav = [
 
 const FULL_LOGO_SRC = '/UptoSkills.webp';
 const MINI_LOGO_SRC = '/Uptoskills_log_fevicon.png';
+const COORDINATED_LOADING_ROUTES = new Set([
+  '/dashboard',
+  '/team',
+  '/hr',
+  '/profile',
+  '/tasks',
+  '/notifications',
+]);
 
-function canShowNavItem(item, role, flags) {
+function canShowNavItem(item, role, flags, flagsLoaded) {
   if (item.excludedRoles && item.excludedRoles.includes(role)) return false;
   if (!item.allowedRoles) {
-    if (item.featureFlag) return flags[item.featureFlag] === true;
+    if (item.featureFlag)
+      return !flagsLoaded || flags[item.featureFlag] === true;
     return true;
   }
   if (!item.allowedRoles.includes(role)) return false;
-  if (item.featureFlag) return flags[item.featureFlag] === true;
+  if (item.featureFlag) return !flagsLoaded || flags[item.featureFlag] === true;
   return true;
 }
 
@@ -241,12 +267,49 @@ const NavLink = memo(({ n, active, collapsed, onLinkClick }) => {
   );
 });
 NavLink.displayName = 'NavLink';
+function AccountAvatar({ loading, name, email, src }) {
+  if (loading) {
+    return (
+      <span
+        aria-label="Loading account avatar"
+        className="block h-9 w-9 shrink-0 animate-pulse rounded-full border border-white/30 bg-white/15 dark:border-slate-700 dark:bg-slate-700/70"
+      />
+    );
+  }
+  return <UserAvatar name={name} email={email} src={src} text="text-xs" />;
+}
 
+let authHydrationPromise = null;
+function waitForAuthHydration() {
+  if (useAuthStore.getState().hydrated) return Promise.resolve();
+  if (!authHydrationPromise) {
+    authHydrationPromise = new Promise((resolve) => {
+      const unsubscribe = useAuthStore.subscribe((state) => {
+        if (!state.hydrated) return;
+        unsubscribe();
+        authHydrationPromise = null;
+        resolve();
+      });
+    });
+  }
+  return authHydrationPromise;
+}
+function AuthHydrationGate({ children }) {
+  const hydrated = useAuthStore((state) => state.hydrated);
+  if (!hydrated) throw waitForAuthHydration();
+  return children;
+}
 export default function DashboardLayout() {
   const loc = useLocation();
   const navigate = useNavigate();
+  const previousPathRef = useRef(loc.pathname);
+  const [animatedRoutePath, setAnimatedRoutePath] = useState(null);
+  const shouldAnimateRoute = animatedRoutePath === loc.pathname;
   const user = useAuthStore((s) => s.user);
+  const hydrated = useAuthStore((s) => s.hydrated);
   const logout = useAuthStore((s) => s.logout);
+  const impersonation = useAuthStore((s) => s.impersonation);
+  const exitImpersonation = useAuthStore((s) => s.exitImpersonation);
   const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
 
@@ -279,6 +342,7 @@ export default function DashboardLayout() {
 
   const role = user?.role;
   const flags = useFeatureFlagsStore((s) => s.flags);
+  const flagsLoaded = useFeatureFlagsStore((s) => s.loaded);
   const SIDEBAR_KEY = 'sidebar_scroll';
   const sidebarNavRef = useRef(null);
 
@@ -289,17 +353,20 @@ export default function DashboardLayout() {
     () => localStorage.getItem('theme') === 'dark'
   );
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [endingUserView, setEndingUserView] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const { data: me } = useQuery({
+  const { data: me, isFetched: profileFetched } = useQuery({
     queryKey: QUERY_KEYS.USER_PROFILE,
     queryFn: () => api.get('/users/me').then((r) => r.data),
+    enabled: !!accessToken,
   });
   const isDepartmentScopedRole = ['SENIOR_TL', 'TL'].includes(role);
   const { data: scopedDepartments = [] } = useQuery({
     queryKey: ['departments', 'sidebar', role],
     queryFn: () => api.get('/departments').then((r) => r.data || []),
-    enabled: isDepartmentScopedRole && !user?.mustChangePassword,
+    enabled:
+      !!accessToken && isDepartmentScopedRole && !user?.mustChangePassword,
   });
   const assignedDepartment = scopedDepartments[0] || null;
   const departmentLabelStorageKey = user?.id
@@ -323,15 +390,19 @@ export default function DashboardLayout() {
     queryFn: () => api.get('/notifications/unread-count').then((r) => r.data),
     refetchInterval: 30000,
     refetchIntervalInBackground: false,
-    enabled: !!user && !user?.mustChangePassword,
+    enabled: !!accessToken && !!user && !user?.mustChangePassword,
   });
 
   const unreadCount = unreadData?.unread || 0;
 
-  const displayName = me?.full_name || user?.fullName || user?.email;
-  const avatarUrl = resolveUploadUrl(
-    me?.avatar_url || (role === 'ADMIN' ? '/admin-default-avatar.svg' : null)
-  );
+  const displayName = me?.full_name || user?.full_name || user?.fullName || '';
+  const displayNameReady = Boolean(displayName);
+  const profileAvatar = profileFetched ? me?.avatar_url : user?.avatar_url;
+  const avatarPending =
+    !profileAvatar && (!hydrated || (!!accessToken && !profileFetched));
+  const defaultAvatar =
+    !avatarPending && role === 'ADMIN' ? '/admin-default-avatar.svg' : null;
+  const avatarUrl = resolveUploadUrl(profileAvatar || defaultAvatar);
 
   useEffect(() => {
     localStorage.setItem('sidebar', collapsed ? 'collapsed' : 'open');
@@ -343,14 +414,14 @@ export default function DashboardLayout() {
   }, [dark]);
 
   const visibleNav = useMemo(
-    () => nav.filter((item) => canShowNavItem(item, role, flags)),
-    [role, flags]
+    () => nav.filter((item) => canShowNavItem(item, role, flags, flagsLoaded)),
+    [role, flags, flagsLoaded]
   );
 
   const visibleAdminNav = useMemo(
     () =>
       adminNav
-        .filter((item) => canShowNavItem(item, role, flags))
+        .filter((item) => canShowNavItem(item, role, flags, flagsLoaded))
         .map((item) => {
           if (item.path !== '/departments' || !isDepartmentScopedRole) {
             return item;
@@ -369,6 +440,7 @@ export default function DashboardLayout() {
     [
       assignedDepartment,
       flags,
+      flagsLoaded,
       isDepartmentScopedRole,
       role,
       storedDepartmentLabel,
@@ -438,10 +510,34 @@ export default function DashboardLayout() {
     setMobileOpen(false);
   }, []);
 
+  const handleExitUserView = async () => {
+    if (endingUserView) return;
+    setEndingUserView(true);
+    try {
+      await api.post(
+        '/auth/impersonation/exit',
+        {},
+        { _suppressGlobalError: true }
+      );
+    } catch {
+      // The local admin session is still restored even if audit delivery fails.
+    } finally {
+      exitImpersonation();
+      queryClient.clear();
+      setEndingUserView(false);
+      navigate('/team', { replace: true });
+    }
+  };
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
+  useLayoutEffect(() => {
+    if (previousPathRef.current !== loc.pathname) {
+      setAnimatedRoutePath(loc.pathname);
+      previousPathRef.current = loc.pathname;
+    }
+  }, [loc.pathname]);
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 text-slate-900 dark:text-white">
@@ -597,18 +693,25 @@ export default function DashboardLayout() {
           <div
             className={`rounded-3xl border border-white/10 bg-white/10 backdrop-blur-xl flex items-center shadow-lg shadow-indigo-950/20 ${collapsed ? 'justify-center p-2.5' : 'gap-3 p-3'}`}
           >
-            <UserAvatar
+            <AccountAvatar
+              loading={avatarPending}
               name={displayName}
               email={user?.email}
               src={avatarUrl}
-              text="text-xs"
             />
             {!collapsed && (
               <>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-extrabold truncate">
-                    {displayName}
-                  </p>
+                  {displayNameReady ? (
+                    <p className="text-sm font-extrabold truncate">
+                      {displayName}
+                    </p>
+                  ) : (
+                    <span
+                      aria-label="Loading account name"
+                      className="block h-4 w-28 max-w-full animate-pulse rounded-lg bg-white/20"
+                    />
+                  )}
                   <p className="text-[11px] text-indigo-200 truncate">
                     {ROLE_LABEL[role] || role}
                   </p>
@@ -703,17 +806,58 @@ export default function DashboardLayout() {
               onClick={saveSidebarScroll}
               className="rounded-full hover:scale-105 transition"
             >
-              <UserAvatar
+              <AccountAvatar
+                loading={avatarPending}
                 name={displayName}
                 email={user?.email}
                 src={avatarUrl}
-                text="text-xs"
               />
             </Link>
           </div>
         </header>
+        {impersonation && (
+          <div
+            className="flex min-h-14 flex-wrap items-center justify-between gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2.5 text-amber-950 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-100 sm:px-6"
+            role="status"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-extrabold">
+                Viewing InternOps as {displayName || user?.email}
+              </p>
+              <p className="truncate text-xs">
+                Read-only admin troubleshooting view
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleExitUserView}
+              disabled={endingUserView}
+              className="rounded-xl bg-amber-900 px-4 py-2 text-xs font-extrabold text-white disabled:opacity-60 dark:bg-amber-200 dark:text-amber-950"
+            >
+              {endingUserView ? 'Exiting...' : 'Exit User View'}
+            </button>
+          </div>
+        )}
         <main className="flex-1 overflow-auto p-5 sm:p-6">
-          <Outlet />
+          <div key={loc.pathname} className="min-h-[calc(100vh-7rem)]">
+            {COORDINATED_LOADING_ROUTES.has(loc.pathname) ? (
+              <RouteInitialLoading animate={shouldAnimateRoute}>
+                <Outlet />
+              </RouteInitialLoading>
+            ) : (
+              <Suspense fallback={<RouteRefreshSkeleton />}>
+                <AuthHydrationGate>
+                  <div
+                    className={
+                      shouldAnimateRoute ? 'animate-fade-in-up' : undefined
+                    }
+                  >
+                    <Outlet />
+                  </div>
+                </AuthHydrationGate>
+              </Suspense>
+            )}
+          </div>
         </main>
       </div>
 
