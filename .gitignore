@@ -64,3 +64,5 @@ scripts/backup-config.sh
 # Graphify output directory (local development only)
 graphify-out/
 
+
+InternOps/
