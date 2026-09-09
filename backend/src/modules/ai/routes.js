@@ -12,6 +12,7 @@ const {
   generateAIImage,
   getProviderHealth,
 } = require('../../services/aiProviderService');
+const { sanitizePrompt } = require('../../utils/promptSecurity');
 
 const AI_CHAT_RATE_LIMIT = Number(process.env.AI_CHAT_RATE_LIMIT_PER_MIN || 10);
 
@@ -79,19 +80,34 @@ async function routes(fastify) {
           }
         }
 
-        finalMessages = messages.slice(0, 16).map((msg) => ({
-          role: msg.role,
-          content: String(msg.content || '').slice(0, 2000),
-        }));
+        try {
+          finalMessages = messages.slice(0, 16).map((msg) => ({
+            role: msg.role,
+            content:
+              msg.role === 'user'
+                ? sanitizePrompt(msg.content, { maxLength: 2000 })
+                : String(msg.content || '').slice(0, 2000),
+          }));
+        } catch (error) {
+          return reply.status(400).send({
+            error: error.message,
+          });
+        }
       }
 
       if (finalMessages.length === 0 && prompt) {
-        finalMessages = [
-          {
-            role: 'user',
-            content: String(prompt).slice(0, 2000),
-          },
-        ];
+        try {
+          finalMessages = [
+            {
+              role: 'user',
+              content: sanitizePrompt(prompt, { maxLength: 2000 }),
+            },
+          ];
+        } catch (error) {
+          return reply.status(400).send({
+            error: error.message,
+          });
+        }
       }
 
       if (finalMessages.length === 0) {

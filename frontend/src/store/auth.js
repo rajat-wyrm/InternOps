@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import { clearCsrfToken, registerAuthStore } from '../lib/axios';
+<<<<<<< HEAD
+import { setSentryUser, clearSentryUser } from '../lib/sentry';
+=======
 import { clearSentryUser, setSentryUser } from '../lib/sentry';
+>>>>>>> upstream/master
 
 // Hydrate from localStorage so a refresh keeps the session.
 // We defer the read so it always runs inside a browser context and

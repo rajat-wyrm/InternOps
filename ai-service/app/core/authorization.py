@@ -3,6 +3,7 @@ from typing import Iterable
 
 ROLE_PERMISSIONS = {
     "AI_CHAT": {"ADMIN", "SENIOR_TL", "TL"},
+    "AI_GENERATION": {"ADMIN", "SENIOR_TL", "TL"},
     "AI_HEALTH": {"ADMIN"},
     "AI_USAGE": {"ADMIN"},
     "AI_CERTIFICATES": {"ADMIN"},
