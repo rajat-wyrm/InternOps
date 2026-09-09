@@ -520,9 +520,8 @@ export default function DashboardLayout() {
     logout();
     navigate('/login');
   };
-  const isCoordinatedLoadingRoute = COORDINATED_LOADING_ROUTES.has(
-    loc.pathname
-  );
+  // prettier-ignore
+  const isCoordinatedLoadingRoute = COORDINATED_LOADING_ROUTES.has(loc.pathname);
   const shouldAnimateRoute = animatedRoutePath === loc.pathname;
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 text-slate-900 dark:text-white">
