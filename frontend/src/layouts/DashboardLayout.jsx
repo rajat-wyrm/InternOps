@@ -32,8 +32,17 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
-
-import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
+import RouteInitialLoading from '../components/loading/RouteInitialLoading';
+import RouteRefreshSkeleton from '../components/loading/RouteRefreshSkeleton';
+import {
+  Suspense,
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  memo,
+} from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
@@ -232,11 +241,15 @@ const COORDINATED_LOADING_ROUTES = new Set([
 function canShowNavItem(item, role, flags, flagsLoaded) {
   if (item.excludedRoles && item.excludedRoles.includes(role)) return false;
   if (!item.allowedRoles) {
-    if (item.featureFlag) return flags[item.featureFlag] === true;
+    if (item.featureFlag) {
+      return !flagsLoaded || flags[item.featureFlag] === true;
+    }
     return true;
   }
   if (!item.allowedRoles.includes(role)) return false;
-  if (item.featureFlag) return flags[item.featureFlag] === true;
+  if (item.featureFlag) {
+    return !flagsLoaded || flags[item.featureFlag] === true;
+  }
   return true;
 }
 
@@ -277,6 +290,9 @@ function AccountAvatar({ loading, name, email, src }) {
         className="block h-9 w-9 shrink-0 animate-pulse rounded-full border border-white/30 bg-white/15 dark:border-slate-700 dark:bg-slate-700/70"
       />
     );
+    <span aria-label="Loading account name" className="sr-only">
+      Loading account name
+    </span>;
   }
   return <UserAvatar name={name} email={email} src={src} text="text-xs" />;
 }
@@ -288,6 +304,8 @@ export default function DashboardLayout() {
   const hydrated = useAuthStore((s) => s.hydrated);
   const logout = useAuthStore((s) => s.logout);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const impersonation = useAuthStore((s) => s.impersonation);
+  const exitImpersonation = useAuthStore((s) => s.exitImpersonation);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -319,6 +337,7 @@ export default function DashboardLayout() {
 
   const role = user?.role;
   const flags = useFeatureFlagsStore((s) => s.flags);
+  const flagsLoaded = useFeatureFlagsStore((s) => s.loaded);
   const SIDEBAR_KEY = 'sidebar_scroll';
   const sidebarNavRef = useRef(null);
 
@@ -330,6 +349,10 @@ export default function DashboardLayout() {
   );
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [animatedRoutePath, setAnimatedRoutePath] = useState(loc.pathname);
+  useEffect(() => {
+    setAnimatedRoutePath(loc.pathname);
+  }, [loc.pathname]);
 
   const { data: me, isFetched: profileFetched } = useQuery({
     queryKey: QUERY_KEYS.USER_PROFILE,
@@ -339,7 +362,8 @@ export default function DashboardLayout() {
   const { data: scopedDepartments = [] } = useQuery({
     queryKey: ['departments', 'sidebar', role],
     queryFn: () => api.get('/departments').then((r) => r.data || []),
-    enabled: isDepartmentScopedRole && !user?.mustChangePassword,
+    enabled:
+      !!accessToken && isDepartmentScopedRole && !user?.mustChangePassword,
   });
   const assignedDepartment = scopedDepartments[0] || null;
   const departmentLabelStorageKey = user?.id
@@ -363,18 +387,28 @@ export default function DashboardLayout() {
     queryFn: () => api.get('/notifications/unread-count').then((r) => r.data),
     refetchInterval: 30000,
     refetchIntervalInBackground: false,
-    enabled: !!user && !user?.mustChangePassword,
+    enabled: !!accessToken && !!user && !user?.mustChangePassword,
   });
 
   const unreadCount = unreadData?.unread || 0;
 
   const displayName = me?.full_name || user?.full_name || user?.fullName || '';
   const displayNameReady = Boolean(displayName);
-  const profileAvatar = profileFetched ? me?.avatar_url : user?.avatar_url;
+  const profileAvatar =
+    profileFetched &&
+    Object.prototype.hasOwnProperty.call(me || {}, 'avatar_url')
+      ? me.avatar_url
+      : user?.avatar_url;
   const avatarPending =
     !profileAvatar && (!hydrated || (!!accessToken && !profileFetched));
   const defaultAvatar =
-    !avatarPending && role === 'ADMIN' ? '/admin-default-avatar.svg' : null;
+    hydrated &&
+    accessToken &&
+    profileFetched &&
+    role === 'ADMIN' &&
+    !profileAvatar
+      ? '/admin-default-avatar.svg'
+      : null;
   const avatarUrl = resolveUploadUrl(profileAvatar || defaultAvatar);
 
   useEffect(() => {
@@ -387,14 +421,14 @@ export default function DashboardLayout() {
   }, [dark]);
 
   const visibleNav = useMemo(
-    () => nav.filter((item) => canShowNavItem(item, role, flags)),
+    () => nav.filter((item) => canShowNavItem(item, role, flags, flagsLoaded)),
     [role, flags]
   );
 
   const visibleAdminNav = useMemo(
     () =>
       adminNav
-        .filter((item) => canShowNavItem(item, role, flags))
+        .filter((item) => canShowNavItem(item, role, flags, flagsLoaded))
         .map((item) => {
           if (item.path !== '/departments' || !isDepartmentScopedRole) {
             return item;
@@ -486,9 +520,26 @@ export default function DashboardLayout() {
     logout();
     navigate('/login');
   };
-
+  const isCoordinatedLoadingRoute = COORDINATED_LOADING_ROUTES.has(
+    loc.pathname
+  );
+  const shouldAnimateRoute = animatedRoutePath === loc.pathname;
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 text-slate-900 dark:text-white">
+      {impersonation && (
+        <div className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-between gap-4 bg-amber-500 px-4 py-2 text-sm font-bold text-white shadow-lg">
+          <div>
+            <div>Read-only admin troubleshooting view</div>
+          </div>
+          <button
+            type="button"
+            onClick={exitImpersonation}
+            className="rounded-lg bg-white/20 px-3 py-1.5 font-extrabold hover:bg-white/30"
+          >
+            Exit User View
+          </button>
+        </div>
+      )}
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
@@ -757,7 +808,12 @@ export default function DashboardLayout() {
           </div>
         </header>
         <main className="flex-1 overflow-auto p-5 sm:p-6">
-          <Outlet />
+          <Suspense fallback={<RouteRefreshSkeleton />}>
+            {/* shouldAnimateRoute ? navigation-only motion : no motion */}
+            <RouteInitialLoading animate={shouldAnimateRoute}>
+              <Outlet />
+            </RouteInitialLoading>
+          </Suspense>
         </main>
       </div>
 
