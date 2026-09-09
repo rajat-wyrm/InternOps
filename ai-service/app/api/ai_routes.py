@@ -119,7 +119,7 @@ async def chat(
     request: Request,
     body: ChatBody,
     current_user: User = Depends(get_current_user),
-    _rate_limited: None = Depends(enforce_rate_limit),
+    _rate_limited: None = Depends(chat_rate_limiter.check_rate_limit),
 ):
     # -----------------------------------------------------------------------
     # Sanitize prompt/messages
@@ -380,7 +380,7 @@ async def generate_text(
 async def generate_image(
     body: ImageGenerationRequest,
     current_user: User = Depends(get_current_user),
-    _rate_limited: None = Depends(enforce_rate_limit),
+    _rate_limited: None = Depends(chat_rate_limiter.check_rate_limit),
 ):
     # -----------------------------------------------------------------------
     # Check daily usage
