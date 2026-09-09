@@ -1,10 +1,12 @@
-const {
+﻿const {
   sanitizationMiddleware: sanitize,
 } = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const ownership = require('../../middleware/ownership');
-const repo = require('./repository');
+const UserRepository = require('./repository');
+const db = require('../../config/db');
+const repo = new UserRepository(db);
 const argon2 = require('argon2');
 const { z } = require('zod');
 const authRepo = require('../auth/repository');
@@ -215,24 +217,135 @@ async function routes(fastify) {
     }
   );
 
-  // PUT /users/:id - Update user
-  fastify.put(
+  // PATCH /users/:id - Update user
+  fastify.patch(
     '/users/:id',
     {
-      preHandler: [auth, ownership, sanitize],
+      preHandler: [auth, rbac(['ADMIN']), sanitize],
     },
     async (request, reply) => {
       try {
         const { id } = request.params;
-        const updates = request.body;
-        const result = await repo.update(id, updates);
-        if (!result) {
-          return reply.status(404).send({ error: 'User not found' });
+
+        const parsed = updateUserSchema.safeParse(request.body);
+
+        if (!parsed.success) {
+          return reply.status(400).send({
+            error: 'Validation error',
+            details: parsed.error.issues,
+          });
         }
-        return reply.send(result);
+
+        const updates = parsed.data;
+
+        const target = await repo.findById(id);
+
+        if (!target) {
+          return reply.status(404).send({
+            error: 'User not found',
+          });
+        }
+
+        // Admin role is protected in either direction.
+        if (
+          updates.role &&
+          updates.role !== target.role &&
+          (target.role === 'ADMIN' || updates.role === 'ADMIN')
+        ) {
+          return reply.status(409).send({
+            error: 'Admin role is protected and cannot be changed.',
+          });
+        }
+
+        // A user cannot manage themselves.
+        if (
+          Object.prototype.hasOwnProperty.call(updates, 'manager_id') &&
+          updates.manager_id &&
+          String(updates.manager_id) === String(id)
+        ) {
+          return reply.status(400).send({
+            error: 'A user cannot manage their own account',
+          });
+        }
+
+        // Validate manager assignment.
+        if (
+          Object.prototype.hasOwnProperty.call(updates, 'manager_id') &&
+          updates.manager_id
+        ) {
+          const manager = await repo.findById(updates.manager_id);
+
+          if (!manager) {
+            return reply.status(400).send({
+              error: 'Invalid hierarchy assignment',
+            });
+          }
+
+          const allowedManagerRoles = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
+
+          if (!allowedManagerRoles.includes(manager.role)) {
+            return reply.status(400).send({
+              error: 'Invalid hierarchy assignment',
+            });
+          }
+
+          if (
+            target.department_id &&
+            manager.department_id &&
+            String(target.department_id) !== String(manager.department_id)
+          ) {
+            return reply.status(400).send({
+              error: 'Invalid hierarchy assignment',
+            });
+          }
+        }
+
+        // Prevent demoting users who still have direct reports.
+        if (
+          updates.role &&
+          updates.role !== target.role &&
+          ['TL', 'SENIOR_TL'].includes(target.role) &&
+          ['CAPTAIN', 'INTERN'].includes(updates.role)
+        ) {
+          const reports = await db.query(
+            `SELECT 1
+             FROM users
+             WHERE manager_id = $1
+               AND deleted_at IS NULL
+             LIMIT 1`,
+            [id]
+          );
+
+          if (reports.rowCount > 0) {
+            return reply.status(409).send({
+              error: 'Cannot demote a user who still has direct reports.',
+            });
+          }
+        }
+
+        const result = await repo.update(id, updates);
+
+        if (!result) {
+          return reply.status(404).send({
+            error: 'User not found',
+          });
+        }
+
+        return reply.status(200).send({
+          user: result,
+        });
       } catch (error) {
         request.log.error(error);
-        return reply.status(500).send({ error: 'Failed to update user' });
+
+        if (error.code === '23505') {
+          return reply.status(409).send({
+            error: 'A user with this email already exists',
+          });
+        }
+
+        return reply.status(500).send({
+          error: 'Failed to update user',
+        });
       }
     }
   );
@@ -246,14 +359,54 @@ async function routes(fastify) {
     async (request, reply) => {
       try {
         const { id } = request.params;
-        const result = await repo.delete(id);
-        if (!result) {
-          return reply.status(404).send({ error: 'User not found' });
+        const confirmation = request.body?.confirmation;
+
+        const target = await repo.findById(id);
+
+        if (!target) {
+          return reply.status(404).send({
+            error: 'User not found',
+          });
         }
-        return reply.status(204).send();
+
+        const currentUserId =
+          request.user?.id || request.user?.userId || request.user?.sub;
+
+        if (String(currentUserId) === String(id)) {
+          return reply.status(400).send({
+            error: 'You cannot delete your own account',
+          });
+        }
+
+        if (target.role === 'ADMIN') {
+          return reply.status(409).send({
+            error: 'Admin accounts cannot be removed.',
+          });
+        }
+
+        if (confirmation !== target.email) {
+          return reply.status(400).send({
+            code: 'CONFIRMATION_MISMATCH',
+            error: 'Email confirmation does not match',
+          });
+        }
+
+        const result = await repo.delete(id);
+
+        if (!result) {
+          return reply.status(404).send({
+            error: 'User not found',
+          });
+        }
+
+        return reply.status(200).send({
+          message: 'User access removed and personal data anonymized',
+        });
       } catch (error) {
         request.log.error(error);
-        return reply.status(500).send({ error: 'Failed to delete user' });
+        return reply.status(500).send({
+          error: 'Failed to delete user',
+        });
       }
     }
   );
