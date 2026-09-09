@@ -53,17 +53,35 @@ export default function BulkAttendanceForm({
         queryClient.cancelQueries({ queryKey: ['attendance'] }),
       ]);
       const prev = {
-        sheets: queryClient.getQueriesData({ queryKey: ['departmentAttendanceSheet'] }),
+        sheets: queryClient.getQueriesData({
+          queryKey: ['departmentAttendanceSheet'],
+        }),
         att: queryClient.getQueriesData({ queryKey: ['attendance'] }),
       };
-      const map = new Map(entries.map((e) => [`${e.user_id}_${String(e.date).slice(0, 10)}`, e]));
+      const map = new Map(
+        entries.map((e) => [`${e.user_id}_${String(e.date).slice(0, 10)}`, e])
+      );
       const patch = (records = []) =>
         records.map((r) => {
           const match = map.get(`${r.user_id}_${String(r.date).slice(0, 10)}`);
-          return match ? { ...r, status: match.status, remarks: match.remarks ?? r.remarks } : r;
+          return match
+            ? {
+                ...r,
+                status: match.status,
+                remarks: match.remarks ?? r.remarks,
+              }
+            : r;
         });
-      prev.sheets.forEach(([k, d]) => d?.records && queryClient.setQueryData(k, { ...d, records: patch(d.records) }));
-      prev.att.forEach(([k, d]) => d?.records && queryClient.setQueryData(k, { ...d, records: patch(d.records) }));
+      prev.sheets.forEach(
+        ([k, d]) =>
+          d?.records &&
+          queryClient.setQueryData(k, { ...d, records: patch(d.records) })
+      );
+      prev.att.forEach(
+        ([k, d]) =>
+          d?.records &&
+          queryClient.setQueryData(k, { ...d, records: patch(d.records) })
+      );
       return prev;
     },
     onError: (err, _vars, ctx) => {
@@ -80,9 +98,18 @@ export default function BulkAttendanceForm({
       setTimeout(() => setMsg(''), 2500);
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['departmentAttendanceSheet'], refetchType: 'active' });
-      queryClient.invalidateQueries({ queryKey: ['attendance'], refetchType: 'active' });
-      queryClient.invalidateQueries({ queryKey: ['memberHistory'], refetchType: 'active' });
+      queryClient.invalidateQueries({
+        queryKey: ['departmentAttendanceSheet'],
+        refetchType: 'active',
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['attendance'],
+        refetchType: 'active',
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['memberHistory'],
+        refetchType: 'active',
+      });
     },
   });
 
