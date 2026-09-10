@@ -286,6 +286,9 @@ api.interceptors.response.use(
     return res;
   },
   async (err) => {
+    if (axios.isCancel(err)) {
+      return Promise.reject(err);
+    }
     console.error(
       '[Global API Error]',
       err.response?.data || err.message,
