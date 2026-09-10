@@ -20,6 +20,7 @@ import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import useFeatureFlagsStore from '../../store/featureFlags';
 import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
+import { Spinner } from '../../components/ui';
 
 // ─── Role badge colours ───────────────────────────────────────────────────────
 const ROLE_COLORS = {
@@ -378,6 +379,7 @@ export default function FeatureFlags() {
   const [editTarget, setEditTarget] = useState(null);
   const [toggling, setToggling] = useState(null);
   const [toast, setToast] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const showToast = useCallback((msg, type = 'success') => {
     setToast({ msg, type });
@@ -452,6 +454,18 @@ export default function FeatureFlags() {
     updateMutation.mutate({ key: editTarget.key, body: updates });
   };
 
+  const handleRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await Promise.all([refetch(), refreshStore()]);
+    } catch (err) {
+      console.error('Failed to refresh feature flags:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <div className="">
       {/* ── Toast ── */}
@@ -496,14 +510,14 @@ export default function FeatureFlags() {
 
         <button
           id="refresh-flags"
-          onClick={() => {
-            refetch();
-            refreshStore();
-          }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
+          <RefreshCw
+            className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
+          />
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
 
@@ -585,6 +599,20 @@ export default function FeatureFlags() {
           onSave={handleSave}
           saving={updateMutation.isPending}
         />
+      )}
+
+      {/* ── Refresh Loading Overlay ── */}
+      {isRefreshing && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="feature-flags-loading-overlay"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-white/70 dark:bg-slate-950/70 backdrop-blur-sm transition-all duration-200"
+        >
+          <div className="flex flex-col items-center justify-center p-6 rounded-3xl bg-white/90 dark:bg-slate-900/90 shadow-2xl border border-slate-200/80 dark:border-slate-800">
+            <Spinner label="Refreshing feature flags..." size="lg" />
+          </div>
+        </div>
       )}
     </div>
   );
