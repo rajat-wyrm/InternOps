@@ -28,4 +28,3 @@ async def enforce_rate_limit(
         request=request,
         current_user=user,
     )
-9

@@ -51,7 +51,7 @@ async def test_rate_limiter_blocks_with_redis(mock_redis):
 
 
 def test_rate_limiter_singleton_identity():
-    """Verify that rate_limit.py and rate_limiter.py share the exact same RateLimiter instances."""
+    """Verify that and rate_limiter.py share the exact same RateLimiter instances."""
     # Only ONE shared ai_rate_limiter instance exists across both modules
     assert rate_limit_module.ai_rate_limiter is rate_limiter_module.ai_rate_limiter
 
