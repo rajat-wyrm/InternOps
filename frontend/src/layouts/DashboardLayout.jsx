@@ -36,6 +36,7 @@ import {
 import RouteInitialLoading from '../components/loading/RouteInitialLoading';
 import RouteRefreshSkeleton from '../components/loading/RouteRefreshSkeleton';
 import {
+  lazy,
   Suspense,
   useState,
   useEffect,
@@ -43,7 +44,6 @@ import {
   useMemo,
   useCallback,
   memo,
-  lazy,
   useLayoutEffect,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
