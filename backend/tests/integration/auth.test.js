@@ -29,7 +29,7 @@ beforeAll(async () => {
 
   await app.ready();
 
-  // Defense in depth — globalSetup already does this, but a developer
+  // Defense in depth â€” globalSetup already does this, but a developer
   // running a single file in isolation may bypass that path.
   await resetSeededAdminPassword();
   await clearPasswordResetAttempts();
@@ -184,6 +184,57 @@ describe('Auth Integration Tests', () => {
     });
   });
 
+  it('keeps session bootstrap routes on dedicated rate-limit budgets', () => {
+    const routesSource = require('fs').readFileSync(
+      require('path').resolve(__dirname, '../../src/modules/auth/routes.js'),
+      'utf8'
+    );
+    const configSource = require('fs').readFileSync(
+      require('path').resolve(__dirname, '../../src/config/index.js'),
+      'utf8'
+    );
+    expect(routesSource).toContain('max: config.rateLimit.refreshMax');
+    expect(routesSource).toContain('max: config.rateLimit.csrfMax');
+    expect(configSource).toContain('RATE_LIMIT_REFRESH_MAX');
+    expect(configSource).toContain('RATE_LIMIT_CSRF_MAX');
+  });
+
+  describe('POST /api/auth/login', () => {
+    it('should login with valid credentials', async () => {
+      const res = await login();
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body);
+      expect(body.accessToken).toBeDefined();
+      // refreshToken is delivered via httpOnly cookie only â€” the
+      // security fix in #417 removed it from the JSON body to prevent
+      // a malicious SPA from holding it in JS-accessible storage.
+      expect(body.refreshToken).toBeUndefined();
+      expect(cookies['refreshToken']).toBeDefined();
+      accessToken = body.accessToken;
+    });
+
+    it('should reject invalid password', async () => {
+      const res = await inject('POST', '/api/v1/auth/login', {
+        payload: { email: SEEDED_ADMIN_EMAIL, password: 'wrong' },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('should reject missing email', async () => {
+      const res = await inject('POST', '/api/v1/auth/login', {
+        payload: { password: SEEDED_ADMIN_PASSWORD },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('should reject non-existent user', async () => {
+      const res = await inject('POST', '/api/v1/auth/login', {
+        payload: { email: 'ghost@test.com', password: 'Test@123' },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
   describe('POST /api/auth/refresh', () => {
     it('should refresh token with valid refresh cookie and rotate it', async () => {
       await resetSeededAdminPassword();
@@ -191,7 +242,7 @@ describe('Auth Integration Tests', () => {
       const oldRefreshCookie = cookies['refreshToken'];
       expect(oldRefreshCookie).toBeDefined();
 
-      // First refresh — should rotate the cookie and return 200 with a
+      // First refresh â€” should rotate the cookie and return 200 with a
       // new access token.
       const res = await inject('POST', '/api/v1/auth/refresh', {
         payload: {},
@@ -207,7 +258,7 @@ describe('Auth Integration Tests', () => {
 
     it('should reject reuse of the OLD (now-revoked) refresh cookie', async () => {
       // Recreate the old cookie in the jar without losing the rotated
-      // one — we only need the old value to attempt the rejected call.
+      // one â€” we only need the old value to attempt the rejected call.
       const oldRefreshCookie = cookies['__oldRefresh'];
       if (!oldRefreshCookie) {
         // We didn't save it earlier; do a fresh login so we can
@@ -241,7 +292,7 @@ describe('Auth Integration Tests', () => {
         cookies: { refreshToken: '' },
         payload: {},
       });
-      // Route returns 400 (missing token) or 401 (revoked) — either
+      // Route returns 400 (missing token) or 401 (revoked) â€” either
       // is acceptable as long as it does NOT return 200.
       expect([400, 401]).toContain(res.statusCode);
     });

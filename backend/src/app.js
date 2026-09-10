@@ -178,6 +178,13 @@ app.register(require('@fastify/helmet'), {
   },
 });
 
+app.register(require('fastify-raw-body'), {
+  field: 'rawBody',
+  global: false,
+  encoding: 'utf8',
+  runFirst: true,
+});
+
 app.register(require('@fastify/compress'), {
   global: true,
   encodings: ['gzip', 'deflate', 'br'],

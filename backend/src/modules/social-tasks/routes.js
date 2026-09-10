@@ -40,6 +40,7 @@ const createTaskSchema = z.object({
       'deadline must be in the future'
     ),
   imagePath: z.string().max(500).optional(),
+  department_id: z.string().uuid().optional(),
 });
 
 const assignTaskSchema = z.object({
@@ -156,14 +157,35 @@ module.exports = async function socialTasksRoutes(fastify) {
       }
       const data = parsed.data;
 
-      const task = await repo.createTask({ ...data, createdBy: req.user.id });
+      if (data.department_id) {
+        const department = await repo.getActiveDepartmentById(
+          data.department_id
+        );
+
+        if (!department) {
+          return reply.status(400).send({
+            error: 'Selected department is not available',
+          });
+        }
+      }
+
+      const task = await repo.createTask({
+        ...data,
+
+        departmentId: data.department_id,
+
+        createdBy: req.user.id,
+      });
       req.auditOnResponse = {
         userId: req.user.id,
         ...extractRequestInfo(req),
         action: 'TASK_CREATED',
         resourceType: 'social_task',
         resourceId: task.id,
-        details: { title: task.title },
+        details: {
+          title: task.title,
+          department_id: task.department_id || null,
+        },
       };
       void (async () => {
         try {

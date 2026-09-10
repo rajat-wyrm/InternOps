@@ -46,7 +46,7 @@ module.exports = async function githubSyncRoutes(fastify) {
         });
       }
 
-      const rawBody = req.body;
+      const rawBody = req.rawBody;
       if (!rawBody) {
         return reply.status(400).send({
           received: false,
@@ -54,8 +54,8 @@ module.exports = async function githubSyncRoutes(fastify) {
         });
       }
 
-      let payload;
-      if (typeof rawBody === 'string') {
+      let payload = req.body;
+      if (!payload && typeof rawBody === 'string') {
         try {
           payload = JSON.parse(rawBody);
         } catch {
@@ -64,8 +64,6 @@ module.exports = async function githubSyncRoutes(fastify) {
             error: 'Invalid JSON payload',
           });
         }
-      } else {
-        payload = rawBody;
       }
 
       const isValid = service.verifyWebhookSignature(rawBody, signature);

@@ -5,17 +5,12 @@ import { ArrowLeft, CalendarCheck, Star, Users } from 'lucide-react';
 import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import { ROLE_LABEL } from '../../constants/roles';
-import {
-  PageHeader,
-  Card,
-  Spinner,
-  ApiErrorState,
-  Btn,
-} from '../../components/ui';
+import { PageHeader, Card, ApiErrorState, Btn } from '../../components/ui';
 
 // Import the original pages to match features exactly
 import Attendance from '../Attendance';
 import Ratings from '../Ratings';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 function SummaryPill({ label, value }) {
   return (
@@ -84,6 +79,7 @@ export default function ProjectDetailPage() {
   const isLoading =
     departmentsQuery.isLoading || teamsQuery.isLoading || rosterQuery.isLoading;
   const error = departmentsQuery.error || teamsQuery.error || rosterQuery.error;
+  useRouteInitialLoading(isLoading);
 
   return (
     <div className="">
@@ -121,10 +117,6 @@ export default function ProjectDetailPage() {
           }
           onRetry={() => navigate(`/departments/${deptId}/projects`)}
         />
-      ) : isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner />
-        </div>
       ) : (
         <>
           <Card className="p-5 mb-5">

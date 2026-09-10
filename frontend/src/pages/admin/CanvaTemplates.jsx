@@ -10,6 +10,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { PageHeader, Card, Badge, Spinner } from '../../components/ui';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 import {
   useCanvaStatus,
   useCanvaAuthUrl,
@@ -82,6 +83,9 @@ function CanvaTemplates() {
     refetch: refetchTemplates,
   } = useTemplates();
   const templates = templatesResp?.data || [];
+  const canvaTemplatesInitialLoading =
+    (statusLoading && !canvaStatusResp) || (templatesLoading && !templatesResp);
+  useRouteInitialLoading(canvaTemplatesInitialLoading);
   const importMutation = useCanvaImport();
   const createMutation = useCreateTemplate();
   const deleteMutation = useDeleteTemplate();
@@ -157,18 +161,14 @@ function CanvaTemplates() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-      <PageHeader
-        title="Templates & Canva"
-        icon="🎨"
-        description="Manage certificate templates and connect to Canva for design imports"
-      />
+    <div>
+      <PageHeader title="Templates & Canva" icon="🎨" />
 
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="mx-auto max-w-7xl space-y-5">
         {/* Connection Status Card */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+        <Card className="p-5 sm:p-6">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
               <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl">
                 <Palette className="w-6 h-6 text-white" />
               </div>
@@ -182,30 +182,26 @@ function CanvaTemplates() {
               </div>
             </div>
 
-            <div className="flex items-center space-x-4">
-              {statusLoading ? (
-                <Spinner size="sm" />
-              ) : (
-                <Badge variant={isConnected ? 'success' : 'danger'}>
-                  {isConnected ? (
-                    <span className="flex items-center gap-1">
-                      <Check className="w-3 h-3" />
-                      Connected
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <X className="w-3 h-3" />
-                      Not Connected
-                    </span>
-                  )}
-                </Badge>
-              )}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Badge variant={isConnected ? 'success' : 'danger'}>
+                {isConnected ? (
+                  <span className="flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    Connected
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <X className="w-3 h-3" />
+                    Not Connected
+                  </span>
+                )}
+              </Badge>
 
               {!isConnected && (
                 <button
                   onClick={handleConnectCanva}
                   disabled={!authUrlData?.url}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
+                  className="flex w-full items-center justify-center gap-2 px-4 py-2 sm:w-auto bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
                 >
                   <ExternalLink className="w-4 h-4" />
                   Connect to Canva
@@ -292,8 +288,8 @@ function CanvaTemplates() {
         )}
 
         {/* Local Templates Section */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
+        <Card className="p-5 sm:p-6">
+          <div className="mb-5 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                 Local Templates
@@ -302,7 +298,7 @@ function CanvaTemplates() {
                 Manage your certificate templates
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
               <button
                 onClick={handleSeedDefaults}
                 disabled={seedMutation.isPending}
@@ -321,12 +317,8 @@ function CanvaTemplates() {
             </div>
           </div>
 
-          {templatesLoading ? (
-            <div className="flex justify-center py-12">
-              <Spinner size="lg" />
-            </div>
-          ) : templates?.length === 0 ? (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+          {templates?.length === 0 ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center py-8 text-center text-gray-500 dark:text-gray-400">
               <Palette className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No templates yet. Create one or seed default templates.</p>
             </div>

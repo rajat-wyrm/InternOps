@@ -7,7 +7,7 @@ Run with:
 
 These exercise validation, limits, rbac stub, rate-limit stub, and the
 health/usage endpoints. `call_provider` is still a stub (NotImplementedError),
-so the "happy path" test expects a 500 until it's wired to a real provider —
+so the "happy path" test expects a 500 until it's wired to a real provider â€”
 update that one assertion once providers/gemini.py or openai.py is connected.
 """
 
@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.ai_routes import router
-from app.core.rate_limit import chat_rate_limiter
+from app.core.rate_limiter import chat_rate_limiter
 
 
 from app.core.auth import get_current_user, User
@@ -41,12 +41,12 @@ def client(monkeypatch):
 
     # Force the limiter to use our fake client instead of a real Redis connection.
     fake_redis = FakeRedis()
-    monkeypatch.setattr(rate_limit_module, "redis_client", fake_redis)
+    monkeypatch.setattr(rate_limit_module, "get_redis", lambda: fake_redis)
 
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: User(id="test_user", roles=["ADMIN"])
-    chat_rate_limiter._hits.clear()
+
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -73,7 +73,7 @@ def test_chat_rejects_blank_content(client):
 
 def test_chat_truncates_message_list_to_16(client):
     # The messages[:16] slice runs before the MAX_MESSAGES=32 check, so a
-    # 33-message list is truncated to 16 before that check ever sees it —
+    # 33-message list is truncated to 16 before that check ever sees it â€”
     # the "Too many messages" 413 is effectively unreachable via this path.
     # This is inherited from the original JS (same slice-then-check order),
     # not a bug introduced in the port. This test documents that behavior

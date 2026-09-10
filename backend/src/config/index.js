@@ -212,6 +212,12 @@ module.exports = {
     authMax:
       parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) ||
       (process.env.NODE_ENV === 'test' ? 10000 : 50),
+    refreshMax:
+      parseInt(process.env.RATE_LIMIT_REFRESH_MAX, 10) ||
+      (process.env.NODE_ENV === 'test' ? 10000 : 60),
+    csrfMax:
+      parseInt(process.env.RATE_LIMIT_CSRF_MAX, 10) ||
+      (process.env.NODE_ENV === 'test' ? 10000 : 300),
     timeWindow: process.env.RATE_LIMIT_TIME_WINDOW || '1 minute',
     passwordResetCooldownMs:
       parseInt(process.env.PASSWORD_RESET_COOLDOWN_MS, 10) || 5 * 60 * 1000,

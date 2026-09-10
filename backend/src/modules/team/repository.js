@@ -228,14 +228,15 @@ async function getPendingProofs(managerId, limit = 50) {
       SELECT id, role, department_id FROM users
       WHERE id = $1 AND deleted_at IS NULL
     ), team AS (
-      SELECT u.id FROM users u CROSS JOIN requester r
+      SELECT u.id, 1 AS depth FROM users u CROSS JOIN requester r
       WHERE u.deleted_at IS NULL AND u.role <> 'ADMIN' AND u.id <> r.id
         AND ((r.role = 'SENIOR_TL' AND u.department_id = r.department_id)
           OR (r.role <> 'SENIOR_TL' AND u.manager_id = r.id))
       UNION ALL
-      SELECT u.id FROM users u INNER JOIN team t ON u.manager_id = t.id
+      SELECT u.id, t.depth + 1 FROM users u INNER JOIN team t ON u.manager_id = t.id
       CROSS JOIN requester r
       WHERE u.deleted_at IS NULL AND r.role <> 'SENIOR_TL'
+        AND t.depth < 100
     )
     SELECT p.id, p.intern_id, p.image_path, p.status, p.created_at,
            u.full_name AS intern_name, u.email AS intern_email,
@@ -340,11 +341,11 @@ async function updateMemberManager(id, managerId) {
 
     const cycleCheck = await client.query(
       `WITH RECURSIVE subordinates AS (
-         SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+         SELECT id, 1 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL
          UNION ALL
-         SELECT u.id
+         SELECT u.id, s.depth + 1
          FROM users u INNER JOIN subordinates s ON u.manager_id = s.id
-         WHERE u.deleted_at IS NULL
+         WHERE u.deleted_at IS NULL AND s.depth < 100
        )
        SELECT 1 FROM subordinates WHERE id = $2`,
       [id, managerId]

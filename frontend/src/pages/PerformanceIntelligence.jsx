@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 import {
   Sparkles,
   TrendingUp,
@@ -353,29 +354,31 @@ export default function PerformanceIntelligence() {
     },
   ];
 
+  useRouteInitialLoading(loading && !review);
+
   const getEarlyWarningBadge = (state) => {
     switch (state) {
       case 'Healthy':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400">
             <ShieldCheck className="w-3.5 h-3.5" /> Healthy
           </span>
         );
       case 'Needs Attention':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400">
             <AlertTriangle className="w-3.5 h-3.5" /> Needs Attention
           </span>
         );
       case 'At Risk':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-400">
             <AlertTriangle className="w-3.5 h-3.5" /> At Risk
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-400 border border-slate-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-500/20">
             <HelpCircle className="w-3.5 h-3.5" /> Insufficient Data
           </span>
         );
@@ -386,53 +389,40 @@ export default function PerformanceIntelligence() {
     switch (priority?.toLowerCase()) {
       case 'high':
         return (
-          <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+          <span className="px-2.5 py-0.5 rounded text-xs font-bold border border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-400">
             High Priority
           </span>
         );
       case 'medium':
         return (
-          <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+          <span className="px-2.5 py-0.5 rounded text-xs font-bold border border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-400">
             Medium Priority
           </span>
         );
       default:
         return (
-          <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+          <span className="px-2.5 py-0.5 rounded text-xs font-bold border border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-400">
             Low Priority
           </span>
         );
     }
   };
 
-  if (loading && !review) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 p-8 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" />
-          <p className="text-slate-400 text-sm">
-            Analyzing intern performance signals...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const isInsufficient = review?.status === 'insufficient_data';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
+    <div className="min-h-[calc(100vh-7rem)] rounded-3xl bg-white p-4 text-slate-900 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700 md:p-8 font-sans">
       {/* Top Bar Header */}
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6 dark:border-slate-800">
           <div>
             <div className="flex items-center gap-2">
               <Sparkles className="w-6 h-6 text-indigo-400" />
-              <h1 className="text-2xl font-bold tracking-tight text-white">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
                 AI Performance Intelligence
               </h1>
             </div>
-            <p className="text-slate-400 text-sm mt-1">
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
               Evidence-based intern performance reviews, trend tracking, and
               personalized growth recommendations.
             </p>
@@ -445,7 +435,7 @@ export default function PerformanceIntelligence() {
                 <select
                   value={selectedInternId}
                   onChange={(e) => setSelectedInternId(e.target.value)}
-                  className="bg-slate-900 border border-slate-800 text-slate-200 text-sm rounded-lg px-4 py-2.5 pr-8 appearance-none focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                  className="border border-slate-300 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 text-sm rounded-lg px-4 py-2.5 pr-8 appearance-none focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
                 >
                   {interns.map((member) => (
                     <option key={member.id} value={member.id}>
@@ -454,7 +444,7 @@ export default function PerformanceIntelligence() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-3.5 pointer-events-none" />
+                <ChevronDown className="w-4 h-4 text-slate-500 dark:text-slate-400 absolute right-2.5 top-3.5 pointer-events-none" />
               </div>
             )}
 
@@ -472,13 +462,13 @@ export default function PerformanceIntelligence() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 gap-6">
+        <div className="flex gap-6 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
           <button
             onClick={() => setActiveTab('overview')}
             className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
               activeTab === 'overview'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-indigo-600 text-indigo-700 dark:border-indigo-500 dark:text-indigo-400'
+                : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
             Overview & Breakdown
@@ -487,8 +477,8 @@ export default function PerformanceIntelligence() {
             onClick={() => setActiveTab('recommendations')}
             className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
               activeTab === 'recommendations'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-indigo-600 text-indigo-700 dark:border-indigo-500 dark:text-indigo-400'
+                : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
             Recommendations & Action Plan
@@ -497,8 +487,8 @@ export default function PerformanceIntelligence() {
             onClick={() => setActiveTab('history')}
             className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
               activeTab === 'history'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-indigo-600 text-indigo-700 dark:border-indigo-500 dark:text-indigo-400'
+                : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
             Historical Trends
@@ -507,8 +497,8 @@ export default function PerformanceIntelligence() {
             onClick={() => setActiveTab('manager')}
             className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
               activeTab === 'manager'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-indigo-600 text-indigo-700 dark:border-indigo-500 dark:text-indigo-400'
+                : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
             Manager & Feedback Summaries
@@ -538,23 +528,23 @@ export default function PerformanceIntelligence() {
             {/* Top Score Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Overall Score */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 relative overflow-hidden">
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-500 dark:!bg-slate-900 dark:shadow-lg dark:shadow-black/20 p-5 relative overflow-hidden">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Overall Performance Score
                   </span>
                   <Award className="w-5 h-5 text-indigo-400" />
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-4xl font-extrabold text-white">
+                  <span className="text-4xl font-extrabold text-slate-900 dark:text-white">
                     {review.overall_score.toFixed(1)}
                   </span>
-                  <span className="text-sm font-medium text-slate-400">
+                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
                     / 100
                   </span>
                 </div>
                 <div className="mt-2 flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded text-xs font-semibold bg-indigo-500/20 text-indigo-300">
+                  <span className="px-2 py-0.5 rounded text-xs font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
                     {review.performance_level}
                   </span>
                   {review.performance_trend?.change !== 0 && (
@@ -578,9 +568,9 @@ export default function PerformanceIntelligence() {
               </div>
 
               {/* Early Warning Signal */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-500 dark:!bg-slate-900 dark:shadow-lg dark:shadow-black/20 p-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Early Warning Status
                   </span>
                   <Zap className="w-5 h-5 text-amber-400" />
@@ -588,7 +578,7 @@ export default function PerformanceIntelligence() {
                 <div className="mt-4">
                   {getEarlyWarningBadge(review.early_warning?.state)}
                 </div>
-                <p className="text-xs text-slate-400 mt-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                   {review.early_warning?.triggers?.length > 0
                     ? review.early_warning.triggers[0]
                     : 'All performance signals within healthy threshold.'}
@@ -596,35 +586,35 @@ export default function PerformanceIntelligence() {
               </div>
 
               {/* Task Completion Rate */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-500 dark:!bg-slate-900 dark:shadow-lg dark:shadow-black/20 p-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Task Completion Rate
                   </span>
                   <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                 </div>
-                <div className="mt-3 text-3xl font-bold text-white">
+                <div className="mt-3 text-3xl font-bold text-slate-900 dark:text-white">
                   {review.deterministic_metrics?.completion_rate}%
                 </div>
-                <p className="text-xs text-slate-400 mt-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                   On-time rate: {review.deterministic_metrics?.on_time_rate}%
                 </p>
               </div>
 
               {/* Avg Evaluation Rating */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-500 dark:!bg-slate-900 dark:shadow-lg dark:shadow-black/20 p-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Evaluator Rating
                   </span>
                   <BarChart3 className="w-5 h-5 text-blue-400" />
                 </div>
-                <div className="mt-3 text-3xl font-bold text-white">
+                <div className="mt-3 text-3xl font-bold text-slate-900 dark:text-white">
                   {review.deterministic_metrics?.avg_eval_score
                     ? `${review.deterministic_metrics.avg_eval_score.toFixed(1)} / 10`
                     : 'N/A'}
                 </div>
-                <p className="text-xs text-slate-400 mt-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                   Rejection rate: {review.deterministic_metrics?.rejection_rate}
                   %
                 </p>
@@ -632,8 +622,8 @@ export default function PerformanceIntelligence() {
             </div>
 
             {/* Score Breakdown Gauges */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950 p-6">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                 <Layers className="w-5 h-5 text-indigo-400" /> Performance
                 Dimension Breakdown
               </h2>
@@ -642,14 +632,14 @@ export default function PerformanceIntelligence() {
                   ([dimension, score]) => (
                     <div key={dimension} className="space-y-1.5">
                       <div className="flex justify-between text-xs font-medium">
-                        <span className="capitalize text-slate-300">
+                        <span className="capitalize text-slate-700 dark:text-slate-300">
                           {dimension.replace('_', ' ')}
                         </span>
                         <span className="text-indigo-400 font-bold">
                           {score}%
                         </span>
                       </div>
-                      <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                      <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
                         <div
                           className={`h-2 rounded-full transition-all duration-500 ${
                             score >= 80
@@ -674,7 +664,7 @@ export default function PerformanceIntelligence() {
             {/* Strengths & Development Areas Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Strengths */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950 p-6">
                 <h2 className="text-lg font-semibold text-emerald-400 mb-4 flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5" /> Key Strengths
                 </h2>
@@ -682,17 +672,19 @@ export default function PerformanceIntelligence() {
                   {review.strengths?.map((item, idx) => (
                     <div
                       key={idx}
-                      className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-4 space-y-2"
+                      className="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800/80 dark:bg-slate-950/60 p-4 space-y-2"
                     >
-                      <h3 className="text-sm font-semibold text-white">
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
                         {item.area}
                       </h3>
-                      <p className="text-xs text-slate-400">{item.impact}</p>
-                      <div className="pt-2 border-t border-slate-900 flex flex-col gap-1">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {item.impact}
+                      </p>
+                      <div className="pt-2 border-t border-slate-200 dark:border-slate-900 flex flex-col gap-1">
                         {item.evidence?.map((ev, evIdx) => (
                           <span
                             key={evIdx}
-                            className="text-xs text-emerald-300/80 flex items-center gap-1.5"
+                            className="text-xs text-emerald-700 dark:text-emerald-300/80 flex items-center gap-1.5"
                           >
                             <Check className="w-3 h-3 text-emerald-400 shrink-0" />{' '}
                             {ev}
@@ -705,7 +697,7 @@ export default function PerformanceIntelligence() {
               </div>
 
               {/* Development Areas */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950 p-6">
                 <h2 className="text-lg font-semibold text-amber-400 mb-4 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5" /> Development Areas
                 </h2>
@@ -713,20 +705,23 @@ export default function PerformanceIntelligence() {
                   {review.development_areas?.map((item, idx) => (
                     <div
                       key={idx}
-                      className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-4 space-y-2"
+                      className="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800/80 dark:bg-slate-950/60 p-4 space-y-2"
                     >
                       <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-white">
+                        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
                           {item.area}
                         </h3>
                         {getPriorityBadge(item.severity)}
                       </div>
-                      <p className="text-xs text-indigo-300 font-medium">
+                      <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
                         {item.recommendation}
                       </p>
-                      <div className="pt-2 border-t border-slate-900 flex flex-col gap-1">
+                      <div className="pt-2 border-t border-slate-200 dark:border-slate-900 flex flex-col gap-1">
                         {item.evidence?.map((ev, evIdx) => (
-                          <span key={evIdx} className="text-xs text-slate-400">
+                          <span
+                            key={evIdx}
+                            className="text-xs text-slate-500 dark:text-slate-400"
+                          >
                             • {ev}
                           </span>
                         ))}
@@ -742,12 +737,12 @@ export default function PerformanceIntelligence() {
         {/* RECOMMENDATIONS & ACTION PLAN TAB */}
         {activeTab === 'recommendations' && review && (
           <div className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <h2 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950 p-6">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
                 <Brain className="w-5 h-5 text-indigo-400" /> Evidence-Based AI
                 Recommendations
               </h2>
-              <p className="text-xs text-slate-400 mb-6">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
                 Each recommendation is generated by correlating observed work
                 data patterns with actionable growth steps.
               </p>
@@ -756,34 +751,38 @@ export default function PerformanceIntelligence() {
                 {review.recommendations?.map((rec, idx) => (
                   <div
                     key={idx}
-                    className="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-3 transition-all hover:border-slate-700"
+                    className="rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950 p-5 space-y-3 transition-all hover:border-slate-700"
                   >
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                      <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                      <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                         {rec.title}
                       </h3>
                       <div className="flex items-center gap-2">
                         {getPriorityBadge(rec.priority)}
-                        <span className="text-xs font-semibold bg-slate-800 text-slate-300 px-2.5 py-0.5 rounded flex items-center gap-1">
+                        <span className="text-xs font-semibold bg-slate-800 text-slate-700 dark:text-slate-300 px-2.5 py-0.5 rounded flex items-center gap-1">
                           <Clock className="w-3 h-3" /> {rec.timeframe}
                         </span>
                       </div>
                     </div>
 
-                    <p className="text-sm text-slate-300">{rec.description}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300">
+                      {rec.description}
+                    </p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs bg-slate-900/60 p-3 rounded-lg border border-slate-800/50">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800/50 dark:bg-slate-900/60">
                       <div>
-                        <span className="text-slate-400 font-medium">
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">
                           Reason / Observed Signal:
                         </span>
-                        <p className="text-slate-200 mt-0.5">{rec.reason}</p>
+                        <p className="text-slate-800 dark:text-slate-200 mt-0.5">
+                          {rec.reason}
+                        </p>
                       </div>
                       <div>
-                        <span className="text-slate-400 font-medium">
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">
                           Target Expected Outcome:
                         </span>
-                        <p className="text-emerald-400 font-semibold mt-0.5">
+                        <p className="mt-0.5 font-semibold text-emerald-700 dark:text-emerald-400">
                           {rec.expected_outcome}
                         </p>
                       </div>
@@ -793,7 +792,7 @@ export default function PerformanceIntelligence() {
                     <div className="pt-2">
                       <button
                         onClick={() => toggleEvidenceDrawer(`rec-${idx}`)}
-                        className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium cursor-pointer"
+                        className="flex items-center text-xs text-indigo-700 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 gap-1 font-medium cursor-pointer"
                       >
                         <HelpCircle className="w-3.5 h-3.5" />
                         Why am I getting this recommendation?
@@ -805,11 +804,11 @@ export default function PerformanceIntelligence() {
                       </button>
 
                       {expandedEvidence[`rec-${idx}`] && (
-                        <div className="mt-3 bg-slate-900 border border-indigo-500/20 rounded-lg p-4 text-xs space-y-2 text-slate-300">
-                          <p className="font-semibold text-indigo-300">
+                        <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 dark:border-indigo-500/20 dark:bg-slate-950 p-4 text-xs space-y-2 text-slate-700 dark:text-slate-300">
+                          <p className="font-semibold text-indigo-700 dark:text-indigo-300">
                             Underlying Data Signals Used:
                           </p>
-                          <ul className="list-disc pl-4 space-y-1 text-slate-300">
+                          <ul className="list-disc pl-4 space-y-1 text-slate-700 dark:text-slate-300">
                             <li>Primary Trigger: {rec.reason}</li>
                             <li>
                               Overall Performance Level:{' '}
@@ -833,8 +832,8 @@ export default function PerformanceIntelligence() {
             </div>
 
             {/* Learning & Action Plan */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950 p-6">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-indigo-400" /> Targeted Skill
                 Action Plan
               </h2>
@@ -842,10 +841,10 @@ export default function PerformanceIntelligence() {
                 {review.learning_plan?.map((plan, idx) => (
                   <div
                     key={idx}
-                    className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-3"
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 space-y-3"
                   >
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-white">
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
                         {plan.skill}
                       </h3>
                       {getPriorityBadge(plan.priority)}
@@ -854,7 +853,7 @@ export default function PerformanceIntelligence() {
                       {plan.actions?.map((act, actIdx) => (
                         <li
                           key={actIdx}
-                          className="text-xs text-slate-300 flex items-start gap-2"
+                          className="text-xs text-slate-700 dark:text-slate-300 flex items-start gap-2"
                         >
                           <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
                           <span>{act}</span>
@@ -870,12 +869,12 @@ export default function PerformanceIntelligence() {
 
         {/* HISTORICAL TRENDS TAB */}
         {activeTab === 'history' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-6">
-            <h2 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950 p-6 space-y-6">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-indigo-400" /> Historical
               Performance Reviews
             </h2>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Each generated AI review is preserved historically to track growth
               over time.
             </p>
@@ -884,17 +883,17 @@ export default function PerformanceIntelligence() {
               {history.map((hItem, idx) => (
                 <div key={hItem.id || idx} className="relative group">
                   <div className="absolute -left-[31px] top-1.5 w-4 h-4 rounded-full bg-slate-900 border-2 border-indigo-500 group-hover:scale-125 transition-transform" />
-                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                       <div className="flex items-center gap-3">
-                        <span className="text-xl font-bold text-white">
+                        <span className="text-xl font-bold text-slate-900 dark:text-white">
                           {hItem.overall_score?.toFixed(1) || hItem.score}
                         </span>
-                        <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+                        <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
                           {hItem.performance_level || hItem.level}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5" />
                         {new Date(
                           hItem.created_at || hItem.date
@@ -930,30 +929,30 @@ export default function PerformanceIntelligence() {
         {/* MANAGER & FEEDBACK TAB */}
         {activeTab === 'manager' && review && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-3">
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950 p-6 space-y-3">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-indigo-400" /> Manager
                 Summary
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Executive summary formatted for supervisor evaluation and 1-on-1
                 check-ins.
               </p>
-              <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 text-sm text-slate-200 leading-relaxed">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 leading-relaxed">
                 {review.manager_summary}
               </div>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-3">
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-950 p-6 space-y-3">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                 <FileText className="w-5 h-5 text-emerald-400" /> Intern Growth
                 Feedback
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Actionable, encouraging feedback written directly for the
                 intern.
               </p>
-              <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 text-sm text-slate-200 leading-relaxed">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 leading-relaxed">
                 {review.intern_feedback}
               </div>
             </div>

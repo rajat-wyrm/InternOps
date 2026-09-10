@@ -31,6 +31,7 @@ import {
   X,
   PanelLeftClose,
   PanelLeftOpen,
+  Inbox,
 } from 'lucide-react';
 import RouteInitialLoading from '../components/loading/RouteInitialLoading';
 import RouteRefreshSkeleton from '../components/loading/RouteRefreshSkeleton';
@@ -42,6 +43,8 @@ import {
   useMemo,
   useCallback,
   memo,
+  lazy,
+  useLayoutEffect,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -53,8 +56,9 @@ import useAuthStore from '../store/auth';
 import useFeatureFlagsStore from '../store/featureFlags';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { ROLE_LABEL } from '../constants/roles';
-import FloatingChatbot from '../components/FloatingChatbot';
 
+const FloatingChatbot = lazy(() => import('../components/FloatingChatbot'));
+const FLOATING_CHATBOT_ROLES = ['ADMIN', 'SENIOR_TL', 'TL'];
 const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
 const REPORT_ROLES = ['ADMIN', 'MANAGEMENT', 'HR', 'SENIOR_TL'];
 const ADMIN_AND_SENIOR_TL_ROLES = ['ADMIN', 'SENIOR_TL'];
@@ -111,6 +115,7 @@ const nav = [
 
   { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/profile', label: 'Profile', icon: User },
+  { path: '/requests', label: 'Requests', icon: Inbox },
   { path: '/sessions', label: 'Sessions', icon: Shield },
 
   {
@@ -230,13 +235,36 @@ const adminNav = [
 const FULL_LOGO_SRC = '/UptoSkills.webp';
 const MINI_LOGO_SRC = '/Uptoskills_log_fevicon.png';
 const COORDINATED_LOADING_ROUTES = new Set([
+  '/admin',
+  '/audit',
   '/dashboard',
+  '/departments',
   '/team',
   '/hr',
   '/profile',
+  '/quick-generate',
+  '/certificates',
+  '/bulk-generate',
+  '/canva-templates',
+  '/feature-flags',
+  '/github-sync',
   '/tasks',
   '/notifications',
+  '/sessions',
+  '/internops',
+  '/performance-intelligence',
+  '/reports',
+  '/report-templates',
+  '/exports',
+  '/notices',
 ]);
+const COORDINATED_LOADING_ROUTE_PATTERNS = [
+  /^\/departments\/[^/]+\/projects$/,
+  /^\/departments\/[^/]+\/projects\/[^/]+$/,
+  /^\/admin\/departments\/[^/]+\/attendance$/,
+  /^\/admin\/departments\/[^/]+\/ratings$/,
+  /^\/admin\/departments\/[^/]+\/tasks$/,
+];
 
 function canShowNavItem(item, role, flags, flagsLoaded) {
   if (item.excludedRoles && item.excludedRoles.includes(role)) return false;
@@ -271,9 +299,13 @@ const NavLink = memo(({ n, active, collapsed, onLinkClick }) => {
         }`}
     >
       <Icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2.5 : 2} />
-      {!collapsed && <span className="whitespace-nowrap">{n.label}</span>}
+      {!collapsed && (
+        <span className="min-w-0 flex-1 truncate whitespace-nowrap">
+          {n.label}
+        </span>
+      )}
       {!collapsed && active && (
-        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600" />
+        <span className="ml-2 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-600" />
       )}
       {collapsed && active && (
         <span className="absolute right-1.5 w-1.5 h-6 rounded-full bg-white/80" />
@@ -336,10 +368,13 @@ export default function DashboardLayout() {
   }, [accessToken, queryClient, user?.mustChangePassword]);
 
   const role = user?.role;
+  const canUseFloatingChatbot = FLOATING_CHATBOT_ROLES.includes(role);
   const flags = useFeatureFlagsStore((s) => s.flags);
   const flagsLoaded = useFeatureFlagsStore((s) => s.loaded);
   const SIDEBAR_KEY = 'sidebar_scroll';
   const sidebarNavRef = useRef(null);
+  const mainContentRef = useRef(null);
+  const previousPathRef = useRef(loc.pathname);
 
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('sidebar') === 'collapsed'
@@ -350,9 +385,6 @@ export default function DashboardLayout() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [animatedRoutePath, setAnimatedRoutePath] = useState(loc.pathname);
-  useEffect(() => {
-    setAnimatedRoutePath(loc.pathname);
-  }, [loc.pathname]);
 
   const { data: me, isFetched: profileFetched } = useQuery({
     queryKey: QUERY_KEYS.USER_PROFILE,
@@ -520,9 +552,23 @@ export default function DashboardLayout() {
     logout();
     navigate('/login');
   };
+
   // prettier-ignore
   const isCoordinatedLoadingRoute = COORDINATED_LOADING_ROUTES.has(loc.pathname);
   const shouldAnimateRoute = animatedRoutePath === loc.pathname;
+
+  useLayoutEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+  }, [loc.pathname]);
+  useLayoutEffect(() => {
+    if (previousPathRef.current !== loc.pathname) {
+      setAnimatedRoutePath(loc.pathname);
+      previousPathRef.current = loc.pathname;
+    }
+  }, [loc.pathname]);
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 text-slate-900 dark:text-white">
       {impersonation && (
@@ -806,13 +852,52 @@ export default function DashboardLayout() {
             </Link>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-5 sm:p-6">
-          <Suspense fallback={<RouteRefreshSkeleton />}>
-            {/* shouldAnimateRoute ? navigation-only motion : no motion */}
-            <RouteInitialLoading animate={shouldAnimateRoute}>
-              <Outlet />
-            </RouteInitialLoading>
-          </Suspense>
+        {impersonation && (
+          <div
+            className="flex min-h-14 flex-wrap items-center justify-between gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2.5 text-amber-950 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-100 sm:px-6"
+            role="status"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-extrabold">
+                Viewing InternOps as {displayName || user?.email}
+              </p>
+              <p className="truncate text-xs">
+                Read-only admin troubleshooting view
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleExitUserView}
+              disabled={endingUserView}
+              className="rounded-xl bg-amber-900 px-4 py-2 text-xs font-extrabold text-white disabled:opacity-60 dark:bg-amber-200 dark:text-amber-950"
+            >
+              {endingUserView ? 'Exiting...' : 'Exit User View'}
+            </button>
+          </div>
+        )}
+        <main ref={mainContentRef} className="flex-1 overflow-auto p-5 sm:p-6">
+          <div key={loc.pathname} className="min-h-[calc(100vh-7rem)]">
+            {COORDINATED_LOADING_ROUTES.has(loc.pathname) ||
+            COORDINATED_LOADING_ROUTE_PATTERNS.some((pattern) =>
+              pattern.test(loc.pathname)
+            ) ? (
+              <RouteInitialLoading animate={shouldAnimateRoute}>
+                <Outlet />
+              </RouteInitialLoading>
+            ) : (
+              <Suspense fallback={<RouteRefreshSkeleton />}>
+                <AuthHydrationGate>
+                  <div
+                    className={
+                      shouldAnimateRoute ? 'animate-fade-in-up' : undefined
+                    }
+                  >
+                    <Outlet />
+                  </div>
+                </AuthHydrationGate>
+              </Suspense>
+            )}
+          </div>
         </main>
       </div>
 
@@ -825,7 +910,11 @@ export default function DashboardLayout() {
         onCancel={() => setShowLogoutConfirm(false)}
         danger={true}
       />
-      {loc.pathname !== '/profile' && <FloatingChatbot />}
+      {loc.pathname !== '/profile' && canUseFloatingChatbot && (
+        <Suspense fallback={null}>
+          <FloatingChatbot />
+        </Suspense>
+      )}
     </div>
   );
 }

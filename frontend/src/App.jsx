@@ -5,7 +5,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import DashboardLayout from './layouts/DashboardLayout';
 import useAuthStore from './store/auth';
 import useFeatureFlagsStore from './store/featureFlags';
@@ -15,7 +15,6 @@ import ErrorBoundary from './components/ErrorBoundary';
 const HR = lazy(() => import('./pages/HR'));
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
-import RouteRefreshSkeleton from './components/loading/RouteRefreshSkeleton';
 
 // Lazy load page components
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
@@ -25,6 +24,7 @@ const Attendance = lazy(() => import('./pages/Attendance'));
 const Ratings = lazy(() => import('./pages/Ratings'));
 const Team = lazy(() => import('./pages/Team'));
 const Profile = lazy(() => import('./pages/Profile'));
+const Requests = lazy(() => import('./pages/Requests'));
 const Sessions = lazy(() => import('./pages/Sessions'));
 const Meetings = lazy(() => import('./pages/Meetings'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -55,11 +55,8 @@ const ProjectsPage = lazy(() => import('./pages/admin/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/admin/ProjectDetailPage'));
 const TaskDetails = lazy(() => import('./pages/admin/TaskDetails'));
 
-function PageLoader() {
-  return <RouteRefreshSkeleton />;
-}
 function PublicLazyPage({ children }) {
-  return <Suspense fallback={<PageLoader />}>{children}</Suspense>;
+  return <Suspense fallback={null}>{children}</Suspense>;
 }
 
 let bootRefreshPromise = null;
@@ -95,6 +92,7 @@ export default function App() {
   const logout = useAuthStore((s) => s.logout);
   const setSystemError = useAuthStore((s) => s.setSystemError);
   const systemError = useAuthStore((s) => s.systemError);
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState(0);
   const hydrated = useAuthStore((s) => s.hydrated);
   const fetchFlags = useFeatureFlagsStore((s) => s.fetchFlags);
   const resetFlags = useFeatureFlagsStore((s) => s.reset);
@@ -138,6 +136,18 @@ export default function App() {
             logout();
             resetFlags();
           }
+        } else if (status === 429) {
+          const retryAfterHeader = Number(
+            err.response?.headers?.['retry-after']
+          );
+          const retryAfter =
+            Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
+              ? Math.ceil(retryAfterHeader)
+              : 10;
+          setRetryAfterSeconds(retryAfter);
+          setSystemError(
+            `Too many requests. Please retry in ${retryAfter} seconds.`
+          );
         } else {
           setSystemError(
             'Service temporarily unavailable. Please try again later.'
@@ -149,6 +159,21 @@ export default function App() {
       });
   }, [logout, setAuth, setHydrated, setSystemError, fetchFlags, resetFlags]);
 
+  useEffect(() => {
+    if (!systemError || retryAfterSeconds <= 0) return undefined;
+    const timer = window.setInterval(() => {
+      setRetryAfterSeconds((seconds) => {
+        const next = Math.max(0, seconds - 1);
+        if (next > 0) {
+          setSystemError(`Too many requests. Please retry in ${next} seconds.`);
+        } else {
+          setSystemError('You can retry now.');
+        }
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [retryAfterSeconds > 0, setSystemError, systemError]);
   if (systemError) {
     return (
       <div
@@ -166,13 +191,19 @@ export default function App() {
         </p>
         <button
           onClick={() => {
+            if (retryAfterSeconds > 0) return;
             useAuthStore.getState().setSystemError(null);
             bootRefreshPromise = null;
             window.location.reload();
           }}
-          style={{ padding: '8px 20px', cursor: 'pointer' }}
+          disabled={retryAfterSeconds > 0}
+          style={{
+            padding: '8px 20px',
+            cursor: retryAfterSeconds > 0 ? 'not-allowed' : 'pointer',
+            opacity: retryAfterSeconds > 0 ? 0.6 : 1,
+          }}
         >
-          Retry
+          {retryAfterSeconds > 0 ? `Retry in ${retryAfterSeconds}s` : 'Retry'}
         </button>
       </div>
     );
@@ -302,6 +333,7 @@ export default function App() {
           />
 
           <Route path="profile" element={<Profile />} />
+          <Route path="requests" element={<Requests />} />
           <Route path="sessions" element={<Sessions />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="assistant" element={<InternOpsAssistant />} />

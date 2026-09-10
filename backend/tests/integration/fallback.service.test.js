@@ -28,77 +28,42 @@ describe('ratings fallback service', () => {
     expect(recommendation.reasoning).toContain('Fallback estimate');
   });
 
-  it('assigns the correct attendance reasoning tier for each score bucket', () => {
-    expect(
-      calculateFallbackRating({
-        attendancePercentage: 95,
-        verificationRate: 90,
-      }).reasoning
-    ).toContain('strong attendance');
+  it('assigns the correct reasoning tier for every attendance score', () => {
+    const cases = [
+      [50, 'weak attendance'],
+      [60, 'average attendance'],
+      [70, 'average attendance'],
+      [80, 'strong attendance'],
+      [90, 'strong attendance'],
+      [95, 'strong attendance'],
+    ];
 
-    expect(
-      calculateFallbackRating({
-        attendancePercentage: 80,
-        verificationRate: 90,
-      }).reasoning
-    ).toContain('strong attendance');
+    for (const [attendancePercentage, expectedReasoning] of cases) {
+      const recommendation = calculateFallbackRating({
+        attendancePercentage,
+        verificationRate: 95,
+      });
 
-    expect(
-      calculateFallbackRating({
-        attendancePercentage: 70,
-        verificationRate: 90,
-      }).reasoning
-    ).toContain('average attendance');
-
-    expect(
-      calculateFallbackRating({
-        attendancePercentage: 60,
-        verificationRate: 90,
-      }).reasoning
-    ).toContain('average attendance');
-
-    expect(
-      calculateFallbackRating({
-        attendancePercentage: 59,
-        verificationRate: 90,
-      }).reasoning
-    ).toContain('weak attendance');
+      expect(recommendation.reasoning).toContain(expectedReasoning);
+    }
   });
 
-  it('assigns the correct task reasoning tier for each score bucket', () => {
-    expect(
-      calculateFallbackRating({
-        attendancePercentage: 95,
-        verificationRate: 90,
-      }).reasoning
-    ).toContain('reliable task verification');
+  it('assigns the correct reasoning tier for every task score', () => {
+    const cases = [
+      [50, 'low verification rate'],
+      [60, 'moderate task verification'],
+      [70, 'moderate task verification'],
+      [80, 'reliable task verification'],
+      [90, 'reliable task verification'],
+    ];
 
-    expect(
-      calculateFallbackRating({
+    for (const [verificationRate, expectedReasoning] of cases) {
+      const recommendation = calculateFallbackRating({
         attendancePercentage: 95,
-        verificationRate: 80,
-      }).reasoning
-    ).toContain('reliable task verification');
+        verificationRate,
+      });
 
-    expect(
-      calculateFallbackRating({
-        attendancePercentage: 95,
-        verificationRate: 70,
-      }).reasoning
-    ).toContain('moderate task verification');
-
-    expect(
-      calculateFallbackRating({
-        attendancePercentage: 95,
-        verificationRate: 60,
-      }).reasoning
-    ).toContain('moderate task verification');
-
-    expect(
-      calculateFallbackRating({
-        attendancePercentage: 95,
-        verificationRate: 59,
-      }).reasoning
-    ).toContain('low verification rate');
+      expect(recommendation.reasoning).toContain(expectedReasoning);
+    }
   });
 });

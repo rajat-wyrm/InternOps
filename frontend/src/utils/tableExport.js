@@ -1,9 +1,4 @@
-﻿import * as XLSX from 'xlsx';
-import ExcelJS from 'exceljs';
-import { jsPDF } from 'jspdf';
-import { autoTable } from 'jspdf-autotable';
-
-export const EXPORT_FORMATS = [
+﻿export const EXPORT_FORMATS = [
   {
     value: 'xlsx',
     label: 'Microsoft Excel (.xlsx)',
@@ -114,6 +109,7 @@ export function rowsToHtml(title, columns, rows) {
     )}</colgroup><thead><tr>${columns.map((c) => `<th>${esc(c.label)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${columns.map((c) => `<td class="${c.key === '__serialNumber' ? '' : tone(r[c.key])}">${esc(normalizeExportValue(r[c.key]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div><footer class="footer">InternOps generated report</footer></section></body></html>`;
 }
 async function exportExcel({ title, fileBase, sheetName, columns, rows }) {
+  const { default: ExcelJS } = await import('exceljs');
   const book = new ExcelJS.Workbook();
   book.creator = 'InternOps';
   book.created = new Date();
@@ -235,7 +231,8 @@ async function exportExcel({ title, fileBase, sheetName, columns, rows }) {
     `${fileBase}.xlsx`
   );
 }
-function exportOds({ title, fileBase, sheetName, columns, rows }) {
+async function exportOds({ title, fileBase, sheetName, columns, rows }) {
+  const XLSX = await import('xlsx');
   const data = [
     [title],
     [`Generated ${new Date().toLocaleString()} | InternOps`],
@@ -401,7 +398,17 @@ function pdfColumnStyles(columns, isRatings) {
   return styles;
 }
 
-function exportPdf({ title, fileBase, sheetName = 'Report', columns, rows }) {
+async function exportPdf({
+  title,
+  fileBase,
+  sheetName = 'Report',
+  columns,
+  rows,
+}) {
+  const [{ jsPDF }, { autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
   const isRatings = String(sheetName).toLowerCase().includes('rating');
   const groups = splitPdfColumnGroups(columns, sheetName);
   const pageWidth = 1190;
