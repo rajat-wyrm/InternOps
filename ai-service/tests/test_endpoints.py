@@ -21,18 +21,21 @@ OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
 @pytest.fixture(autouse=True)
 def setup_test_env(monkeypatch):
-    """Mock Redis rate limiting and inject a test user."""
-    mock_redis = AsyncMock()
-    mock_redis.incr.side_effect = [1, 2, 3, 4]
-    monkeypatch.setattr(rate_limit_module, "get_redis", lambda: mock_redis)
+    """Ensure rate limiter state is clean before and after every test, and inject mock user."""
+    class FakeRedis:
+        def __init__(self):
+            self.counts = {}
+        async def incr(self, key):
+            self.counts[key] = self.counts.get(key, 0) + 1
+            return self.counts[key]
+        async def expire(self, key, seconds):
+            pass
 
+    fake_redis = FakeRedis()
+    monkeypatch.setattr(rate_limit_module, "get_redis", lambda: fake_redis)
     ai_rate_limiter.requests_per_minute = 60
-    app.dependency_overrides[get_current_user] = lambda: User(
-        id="test_user", roles=["ADMIN"]
-    )
-
+    app.dependency_overrides[get_current_user] = lambda: User(id="test_user", roles=["ADMIN"])
     yield
-
     app.dependency_overrides.clear()
 
 

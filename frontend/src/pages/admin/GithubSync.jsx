@@ -355,9 +355,12 @@ export default function GithubSync() {
     refetch: refetchIssues,
   } = useQuery({
     queryKey: ['github-synced-issues'],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api
-        .get('/github/issues?limit=20', { _suppressGlobalError: true })
+        .get('/github/issues?limit=20', {
+          signal,
+          _suppressGlobalError: true,
+        })
         .then((r) => r.data),
     enabled: hydrated && !!accessToken && activeTab === 'issues',
     retry: false,
@@ -365,14 +368,13 @@ export default function GithubSync() {
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
     queryKey: ['github-sync-analytics', analyticsDays],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api
-        .get(`/github/stats/analytics?days=${analyticsDays}`)
+        .get(`/github/stats/analytics?days=${analyticsDays}`, { signal })
         .then((r) => r.data),
     enabled: hydrated && !!accessToken && activeTab === 'analytics',
     refetchInterval: 60000,
   });
-
   const { data: settingsData } = useQuery({
     queryKey: ['github-sync-settings'],
     queryFn: () => api.get('/github/settings').then((r) => r.data),
