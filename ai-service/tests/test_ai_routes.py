@@ -203,54 +203,33 @@ def test_rate_limit_trips_after_configured_max(client, monkeypatch):
     )
 
     assert r.status_code == 429
-def test_chat_uses_cache_for_identical_requests(client, monkeypatch):
+def test_chat_wires_up_orchestrator_cache_status(client, monkeypatch):
+    """
+    /ai/chat has no cache of its own anymore (see #1894) — it just reports
+    back whatever cache-hit/miss status the orchestrator's single caching
+    layer gives it. This checks that wiring: `cached` in the response body
+    should match what generate_chat_with_cache_status() returned, not be
+    computed by ai_routes.py itself.
+    """
     import app.api.ai_routes as ai_routes_module
 
-    calls = 0
+    calls = []
 
-    async def fake_generate(messages, temperature=0.7, **kwargs):
-        nonlocal calls
-        calls += 1
-        return "cached response", "fake-provider"
+    async def fake_generate_with_cache_status(messages, temperature=0.7, **kwargs):
+        calls.append(messages)
+        cached = len(calls) > 1
+        return "cached response", "fake-provider", cached
 
     monkeypatch.setattr(
         ai_routes_module.ai_orchestrator,
-        "generate_chat_with_fallback",
-        fake_generate,
+        "generate_chat_with_cache_status",
+        fake_generate_with_cache_status,
     )
 
-    # Use a fake Redis-backed cache in memory.
-    cache = {}
-
-    async def fake_get_cached(key):
-        return cache.get(key)
-
-    async def fake_set_cached(key, value, *args, **kwargs):
-        cache[key] = value
-
-    monkeypatch.setattr(
-        "app.core.cache.get_cached",
-        fake_get_cached,
-    )
-    monkeypatch.setattr(
-        "app.core.cache.set_cached",
-        fake_set_cached,
-    )
-
-    headers = {"x-user-id": "cache-test-user"}
     payload = {"prompt": "same prompt"}
 
-    first = client.post(
-        "/ai/chat",
-        json=payload,
-        headers=headers,
-    )
-
-    second = client.post(
-        "/ai/chat",
-        json=payload,
-        headers=headers,
-    )
+    first = client.post("/ai/chat", json=payload)
+    second = client.post("/ai/chat", json=payload)
 
     assert first.status_code == 200
     assert second.status_code == 200
@@ -258,9 +237,55 @@ def test_chat_uses_cache_for_identical_requests(client, monkeypatch):
     assert first.json()["content"] == "cached response"
     assert second.json()["content"] == "cached response"
 
-    # The provider should only be called once.
-    assert calls == 1
-
-    # First request is a cache miss, second is a cache hit.
+    # First request is a cache miss, second is a cache hit — straight from
+    # whatever generate_chat_with_cache_status() reported.
     assert first.json()["cached"] is False
     assert second.json()["cached"] is True
+
+
+@pytest.mark.asyncio
+async def test_chat_dedupes_identical_requests_via_single_orchestrator_cache(monkeypatch):
+    """
+    End-to-end check that /ai/chat's caching is really just the
+    orchestrator's single cache (app/core/cache.py's `ai:cache:...` keys,
+    shared with /generate and /ai/generate-image) — no separate cache in
+    ai_routes.py, and no duplicate cache entries for the same request.
+    """
+    import app.providers.orchestrator as orchestrator_module
+    from app.core.cache import clear_cache
+    from app.api.ai_routes import call_provider
+
+    orchestrator_module._circuit_breakers.clear()
+    clear_cache()
+
+    calls = 0
+
+    class FakeProvider:
+        provider_name = "fake-provider"
+        model_name = "fake-model"
+
+        async def generate_chat(self, messages, temperature=0.7, **kwargs):
+            nonlocal calls
+            calls += 1
+            return "cached response"
+
+    monkeypatch.setattr(orchestrator_module, "get_provider", lambda name=None: FakeProvider())
+
+    try:
+        messages = [{"role": "user", "content": "same prompt"}]
+
+        first = await call_provider("user-1", messages)
+        second = await call_provider("user-1", messages)
+
+        assert first.content == "cached response"
+        assert second.content == "cached response"
+
+        # The provider was only actually called once — the second request
+        # was served from the orchestrator's cache.
+        assert calls == 1
+
+        assert first.cached is False
+        assert second.cached is True
+    finally:
+        orchestrator_module._circuit_breakers.clear()
+        clear_cache()

@@ -179,7 +179,14 @@ async def test_provider_failure_not_cached():
 
 
 def test_ai_route_integration_cache_hit_and_miss(monkeypatch):
-    import app.api.ai_routes as ai_routes_module
+    """
+    /ai/chat no longer keeps its own cache (see #1894) — it relies entirely
+    on the orchestrator's single caching layer. So this drives the real
+    orchestrator (with a fake provider standing in for the network call)
+    instead of mocking generate_chat_with_fallback(), which would bypass
+    the very caching path this test is meant to exercise.
+    """
+    import app.providers.orchestrator as orchestrator_module
     from app.core.rate_limiter import chat_rate_limiter
 
     app = FastAPI()
@@ -188,36 +195,43 @@ def test_ai_route_integration_cache_hit_and_miss(monkeypatch):
     app.dependency_overrides[chat_rate_limiter.check_rate_limit] = lambda: None
     client = TestClient(app)
 
+    orchestrator_module._circuit_breakers.clear()
+    clear_cache()
+
     calls = 0
 
-    async def mock_generate_chat(messages, temperature=0.7, **kwargs):
-        nonlocal calls
-        calls += 1
-        return f"Response #{calls}", "mock-provider"
+    class FakeProvider:
+        provider_name = "mock-provider"
+        model_name = "mock-model"
 
-    monkeypatch.setattr(
-        ai_routes_module.ai_orchestrator,
-        "generate_chat_with_fallback",
-        mock_generate_chat,
-    )
+        async def generate_chat(self, messages, temperature=0.7, **kwargs):
+            nonlocal calls
+            calls += 1
+            return f"Response #{calls}"
 
-    payload = {"prompt": "Integration test prompt"}
+    monkeypatch.setattr(orchestrator_module, "get_provider", lambda name=None: FakeProvider())
 
-    # First request: Cache MISS
-    resp1 = client.post("/ai/chat", json=payload)
-    assert resp1.status_code == 200
-    b1 = resp1.json()
-    assert b1["content"] == "Response #1"
-    assert b1["cached"] is False
-    assert calls == 1
+    try:
+        payload = {"prompt": "Integration test prompt"}
 
-    # Second request: Cache HIT
-    resp2 = client.post("/ai/chat", json=payload)
-    assert resp2.status_code == 200
-    b2 = resp2.json()
-    assert b2["content"] == "Response #1"
-    assert b2["cached"] is True
-    assert calls == 1
+        # First request: Cache MISS
+        resp1 = client.post("/ai/chat", json=payload)
+        assert resp1.status_code == 200
+        b1 = resp1.json()
+        assert b1["content"] == "Response #1"
+        assert b1["cached"] is False
+        assert calls == 1
+
+        # Second request: Cache HIT
+        resp2 = client.post("/ai/chat", json=payload)
+        assert resp2.status_code == 200
+        b2 = resp2.json()
+        assert b2["content"] == "Response #1"
+        assert b2["cached"] is True
+        assert calls == 1
+    finally:
+        orchestrator_module._circuit_breakers.clear()
+        clear_cache()
 
 
 @pytest.mark.asyncio
