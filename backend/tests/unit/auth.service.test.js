@@ -34,6 +34,7 @@ jest.mock('../../src/middleware/bruteForce', () => ({
   recordLoginAttempt: jest.fn().mockResolvedValue(undefined),
   clearFailedAttempts: jest.fn().mockResolvedValue(undefined),
   incrementAttempt: jest.fn(),
+  assertNotLocked: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('../../src/utils/hierarchy', () => ({
@@ -72,6 +73,7 @@ const {
   recordLoginAttempt,
   clearFailedAttempts,
   incrementAttempt,
+  assertNotLocked,
 } = require('../../src/middleware/bruteForce');
 const { isValidStep } = require('../../src/utils/hierarchy');
 const {
@@ -171,6 +173,7 @@ describe('Auth Service', () => {
 
       const result = await service.login(email, password, ip, userAgent);
 
+      expect(assertNotLocked).toHaveBeenCalledWith(email, ip);
       expect(incrementAttempt).toHaveBeenCalledWith(email, ip);
       expect(repo.findByEmail).toHaveBeenCalledWith(email);
       expect(repo.verifyPassword).toHaveBeenCalledWith(user, password);
@@ -232,7 +235,11 @@ describe('Auth Service', () => {
     });
 
     it('login() account locked', async () => {
-      incrementAttempt.mockResolvedValue(6);
+      assertNotLocked.mockRejectedValue(
+        new UnauthorizedError(
+          'Account temporarily locked. Please try again later.'
+        )
+      );
 
       await expect(
         service.login(email, password, ip, userAgent)
@@ -242,6 +249,7 @@ describe('Auth Service', () => {
     });
 
     it('login() Redis/brute-force failure', async () => {
+      assertNotLocked.mockResolvedValue(undefined);
       incrementAttempt.mockRejectedValue(new Error('Redis failure'));
 
       await expect(

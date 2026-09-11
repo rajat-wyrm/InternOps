@@ -12,6 +12,7 @@ const {
   recordLoginAttempt,
   clearFailedAttempts,
   incrementAttempt,
+  assertNotLocked,
 } = require('../../middleware/bruteForce');
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
@@ -127,50 +128,16 @@ async function login(email, password, ip, userAgent) {
   let currentAttempts = 0;
 
   try {
+    await assertNotLocked(email, ip);
     currentAttempts = (await incrementAttempt(email, ip)) || 0;
   } catch (err) {
+    if (err instanceof UnauthorizedError && err.message.includes('locked')) {
+      throw err;
+    }
     console.error('Redis Brute Force Check Failed:', err);
 
     throw new UnauthorizedError(
       'Login temporarily unavailable. Please try again later.'
-    );
-  }
-
-  if (currentAttempts > 5) {
-    const redis = await getRedisClient();
-    const notifyKey = `lockout-email:${email}`;
-
-    let alreadySent = null;
-
-    if (redis) {
-      alreadySent = await redis.get(notifyKey);
-    }
-
-    if (!alreadySent) {
-      const user = await repo.findByEmail(email);
-
-      if (user) {
-        await emailService.sendAccountLockoutNotification(email, {
-          ipAddress: ip,
-          timestamp: new Date().toISOString(),
-          failedAttempts: currentAttempts,
-        });
-      }
-
-      if (redis) {
-        await redis.set(notifyKey, '1', {
-          EX: 15 * 60,
-        });
-      }
-    }
-
-    // Notify admins about account lockout (fire-and-forget)
-    notifyAdmin(
-      `Account Locked\nUser: ${email}\nIssue: Too many failed login attempts (${currentAttempts})\nTime: ${new Date().toLocaleString()}`
-    ).catch(() => {});
-
-    throw new UnauthorizedError(
-      'Account temporarily locked. Please try again later.'
     );
   }
 
