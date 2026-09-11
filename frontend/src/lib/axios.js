@@ -1,9 +1,7 @@
 import axios from 'axios';
 import { toast } from 'sonner';
-import { captureException } from './sentry';
-import { getApiErrorInfo, getApiErrorMessage } from './apiError';
 
-export function getBaseUrl() {
+function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
   if (!raw) return '/api/v1';
   let url = raw.trim();
@@ -37,91 +35,126 @@ const api = axios.create({
   timeout: 15000,
 });
 
+export function getApiErrorMessage(responseData) {
+  if (!responseData) return null;
+
+  if (typeof responseData === 'string' && responseData.trim()) {
+    return responseData.trim();
+  }
+
+  // Standard API error format
+  if (typeof responseData.message === 'string' && responseData.message.trim()) {
+    return responseData.message.trim();
+  }
+
+  // Backward compatibility with older API responses
+  if (typeof responseData.error === 'string' && responseData.error.trim()) {
+    return responseData.error.trim();
+  }
+
+  if (typeof responseData.detail === 'string' && responseData.detail.trim()) {
+    return responseData.detail.trim();
+  }
+
+  if (
+    typeof responseData.description === 'string' &&
+    responseData.description.trim()
+  ) {
+    return responseData.description.trim();
+  }
+
+  // Standard backend validation details
+  if (Array.isArray(responseData.details) && responseData.details.length) {
+    const firstDetail = responseData.details[0];
+
+    if (typeof firstDetail === 'string') {
+      return firstDetail;
+    }
+
+    if (
+      typeof firstDetail?.message === 'string' &&
+      firstDetail.message.trim()
+    ) {
+      return firstDetail.message.trim();
+    }
+  }
+
+  // Backward compatibility with older error arrays
+  if (Array.isArray(responseData.errors) && responseData.errors.length) {
+    const firstError = responseData.errors[0];
+
+    if (typeof firstError === 'string') {
+      return firstError;
+    }
+
+    if (typeof firstError?.message === 'string' && firstError.message.trim()) {
+      return firstError.message.trim();
+    }
+  }
+
+  return null;
+}
+
+export function handleApiError(err) {
+  if (!err) {
+    toast.error('Something went wrong. Please try again.');
+    return;
+  }
+
+  // Network / timeout errors
+  if (!err.response) {
+    const networkMessage =
+      err.code === 'ECONNABORTED'
+        ? 'The request timed out. Please check your connection and try again.'
+        : 'Unable to connect to the server. Check your internet connection and try again.';
+
+    toast.error(networkMessage);
+    return;
+  }
+
+  const status = err.response.status;
+  const responseData = err.response.data;
+  const serverMessage = getApiErrorMessage(responseData);
+
+  // Friendly messages for common API errors
+  const defaultMessages = {
+    400: 'Please check your input and try again.',
+    401: 'Your session has expired. Please log in again.',
+    403: 'You do not have permission to perform this action.',
+    404: 'The requested resource was not found.',
+    429: 'Too many requests. Please wait a moment and try again.',
+    500: 'Something went wrong on our side. Please try again later.',
+  };
+
+  // Never expose internal server details for 5xx errors
+  const message =
+    status >= 500
+      ? defaultMessages[status] || defaultMessages[500]
+      : serverMessage ||
+        defaultMessages[status] ||
+        'Request failed. Please try again.';
+
+  toast.error(message);
+}
+
 function shouldShowGlobalToast(err) {
   const original = err.config || {};
+
   const isAuthRoute =
     original.url &&
     (original.url.includes('/auth/login') ||
       original.url.includes('/auth/refresh') ||
       original.url.includes('/auth/register'));
 
-  return !(
-    original._retry ||
-    original._suppressGlobalError ||
-    isAuthRoute ||
-    original.url?.includes('/auth/refresh')
-  );
-}
-
-// Classifies a failed AI chat request (POST /ai/chat) into a single,
-// user-friendly message. Callers that show this message inline should mark
-// their request config with `_suppressGlobalError: true` so the global
-// response interceptor below does not *also* toast a second, generic error
-// for the same failure (see issue #1795).
-function getAiChatErrorMessage(err) {
-  if (!err?.response) {
-    if (err?.code === 'ECONNABORTED') {
-      return {
-        message: 'The AI assistant took too long to respond. Please try again.',
-        retryable: true,
-      };
-    }
-    return {
-      message:
-        'Unable to reach the AI assistant. Check your connection and try again.',
-      retryable: true,
-    };
-  }
-
-  const status = err.response.status;
-
-  if (status === 401 || status === 403) {
-    return {
-      message: "You don't have access to the AI assistant right now.",
-      retryable: false,
-    };
-  }
-
-  if (status === 429) {
-    const responseData = err.response.data;
-    const hasServerMessage = Boolean(
-      responseData &&
-      (responseData.error ||
-        responseData.message ||
-        responseData.detail ||
-        responseData.description ||
-        responseData.details?.length ||
-        responseData.errors?.length)
-    );
-    return {
-      message: hasServerMessage
-        ? getApiErrorMessage(err)
-        : "You've reached the AI assistant's usage limit. Please try again later.",
-      retryable: false,
-    };
-  }
-
-  if (status >= 500) {
-    return {
-      message:
-        'The AI assistant is temporarily unavailable. Please try again in a moment.',
-      retryable: true,
-    };
-  }
-
-  const serverMessage = getApiErrorMessage(err);
-  return {
-    message:
-      serverMessage || 'Could not process that request. Please try rephrasing.',
-    retryable: false,
-  };
+  return !(original._retry || original._suppressGlobalError || isAuthRoute);
 }
 
 function notifyGlobalApiError(err) {
   if (!shouldShowGlobalToast(err)) {
     return;
   }
-  toast.error(getApiErrorMessage(err));
+
+  handleApiError(err);
 }
 
 // The backend's CSRF guard requires the X-CSRF-Token header on mutating
@@ -204,52 +237,11 @@ let _authStore = null;
 
 export function registerAuthStore(store) {
   _authStore = store;
+  removeLegacyAuthStorage();
 }
 
 function getMemoryAccessToken() {
   return _authStore?.getState?.()?.accessToken || null;
-}
-let sharedRefreshPromise = null;
-async function performRefresh() {
-  const generation = _authStore?.getState?.().authGeneration ?? 0;
-  try {
-    const response = await api.post(
-      '/auth/refresh',
-      {},
-      { _isRefreshRequest: true }
-    );
-    const accessToken = response.data?.accessToken;
-    const user = response.data?.user;
-    if (!accessToken || !user)
-      throw new Error('Refresh returned incomplete session');
-    _authStore?.getState?.().setAuth({ accessToken, user });
-    clearCsrfToken();
-    return { accessToken, user };
-  } catch (error) {
-    const current = _authStore?.getState?.();
-    if (current && current.authGeneration === generation) {
-      current.logout();
-      if (typeof window !== 'undefined')
-        window.dispatchEvent(new Event('auth:logout'));
-    }
-    throw error;
-  }
-}
-export function refreshSession() {
-  if (sharedRefreshPromise) return sharedRefreshPromise;
-  const execute = () => performRefresh();
-  const coordinated =
-    typeof navigator !== 'undefined' && navigator.locks?.request
-      ? navigator.locks.request(
-          'internops-refresh-token',
-          { mode: 'exclusive' },
-          execute
-        )
-      : execute();
-  sharedRefreshPromise = Promise.resolve(coordinated).finally(() => {
-    sharedRefreshPromise = null;
-  });
-  return sharedRefreshPromise;
 }
 
 api.interceptors.request.use(async (config) => {
@@ -282,7 +274,24 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Silent refresh is coordinated by refreshSession() for startup, interceptors, and browser tabs.
+// Silent refresh: when an access token expires, the server returns 401.
+// Before destroying the session, try the refresh-token flow once. The refresh
+// token is stored in an HttpOnly cookie, so JavaScript cannot read it.
+// The new access token is stored only in Zustand memory.
+let isRefreshing = false;
+let failedQueue = [];
+
+function processQueue(error, token = null) {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+}
+
 api.interceptors.response.use(
   (res) => {
     const url = res.config?.url;
@@ -300,26 +309,11 @@ api.interceptors.response.use(
     return res;
   },
   async (err) => {
-    if (axios.isCancel(err)) {
-      return Promise.reject(err);
-    }
     console.error(
       '[Global API Error]',
       err.response?.data || err.message,
       err.config?.url
     );
-
-    const errorStatus = err.response?.status;
-    if (errorStatus >= 500) {
-      captureException(err, {
-        tags: {
-          source: 'api',
-          statusCode: String(errorStatus),
-          route: err.config?.url,
-        },
-        extra: { responseData: err.response?.data },
-      });
-    }
 
     const original = err.config || {};
     const status = err.response?.status;
@@ -352,37 +346,83 @@ api.interceptors.response.use(
       }
     }
 
-    if (
-      status === 401 &&
-      !original._retry &&
-      !isAuthRoute &&
-      hasToken &&
-      _authStore?.getState?.().impersonation
-    ) {
+    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
+      // Another refresh is already in flight — queue this request.
+      if (isRefreshing) {
+        original._retry = true;
+
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then((token) => {
+          original.headers = original.headers || {};
+          original.headers.Authorization = `Bearer ${token}`;
+          return api(original);
+        });
+      }
+
       original._retry = true;
-      _authStore.getState().exitImpersonation();
-      const adminToken = getMemoryAccessToken();
-      if (adminToken) {
-        original.headers = original.headers || {};
-        original.headers.Authorization = `Bearer ${adminToken}`;
-        return api(original);
+      isRefreshing = true;
+
+      try {
+        const refreshRes = await api.post('/auth/refresh', {});
+        const newToken = refreshRes.data?.accessToken;
+
+        if (newToken) {
+          const meRes = await api.get('/users/me');
+          // Store refreshed token in memory only.
+          if (_authStore) {
+            _authStore
+              .getState()
+              .setAuth({ accessToken: newToken, user: meRes.data });
+          }
+
+          // The server rotated the refresh cookie. The CSRF token may also
+          // have changed, so reset it so the next request picks up a fresh one.
+          clearCsrfToken();
+          removeLegacyAuthStorage();
+
+          processQueue(null, newToken);
+
+          original.headers = original.headers || {};
+          original.headers.Authorization = `Bearer ${newToken}`;
+
+          return api(original);
+        }
+
+        throw new Error('Refresh returned no token');
+      } catch (refreshErr) {
+        processQueue(refreshErr);
+
+        if (_authStore) {
+          _authStore.getState().logout();
+        } else {
+          removeLegacyAuthStorage();
+          clearCsrfToken();
+
+          try {
+            if (typeof window !== 'undefined') {
+              window.localStorage.removeItem('user');
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // Emit an event that React Router can catch
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('auth:logout'));
+        }
+
+        return Promise.reject(refreshErr);
+      } finally {
+        isRefreshing = false;
       }
     }
-    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
-      original._retry = true;
-      const { accessToken } = await refreshSession();
-      original.headers = original.headers || {};
-      original.headers.Authorization = `Bearer ${accessToken}`;
-      return api(original);
-    }
-    const errorInfo = getApiErrorInfo(err);
-    err.userMessage = errorInfo.message;
-    err.errorCode = errorInfo.code;
-    err.requestId = errorInfo.requestId;
+
     notifyGlobalApiError(err);
     return Promise.reject(err);
   }
 );
 
 export default api;
-export { clearCsrfToken, getAiChatErrorMessage, getApiErrorMessage };
+export { clearCsrfToken };
