@@ -6,7 +6,6 @@ const Tasks = lazy(() => import('./pages/Tasks'));
 const Attendance = lazy(() => import('./pages/Attendance'));
 const Ratings = lazy(() => import('./pages/Ratings'));
 
-const HR = lazy(() => import('./pages/HR'));
 const InternOps = lazy(() => import('./pages/InternOps'));
 const Reports = lazy(() => import('./pages/admin/Reports'));
 const ReportTemplates = lazy(() => import('./pages/admin/ReportTemplates'));
@@ -44,15 +43,6 @@ export default function PrivilegedRoutes() {
       element: (
         <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
           <TaskDetails />
-        </RoleGuard>
-      ),
-    },
-
-    {
-      path: '/hr',
-      element: (
-        <RoleGuard allowedRoles={['ADMIN', 'HR']}>
-          <HR />
         </RoleGuard>
       ),
     },

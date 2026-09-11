@@ -11,6 +11,7 @@ import useAuthStore from './store/auth';
 import useFeatureFlagsStore from './store/featureFlags';
 import { refreshSession } from './lib/axios';
 import ErrorBoundary from './components/ErrorBoundary';
+import RoleGuard from './components/RoleGuard';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import RouteRefreshSkeleton from './components/loading/RouteRefreshSkeleton';
@@ -34,6 +35,8 @@ const InternOpsAssistant = lazy(
 const PerformanceIntelligence = lazy(
   () => import('./pages/PerformanceIntelligence')
 );
+
+const HR = lazy(() => import('./pages/HR'));
 
 const PrivilegedRoutes = lazy(() => import('./PrivilegedRoutes'));
 
@@ -339,78 +342,18 @@ export default function App() {
             element={<PerformanceIntelligence />}
           />
 
-          {/* Privileged routes are loaded only after clearance is known */}
-          <Route path="tasks/:taskId" element={<PrivilegedRouteGate />} />
-
-          <Route path="admin/tasks/:taskId" element={<PrivilegedRouteGate />} />
-
-          <Route path="hr" element={<PrivilegedRouteGate />} />
-
-          <Route path="internops" element={<PrivilegedRouteGate />} />
-
-          <Route path="reports" element={<PrivilegedRouteGate />} />
-
-          <Route path="report-templates" element={<PrivilegedRouteGate />} />
-
-          <Route path="notices" element={<PrivilegedRouteGate />} />
-
-          <Route path="analytics" element={<PrivilegedRouteGate />} />
-
-          <Route path="exports" element={<PrivilegedRouteGate />} />
-
-          <Route path="admin" element={<PrivilegedRouteGate />} />
-
-          <Route path="departments" element={<PrivilegedRouteGate />} />
-
-          <Route path="admin/departments" element={<PrivilegedRouteGate />} />
-
+          {/* HR remains here for the existing routing contract */}
           <Route
-            path="departments/:deptId/projects"
-            element={<PrivilegedRouteGate />}
+            path="hr"
+            element={
+              <RoleGuard allowedRoles={['ADMIN', 'HR']}>
+                <HR />
+              </RoleGuard>
+            }
           />
 
-          <Route
-            path="departments/:deptId/projects/:leadId"
-            element={<PrivilegedRouteGate />}
-          />
-
-          <Route
-            path="admin/departments/:deptId/attendance"
-            element={<PrivilegedRouteGate />}
-          />
-
-          <Route
-            path="admin/departments/:deptId/ratings"
-            element={<PrivilegedRouteGate />}
-          />
-
-          <Route
-            path="admin/departments/:deptId/tasks"
-            element={<PrivilegedRouteGate />}
-          />
-
-          <Route path="audit" element={<PrivilegedRouteGate />} />
-
-          <Route path="quick-generate" element={<PrivilegedRouteGate />} />
-
-          <Route path="certificates" element={<PrivilegedRouteGate />} />
-
-          <Route path="bulk-generate" element={<PrivilegedRouteGate />} />
-
-          <Route path="canva-templates" element={<PrivilegedRouteGate />} />
-
-          <Route
-            path="canva-templates/callback"
-            element={<PrivilegedRouteGate />}
-          />
-
-          <Route path="ai-certificates" element={<PrivilegedRouteGate />} />
-
-          <Route path="feature-flags" element={<PrivilegedRouteGate />} />
-
-          <Route path="github-sync" element={<PrivilegedRouteGate />} />
-
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          {/* All other privileged routes are resolved only after clearance is known */}
+          <Route path="*" element={<PrivilegedRouteGate />} />
         </Route>
       </Routes>
     </ErrorBoundary>
