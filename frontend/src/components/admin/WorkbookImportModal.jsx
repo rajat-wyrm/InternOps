@@ -170,6 +170,7 @@ export default function WorkbookImportModal({ open, onClose }) {
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [adminOverride, setAdminOverride] = useState(false);
   const [search, setSearch] = useState('');
   const [visibleRows, setVisibleRows] = useState(20);
   const [departmentId, setDepartmentId] = useState('');
@@ -269,6 +270,7 @@ export default function WorkbookImportModal({ open, onClose }) {
     setError('');
     setDuplicateReview([]);
     setImportResult(null);
+    setAdminOverride(false);
   };
 
   const runPreview = async () => {
@@ -297,6 +299,7 @@ export default function WorkbookImportModal({ open, onClose }) {
       setPreview(response.data);
       setDatabaseResolutions({});
       setImportResult(null);
+      setAdminOverride(false);
     } catch (requestError) {
       setError(
         requestError.response?.data?.error ||
@@ -332,7 +335,7 @@ export default function WorkbookImportModal({ open, onClose }) {
     departmentId &&
     managerId &&
     preview.emailPreviewFingerprint &&
-    preview.accountPlan?.writesAllowed &&
+    (preview.accountPlan?.writesAllowed || adminOverride) &&
     !preview.importBlocked &&
     unresolvedCount === 0 &&
     !loading &&
@@ -499,6 +502,8 @@ export default function WorkbookImportModal({ open, onClose }) {
                             setPreview(null);
                             setResolutions({});
                             setError('');
+                            setAdminOverride(false);
+                            setAdminOverride(false);
                           }}
                         />
                       </label>
@@ -555,6 +560,7 @@ export default function WorkbookImportModal({ open, onClose }) {
                           setResolutions({});
                           setDatabaseResolutions({});
                           setError('');
+                          setAdminOverride(false);
                         }}
                         className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                       >
@@ -574,6 +580,7 @@ export default function WorkbookImportModal({ open, onClose }) {
                           setEmailFile(event.target.files?.[0] || null);
                           setPreview(null);
                           setError('');
+                          setAdminOverride(false);
                         }}
                       />
                     </label>
@@ -733,11 +740,42 @@ export default function WorkbookImportModal({ open, onClose }) {
                           </p>
                         </div>
                         <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                          {preview.accountPlan.writesAllowed
+                          {preview.accountPlan.writesAllowed || adminOverride
                             ? 'Ready after final confirmation'
                             : 'Import blocked'}
                         </span>
                       </div>
+                      {!preview.accountPlan?.writesAllowed && (
+                        <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50/60 p-4 dark:border-amber-700 dark:bg-amber-950/40">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <ShieldAlert className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                              <div>
+                                <div className="text-sm font-extrabold text-slate-900 dark:text-white">
+                                  Admin Override: Force Import Active Interns
+                                </div>
+                                <div className="text-xs text-slate-600 dark:text-slate-300">
+                                  Allow importing active interns even if some
+                                  status verifications are flagged.
+                                </div>
+                              </div>
+                            </div>
+                            <label className="inline-flex cursor-pointer items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={adminOverride}
+                                onChange={(e) =>
+                                  setAdminOverride(e.target.checked)
+                                }
+                                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                              />
+                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                Enable Override
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      )}
                       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
                         {accountPlanDisplayCounts.map(([key, value]) => (
                           <div
