@@ -29,7 +29,7 @@ beforeAll(async () => {
 
   await app.ready();
 
-  // Defense in depth — globalSetup already does this, but a developer
+  // Defense in depth â€” globalSetup already does this, but a developer
   // running a single file in isolation may bypass that path.
   await resetSeededAdminPassword();
   await clearPasswordResetAttempts();
@@ -101,6 +101,89 @@ async function login(
 }
 
 describe('Auth Integration Tests', () => {
+  describe('POST /api/auth/register - HR permissions', () => {
+    it('should allow HR to create an INTERN', async () => {
+      // Admin creates an HR user first
+      const adminLogin = await login();
+      const adminToken = JSON.parse(adminLogin.body).accessToken;
+
+      const hrEmail = `hr-${Date.now()}@example.com`;
+
+      const hrRes = await inject('POST', '/api/v1/auth/register', {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        payload: {
+          email: hrEmail,
+          password: 'TestPassword123!',
+          role: 'HR',
+        },
+      });
+
+      expect(hrRes.statusCode).toBe(201);
+
+      // Login as the newly created HR
+      const hrLogin = await login(hrEmail, 'TestPassword123!');
+      expect(hrLogin.statusCode).toBe(200);
+
+      const hrToken = JSON.parse(hrLogin.body).accessToken;
+
+      // HR creates an INTERN
+      const internEmail = `intern-${Date.now()}@example.com`;
+
+      const internRes = await inject('POST', '/api/v1/auth/register', {
+        headers: { Authorization: `Bearer ${hrToken}` },
+        payload: {
+          email: internEmail,
+          password: 'TestPassword123!',
+          role: 'INTERN',
+        },
+      });
+
+      expect(internRes.statusCode).toBe(201);
+
+      const intern = JSON.parse(internRes.body);
+
+      expect(intern.role).toBe('INTERN');
+      expect(intern.manager_id).toBeNull();
+    });
+
+    it('should reject HR from creating an ADMIN', async () => {
+      const adminLogin = await login();
+      const adminToken = JSON.parse(adminLogin.body).accessToken;
+
+      const hrEmail = `hr-admin-test-${Date.now()}@example.com`;
+
+      const hrRes = await inject('POST', '/api/v1/auth/register', {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        payload: {
+          email: hrEmail,
+          password: 'TestPassword123!',
+          role: 'HR',
+        },
+      });
+
+      expect(hrRes.statusCode).toBe(201);
+
+      const hrLogin = await login(hrEmail, 'TestPassword123!');
+      expect(hrLogin.statusCode).toBe(200);
+
+      const hrToken = JSON.parse(hrLogin.body).accessToken;
+
+      const adminRes = await inject('POST', '/api/v1/auth/register', {
+        headers: { Authorization: `Bearer ${hrToken}` },
+        payload: {
+          email: `admin-by-hr-${Date.now()}@example.com`,
+          password: 'TestPassword123!',
+          role: 'ADMIN',
+        },
+      });
+
+      expect(adminRes.statusCode).toBe(403);
+      expect(JSON.parse(adminRes.body).error).toBe(
+        'HR cannot create an Admin user'
+      );
+    });
+  });
+
   it('keeps session bootstrap routes on dedicated rate-limit budgets', () => {
     const routesSource = require('fs').readFileSync(
       require('path').resolve(__dirname, '../../src/modules/auth/routes.js'),
@@ -122,7 +205,7 @@ describe('Auth Integration Tests', () => {
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
       expect(body.accessToken).toBeDefined();
-      // refreshToken is delivered via httpOnly cookie only — the
+      // refreshToken is delivered via httpOnly cookie only â€” the
       // security fix in #417 removed it from the JSON body to prevent
       // a malicious SPA from holding it in JS-accessible storage.
       expect(body.refreshToken).toBeUndefined();
@@ -159,7 +242,7 @@ describe('Auth Integration Tests', () => {
       const oldRefreshCookie = cookies['refreshToken'];
       expect(oldRefreshCookie).toBeDefined();
 
-      // First refresh — should rotate the cookie and return 200 with a
+      // First refresh â€” should rotate the cookie and return 200 with a
       // new access token.
       const res = await inject('POST', '/api/v1/auth/refresh', {
         payload: {},
@@ -175,7 +258,7 @@ describe('Auth Integration Tests', () => {
 
     it('should reject reuse of the OLD (now-revoked) refresh cookie', async () => {
       // Recreate the old cookie in the jar without losing the rotated
-      // one — we only need the old value to attempt the rejected call.
+      // one â€” we only need the old value to attempt the rejected call.
       const oldRefreshCookie = cookies['__oldRefresh'];
       if (!oldRefreshCookie) {
         // We didn't save it earlier; do a fresh login so we can
@@ -209,7 +292,7 @@ describe('Auth Integration Tests', () => {
         cookies: { refreshToken: '' },
         payload: {},
       });
-      // Route returns 400 (missing token) or 401 (revoked) — either
+      // Route returns 400 (missing token) or 401 (revoked) â€” either
       // is acceptable as long as it does NOT return 200.
       expect([400, 401]).toContain(res.statusCode);
     });

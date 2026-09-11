@@ -65,7 +65,9 @@ async function authorizeUserManagement(req, reply, targetUser, action) {
 
 const listUsersQuerySchema = z.object({
   search: z.string().trim().max(100).optional(),
-  role: z.enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']).optional(),
+  role: z
+    .enum(['ADMIN', 'MANAGEMENT', 'HR', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'])
+    .optional(),
   department_id: z
     .union([z.string().uuid(), z.literal('unassigned')])
     .optional(),
@@ -146,7 +148,7 @@ async function routes(fastify) {
   fastify.get(
     '/',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'HR')],
       schema: {
         tags: ['Users'],
         description: 'List users visible to the requester',
@@ -156,7 +158,15 @@ async function routes(fastify) {
             search: { type: 'string', maxLength: 100 },
             role: {
               type: 'string',
-              enum: ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+              enum: [
+                'ADMIN',
+                'MANAGEMENT',
+                'HR',
+                'SENIOR_TL',
+                'TL',
+                'CAPTAIN',
+                'INTERN',
+              ],
             },
             suspended: { type: 'string', enum: ['true', 'false'] },
             department_id: { type: 'string' },
@@ -393,7 +403,7 @@ async function routes(fastify) {
   fastify.patch(
     '/:id',
     {
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'HR'), sanitize],
       schema: {
         tags: ['Users'],
         description: 'Update a managed user',

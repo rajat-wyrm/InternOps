@@ -286,7 +286,285 @@ function ManagerHome({ user }) {
     </div>
   );
 }
+function ManagementHome({ user }) {
+  const {
+    data: analytics,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['managementHome', user?.id],
+    queryFn: async () => {
+      const [overviewResult, trendsResult] = await Promise.all([
+        api.get('/analytics/overview').then((r) => r.data),
+        api.get('/analytics/attendance-trends?months=6').then((r) => r.data),
+      ]);
 
+      return {
+        overview: overviewResult?.users || [],
+        trends: Array.isArray(trendsResult) ? trendsResult : [],
+      };
+    },
+    enabled: !!user,
+  });
+
+  if (isLoading) {
+    return (
+      <p className="text-slate-600 dark:text-slate-300">
+        Loading management dashboard...
+      </p>
+    );
+  }
+
+  if (isError) {
+    return (
+      <ApiErrorState
+        error={error}
+        title="Failed to load management dashboard"
+        fallback="Unable to load management analytics. Please try again."
+        onRetry={refetch}
+      />
+    );
+  }
+
+  const overview = analytics?.overview || [];
+  const trends = analytics?.trends || [];
+
+  const getCount = (role) =>
+    Number(overview.find((item) => item.role === role)?.count || 0);
+
+  const totalUsers = overview.reduce(
+    (sum, item) => sum + Number(item.count || 0),
+    0
+  );
+
+  const interns = getCount('INTERN');
+  const captains = getCount('CAPTAIN');
+  const tls = getCount('TL');
+  const seniorTls = getCount('SENIOR_TL');
+  const hr = getCount('HR');
+
+  const present = trends
+    .filter((item) => item.status === 'PRESENT')
+    .reduce((sum, item) => sum + Number(item.count || 0), 0);
+
+  const absent = trends
+    .filter((item) => item.status === 'ABSENT')
+    .reduce((sum, item) => sum + Number(item.count || 0), 0);
+
+  const halfDay = trends
+    .filter((item) => item.status === 'HALF_DAY')
+    .reduce((sum, item) => sum + Number(item.count || 0), 0);
+
+  const attendanceTotal = present + absent + halfDay;
+
+  const attendanceRate =
+    attendanceTotal > 0 ? Math.round((present / attendanceTotal) * 100) : null;
+
+  const latestMonths = [...new Set(trends.map((item) => item.month))].slice(-6);
+
+  return (
+    <div className="animate-fade-in-up text-slate-900 dark:text-white">
+      {/* Welcome Header */}
+      <div className="mb-7">
+        <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-indigo-600 dark:text-indigo-300 font-extrabold mb-2">
+          Management Dashboard
+        </p>
+
+        <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight">
+          Welcome, {user?.full_name || user?.email}
+        </h1>
+
+        <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-2 max-w-2xl">
+          Monitor workforce activity, attendance, and organizational trends from
+          one place.
+        </p>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatCard
+          label="Total users"
+          value={totalUsers}
+          sub="active workforce"
+          icon="👥"
+          gradient="from-indigo-500 to-blue-600"
+        />
+
+        <StatCard
+          label="Interns"
+          value={interns}
+          sub={`${captains} Captains • ${tls} TLs`}
+          icon="🎓"
+          gradient="from-violet-400 to-purple-500"
+        />
+
+        <StatCard
+          label="Attendance rate"
+          value={attendanceRate === null ? '—' : `${attendanceRate}%`}
+          sub="last 6 months"
+          icon="📊"
+          gradient="from-emerald-400 to-teal-500"
+        />
+
+        <StatCard
+          label="HR / Senior TL"
+          value={hr + seniorTls}
+          sub={`${hr} HR • ${seniorTls} Senior TL`}
+          icon="🏢"
+          gradient="from-amber-400 to-orange-500"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Workforce Overview */}
+        <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+          <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
+            <h3 className="font-extrabold text-xl">Workforce overview</h3>
+
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              Current workforce distribution by role.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              ['HR', hr],
+              ['Senior TL', seniorTls],
+              ['TL', tls],
+              ['Captain', captains],
+              ['Intern', interns],
+            ].map(([label, count]) => (
+              <div
+                key={label}
+                className="flex justify-between items-center rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 px-4 py-3"
+              >
+                <span className="font-semibold text-slate-600 dark:text-slate-300">
+                  {label}
+                </span>
+
+                <span className="font-extrabold text-slate-900 dark:text-white">
+                  {count}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Attendance Monitoring */}
+        <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+          <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
+            <h3 className="font-extrabold text-xl">Attendance monitoring</h3>
+
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              Attendance activity across the last six months.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/50 p-4">
+              <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                Present
+              </p>
+              <p className="text-2xl font-extrabold mt-1">{present}</p>
+            </div>
+
+            <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/50 p-4">
+              <p className="text-xs font-bold text-rose-700 dark:text-rose-300">
+                Absent
+              </p>
+              <p className="text-2xl font-extrabold mt-1">{absent}</p>
+            </div>
+
+            <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/50 p-4">
+              <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                Half day
+              </p>
+              <p className="text-2xl font-extrabold mt-1">{halfDay}</p>
+            </div>
+          </div>
+
+          {latestMonths.length === 0 ? (
+            <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-center py-8 px-4">
+              <p className="font-extrabold">No attendance data yet</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+                Attendance trends will appear here once records are available.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {latestMonths.map((month) => {
+                const monthRows = trends.filter((item) => item.month === month);
+
+                const monthPresent = monthRows
+                  .filter((item) => item.status === 'PRESENT')
+                  .reduce((sum, item) => sum + Number(item.count || 0), 0);
+
+                const monthTotal = monthRows.reduce(
+                  (sum, item) => sum + Number(item.count || 0),
+                  0
+                );
+
+                const rate =
+                  monthTotal > 0
+                    ? Math.round((monthPresent / monthTotal) * 100)
+                    : 0;
+
+                return (
+                  <div
+                    key={month}
+                    className="flex justify-between items-center rounded-2xl border border-slate-200 dark:border-slate-700 px-4 py-3"
+                  >
+                    <span className="font-semibold">{month}</span>
+                    <span className="font-extrabold">{rate}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Quick Actions */}
+      <Card className="mt-6 p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+        <div className="mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
+          <h3 className="font-extrabold text-xl">⚡ Quick actions</h3>
+
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Access management reporting and monitoring tools.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <QuickAction
+            to="/analytics"
+            icon="📊"
+            label="Analytics"
+            description="Workforce trends"
+            tint="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/60"
+          />
+
+          <QuickAction
+            to="/reports"
+            icon="📋"
+            label="Reports"
+            description="Management reports"
+            tint="bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60"
+          />
+
+          <QuickAction
+            to="/attendance"
+            icon="📅"
+            label="Attendance"
+            description="Monitor attendance"
+            tint="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60"
+          />
+        </div>
+      </Card>
+    </div>
+  );
+}
 function InternHome({ user }) {
   const now = new Date();
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -532,9 +810,13 @@ export default function Home() {
     full_name: me?.full_name || user?.full_name || user?.fullName,
   };
 
-  const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(
-    user?.role
-  );
+  const role = user?.role;
+
+  if (role === 'MANAGEMENT') {
+    return <ManagementHome user={u} />;
+  }
+
+  const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(role);
 
   return isManager ? <ManagerHome user={u} /> : <InternHome user={u} />;
 }

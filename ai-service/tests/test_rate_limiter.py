@@ -22,7 +22,7 @@ async def test_rate_limiter_blocks_with_redis(mock_get_redis):
     """Test the Redis fixed-window logic"""
     limiter = RateLimiter(requests_per_minute=2)
     request = DummyRequest()
-    
+
     mock_redis = AsyncMock()
     mock_get_redis.return_value = mock_redis
 
@@ -31,7 +31,7 @@ async def test_rate_limiter_blocks_with_redis(mock_get_redis):
 
     with pytest.raises(HTTPException) as exc:
         await limiter.check_rate_limit(request)
-    
+
     assert exc.value.status_code == 429
     # Verify that the new code's correct Redis method was called
     mock_redis.incr.assert_called_once()
@@ -42,7 +42,7 @@ async def test_rate_limiter_fails_closed_when_redis_unavailable(mock_get_redis):
     """Verify that if Redis is None (not configured) or throws an error, we fail closed."""
     limiter = RateLimiter(requests_per_minute=2)
     request = DummyRequest()
-    
+
     # 1. Redis is None
     mock_get_redis.return_value = None
     with pytest.raises(HTTPException) as exc:
@@ -54,7 +54,7 @@ async def test_rate_limiter_fails_closed_when_redis_unavailable(mock_get_redis):
     mock_redis = AsyncMock()
     mock_redis.incr.side_effect = redis.RedisError("Connection failed")
     mock_get_redis.return_value = mock_redis
-    
+
     with pytest.raises(HTTPException) as exc:
         await limiter.check_rate_limit(request)
     assert exc.value.status_code == 503

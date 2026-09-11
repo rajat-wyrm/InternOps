@@ -145,7 +145,7 @@ module.exports = async function socialTasksRoutes(fastify) {
     '/',
     {
       schema: { tags: ['Tasks'], description: 'Create a social task' },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
+      preHandler: [auth, rbac('write:tasks'), sanitize],
     },
     async (req, reply) => {
       const parsed = createTaskSchema.safeParse(req.body);
@@ -286,7 +286,7 @@ module.exports = async function socialTasksRoutes(fastify) {
     '/:id',
     {
       schema: { tags: ['Tasks'], description: 'Update a social task' },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
+      preHandler: [auth, rbac('write:tasks'), sanitize],
     },
     async (req, reply) => {
       const parsed = updateTaskSchema.safeParse(req.body);
@@ -361,7 +361,7 @@ module.exports = async function socialTasksRoutes(fastify) {
     '/:id/assign',
     {
       schema: { tags: ['Tasks'], description: 'Assign task to interns' },
-      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
+      preHandler: [auth, rbac('write:tasks'), sanitize],
     },
     async (req, reply) => {
       const parsed = assignTaskSchema.safeParse(req.body);

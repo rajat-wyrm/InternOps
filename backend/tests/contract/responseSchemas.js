@@ -3,7 +3,15 @@ const { z } = require('zod');
 const UserSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),
-  role: z.enum(['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN']),
+  role: z.enum([
+    'ADMIN',
+    'MANAGEMENT',
+    'HR',
+    'SENIOR_TL',
+    'TL',
+    'CAPTAIN',
+    'INTERN',
+  ]),
   full_name: z.string().nullable().optional(),
 });
 

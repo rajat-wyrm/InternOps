@@ -7,7 +7,7 @@ Run with:
 
 These exercise validation, limits, rbac stub, rate-limit stub, and the
 health/usage endpoints. `call_provider` is still a stub (NotImplementedError),
-so the "happy path" test expects a 500 until it's wired to a real provider —
+so the "happy path" test expects a 500 until it's wired to a real provider â€”
 update that one assertion once providers/gemini.py or openai.py is connected.
 """
 
@@ -72,7 +72,7 @@ def test_chat_rejects_blank_content(client):
 
 def test_chat_truncates_message_list_to_16(client):
     # The messages[:16] slice runs before the MAX_MESSAGES=32 check, so a
-    # 33-message list is truncated to 16 before that check ever sees it —
+    # 33-message list is truncated to 16 before that check ever sees it â€”
     # the "Too many messages" 413 is effectively unreachable via this path.
     # This is inherited from the original JS (same slice-then-check order),
     # not a bug introduced in the port. This test documents that behavior
