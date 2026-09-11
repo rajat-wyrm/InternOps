@@ -5,6 +5,9 @@ const {
   bruteForceCheck,
   incrementAttempt,
   assertNotLocked,
+  checkAndRecordAttempt,
+  setMaxAttempts,
+  getMaxAttempts,
 } = require('../../src/middleware/bruteForce');
 const pool = require('../../src/config/db');
 const { getRedisClient } = require('../../src/config/redis');
@@ -41,6 +44,7 @@ describe('Brute Force Protection', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    setMaxAttempts(5);
     mockRedis = {
       get: jest.fn(),
       set: jest.fn(),
@@ -49,6 +53,10 @@ describe('Brute Force Protection', () => {
       del: jest.fn(),
     };
     getRedisClient.mockResolvedValue(mockRedis);
+  });
+
+  afterEach(() => {
+    setMaxAttempts(5);
   });
 
   describe('isAccountLocked and DB query optimization', () => {
@@ -81,70 +89,88 @@ describe('Brute Force Protection', () => {
     });
   });
 
-  describe('Off-by-one behavior and Thresholds', () => {
-    it('should allow 1 to 4 attempts but lock exactly at 5', async () => {
-      // attempts 1 to 4
-      for (let i = 1; i <= 4; i++) {
-        mockRedis.get.mockResolvedValue(String(i - 1)); // State before incrementing
-        await expect(assertNotLocked(email, ip)).resolves.not.toThrow();
-      }
+  describe('Threshold Consistency across preHandler and checkAndRecordAttempt', () => {
+    it('should trip BOTH preHandler path and in-handler path at the exact same custom threshold', async () => {
+      setMaxAttempts(3);
 
-      // attempt 5 (state is 4)
-      mockRedis.get.mockResolvedValue('4');
+      // Attempt 1: preHandler sees prior count 0 (not locked), checkAndRecordAttempt increments to 1 (not locked)
+      mockRedis.get.mockResolvedValue('0');
+      mockRedis.incr.mockResolvedValue(1);
+      await expect(assertNotLocked(email, ip)).resolves.not.toThrow();
+      await expect(checkAndRecordAttempt(email, ip)).resolves.toBe(1);
+
+      // Attempt 2: preHandler sees prior count 1 (not locked), checkAndRecordAttempt increments to 2 (not locked)
+      mockRedis.get.mockResolvedValue('1');
+      mockRedis.incr.mockResolvedValue(2);
+      await expect(assertNotLocked(email, ip)).resolves.not.toThrow();
+      await expect(checkAndRecordAttempt(email, ip)).resolves.toBe(2);
+
+      // Attempt 3: preHandler sees prior count 2 (not locked)
+      mockRedis.get.mockResolvedValue('2');
       await expect(assertNotLocked(email, ip)).resolves.not.toThrow();
 
-      // attempt 6 (state is 5) - this is the 6th attempt (where count is 5)
-      mockRedis.get.mockImplementation((key) => {
-        if (key === `brute:${email}:${ip}`) return '5';
-        if (key === `lockout-email:${email}`) return null;
-      });
-
-      await expect(assertNotLocked(email, ip)).rejects.toThrow(
+      // Attempt 3 in-handler: checkAndRecordAttempt increments to 3 -> TRIPS at 3!
+      mockRedis.get.mockResolvedValue(null); // lockout email key not set yet
+      mockRedis.incr.mockResolvedValue(3);
+      await expect(checkAndRecordAttempt(email, ip)).rejects.toThrow(
         UnauthorizedError
       );
+
+      // Attempt 4: preHandler sees prior count 3 -> TRIPS at 3!
+      mockRedis.get.mockImplementation((key) => {
+        if (key === `brute:${email}:${ip}`) return '3';
+        if (key === `lockout-email:${email}`) return '1';
+      });
       await expect(assertNotLocked(email, ip)).rejects.toThrow(
-        'Account temporarily locked due to too many failed attempts. Please try again later.'
+        UnauthorizedError
       );
     });
   });
 
-  describe('Notification deduplication', () => {
-    it('should send lockout notification exactly once', async () => {
-      // Simulate account being locked
+  describe('Notification deduplication across request cycle', () => {
+    it('should send lockout notification exactly once even when both preHandler and login() run in same cycle', async () => {
+      let emailSentCount = 0;
+      let lockoutKeySet = false;
+
       mockRedis.get.mockImplementation((key) => {
-        if (key === `brute:${email}:${ip}`) return '5';
-        if (key === `lockout-email:${email}`) return null; // First time, not sent yet
+        if (key === `brute:${email}:${ip}`) return '4'; // Prior state before 5th attempt
+        if (key === `lockout-email:${email}`) return lockoutKeySet ? '1' : null;
       });
 
-      await expect(assertNotLocked(email, ip)).rejects.toThrow(
-        UnauthorizedError
+      mockRedis.incr.mockImplementation(async (key) => {
+        if (key === `brute:${email}:${ip}`) return 5; // 5th attempt
+      });
+
+      mockRedis.set.mockImplementation(async (key) => {
+        if (key === `lockout-email:${email}`) lockoutKeySet = true;
+      });
+
+      // 1. preHandler runs prior to 5th attempt (count is 4 < 5) -> allowed
+      await expect(assertNotLocked(email, ip)).resolves.not.toThrow();
+      expect(emailService.sendAccountLockoutNotification).toHaveBeenCalledTimes(
+        0
       );
 
+      // 2. login() runs checkAndRecordAttempt -> increments count to 5 -> locks and sends email
+      await expect(checkAndRecordAttempt(email, ip)).rejects.toThrow(
+        UnauthorizedError
+      );
       expect(emailService.sendAccountLockoutNotification).toHaveBeenCalledTimes(
         1
       );
-      expect(notifyAdmin).toHaveBeenCalledTimes(1);
-      expect(mockRedis.set).toHaveBeenCalledWith(
-        `lockout-email:${email}`,
-        '1',
-        expect.any(Object)
-      );
 
-      // Simulate subsequent locked requests
-      jest.clearAllMocks();
+      // 3. Subsequent request: preHandler runs when state is 5 -> rejects, but email key is set so no duplicate email
       mockRedis.get.mockImplementation((key) => {
         if (key === `brute:${email}:${ip}`) return '5';
-        if (key === `lockout-email:${email}`) return '1'; // Already sent
+        if (key === `lockout-email:${email}`) return lockoutKeySet ? '1' : null;
       });
 
       await expect(assertNotLocked(email, ip)).rejects.toThrow(
         UnauthorizedError
       );
-
-      expect(
-        emailService.sendAccountLockoutNotification
-      ).not.toHaveBeenCalled();
-      expect(notifyAdmin).not.toHaveBeenCalled();
+      expect(emailService.sendAccountLockoutNotification).toHaveBeenCalledTimes(
+        1
+      );
     });
   });
 

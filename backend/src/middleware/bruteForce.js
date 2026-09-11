@@ -6,8 +6,16 @@ const repo = require('../modules/auth/repository');
 const emailService = require('../services/email');
 const { notifyAdmin } = require('../modules/notifications/repository');
 
-const MAX_ATTEMPTS = 5;
+let MAX_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
+
+function setMaxAttempts(count) {
+  MAX_ATTEMPTS = count;
+}
+
+function getMaxAttempts() {
+  return MAX_ATTEMPTS;
+}
 
 async function incrementAttempt(email, ip) {
   const redis = await getRedisClient();
@@ -91,10 +99,46 @@ async function assertNotLocked(email, ip) {
   const locked = await isAccountLocked(email, ip);
   if (locked) {
     await notifyLockoutOnce(email, ip);
-    throw new UnauthorizedError(
-      'Account temporarily locked due to too many failed attempts. Please try again later.'
+    const err = new UnauthorizedError(
+      'Account temporarily locked. Please try again later.'
     );
+    err.statusCode = 429;
+    throw err;
   }
+}
+
+async function checkAndRecordAttempt(email, ip) {
+  let count = 0;
+  try {
+    count = await incrementAttempt(email, ip);
+  } catch (err) {
+    logger.error({ err }, 'Redis increment attempt error');
+  }
+
+  if (count > 0) {
+    if (count >= MAX_ATTEMPTS) {
+      await notifyLockoutOnce(email, ip);
+      const err = new UnauthorizedError(
+        'Account temporarily locked. Please try again later.'
+      );
+      err.statusCode = 429;
+      throw err;
+    }
+    return count;
+  }
+
+  // Fallback to DB check if Redis is unavailable or returned 0
+  const locked = await isAccountLocked(email, ip);
+  if (locked) {
+    await notifyLockoutOnce(email, ip);
+    const err = new UnauthorizedError(
+      'Account temporarily locked. Please try again later.'
+    );
+    err.statusCode = 429;
+    throw err;
+  }
+
+  return 0;
 }
 
 async function recordLoginAttempt(email, ip, success) {
@@ -149,4 +193,10 @@ module.exports = {
   bruteForceCheck,
   incrementAttempt,
   assertNotLocked,
+  checkAndRecordAttempt,
+  setMaxAttempts,
+  getMaxAttempts,
+  get MAX_ATTEMPTS() {
+    return MAX_ATTEMPTS;
+  },
 };

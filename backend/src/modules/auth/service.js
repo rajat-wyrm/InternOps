@@ -11,8 +11,7 @@ const { createAuditLog } = require('../../utils/audit');
 const {
   recordLoginAttempt,
   clearFailedAttempts,
-  incrementAttempt,
-  assertNotLocked,
+  checkAndRecordAttempt,
 } = require('../../middleware/bruteForce');
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
@@ -23,8 +22,6 @@ const DUMMY_USER = {
   password_hash:
     '$argon2id$v=19$m=65536,t=3,p=4$8/VvKJehP9DGKtV1NP5p8g$z0S2q7BsbH2YY16pI0/jXvgI4ElwnccjvW3NNcCSsQk',
 };
-const { getRedisClient } = require('../../config/redis');
-const emailService = require('../../services/email');
 
 async function register(data, creator) {
   const allowedRolesByCreator = {
@@ -125,11 +122,8 @@ function publicUser(user) {
 }
 
 async function login(email, password, ip, userAgent) {
-  let currentAttempts = 0;
-
   try {
-    await assertNotLocked(email, ip);
-    currentAttempts = (await incrementAttempt(email, ip)) || 0;
+    await checkAndRecordAttempt(email, ip);
   } catch (err) {
     if (err instanceof UnauthorizedError && err.message.includes('locked')) {
       throw err;

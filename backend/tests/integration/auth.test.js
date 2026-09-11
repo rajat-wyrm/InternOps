@@ -501,7 +501,7 @@ describe('Auth Integration Tests', () => {
       });
       expect(okLogin.statusCode).toBe(200);
 
-      // Attacker's 5th attempt from IP 1.1.1.1 must fail with 401 (not locked yet, but count becomes 5)
+      // Attacker's 5th attempt from IP 1.1.1.1 must fail with 429 Lockout (count reaches MAX_ATTEMPTS = 5)
       const fifthRes = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/login',
@@ -509,18 +509,8 @@ describe('Auth Integration Tests', () => {
         headers: { 'x-test-brute': 'true', 'Content-Type': 'application/json' },
         payload: { email: SEEDED_ADMIN_EMAIL, password: 'wrong' },
       });
-      expect(fifthRes.statusCode).toBe(401);
-
-      // Attacker's 6th attempt from IP 1.1.1.1 must fail with 429 Lockout
-      const lockedRes = await app.inject({
-        method: 'POST',
-        url: '/api/v1/auth/login',
-        remoteAddress: '1.1.1.1',
-        headers: { 'x-test-brute': 'true', 'Content-Type': 'application/json' },
-        payload: { email: SEEDED_ADMIN_EMAIL, password: 'wrong' },
-      });
-      expect(lockedRes.statusCode).toBe(429);
-      expect(JSON.parse(lockedRes.body).error).toContain('locked');
+      expect(fifthRes.statusCode).toBe(429);
+      expect(JSON.parse(fifthRes.body).error).toContain('locked');
     });
 
     it('should rotate CSRF session on login and reject token bound to another user', async () => {
@@ -705,8 +695,8 @@ describe('Auth Integration Tests', () => {
 
   describe('Compound Vulnerability Fixes (Layers 1, 2, and 3)', () => {
     it('should lock out an account only per-IP-and-email (Layer 1)', async () => {
-      // 1. Make 5 failed attempts from 127.0.0.1 (remoteAddress: 127.0.0.1)
-      for (let i = 0; i < 5; i++) {
+      // 1. Make 4 failed attempts from 127.0.0.1 (remoteAddress: 127.0.0.1)
+      for (let i = 0; i < 4; i++) {
         await app.inject({
           method: 'POST',
           url: '/api/v1/auth/login',
@@ -715,7 +705,7 @@ describe('Auth Integration Tests', () => {
         });
       }
 
-      // 2. 6th attempt from 127.0.0.1 should be locked (429)
+      // 2. 5th attempt from 127.0.0.1 should be locked (429) as attempt count reaches MAX_ATTEMPTS = 5
       const lockedRes = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/login',

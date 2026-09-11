@@ -33,8 +33,7 @@ jest.mock('../../src/utils/audit', () => ({
 jest.mock('../../src/middleware/bruteForce', () => ({
   recordLoginAttempt: jest.fn().mockResolvedValue(undefined),
   clearFailedAttempts: jest.fn().mockResolvedValue(undefined),
-  incrementAttempt: jest.fn(),
-  assertNotLocked: jest.fn().mockResolvedValue(undefined),
+  checkAndRecordAttempt: jest.fn().mockResolvedValue(1),
 }));
 
 jest.mock('../../src/utils/hierarchy', () => ({
@@ -72,8 +71,7 @@ const { createAuditLog } = require('../../src/utils/audit');
 const {
   recordLoginAttempt,
   clearFailedAttempts,
-  incrementAttempt,
-  assertNotLocked,
+  checkAndRecordAttempt,
 } = require('../../src/middleware/bruteForce');
 const { isValidStep } = require('../../src/utils/hierarchy');
 const {
@@ -166,15 +164,14 @@ describe('Auth Service', () => {
         suspended: false,
       };
 
-      incrementAttempt.mockResolvedValue(1);
+      checkAndRecordAttempt.mockResolvedValue(1);
       repo.findByEmail.mockResolvedValue(user);
       repo.verifyPassword.mockResolvedValue(true);
       repo.storeRefreshTokenRedis.mockResolvedValue(undefined);
 
       const result = await service.login(email, password, ip, userAgent);
 
-      expect(assertNotLocked).toHaveBeenCalledWith(email, ip);
-      expect(incrementAttempt).toHaveBeenCalledWith(email, ip);
+      expect(checkAndRecordAttempt).toHaveBeenCalledWith(email, ip);
       expect(repo.findByEmail).toHaveBeenCalledWith(email);
       expect(repo.verifyPassword).toHaveBeenCalledWith(user, password);
       expect(clearFailedAttempts).toHaveBeenCalledWith(email, ip);
@@ -201,7 +198,7 @@ describe('Auth Service', () => {
     });
 
     it('login() invalid credentials', async () => {
-      incrementAttempt.mockResolvedValue(1);
+      checkAndRecordAttempt.mockResolvedValue(1);
       repo.findByEmail.mockResolvedValue(null);
       argon2.verify.mockResolvedValue(true);
 
@@ -222,7 +219,7 @@ describe('Auth Service', () => {
         suspended: true,
       };
 
-      incrementAttempt.mockResolvedValue(1);
+      checkAndRecordAttempt.mockResolvedValue(1);
       repo.findByEmail.mockResolvedValue(suspendedUser);
       argon2.verify.mockResolvedValue(true);
 
@@ -235,7 +232,7 @@ describe('Auth Service', () => {
     });
 
     it('login() account locked', async () => {
-      assertNotLocked.mockRejectedValue(
+      checkAndRecordAttempt.mockRejectedValue(
         new UnauthorizedError(
           'Account temporarily locked. Please try again later.'
         )
@@ -249,8 +246,7 @@ describe('Auth Service', () => {
     });
 
     it('login() Redis/brute-force failure', async () => {
-      assertNotLocked.mockResolvedValue(undefined);
-      incrementAttempt.mockRejectedValue(new Error('Redis failure'));
+      checkAndRecordAttempt.mockRejectedValue(new Error('Redis failure'));
 
       await expect(
         service.login(email, password, ip, userAgent)
