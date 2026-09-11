@@ -25,6 +25,7 @@ import DeleteUserModal from '../../components/admin/DeleteUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
 import WorkbookImportModal from '../../components/admin/WorkbookImportModal';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 const ROLE_COLOR = {
   ADMIN:
@@ -206,6 +207,7 @@ export default function AdminDashboard() {
   const rows = data?.data ?? data?.users ?? data?.items ?? [];
   const total = data?.total ?? data?.count ?? rows.length;
   const totalPages = Math.max(Math.ceil(total / limit), 1);
+  useRouteInitialLoading(isLoading && !data);
 
   const handleRoleFilterChange = (value) => {
     setRoleFilter(value);
@@ -370,9 +372,7 @@ export default function AdminDashboard() {
       )}
       {/* Users Table */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 overflow-hidden shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        {isLoading ? (
-          <Spinner />
-        ) : rows.length === 0 ? (
+        {rows.length === 0 ? (
           <EmptyState
             title={
               search || roleFilter || statusFilter || departmentFilter

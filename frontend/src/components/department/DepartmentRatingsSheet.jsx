@@ -322,7 +322,7 @@ export default function DepartmentRatingsSheet({
       selectedMonth,
       'tmp'
     ).replace(/\.tmp$/, '');
-    exportTable({
+    return exportTable({
       format,
       title: `Ratings - ${departmentName || 'Department'} - ${selectedMonth}`,
       fileBase: base,

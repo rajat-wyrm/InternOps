@@ -44,6 +44,7 @@ async function createNotice({
   action_button_text,
   action_button_link,
   is_featured = false,
+  createdBy,
 }) {
   const { rows } = await pool.query(
     `INSERT INTO notices (title, content, category, image_url, action_button_text, action_button_link, is_featured, created_by)

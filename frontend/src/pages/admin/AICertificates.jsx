@@ -393,7 +393,7 @@ export default function AICertificates() {
     previewMutation.isPending;
 
   return (
-    <div className="animate-fade-in-up">
+    <div>
       <PageHeader
         title="AI Certificate Generator"
         icon={<Sparkles className="h-6 w-6" />}
@@ -401,7 +401,7 @@ export default function AICertificates() {
       />
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex flex-wrap gap-2 mb-6">
+        <div className="mb-6 flex flex-wrap gap-x-2 gap-y-3">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -412,7 +412,7 @@ export default function AICertificates() {
                 setError(null);
                 setPreviewHtml(null);
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+              className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium transition ${
                 activeTab === tab.id
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25'
                   : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
@@ -424,7 +424,7 @@ export default function AICertificates() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
           <div className="lg:col-span-2">
             <Card className="p-6">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-5">
@@ -644,7 +644,7 @@ export default function AICertificates() {
           </div>
 
           <div className="lg:col-span-3">
-            <Card className="p-6">
+            <Card className="min-h-[414px] p-6">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-5">
                 Results
               </h3>
@@ -775,7 +775,7 @@ export default function AICertificates() {
               )}
 
               {!result && !error && !previewHtml && (
-                <div className="text-center py-12 text-slate-400 dark:text-slate-500">
+                <div className="flex min-h-[315px] flex-col items-center justify-center text-center text-slate-400 dark:text-slate-500">
                   <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-30" />
                   <p className="text-sm font-medium">
                     Select a function and run it

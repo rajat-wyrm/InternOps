@@ -172,6 +172,71 @@ describe('GitHub Sync API Contract Tests', () => {
       expect(body.received).toBe(false);
       expect(body.error).toBe('Invalid webhook signature');
     });
+
+    test('should pass verification with a correctly-signed raw JSON string', async () => {
+      const crypto = require('crypto');
+      const originalSecret = process.env.GITHUB_WEBHOOK_SECRET;
+      const secret = 'test-secret';
+      process.env.GITHUB_WEBHOOK_SECRET = secret;
+
+      const rawPayload =
+        '{\n  "action": "opened",\n  "repository": {\n    "full_name": "test/repo"\n  }\n}';
+      const signature =
+        'sha256=' +
+        crypto.createHmac('sha256', secret).update(rawPayload).digest('hex');
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/github/webhook',
+        headers: {
+          'content-type': 'application/json',
+          'x-github-event': 'issues',
+          'x-github-delivery': 'test-delivery',
+          'x-hub-signature-256': signature,
+        },
+        payload: rawPayload,
+      });
+
+      const body = JSON.parse(res.body);
+      expect(res.statusCode).not.toBe(401);
+      expect(body.error).not.toBe('Invalid webhook signature');
+
+      process.env.GITHUB_WEBHOOK_SECRET = originalSecret;
+    });
+
+    test('should fail verification with a tampered raw JSON string', async () => {
+      const crypto = require('crypto');
+      const originalSecret = process.env.GITHUB_WEBHOOK_SECRET;
+      const secret = 'test-secret';
+      process.env.GITHUB_WEBHOOK_SECRET = secret;
+
+      const rawPayload =
+        '{\n  "action": "opened",\n  "repository": {\n    "full_name": "test/repo"\n  }\n}';
+      const signature =
+        'sha256=' +
+        crypto.createHmac('sha256', secret).update(rawPayload).digest('hex');
+
+      const tamperedPayload =
+        '{\n  "action": "opened",\n  "repository": {\n    "full_name": "test/repo_tampered"\n  }\n}';
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/github/webhook',
+        headers: {
+          'content-type': 'application/json',
+          'x-github-event': 'issues',
+          'x-github-delivery': 'test-delivery',
+          'x-hub-signature-256': signature,
+        },
+        payload: tamperedPayload,
+      });
+
+      expect(res.statusCode).toBe(401);
+      const body = JSON.parse(res.body);
+      expect(body.error).toBe('Invalid webhook signature');
+
+      process.env.GITHUB_WEBHOOK_SECRET = originalSecret;
+    });
   });
 
   describe('Authentication protection', () => {
@@ -204,6 +269,21 @@ describe('GitHub Sync API Contract Tests', () => {
     });
   });
 
+  describe('GET /api/v1/github/issues', () => {
+    test('lists synced issues without selecting a nonexistent task status column', async () => {
+      const res = await inject('GET', '/api/v1/github/issues?limit=20', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body);
+      expect(Array.isArray(body.tasks)).toBe(true);
+      expect(typeof body.total).toBe('number');
+      expect(body.page).toBe(1);
+      expect(body.limit).toBe(20);
+    });
+  });
   describe('GET /api/v1/github/status', () => {
     test('should return GitHub sync status for an admin', async () => {
       const res = await inject('GET', '/api/v1/github/status', {

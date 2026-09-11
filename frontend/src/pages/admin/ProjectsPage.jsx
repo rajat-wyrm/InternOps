@@ -13,11 +13,11 @@ import {
 import api from '../../lib/axios';
 import useAuthStore from '../../store/auth';
 import ManageTlModal from '../../components/admin/ManageTlModal';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 import {
   PageHeader,
   Card,
   Badge,
-  Spinner,
   ApiErrorState,
   Btn,
   Input,
@@ -53,7 +53,7 @@ export default function ProjectsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const { data: departments = [] } = useQuery({
+  const { data: departments = [], isLoading: departmentsLoading } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((r) => r.data),
     enabled: hydrated && !!accessToken,
@@ -70,6 +70,9 @@ export default function ProjectsPage() {
     enabled: hydrated && !!accessToken && !!deptId,
   });
 
+  useRouteInitialLoading(
+    isLoading || (departmentsLoading && departments.length === 0)
+  );
   const createSeniorTlMutation = useMutation({
     mutationFn: (data) =>
       api.post('/team/members', data, { _suppressGlobalError: true }),
@@ -173,11 +176,7 @@ export default function ProjectsPage() {
         />
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner />
-        </div>
-      ) : teamsError ? (
+      {teamsError ? (
         <ApiErrorState
           error={teamsError}
           title="Failed to load department projects"
