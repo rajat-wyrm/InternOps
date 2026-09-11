@@ -48,7 +48,7 @@ async function notifyLockoutOnce(email, ip) {
         await redis.set(notifyKey, '1', { EX: LOCKOUT_MINUTES * 60 });
       }
     } else {
-      // Fallback if Redis is down – send once but without deduplication
+      // Fallback if Redis is down – send once without deduplication
       await emailService.sendAccountLockoutNotification(email, {
         ipAddress: ip,
         timestamp: new Date().toISOString(),
@@ -146,7 +146,6 @@ async function recordLoginAttempt(email, ip, success) {
     'INSERT INTO login_attempts (email, ip_address, success) VALUES ($1,$2,$3)',
     [email, ip, success]
   );
-  // Do not double-increment Redis here; incrementAttempt already increments per-request.
 }
 
 /**
@@ -171,7 +170,7 @@ async function clearFailedAttempts(email, ip) {
 }
 
 async function bruteForceCheck(request, reply) {
-  const { email } = request.body;
+  const { email } = request.body || {};
   if (!email) return;
 
   try {
