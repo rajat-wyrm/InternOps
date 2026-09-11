@@ -1,4 +1,3 @@
-import React from 'react';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -52,6 +51,32 @@ vi.mock('react-router-dom', async () => {
 });
 
 describe('DashboardLayout Component Tests', () => {
+  it('loads the floating chatbot only for eligible roles', () => {
+    const layoutSource = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/layouts/DashboardLayout.jsx'),
+      'utf8'
+    );
+    expect(layoutSource).toContain(
+      "const FloatingChatbot = lazy(() => import('../components/FloatingChatbot'));"
+    );
+    expect(layoutSource).toMatch(
+      /import \{[\s\S]*\blazy,[\s\S]*\bSuspense,[\s\S]*\} from 'react';/
+    );
+    expect(layoutSource).toContain(
+      "const FLOATING_CHATBOT_ROLES = ['ADMIN', 'SENIOR_TL', 'TL'];"
+    );
+    expect(layoutSource).toContain(
+      'const canUseFloatingChatbot = FLOATING_CHATBOT_ROLES.includes(role);'
+    );
+    expect(layoutSource).toContain(
+      "loc.pathname !== '/profile' && canUseFloatingChatbot"
+    );
+    expect(layoutSource).toContain('<Suspense fallback={null}>');
+    expect(layoutSource).not.toContain(
+      "import FloatingChatbot from '../components/FloatingChatbot';"
+    );
+  });
+
   let queryClient;
 
   beforeEach(() => {
@@ -160,6 +185,10 @@ describe('DashboardLayout Component Tests', () => {
       screen.getAllByRole('link', { name: 'Notifications' })[0]
     ).toHaveAttribute('href', '/notifications');
     expect(screen.getByText('Profile')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Requests' })).toHaveAttribute(
+      'href',
+      '/requests'
+    );
     expect(screen.getByText('Sessions')).toBeInTheDocument();
 
     // Interns should not see administrative options

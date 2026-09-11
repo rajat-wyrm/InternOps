@@ -1,5 +1,6 @@
 const pool = require('../../config/db');
 const { assertActivityAllowed } = require('../team/lifecycle');
+const { MAX_HIERARCHY_DEPTH, roleRankSql } = require('../../utils/hierarchy');
 const {
   getFourWeekIndex,
   getFourWeekRatingPeriods,
@@ -43,31 +44,43 @@ async function getDepartmentRatingsSheet({
 }) {
   const departmentWide = isAdmin || requesterRole === 'SENIOR_TL';
   const memberScope = departmentWide
-    ? `SELECT id, full_name, email, role, department_id, intern_code,
-              internship_status, suspended
-       FROM users
-       WHERE department_id = $1 AND deleted_at IS NULL`
+    ? `SELECT u.id, u.full_name, u.email, u.role, u.department_id, u.intern_code,
+              u.internship_status, u.suspended
+       FROM users u
+       WHERE u.department_id = $1 AND u.deleted_at IS NULL
+       ORDER BY ${roleRankSql('u')},
+         LOWER(COALESCE(NULLIF(TRIM(u.full_name), ''), u.email)),
+         LOWER(u.email), u.id`
     : `WITH RECURSIVE visible_users AS (
-         SELECT id, full_name, email, role, department_id, manager_id,
-                intern_code, internship_status, suspended, 0 AS depth
-         FROM users
-         WHERE id = $2 AND deleted_at IS NULL
+         SELECT u.id, u.full_name, u.email, u.role, u.department_id, u.manager_id,
+                u.intern_code, u.internship_status, u.suspended,
+                0 AS depth, ARRAY[u.id] AS path,
+                ${roleRankSql('u')} AS structural_rank
+         FROM users u
+         WHERE u.id = $2 AND u.deleted_at IS NULL
          UNION ALL
          SELECT u.id, u.full_name, u.email, u.role, u.department_id, u.manager_id,
                 u.intern_code, u.internship_status, u.suspended,
-                visible_users.depth + 1
-         FROM users u
-         INNER JOIN visible_users ON u.manager_id = visible_users.id
-         WHERE u.deleted_at IS NULL AND visible_users.depth < 100
+                visible_users.depth + 1, visible_users.path || u.id,
+                ${roleRankSql('u')} AS structural_rank
+         FROM visible_users
+         INNER JOIN users u
+           ON u.manager_id = visible_users.id
+          AND u.deleted_at IS NULL
+          AND NOT u.id = ANY(visible_users.path)
+         WHERE visible_users.depth < $3
        )
        SELECT id, full_name, email, role, department_id, intern_code,
               internship_status, suspended
        FROM visible_users
-       WHERE department_id = $1`;
+       WHERE department_id = $1
+       ORDER BY depth, structural_rank,
+         LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
+         LOWER(email), id`;
 
   const memberParams = departmentWide
     ? [departmentId]
-    : [departmentId, requesterId];
+    : [departmentId, requesterId, MAX_HIERARCHY_DEPTH];
   const membersResult = await pool.query(memberScope, memberParams);
   const members = membersResult.rows;
   const memberIds = members.map((member) => member.id);

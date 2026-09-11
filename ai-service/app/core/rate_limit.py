@@ -1,29 +1,7 @@
 """
-Rate limiting compatibility module.
-
-The RateLimiter implementation lives in rate_limiter.py.
-This module keeps the existing enforce_rate_limit dependency
-used by the AI chat endpoint.
+Backward compatibility module aliasing app.core.rate_limiter.
 """
 
-from fastapi import Depends, Request
-from .auth import User, get_current_user
-from .rate_limiter import RateLimiter, ai_rate_limiter, chat_rate_limiter
+from app.core.rate_limiter import RateLimiter, ai_rate_limiter, chat_rate_limiter
 
-def get_redis_client():
-    from . import rate_limiter
-
-    return rate_limiter.redis_client
-
-async def enforce_rate_limit(
-    request: Request,
-    user: User = Depends(get_current_user),
-) -> None:
-    from . import rate_limiter
-
-    # Use the Redis client supplied by this compatibility module.
-    rate_limiter.redis_client = get_redis_client()
-    await chat_rate_limiter.check_rate_limit(
-        request=request,
-        current_user=user,
-    )
+__all__ = ["RateLimiter", "ai_rate_limiter", "chat_rate_limiter"]

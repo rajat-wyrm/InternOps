@@ -2,6 +2,7 @@ const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const service = require('./service');
 const pool = require('../../config/db');
+const { MAX_HIERARCHY_DEPTH } = require('../../utils/hierarchy');
 
 async function assertAccess(req, reply, internId) {
   const user = req.user;
@@ -23,14 +24,20 @@ async function assertAccess(req, reply, internId) {
   if (user.role === 'TL' || user.role === 'CAPTAIN') {
     const subRes = await pool.query(
       `WITH RECURSIVE subordinates AS (
-         SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+         SELECT u.id, u.manager_id, 1 AS depth, ARRAY[$1::uuid, u.id] AS path
+         FROM users u
+         WHERE u.manager_id = $1 AND u.deleted_at IS NULL
          UNION ALL
-         SELECT u.id FROM users u
-         JOIN subordinates s ON u.manager_id = s.id
-         WHERE u.deleted_at IS NULL
+         SELECT u.id, u.manager_id, s.depth + 1, s.path || u.id
+         FROM subordinates s
+         JOIN users u
+           ON u.manager_id = s.id
+          AND u.deleted_at IS NULL
+          AND NOT u.id = ANY(s.path)
+         WHERE s.depth < $3
        )
-       SELECT id FROM subordinates WHERE id = $2`,
-      [user.id, internId]
+       SELECT id FROM subordinates WHERE id = $2 LIMIT 1`,
+      [user.id, internId, MAX_HIERARCHY_DEPTH]
     );
 
     if (subRes.rows.length > 0) {

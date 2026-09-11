@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -1616,6 +1616,229 @@ function MemberDetail({ memberId, onClose }) {
   );
 }
 
+// ─── Memoized table row — only re-renders when its own member data changes ──
+const TableRow = memo(function TableRow({ member: m, index, onSelect }) {
+  const pct = attendancePct(m);
+  return (
+    <tr
+      className={`group border-b border-slate-100 dark:border-slate-700 last:border-b-0 cursor-pointer transition ${
+        index % 2 === 0
+          ? 'bg-white dark:bg-slate-900'
+          : 'bg-slate-50/50 dark:bg-slate-800/35'
+      } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
+      onClick={() => onSelect(m.id)}
+    >
+      <td
+        className={`sticky left-0 z-10 w-[260px] min-w-[260px] px-3 py-4 shadow-[8px_0_14px_-14px_rgba(15,23,42,0.7)] transition-colors ${
+          index % 2 === 0
+            ? 'bg-white group-hover:bg-indigo-50 dark:bg-[#1e293b] dark:group-hover:bg-[#263348]'
+            : 'bg-[#f8fafc] group-hover:bg-indigo-50 dark:bg-[#1e293b] dark:group-hover:bg-[#263348]'
+        }`}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar m={m} />
+          <div className="min-w-0">
+            <div className="truncate font-extrabold text-slate-900 dark:text-white">
+              {m.full_name || '—'}
+            </div>
+            <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+              {m.email}
+            </div>
+          </div>
+        </div>
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle">
+        <span
+          className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
+            ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
+          }`}
+        >
+          {ROLE_LABEL[m.role] || m.role}
+        </span>
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
+        {m.department_name || '—'}
+      </td>
+
+      <td
+        className="truncate px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300"
+        title={m.internship_domain || undefined}
+      >
+        {m.internship_domain || '—'}
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
+        {m.phone || '—'}
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle">
+        {pct === null ? (
+          <span className="text-slate-400 dark:text-slate-500">No data</span>
+        ) : (
+          <div className="mx-auto flex max-w-28 items-center justify-center gap-1.5">
+            <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${pctColor(pct)}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-xs w-9 text-right text-slate-600 dark:text-slate-300">
+              {pct}%
+            </span>
+          </div>
+        )}
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle [&>div]:justify-center">
+        <RatingWithBadge value={m.rating ?? m.avg_rating} />
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
+        {m.verified_tasks}/{m.total_tasks}
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle">
+        {Number(m.pending_proofs) > 0 ? (
+          <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60">
+            {m.pending_proofs} to verify
+          </span>
+        ) : (
+          <span
+            className="font-bold tabular-nums text-slate-500 dark:text-slate-400"
+            title="No submitted task proofs are awaiting verification"
+          >
+            0
+          </span>
+        )}
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle">
+        {m.suspended ? (
+          <span className="inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60">
+            Suspended
+          </span>
+        ) : (
+          <span
+            className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold ${
+              STATUS_BADGE[m.internship_status] || STATUS_BADGE.ACTIVE
+            }`}
+          >
+            {m.internship_status || 'ACTIVE'}
+          </span>
+        )}
+      </td>
+    </tr>
+  );
+});
+
+// ─── Memoized card item — only re-renders when its own member data changes ───
+const CardItem = memo(function CardItem({ member: m, onSelect }) {
+  const pct = attendancePct(m);
+  return (
+    <div
+      onClick={() => onSelect(m.id)}
+      className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition"
+    >
+      <div className="flex items-center gap-3 mb-4">
+        <Avatar m={m} size="w-12 h-12" />
+        <div className="min-w-0">
+          <div className="font-extrabold text-slate-900 dark:text-white truncate">
+            {m.full_name || m.email}
+          </div>
+          <span
+            className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${
+              ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
+            }`}
+          >
+            {ROLE_LABEL[m.role] || m.role}
+          </span>
+        </div>
+      </div>
+
+      <div className="mb-4 space-y-1 text-sm text-slate-600 dark:text-slate-300">
+        <p>📞 {m.phone || '—'}</p>
+        <p>Domain: {m.internship_domain || '—'}</p>
+        <p>🎓 {m.college || '—'}</p>
+        <p>🏢 {m.department_name || '—'}</p>
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-700 pt-3">
+        <span>
+          Att:{' '}
+          <b className="text-slate-800 dark:text-white">
+            {pct === null ? '—' : `${pct}%`}
+          </b>
+        </span>
+        <span>
+          <RatingWithBadge value={m.rating ?? m.avg_rating} />
+        </span>
+        <span>
+          Tasks:{' '}
+          <b className="text-slate-800 dark:text-white">
+            {m.verified_tasks}/{m.total_tasks}
+          </b>
+        </span>
+      </div>
+
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+        <span
+          className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+            m.suspended
+              ? STATUS_BADGE.TERMINATED
+              : STATUS_BADGE[m.internship_status] || STATUS_BADGE.ACTIVE
+          }`}
+        >
+          {m.suspended ? 'Suspended' : m.internship_status || 'ACTIVE'}
+        </span>
+        {Number(m.pending_proofs) > 0 && (
+          <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
+            {m.pending_proofs} pending
+          </span>
+        )}
+      </div>
+    </div>
+  );
+});
+
+// ─── Memoized proof item row — prevents full list re-render on verify ───────
+const ProofItem = memo(function ProofItem({
+  proof,
+  onMember,
+  onVerify,
+  isPending,
+}) {
+  return (
+    <div
+      key={proof.id}
+      className="flex items-center justify-between gap-3 py-3 text-sm"
+    >
+      <div className="min-w-0">
+        <button
+          onClick={() => onMember(proof.intern_id)}
+          className="font-bold text-slate-800 dark:text-white hover:underline truncate text-left"
+        >
+          {proof.intern_name || proof.intern_email}
+        </button>
+
+        <div className="text-slate-500 dark:text-slate-400 text-xs truncate">
+          {proof.task_title || 'Task'} ·{' '}
+          {new Date(proof.created_at).toLocaleDateString()}
+        </div>
+      </div>
+
+      <button
+        onClick={() => onVerify(proof.id)}
+        disabled={isPending}
+        className="shrink-0 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-60"
+      >
+        Verify
+      </button>
+    </div>
+  );
+});
+
 function PendingProofsPanel({ onMember }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(true);
@@ -1689,32 +1912,13 @@ function PendingProofsPanel({ onMember }) {
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-80 overflow-auto">
               {proofs.map((p) => (
-                <div
+                <ProofItem
                   key={p.id}
-                  className="flex items-center justify-between gap-3 py-3 text-sm"
-                >
-                  <div className="min-w-0">
-                    <button
-                      onClick={() => onMember(p.intern_id)}
-                      className="font-bold text-slate-800 dark:text-white hover:underline truncate text-left"
-                    >
-                      {p.intern_name || p.intern_email}
-                    </button>
-
-                    <div className="text-slate-500 dark:text-slate-400 text-xs truncate">
-                      {p.task_title || 'Task'} ·{' '}
-                      {new Date(p.created_at).toLocaleDateString()}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => verifyMut.mutate(p.id)}
-                    disabled={verifyMut.isPending}
-                    className="shrink-0 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-60"
-                  >
-                    Verify
-                  </button>
-                </div>
+                  proof={p}
+                  onMember={onMember}
+                  onVerify={(id) => verifyMut.mutate(id)}
+                  isPending={verifyMut.isPending}
+                />
               ))}
             </div>
           )}
@@ -1926,6 +2130,11 @@ export default function Team() {
 
     return { active, avgAtt, avgRating, pendingProofs, memberBreakdown };
   }, [members, user?.role]);
+
+  // ─── Stable callbacks — prevents inline rows from re-rendering ───────────
+  const handleSelectMember = useCallback((id) => setSelected(id), []);
+  const handleCloseDetail = useCallback(() => setSelected(null), []);
+  const handleCloseAdd = useCallback(() => setAdding(false), []);
 
   const updateTableScrollState = () => {
     const element = tableScrollRef.current;
@@ -2206,127 +2415,14 @@ export default function Team() {
                 </thead>
 
                 <tbody>
-                  {filtered.map((m, index) => {
-                    const pct = attendancePct(m);
-
-                    return (
-                      <tr
-                        key={m.id}
-                        className={`group border-b border-slate-100 dark:border-slate-700 last:border-b-0 cursor-pointer transition ${
-                          index % 2 === 0
-                            ? 'bg-white dark:bg-slate-900'
-                            : 'bg-slate-50/50 dark:bg-slate-800/35'
-                        } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
-                        onClick={() => setSelected(m.id)}
-                      >
-                        <td
-                          className={`sticky left-0 z-10 w-[260px] min-w-[260px] px-3 py-4 shadow-[8px_0_14px_-14px_rgba(15,23,42,0.7)] transition-colors ${
-                            index % 2 === 0
-                              ? 'bg-white group-hover:bg-indigo-50 dark:bg-[#1e293b] dark:group-hover:bg-[#263348]'
-                              : 'bg-[#f8fafc] group-hover:bg-indigo-50 dark:bg-[#1e293b] dark:group-hover:bg-[#263348]'
-                          }`}
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <Avatar m={m} />
-
-                            <div className="min-w-0">
-                              <div className="truncate font-extrabold text-slate-900 dark:text-white">
-                                {m.full_name || '—'}
-                              </div>
-
-                              <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                                {m.email}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle">
-                          <span
-                            className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
-                              ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
-                            }`}
-                          >
-                            {ROLE_LABEL[m.role] || m.role}
-                          </span>
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
-                          {m.department_name || '—'}
-                        </td>
-                        <td
-                          className="truncate px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300"
-                          title={m.internship_domain || undefined}
-                        >
-                          {m.internship_domain || '—'}
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
-                          {m.phone || '—'}
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle">
-                          {pct === null ? (
-                            <span className="text-slate-400 dark:text-slate-500">
-                              No data
-                            </span>
-                          ) : (
-                            <div className="mx-auto flex max-w-28 items-center justify-center gap-1.5">
-                              <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full ${pctColor(pct)}`}
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                              <span className="text-xs w-9 text-right text-slate-600 dark:text-slate-300">
-                                {pct}%
-                              </span>
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle [&>div]:justify-center">
-                          <RatingWithBadge value={m.rating ?? m.avg_rating} />
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
-                          {m.verified_tasks}/{m.total_tasks}
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle">
-                          {Number(m.pending_proofs) > 0 ? (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60">
-                              {m.pending_proofs} to verify
-                            </span>
-                          ) : (
-                            <span
-                              className="font-bold tabular-nums text-slate-500 dark:text-slate-400"
-                              title="No submitted task proofs are awaiting verification"
-                            >
-                              0
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle">
-                          {m.suspended ? (
-                            <span className="inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60">
-                              Suspended
-                            </span>
-                          ) : (
-                            <span
-                              className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                                STATUS_BADGE[m.internship_status] ||
-                                STATUS_BADGE.ACTIVE
-                              }`}
-                            >
-                              {m.internship_status || 'ACTIVE'}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filtered.map((m, index) => (
+                    <TableRow
+                      key={m.id}
+                      member={m}
+                      index={index}
+                      onSelect={handleSelectMember}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -2334,94 +2430,19 @@ export default function Team() {
         </>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((m) => {
-            const pct = attendancePct(m);
-
-            return (
-              <div
-                key={m.id}
-                onClick={() => setSelected(m.id)}
-                className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition"
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <Avatar m={m} size="w-12 h-12" />
-
-                  <div className="min-w-0">
-                    <div className="font-extrabold text-slate-900 dark:text-white truncate">
-                      {m.full_name || m.email}
-                    </div>
-
-                    <span
-                      className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${
-                        ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
-                      }`}
-                    >
-                      {ROLE_LABEL[m.role] || m.role}
-                    </span>
-                  </div>
-                </div>
-                <div className="mb-4 space-y-1 text-sm text-slate-600 dark:text-slate-300">
-                  <p>📞 {m.phone || '—'}</p>
-                  <p>Domain: {m.internship_domain || '—'}</p>
-                  <p>🎓 {m.college || '—'}</p>
-                  <p>🏢 {m.department_name || '—'}</p>
-                </div>
-
-                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-700 pt-3">
-                  <span>
-                    Att:{' '}
-                    <b className="text-slate-800 dark:text-white">
-                      {pct === null ? '—' : `${pct}%`}
-                    </b>
-                  </span>
-
-                  <span>
-                    <RatingWithBadge value={m.rating ?? m.avg_rating} />
-                  </span>
-
-                  <span>
-                    Tasks:{' '}
-                    <b className="text-slate-800 dark:text-white">
-                      {m.verified_tasks}/{m.total_tasks}
-                    </b>
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                      m.suspended
-                        ? STATUS_BADGE.TERMINATED
-                        : STATUS_BADGE[m.internship_status] ||
-                          STATUS_BADGE.ACTIVE
-                    }`}
-                  >
-                    {m.suspended
-                      ? 'Suspended'
-                      : m.internship_status || 'ACTIVE'}
-                  </span>
-                  {Number(m.pending_proofs) > 0 && (
-                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
-                      {m.pending_proofs} pending
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {filtered.map((m) => (
+            <CardItem key={m.id} member={m} onSelect={handleSelectMember} />
+          ))}
         </div>
       )}
 
       {selected &&
         createPortal(
-          <MemberDetail
-            memberId={selected}
-            onClose={() => setSelected(null)}
-          />,
+          <MemberDetail memberId={selected} onClose={handleCloseDetail} />,
           document.body
         )}
 
-      {adding && <AddMemberModal onClose={() => setAdding(false)} />}
+      {adding && <AddMemberModal onClose={handleCloseAdd} />}
     </div>
   );
 }
