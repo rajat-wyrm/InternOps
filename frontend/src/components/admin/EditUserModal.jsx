@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -551,6 +551,7 @@ export default function EditUserModal({ open, user, onClose }) {
                   value={role}
                   onChange={(v) => {
                     setRole(v);
+                    setManagerId('');
                     setAssignAllCaptains(false);
                     setAssignAllInterns(false);
                     setSelectedCaptainIds([]);
