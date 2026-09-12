@@ -50,7 +50,6 @@ function PageLoader() {
     </div>
   );
 }
-
 let bootRefreshPromise = null;
 
 function Private({ children }) {
