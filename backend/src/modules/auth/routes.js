@@ -257,6 +257,12 @@ async function routes(fastify) {
     {
       preHandler: [sanitize],
       schema: { tags: ['Authentication'], description: 'Refresh access token' },
+      config: {
+        rateLimit: {
+          max: config.rateLimit.refreshMax,
+          timeWindow: config.rateLimit.timeWindow,
+        },
+      },
     },
     async (req, reply) => {
       const token = req.cookies.refreshToken;
@@ -287,6 +293,8 @@ async function routes(fastify) {
         ...config.cookie,
         path: '/api/v1/auth/refresh',
       });
+
+      rotateAndSetCsrf(req, reply, tokens.user.id);
 
       return {
         accessToken: tokens.accessToken,
@@ -390,7 +398,15 @@ async function routes(fastify) {
   // Get CSRF token
   fastify.get(
     '/csrf-token',
-    { schema: { tags: ['Authentication'], description: 'Get CSRF token' } },
+    {
+      schema: { tags: ['Authentication'], description: 'Get CSRF token' },
+      config: {
+        rateLimit: {
+          max: config.rateLimit.csrfMax,
+          timeWindow: config.rateLimit.timeWindow,
+        },
+      },
+    },
     async (req, reply) => {
       const csrfToken = generateToken(req, reply);
       return { csrfToken };

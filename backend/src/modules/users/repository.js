@@ -1,4 +1,5 @@
 const pool = require('../../config/db');
+const { MAX_HIERARCHY_DEPTH } = require('../../utils/hierarchy');
 
 const EDITABLE_USER_COLUMNS = new Set([
   'full_name',
@@ -103,17 +104,22 @@ async function listUsersPaginated({
 async function listManageableUserIds(requesterId) {
   const result = await pool.query(
     `WITH RECURSIVE managed AS (
-       SELECT id, manager_id, role, department_id, 0 AS depth
-       FROM users
-       WHERE manager_id = $1 AND deleted_at IS NULL
-       UNION ALL
-       SELECT u.id, u.manager_id, u.role, u.department_id, managed.depth + 1
+       SELECT u.id, u.manager_id, u.role, u.department_id,
+              1 AS depth, ARRAY[$1::uuid, u.id] AS path
        FROM users u
-       JOIN managed ON u.manager_id = managed.id
-       WHERE u.deleted_at IS NULL AND managed.depth < 100
+       WHERE u.manager_id = $1 AND u.deleted_at IS NULL
+       UNION ALL
+       SELECT u.id, u.manager_id, u.role, u.department_id,
+              managed.depth + 1, managed.path || u.id
+       FROM managed
+       JOIN users u
+         ON u.manager_id = managed.id
+        AND u.deleted_at IS NULL
+        AND NOT u.id = ANY(managed.path)
+       WHERE managed.depth < $2
      )
      SELECT DISTINCT id FROM managed`,
-    [requesterId]
+    [requesterId, MAX_HIERARCHY_DEPTH]
   );
   return result.rows.map((row) => row.id);
 }

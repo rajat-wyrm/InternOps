@@ -44,6 +44,15 @@ describe('avatar upload persistence contract', () => {
     expect(source).toContain('.send(fs.createReadStream(filePath))');
     expect(source).toContain("error: 'Unsupported image type'");
   });
+  it('protects notice image upload with admin RBAC', () => {
+    const source = read('src/modules/uploads/routes.js');
+
+    const noticeImageRoute = source.match(
+      /fastify\.post\(\s*['"]\/notice-image['"][\s\S]*?preHandler:\s*\[auth,\s*rbac\('ADMIN',\s*'SENIOR_TL'\),\s*sanitize\]/
+    );
+
+    expect(noticeImageRoute).not.toBeNull();
+  });
 
   it('configures cross-origin resource policy for static uploads', () => {
     const source = read('src/app.js');

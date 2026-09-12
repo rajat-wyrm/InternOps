@@ -3,10 +3,10 @@ AI routes — Python/FastAPI port of ai_routes.js
 
 Split to match ai-service/app's layout (api/ + core/ + models/ + providers/):
   - app/models/ai.py         -> request/response schemas
-  - app/core/auth.py          -> get_current_user (JWT auth via Authorization: Bearer header)
-  - app/core/rbac.py          -> require_permission (role/permission-based access control)
-  - app/core/rate_limit.py    -> enforce_rate_limit (Redis-backed rate limiting)
-  - app/core/usage.py         -> daily usage tracking (Postgres-backed, per-user/per-day)
+  - app/core/auth.py          -> get_current_user (STUB)
+   - app/core/rbac.py          -> require_permission (STUB)
+  - app/core/rate_limit.py    -> enforce_rate_limit (STUB)
+  - app/core/usage.py         -> daily usage tracking (STUB)
   - app/providers/*           -> base/gemini/openai adapters
   - app/providers/registry.py -> provider selection (get_provider)
 """

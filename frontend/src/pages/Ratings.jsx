@@ -9,6 +9,7 @@ import CustomSelect from '../components/CustomSelect';
 import DepartmentRatingsSheet from '../components/department/DepartmentRatingsSheet';
 import { ROLE_LABEL } from '../constants/roles';
 
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 function Stars({ value }) {
   if (value == null || value === '') {
     return <span className="text-slate-400 dark:text-slate-500">—</span>;
@@ -109,13 +110,13 @@ export default function Ratings({
     }
   }, [isProjectView, deptId, roster, user?.id]);
 
-  const { data: team = [] } = useQuery({
+  const { data: team = [], isLoading: teamIsLoading } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
     enabled: hydrated && !!accessToken && isManager && !isProjectView,
   });
 
-  const { data: departments = [] } = useQuery({
+  const { data: departments = [], isLoading: departmentsLoading } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
     enabled: hydrated && !!accessToken && isManager && !isProjectView,
@@ -221,6 +222,14 @@ export default function Ratings({
           })),
       ];
 
+  const departmentRatingsInitialLoading =
+    !isProjectView &&
+    !!deptId &&
+    (departmentsLoading ||
+      teamIsLoading ||
+      !viewUserId ||
+      (isLoading && !ratings));
+  useRouteInitialLoading(departmentRatingsInitialLoading);
   const activeDepartment = departments.find((d) => d.id === activeDeptId);
 
   return (
@@ -450,7 +459,7 @@ export default function Ratings({
             </div>
           )}
 
-          {!viewAll && isLoading && (
+          {!viewAll && isLoading && !departmentRatingsInitialLoading && (
             <div className="flex justify-center p-8 mb-6">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
             </div>
@@ -668,7 +677,7 @@ export default function Ratings({
             </div>
           )}
 
-          {!viewAll && isLoading && (
+          {!viewAll && isLoading && !departmentRatingsInitialLoading && (
             <div className="flex justify-center p-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
             </div>
