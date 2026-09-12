@@ -121,6 +121,7 @@ async function login(email, password, ip, userAgent) {
   try {
     await checkAndRecordAttempt(email, ip);
   } catch (err) {
+    // If it's a lockout error (429 or 'locked'), preserve the 429 status code
     if (
       (err instanceof UnauthorizedError || err.statusCode === 429) &&
       (err.statusCode === 429 ||
@@ -130,7 +131,12 @@ async function login(email, password, ip, userAgent) {
       err.status = 429;
       throw err;
     }
-    // Gracefully ignore Redis infrastructure errors
+
+    // Otherwise, it was a Redis/infrastructure failure:
+    // The test requires this specific error and stops authentication early
+    throw new UnauthorizedError(
+      'Login temporarily unavailable. Please try again later.'
+    );
   }
 
   const user = await repo.findByEmail(email);
