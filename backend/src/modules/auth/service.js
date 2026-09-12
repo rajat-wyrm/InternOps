@@ -62,8 +62,6 @@ async function register(data, creator) {
     data = { ...data, departmentId: creator.departmentId };
   }
 
-  // Default to the creator as manager if none was explicitly chosen,
-  // so users created through the directory also appear in hierarchy views.
   const managerId =
     data.role === 'ADMIN'
       ? data.managerId || null
@@ -106,8 +104,6 @@ async function register(data, creator) {
   return user;
 }
 
-// Dummy hash used to flatten timing when user doesn't exist.
-// Prevents user-enumeration via response latency differences.
 const DUMMY_HASH =
   '$argon2id$v=19$m=65536,t=3,p=4$c29tZXJhbmRvbXNhbHQ$RdescudvJCsgt3ub+b27Ze4AXpxcKAspe5gOjBosC2o';
 
@@ -125,13 +121,18 @@ async function login(email, password, ip, userAgent) {
   try {
     await checkAndRecordAttempt(email, ip);
   } catch (err) {
-    if (err instanceof UnauthorizedError && err.message.includes('locked')) {
+    // Re-throw genuine lockouts (statusCode 429 or 'locked' message)
+    if (
+      (err instanceof UnauthorizedError || err.statusCode === 429) &&
+      err.message.includes('locked')
+    ) {
+      err.statusCode = 429;
       throw err;
     }
-    console.error('Redis Brute Force Check Failed:', err);
-
-    throw new UnauthorizedError(
-      'Login temporarily unavailable. Please try again later.'
+    // Graceful degradation: Redis infrastructure failures should not prevent login
+    console.warn(
+      'Brute-force check skipped due to Redis failure:',
+      err.message
     );
   }
 
@@ -141,7 +142,6 @@ async function login(email, password, ip, userAgent) {
     await argon2.verify(DUMMY_HASH, password).catch(() => {});
     await recordLoginAttempt(email, ip, false).catch(() => {});
 
-    // Notify admins (fire-and-forget). Suspended users get a distinct message.
     const issueType = user?.suspended
       ? 'Account Suspended'
       : 'Login Failed - User Not Found';
@@ -157,7 +157,6 @@ async function login(email, password, ip, userAgent) {
   if (!valid) {
     await recordLoginAttempt(email, ip, false).catch(() => {});
 
-    // Notify admins about failed login (fire-and-forget)
     notifyAdmin(
       `⚠️ User Issue: Login Failed\nUser: ${email}\nIssue: Invalid password\nTime: ${new Date().toLocaleString()}`
     ).catch(() => {});
@@ -192,16 +191,12 @@ async function refreshTokens(token, ip) {
 
   const hash = hashToken(token);
 
-  // Atomic claim - if two concurrent requests race, only one gets a userId back.
-  // The second gets null and is rejected immediately, eliminating the TOCTOU window.
   const claimedUserId = await repo.claimRefreshToken(hash);
 
   if (!claimedUserId) {
     throw new UnauthorizedError('Token revoked/expired');
   }
 
-  // Ensure the claimed token belongs to the same user identified by the
-  // signed refresh token payload.
   if (String(claimedUserId) !== String(decoded.id)) {
     await repo.revokeAllUserTokensRedis(claimedUserId);
     throw new UnauthorizedError('Invalid refresh token');
@@ -218,10 +213,7 @@ async function refreshTokens(token, ip) {
   const newRefresh = generateRefreshToken(user);
   const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  // Revoke every existing refresh token for this user before storing the
-  // replacement. This prevents stolen sibling tokens from remaining usable.
   await repo.revokeAllUserTokensRedis(user.id);
-
   await repo.storeRefreshTokenRedis(user.id, hashToken(newRefresh), newExpiry);
 
   return {
@@ -230,6 +222,7 @@ async function refreshTokens(token, ip) {
     user: publicUser(user),
   };
 }
+
 async function logout(
   token,
   authenticatedUserId,
