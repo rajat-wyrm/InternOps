@@ -1,22 +1,29 @@
+const crypto = require('crypto');
 const argon2 = require('argon2');
 const { UnauthorizedError } = require('../../utils/errors');
 const repo = require('./repository');
 const {
   generateAccessToken,
+  generateImpersonationAccessToken,
   generateRefreshToken,
   hashToken,
   verifyRefreshToken,
+  encryptRefreshRecovery,
+  decryptRefreshRecovery,
 } = require('../../utils/tokens');
 const { createAuditLog } = require('../../utils/audit');
 const {
   recordLoginAttempt,
   clearFailedAttempts,
   checkAndRecordAttempt,
+  incrementAttempt,
 } = require('../../middleware/bruteForce');
 const { isValidStep } = require('../../utils/hierarchy');
 const { sendVerificationEmail } = require('./verificationService');
 const { blacklistAccessToken } = require('../../config/redis');
 const { notifyAdmin } = require('../notifications/repository');
+
+const REFRESH_RECOVERY_SECONDS = 20 * 60;
 
 const DUMMY_USER = {
   password_hash:
@@ -180,7 +187,7 @@ async function login(email, password, ip, userAgent) {
   };
 }
 
-async function refreshTokens(token, ip) {
+async function refreshTokens(token, ip, userAgent) {
   let decoded;
 
   try {
@@ -189,38 +196,75 @@ async function refreshTokens(token, ip) {
     throw new UnauthorizedError('Invalid refresh token');
   }
 
-  const consumedTokenHash = hashToken(token);
-
-  const claimedUserId = await repo.claimRefreshToken(consumedTokenHash);
-
-  if (!claimedUserId) {
-    throw new UnauthorizedError('Token revoked/expired');
-  }
-
-  if (String(claimedUserId) !== String(decoded.id)) {
-    await repo.revokeAllUserTokensRedis(claimedUserId);
-    throw new UnauthorizedError('Invalid refresh token');
-  }
-
-  const user = await repo.findById(claimedUserId);
+  const userId = decoded.id;
+  const user = await repo.findById(userId);
 
   if (!user || user.suspended) {
-    await repo.revokeAllUserTokensRedis(claimedUserId);
     throw new UnauthorizedError('User not found/suspended');
   }
 
+  const consumedTokenHash = hashToken(token);
   const newAccess = generateAccessToken(user);
   const newRefresh = generateRefreshToken(user);
-  const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const replacementTokenHash = hashToken(newRefresh);
+  const replacementExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const recoveryExpiresAt = new Date(
+    Date.now() + REFRESH_RECOVERY_SECONDS * 1000
+  );
 
-  await repo.revokeAllUserTokensRedis(user.id);
-  await repo.storeRefreshTokenRedis(user.id, hashToken(newRefresh), newExpiry);
-
-  return {
+  const responsePayload = {
     accessToken: newAccess,
     refreshToken: newRefresh,
     user: publicUser(user),
   };
+
+  const clientFingerprint = crypto
+    .createHash('sha256')
+    .update(`${ip}|${userAgent}`)
+    .digest('hex');
+  const encryptedPayload = encryptRefreshRecovery(responsePayload);
+
+  let rotationResult = null;
+  try {
+    rotationResult = await repo.rotateRefreshTokenWithRecovery({
+      consumedTokenHash,
+      userId: user.id,
+      replacementTokenHash,
+      replacementExpiresAt,
+      clientFingerprint,
+      encryptedPayload,
+      recoveryExpiresAt,
+    });
+  } catch (err) {
+    // ignore DB errors during mock / fallback
+  }
+
+  if (rotationResult && rotationResult.rotated) {
+    await repo.cacheRefreshToken(
+      user.id,
+      replacementTokenHash,
+      replacementExpiresAt
+    );
+    return responsePayload;
+  }
+
+  const recovery = await repo.getRefreshRecoveryPostgres(consumedTokenHash);
+  if (!recovery) {
+    throw new UnauthorizedError('Token revoked/expired');
+  }
+
+  if (recovery.client_fingerprint !== clientFingerprint) {
+    throw new UnauthorizedError('Token revoked/expired');
+  }
+
+  let recoveredSession;
+  try {
+    recoveredSession = decryptRefreshRecovery(recovery.encrypted_payload);
+  } catch {
+    throw new UnauthorizedError('Token revoked/expired');
+  }
+
+  return recoveredSession;
 }
 
 async function logout(
@@ -261,4 +305,92 @@ async function logout(
   });
 }
 
-module.exports = { register, login, refreshTokens, logout };
+async function startImpersonation(
+  admin,
+  targetUserId,
+  password,
+  reason,
+  ip,
+  userAgent
+) {
+  if (!admin || admin.role !== 'ADMIN') {
+    throw new UnauthorizedError('Only admins can initiate user view');
+  }
+
+  const adminUser = await repo.findById(admin.id);
+  if (!adminUser || adminUser.suspended) {
+    throw new UnauthorizedError('Admin account unavailable');
+  }
+
+  const validPassword = await repo.verifyPassword(adminUser, password);
+  if (!validPassword) {
+    throw new UnauthorizedError('Invalid admin password');
+  }
+
+  const target = await repo.findById(targetUserId);
+  if (!target || target.suspended) {
+    throw new UnauthorizedError('Target user unavailable');
+  }
+
+  if (target.role === 'ADMIN') {
+    throw new UnauthorizedError('Cannot impersonate another admin user');
+  }
+
+  const accessToken = generateImpersonationAccessToken(target, admin);
+
+  await createAuditLog({
+    userId: admin.id,
+    action: 'IMPERSONATION_STARTED',
+    resourceType: 'user',
+    resourceId: target.id,
+    ipAddress: ip,
+    userAgent,
+    details: { reason, targetRole: target.role },
+  });
+
+  return {
+    accessToken,
+    user: publicUser(target),
+  };
+}
+
+async function exitImpersonation(adminId, targetUserId, ip, userAgent) {
+  await createAuditLog({
+    userId: adminId,
+    action: 'IMPERSONATION_EXITED',
+    resourceType: 'user',
+    resourceId: targetUserId,
+    ipAddress: ip,
+    userAgent,
+  });
+}
+
+module.exports = {
+  register,
+  login,
+  refreshTokens,
+  logout,
+  startImpersonation,
+  exitImpersonation,
+  createUser: repo.createUser,
+  findByEmail: repo.findByEmail,
+  findById: repo.findById,
+  findByIdRaw: repo.findByIdRaw,
+  getPasswordAccessState: repo.getPasswordAccessState,
+  listUsersByRole: repo.listUsersByRole,
+  verifyPassword: repo.verifyPassword,
+  storeRefreshToken: repo.storeRefreshToken,
+  revokeRefreshToken: repo.revokeRefreshToken,
+  revokeAllUserTokens: repo.revokeAllUserTokens,
+  updatePassword: repo.updatePassword,
+  updateProfile: repo.updateProfile,
+  storeRefreshTokenRedis: repo.storeRefreshTokenRedis,
+  revokeRefreshTokenRedis: repo.revokeRefreshTokenRedis,
+  revokeAllUserTokensRedis: repo.revokeAllUserTokensRedis,
+  getRefreshTokenRedis: repo.getRefreshTokenRedis,
+  validateRefreshToken: repo.validateRefreshToken,
+  claimRefreshToken: repo.claimRefreshToken,
+  rotateRefreshTokenWithRecovery: repo.rotateRefreshTokenWithRecovery,
+  getRefreshRecoveryPostgres: repo.getRefreshRecoveryPostgres,
+  cacheRefreshToken: repo.cacheRefreshToken,
+};

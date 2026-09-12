@@ -39,6 +39,7 @@ jest.mock('../../src/middleware/bruteForce', () => ({
   recordLoginAttempt: jest.fn().mockResolvedValue(undefined),
   clearFailedAttempts: jest.fn().mockResolvedValue(undefined),
   checkAndRecordAttempt: jest.fn().mockResolvedValue(1),
+  incrementAttempt: jest.fn().mockResolvedValue(1),
 }));
 
 jest.mock('../../src/utils/hierarchy', () => ({
@@ -88,6 +89,7 @@ const {
   recordLoginAttempt,
   clearFailedAttempts,
   checkAndRecordAttempt,
+  incrementAttempt,
 } = require('../../src/middleware/bruteForce');
 const { isValidStep } = require('../../src/utils/hierarchy');
 const {
@@ -106,6 +108,8 @@ describe('Auth Service', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    checkAndRecordAttempt.mockResolvedValue(1);
+    incrementAttempt.mockResolvedValue(1);
   });
 
   describe('register()', () => {

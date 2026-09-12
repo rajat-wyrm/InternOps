@@ -128,7 +128,13 @@ async function assertNotLocked(email, ip) {
 }
 
 async function checkAndRecordAttempt(email, ip) {
-  const count = (await incrementAttempt(email, ip)) || 0;
+  let count = 0;
+  try {
+    count = (await incrementAttempt(email, ip)) || 0;
+  } catch (err) {
+    logger.error({ err }, 'Redis increment attempt error');
+    count = 0;
+  }
 
   if (count > 0) {
     if (count >= MAX_ATTEMPTS) {
@@ -138,13 +144,20 @@ async function checkAndRecordAttempt(email, ip) {
     return count;
   }
 
-  const locked = await isAccountLocked(email, ip);
-  if (locked) {
+  const windowStart = new Date(Date.now() - LOCKOUT_MINUTES * 60 * 1000);
+  const emailRes = await pool.query(
+    `SELECT COUNT(*) AS failed FROM login_attempts
+     WHERE email = $1 AND ip_address = $2 AND success = false AND attempted_at > $3`,
+    [email, ip, windowStart]
+  );
+  const dbFailedCount = parseInt(emailRes.rows[0]?.failed || 0, 10);
+
+  if (dbFailedCount + 1 >= MAX_ATTEMPTS) {
     await notifyLockoutOnce(email, ip);
     throw createLockoutError();
   }
 
-  return 0;
+  return dbFailedCount;
 }
 
 async function recordLoginAttempt(email, ip, success) {
