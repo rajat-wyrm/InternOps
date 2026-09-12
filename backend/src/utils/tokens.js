@@ -59,6 +59,7 @@ function generateImpersonationAccessToken(user, admin) {
     { expiresIn: '10m' }
   );
 }
+
 function generateRefreshToken(user) {
   return jwt.sign(
     {
@@ -84,6 +85,7 @@ function verifyAccessToken(t) {
 
   return decoded;
 }
+
 function verifyRefreshToken(t) {
   const decoded = jwt.verify(t, getRefreshSecret(), {
     algorithms: ['HS256'],

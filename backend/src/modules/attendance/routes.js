@@ -18,6 +18,11 @@ const {
 const pool = require('../../config/db');
 const { z } = require('zod');
 
+function isFutureDate(dateStr) {
+  const today = new Date().toISOString().slice(0, 10);
+  return dateStr > today;
+}
+
 async function routes(fastify) {
   // Mark attendance (manager roles; target must be in the requester's hierarchy)
   fastify.post(
@@ -44,6 +49,12 @@ async function routes(fastify) {
           });
         }
         const { user_id, date, status, remarks } = parsed.data;
+
+        if (isFutureDate(date)) {
+          return reply
+            .status(400)
+            .send({ error: 'Attendance cannot be marked for future dates' });
+        }
 
         if (req.user.role !== 'ADMIN' && req.user.id === user_id) {
           return reply
@@ -146,6 +157,12 @@ async function routes(fastify) {
           });
         }
         const entries = parsed.data.entries;
+
+        if (entries.some((e) => isFutureDate(e.date))) {
+          return reply
+            .status(400)
+            .send({ error: 'Attendance cannot be marked for future dates' });
+        }
 
         // Authorize all entries in a single recursive query - avoids N+1.
         if (req.user.role !== 'ADMIN') {
@@ -573,5 +590,7 @@ async function routes(fastify) {
     }
   );
 }
+
+routes.isFutureDate = isFutureDate;
 
 module.exports = routes;

@@ -324,7 +324,7 @@ async function getAllSyncedIssues(page = 1, limit = 50) {
   const [tasksRes, countRes] = await Promise.all([
     pool.query(
       `SELECT id, title, github_issue_number, github_issue_url, github_repo,
-              github_labels, source, created_at, last_synced_at, status
+              github_labels, source, created_at, last_synced_at
        FROM social_tasks
        WHERE source = 'github' AND deleted_at IS NULL
        ORDER BY last_synced_at DESC NULLS LAST, created_at DESC

@@ -1,3 +1,4 @@
+import json
 import httpx
 import pytest
 import respx
@@ -55,6 +56,48 @@ async def test_gemini_rate_limit_maps_to_provider_rate_limit_error():
         await provider.generate_chat([{"role": "user", "content": "hello"}])
 
     assert route.called
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_gemini_preserves_message_roles():
+    route = respx.post(url__startswith=GEMINI_URL_PREFIX).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {"content": {"parts": [{"text": "safe response"}]}}
+                ]
+            },
+        )
+    )
+    provider = GeminiProvider(api_key="test-key")
+
+    await provider.generate_chat(
+        [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Tell me about Python."},
+            {"role": "assistant", "content": "Python is a programming language."},
+        ]
+    )
+
+    payload = route.calls[0].request.content
+    body = json.loads(payload)
+
+    assert body["systemInstruction"] == {
+        "parts": [{"text": "You are a helpful assistant."}]
+    }
+
+    assert body["contents"] == [
+        {
+            "role": "user",
+            "parts": [{"text": "Tell me about Python."}],
+        },
+        {
+            "role": "model",
+            "parts": [{"text": "Python is a programming language."}],
+        },
+    ]
 
 
 # ===========================================================================

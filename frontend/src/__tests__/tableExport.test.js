@@ -1,4 +1,9 @@
-﻿import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { describe, expect, it } from 'vitest';
 import {
   makeExportFileName,
   rowsToDelimited,
@@ -8,6 +13,39 @@ import {
   normalizeExportValue,
 } from '../utils/tableExport';
 describe('tableExport', () => {
+  it('defers heavy export engines until an export is requested', () => {
+    const source = readFileSync(
+      path.resolve(__dirname, '../utils/tableExport.js'),
+      'utf8'
+    );
+    expect(source).not.toMatch(
+      /^import .* from ['"](?:exceljs|xlsx|jspdf|jspdf-autotable)['"];$/m
+    );
+    expect(source).toContain("await import('exceljs')");
+    expect(source).toContain("await import('xlsx')");
+    expect(source).toContain("import('jspdf')");
+    expect(source).toContain("import('jspdf-autotable')");
+  });
+
+  it('keeps department export progress connected to the export promise', () => {
+    const attendance = readFileSync(
+      path.resolve(
+        __dirname,
+        '../components/department/DepartmentAttendanceSheet.jsx'
+      ),
+      'utf8'
+    );
+    const ratings = readFileSync(
+      path.resolve(
+        __dirname,
+        '../components/department/DepartmentRatingsSheet.jsx'
+      ),
+      'utf8'
+    );
+    expect(attendance).toContain('return exportTable({');
+    expect(ratings).toContain('return exportTable({');
+  });
+
   it('creates safe report names', () =>
     expect(makeExportFileName('ratings', 'AI Tutor', '2026-09', 'xlsx')).toBe(
       'ratings-AI-Tutor-2026-09.xlsx'

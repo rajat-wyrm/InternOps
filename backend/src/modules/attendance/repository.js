@@ -1,5 +1,18 @@
 const pool = require('../../config/db');
 const { assertActivityAllowed } = require('../team/lifecycle');
+const {
+  MAX_HIERARCHY_DEPTH,
+  MAX_HIERARCHY_ROWS,
+  roleRankSql,
+} = require('../../utils/hierarchy');
+
+function assertWithinHierarchyRowLimit(rows) {
+  if (rows.length <= MAX_HIERARCHY_ROWS) return;
+  const err = new Error('Team too large');
+  err.statusCode = 416;
+  throw err;
+}
+
 function dateOnly(value) {
   return value ? String(value).slice(0, 10) : null;
 }
@@ -96,27 +109,39 @@ async function getDepartmentAttendanceSheet({
 }) {
   const departmentWide = isAdmin || requesterRole === 'SENIOR_TL';
   const memberScope = departmentWide
-    ? `SELECT id, full_name, email, intern_code, role, department_id, joining_date::text, internship_status, lifecycle_effective_date::text, completion_date::text, extended_completion_date::text
-       FROM users
-       WHERE department_id = $1 AND deleted_at IS NULL AND role <> 'ADMIN'`
+    ? `SELECT u.id, u.full_name, u.email, u.intern_code, u.role, u.department_id, u.joining_date::text, u.internship_status, u.lifecycle_effective_date::text, u.completion_date::text, u.extended_completion_date::text
+       FROM users u
+       WHERE u.department_id = $1 AND u.deleted_at IS NULL AND u.role <> 'ADMIN'
+       ORDER BY ${roleRankSql('u')},
+         LOWER(COALESCE(NULLIF(TRIM(u.full_name), ''), u.email)),
+         LOWER(u.email), u.id`
     : `WITH RECURSIVE visible_users AS (
-         SELECT id, full_name, email, intern_code, role, department_id, manager_id, joining_date, internship_status, lifecycle_effective_date, completion_date, extended_completion_date, 0 AS depth
-         FROM users
-         WHERE id = $2 AND deleted_at IS NULL
+         SELECT u.id, u.full_name, u.email, u.intern_code, u.role, u.department_id, u.manager_id, u.joining_date, u.internship_status, u.lifecycle_effective_date, u.completion_date, u.extended_completion_date,
+                0 AS depth, ARRAY[u.id] AS path,
+                ${roleRankSql('u')} AS structural_rank
+         FROM users u
+         WHERE u.id = $2 AND u.deleted_at IS NULL
          UNION ALL
          SELECT u.id, u.full_name, u.email, u.intern_code, u.role, u.department_id, u.manager_id, u.joining_date, u.internship_status, u.lifecycle_effective_date, u.completion_date, u.extended_completion_date,
-                visible_users.depth + 1
-         FROM users u
-         INNER JOIN visible_users ON u.manager_id = visible_users.id
-         WHERE u.deleted_at IS NULL AND visible_users.depth < 100
+                visible_users.depth + 1, visible_users.path || u.id,
+                ${roleRankSql('u')} AS structural_rank
+         FROM visible_users
+         INNER JOIN users u
+           ON u.manager_id = visible_users.id
+          AND u.deleted_at IS NULL
+          AND NOT u.id = ANY(visible_users.path)
+         WHERE visible_users.depth < $3
        )
        SELECT id, full_name, email, intern_code, role, department_id, joining_date::text, internship_status, lifecycle_effective_date::text, completion_date::text, extended_completion_date::text
        FROM visible_users
-       WHERE department_id = $1`;
+       WHERE department_id = $1
+       ORDER BY depth, structural_rank,
+         LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
+         LOWER(email), id`;
 
   const memberParams = departmentWide
     ? [departmentId]
-    : [departmentId, requesterId];
+    : [departmentId, requesterId, MAX_HIERARCHY_DEPTH];
 
   const membersResult = await pool.query(memberScope, memberParams);
   const scopedMemberIds = membersResult.rows.map((member) => member.id);
@@ -242,21 +267,25 @@ async function listHierarchySubordinates(managerId, targetIds) {
 
   const res = await pool.query(
     `WITH RECURSIVE chain AS (
-       SELECT id, manager_id, 0 AS depth FROM users WHERE id = $1 AND deleted_at IS NULL
-       UNION ALL
-       SELECT u.id, u.manager_id, chain.depth + 1
+       SELECT u.id, u.manager_id, 1 AS depth, ARRAY[$1::uuid, u.id] AS path
        FROM users u
-       INNER JOIN chain ON u.manager_id = chain.id
-       WHERE u.deleted_at IS NULL AND chain.depth < 100
+       WHERE u.manager_id = $1 AND u.deleted_at IS NULL
+       UNION ALL
+       SELECT u.id, u.manager_id, chain.depth + 1, chain.path || u.id
+       FROM chain
+       INNER JOIN users u
+         ON u.manager_id = chain.id
+        AND u.deleted_at IS NULL
+        AND NOT u.id = ANY(chain.path)
+       WHERE chain.depth < $3
      )
      SELECT id FROM chain WHERE id = ANY($2::uuid[])`,
-    [managerId, targetIds]
+    [managerId, targetIds, MAX_HIERARCHY_DEPTH]
   );
 
   return new Set(res.rows.map((r) => r.id));
 }
 
-// Add this to your repository.js
 async function getAuthorizedSubordinates(
   managerId,
   requesterRole,
@@ -264,38 +293,44 @@ async function getAuthorizedSubordinates(
 ) {
   if (requesterRole === 'SENIOR_TL') {
     const { rows } = await pool.query(
-      `SELECT id, full_name, email, role FROM users
-       WHERE department_id = $1 AND id <> $2 AND role <> 'ADMIN'
-         AND deleted_at IS NULL
-       ORDER BY CASE role WHEN 'SENIOR_TL' THEN 1 WHEN 'TL' THEN 2
-         WHEN 'CAPTAIN' THEN 3 WHEN 'INTERN' THEN 4 ELSE 5 END,
-         LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)), LOWER(email), id`,
-      [departmentId, managerId]
+      `SELECT u.id, u.full_name, u.email, u.role FROM users u
+       WHERE u.department_id = $1 AND u.id <> $2 AND u.role <> 'ADMIN'
+         AND u.deleted_at IS NULL
+       ORDER BY ${roleRankSql('u')},
+         LOWER(COALESCE(NULLIF(TRIM(u.full_name), ''), u.email)),
+         LOWER(u.email), u.id
+       LIMIT $3`,
+      [departmentId, managerId, MAX_HIERARCHY_ROWS + 1]
     );
+    assertWithinHierarchyRowLimit(rows);
     return rows;
   }
   const res = await pool.query(
     `WITH RECURSIVE subordinates AS (
-       SELECT id, full_name, email, role, 0 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL
-       UNION ALL
-       SELECT u.id, u.full_name, u.email, u.role, s.depth + 1
+       SELECT u.id, u.full_name, u.email, u.role, u.manager_id,
+              1 AS depth, ARRAY[$1::uuid, u.id] AS path,
+              ${roleRankSql('u')} AS structural_rank
        FROM users u
-       INNER JOIN subordinates s ON u.manager_id = s.id
-       WHERE u.deleted_at IS NULL AND s.depth < 100
+       WHERE u.manager_id = $1 AND u.deleted_at IS NULL
+       UNION ALL
+       SELECT u.id, u.full_name, u.email, u.role, u.manager_id,
+              s.depth + 1, s.path || u.id,
+              ${roleRankSql('u')} AS structural_rank
+       FROM subordinates s
+       INNER JOIN users u
+         ON u.manager_id = s.id
+        AND u.deleted_at IS NULL
+        AND NOT u.id = ANY(s.path)
+       WHERE s.depth < $2
      )
      SELECT id, full_name, email, role FROM subordinates
-     ORDER BY CASE role
-       WHEN 'ADMIN' THEN 0
-       WHEN 'SENIOR_TL' THEN 1
-       WHEN 'TL' THEN 2
-       WHEN 'CAPTAIN' THEN 3
-       WHEN 'INTERN' THEN 4
-       ELSE 5
-     END,
+     ORDER BY structural_rank, depth,
      LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
-     LOWER(email), id`,
-    [managerId]
+     LOWER(email), id
+     LIMIT $3`,
+    [managerId, MAX_HIERARCHY_DEPTH, MAX_HIERARCHY_ROWS + 1]
   );
+  assertWithinHierarchyRowLimit(res.rows);
   return res.rows;
 }
 
@@ -314,15 +349,20 @@ async function getAnomalies(managerId, isAdmin, filters = {}) {
   const params = [];
 
   if (!isAdmin) {
-    params.push(managerId);
+    params.push(managerId, MAX_HIERARCHY_DEPTH);
     query += ` AND a.intern_id IN (
       WITH RECURSIVE subordinates AS (
-        SELECT id, 0 AS depth FROM users WHERE manager_id = $1 AND deleted_at IS NULL
-        UNION ALL
-        SELECT u.id, s.depth + 1
+        SELECT u.id, u.manager_id, 1 AS depth, ARRAY[$1::uuid, u.id] AS path
         FROM users u
-        INNER JOIN subordinates s ON u.manager_id = s.id
-        WHERE u.deleted_at IS NULL AND s.depth < 100
+        WHERE u.manager_id = $1 AND u.deleted_at IS NULL
+        UNION ALL
+        SELECT u.id, u.manager_id, s.depth + 1, s.path || u.id
+        FROM subordinates s
+        INNER JOIN users u
+          ON u.manager_id = s.id
+         AND u.deleted_at IS NULL
+         AND NOT u.id = ANY(s.path)
+        WHERE s.depth < $2
       )
       SELECT id FROM subordinates
     )`;

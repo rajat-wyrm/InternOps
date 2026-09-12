@@ -413,7 +413,7 @@ export default function DepartmentAttendanceSheet({
       selectedMonth,
       'tmp'
     ).replace(/\.tmp$/, '');
-    exportTable({
+    return exportTable({
       format,
       title: `Attendance - ${departmentName || 'Department'} - ${selectedMonth}`,
       fileBase: base,

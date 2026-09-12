@@ -46,17 +46,32 @@ class GeminiProvider(BaseAIProvider):
 
     async def generate_chat(self, messages: list[dict], temperature: float = 0.7, **kwargs) -> str:
         contents = []
+        system_instruction = None
+
         for msg in messages:
-            role = "model" if msg["role"] == "assistant" else "user"
+            role = msg["role"]
+            content = msg["content"]
+
+            if role == "system":
+                system_instruction = {
+                    "parts": [{"text": content}]
+                }
+                continue
+
+            gemini_role = "model" if role == "assistant" else "user"
             contents.append({
-                "role": role,
-                "parts": [{"text": msg["content"]}]
+                "role": gemini_role,
+                "parts": [{"text": content}]
             })
-            
+
         payload = {
             "contents": contents,
             "generationConfig": {"temperature": temperature},
         }
+
+        if system_instruction:
+            payload["systemInstruction"] = system_instruction
+
         response_data = await self._send_request(payload)
         try:
             return response_data["candidates"][0]["content"]["parts"][0]["text"]
@@ -90,7 +105,8 @@ class GeminiProvider(BaseAIProvider):
             )
 
     async def generate_image(self, prompt: str, **kwargs) -> str:
-        """Generate an image from a text prompt. Returns base64-encoded image data."""
+        """Generate an image from a text prompt. Returns bas
+        e64-encoded image data."""
         image_model = kwargs.get("model_name", "gemini-3.1-flash-lite-image")
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"

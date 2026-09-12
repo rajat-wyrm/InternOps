@@ -66,3 +66,22 @@ def test_fonts_and_badges_are_allowed():
     assert parsed["font_family_title"] in ALLOWED_FONTS
     assert parsed["font_family_body"] in ALLOWED_FONTS
     assert parsed["badge_style"] in ALLOWED_BADGES
+
+def test_clean_and_parse_json_with_arrays():
+    raw_response = """```json
+    [
+        {"score": 1},
+        {"score": 2}
+    ]
+    ```"""
+    parsed = clean_and_parse_json(raw_response)
+    assert isinstance(parsed, list)
+    assert len(parsed) == 2
+    assert parsed[0]["score"] == 1
+
+def test_clean_and_parse_json_with_arrays_and_preamble():
+    raw_response = "Here are your scores:\n[\n  {\"score\": 1},\n  {\"score\": 2}\n]"
+    parsed = clean_and_parse_json(raw_response)
+    assert isinstance(parsed, list)
+    assert len(parsed) == 2
+    assert parsed[1]["score"] == 2

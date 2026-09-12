@@ -22,7 +22,6 @@ import {
   PageHeader,
   Card,
   Badge,
-  Spinner,
   Btn,
   Input,
   EmptyState,
@@ -30,6 +29,7 @@ import {
 } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
 import useBodyScrollLock from '../../hooks/useBodyScrollLock';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 const CERTIFICATE_TYPES = [
   { value: 'completion', label: 'Completion' },
@@ -61,11 +61,14 @@ export default function Certificates() {
     data: certsData,
     isLoading,
     isError,
-    error,
     refetch,
   } = useCertificates({
     search,
   });
+
+  const certificatesInitialLoading = isLoading && !certsData;
+
+  useRouteInitialLoading(certificatesInitialLoading);
   const certificates = certsData?.data || [];
   const { data: templatesData, isLoading: templatesLoading } = useTemplates();
   const templates = templatesData?.data || [];
@@ -113,7 +116,7 @@ export default function Certificates() {
   };
 
   return (
-    <div className="animate-fade-in-up">
+    <div>
       <ConfirmationModal
         open={!!certToDelete}
         title="Delete Certificate"
@@ -184,8 +187,6 @@ export default function Certificates() {
             </Btn>
           </div>
         </Card>
-      ) : isLoading ? (
-        <Spinner label="Loading certificates..." />
       ) : filteredCertificates.length === 0 ? (
         <EmptyState
           icon="📜"

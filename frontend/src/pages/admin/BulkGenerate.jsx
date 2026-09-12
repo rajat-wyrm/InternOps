@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { PageHeader, Card, Badge, Spinner } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 import { useTemplates } from '../../hooks/useCertificates';
 import {
   useBulkAIGenerate,
@@ -26,6 +27,10 @@ const BulkGenerate = () => {
   const [validationError, setValidationError] = useState('');
 
   const { data: templatesData, isLoading: templatesLoading } = useTemplates();
+
+  const bulkGenerateInitialLoading = templatesLoading && !templatesData;
+
+  useRouteInitialLoading(bulkGenerateInitialLoading);
   const templates = templatesData?.data || [];
 
   const bulkGenerateMutation = useBulkAIGenerate();
@@ -201,21 +206,21 @@ const BulkGenerate = () => {
     : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div>
       <PageHeader
         title="Bulk Generate Certificates"
         icon={<FileText className="h-6 w-6" />}
       />
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-center mb-8">
+      <div className="max-w-6xl mx-auto px-4 pb-8 pt-4 sm:pt-6">
+        <div className="mb-6 flex items-center justify-center sm:mb-7">
           {[1, 2, 3].map((s) => (
             <div key={s} className="flex items-center">
               <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-semibold sm:h-10 sm:w-10 ${
                   step >= s
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                    : 'border border-slate-300 bg-slate-200 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
                 }`}
               >
                 {s}
@@ -223,8 +228,8 @@ const BulkGenerate = () => {
 
               {s < 3 && (
                 <div
-                  className={`w-20 h-1 mx-2 ${
-                    step > s ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+                  className={`w-12 sm:w-20 h-1 mx-2 ${
+                    step > s ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'
                   }`}
                 />
               )}
@@ -242,21 +247,13 @@ const BulkGenerate = () => {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Choose a certificate template
               </label>
-
-              {templatesLoading ? (
-                <div className="flex items-center gap-2 text-gray-500">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Loading templates...</span>
-                </div>
-              ) : (
-                <CustomSelect
-                  value={selectedTemplate}
-                  onChange={setSelectedTemplate}
-                  options={templateOptions}
-                  placeholder="Select a template..."
-                  className="w-full"
-                />
-              )}
+              <CustomSelect
+                value={selectedTemplate}
+                onChange={setSelectedTemplate}
+                options={templateOptions}
+                placeholder="Select a template..."
+                className="w-full"
+              />
 
               <button
                 type="button"

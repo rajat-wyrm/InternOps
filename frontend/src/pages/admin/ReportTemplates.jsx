@@ -15,6 +15,7 @@ import {
   EmptyState,
   ConfirmationModal,
 } from '../../components/ui';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 const DEFAULT_COLUMNS = ['employee', 'attendance', 'rating', 'tasks'];
 
@@ -148,6 +149,7 @@ export default function ReportTemplates() {
     },
   });
 
+  useRouteInitialLoading(!hydrated || !accessToken || templatesQuery.isLoading);
   const templates = templatesQuery.data || [];
 
   function openCreate() {
@@ -444,9 +446,7 @@ export default function ReportTemplates() {
 
       {/* Template List */}
 
-      {templatesQuery.isLoading ? (
-        <Spinner />
-      ) : templatesQuery.isError ? (
+      {templatesQuery.isError ? (
         <Card className="p-5">
           <p className="text-red-600 dark:text-red-400">
             Failed to load report templates.

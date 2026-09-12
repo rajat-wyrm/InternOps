@@ -1,6 +1,7 @@
 const {
   sanitizationMiddleware: sanitize,
 } = require('../../middleware/sanitize');
+const rbac = require('../../middleware/rbac');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -275,7 +276,7 @@ async function routes(fastify) {
   fastify.post(
     '/notice-image',
     {
-      preHandler: [auth, sanitize],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
       schema: {
         tags: ['Uploads'],
         description: 'Upload a notice image (multipart)',

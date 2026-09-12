@@ -3,13 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { ScrollText, ChevronLeft, ChevronRight } from 'lucide-react';
 import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
-import { Table, Badge, Spinner } from '../../components/ui';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
+import { Table, Badge } from '../../components/ui';
 
 function actionColor(a = '') {
   if (a.includes('DELETE') || a.includes('SUSPEND')) return 'red';
-  if (a.includes('CREATE') || a.includes('LOGIN')) return 'green';
-  if (a.includes('UPDATE') || a.includes('RATING') || a.includes('ATTENDANCE'))
-    return 'blue';
+  if (a.includes('LOGIN_SUCCESS')) return 'cyan';
+  if (a.includes('CREATE')) return 'green';
+  if (a.includes('UPDATE')) return 'amber';
+  if (a.includes('RATING') || a.includes('ATTENDANCE')) return 'blue';
   return 'gray';
 }
 
@@ -19,7 +21,7 @@ export default function AuditLog() {
   const [page, setPage] = useState(1);
   const limit = 50;
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['auditLogs', page],
     queryFn: () =>
       api.get(`/audit?page=${page}&limit=${limit}`).then((res) => res.data),
@@ -28,6 +30,9 @@ export default function AuditLog() {
     enabled: hydrated && !!accessToken,
   });
 
+  const auditInitialLoading =
+    !isError && (!hydrated || !accessToken || (isLoading && !data));
+  useRouteInitialLoading(auditInitialLoading);
   const logs = data?.data || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / limit);
@@ -37,7 +42,7 @@ export default function AuditLog() {
       {/* Professional Header Block */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-400/20 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shadow-sm">
             <ScrollText className="w-6 h-6" />
           </div>
 
@@ -69,12 +74,8 @@ export default function AuditLog() {
             Retry
           </button>
         </div>
-      ) : isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner />
-        </div>
       ) : (
-        <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
+        <div className="rounded-3xl border border-slate-200 dark:border-indigo-400/20 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-[0_16px_40px_rgba(2,6,23,0.24)] overflow-hidden">
           <Table head={['Time', 'Actor', 'Action', 'Resource', 'Details']}>
             {logs?.map((log, index) => (
               <tr
@@ -82,7 +83,7 @@ export default function AuditLog() {
                 className={`transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
                   index % 2 === 0
                     ? 'bg-white dark:bg-slate-900'
-                    : 'bg-slate-50/50 dark:bg-slate-800/35'
+                    : 'bg-slate-50/50 dark:bg-slate-800/25'
                 } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
               >
                 <td className="p-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap font-medium">
@@ -101,14 +102,20 @@ export default function AuditLog() {
                   <Badge color={actionColor(log.action)}>{log.action}</Badge>
                 </td>
 
-                <td className="p-4 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                <td
+                  className="p-4 text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap"
+                  title={`${log.resource_type}${log.resource_id ? `/${log.resource_id}` : ''}`}
+                >
                   {log.resource_type}
                   {log.resource_id
                     ? `/${log.resource_id.substring(0, 8)}…`
                     : ''}
                 </td>
 
-                <td className="p-4 text-xs text-slate-500 dark:text-slate-400 max-w-[240px] truncate">
+                <td
+                  className="p-4 text-xs text-slate-500 dark:text-slate-300 max-w-[240px] truncate"
+                  title={log.details ? JSON.stringify(log.details) : '—'}
+                >
                   {log.details ? JSON.stringify(log.details) : '—'}
                 </td>
               </tr>
@@ -118,27 +125,29 @@ export default function AuditLog() {
       )}
 
       {/* Modernized Pagination */}
-      <div className="flex items-center justify-center gap-2 mt-8">
-        <button
-          className="flex items-center gap-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          disabled={page === 1}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-        >
-          <ChevronLeft className="w-4 h-4" /> Prev
-        </button>
+      {!auditInitialLoading && !isError && (
+        <div className="flex items-center justify-center gap-2 mt-8">
+          <button
+            className="flex items-center gap-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            disabled={page === 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft className="w-4 h-4" /> Prev
+          </button>
 
-        <div className="px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-sm font-extrabold border border-indigo-100 dark:border-indigo-900/60">
-          Page {page} of {totalPages || 1}
+          <div className="px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-sm font-extrabold border border-indigo-100 dark:border-indigo-900/60">
+            Page {page} of {totalPages || 1}
+          </div>
+
+          <button
+            className="flex items-center gap-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
-
-        <button
-          className="flex items-center gap-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          Next <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
+      )}
     </div>
   );
 }

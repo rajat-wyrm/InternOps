@@ -31,6 +31,7 @@ import {
   X,
   PanelLeftClose,
   PanelLeftOpen,
+  Inbox,
 } from 'lucide-react';
 
 import {
@@ -41,6 +42,7 @@ import {
   useMemo,
   useCallback,
   memo,
+  lazy,
   Suspense,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,10 +55,11 @@ import useAuthStore from '../store/auth';
 import useFeatureFlagsStore from '../store/featureFlags';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { ROLE_LABEL } from '../constants/roles';
-import FloatingChatbot from '../components/FloatingChatbot';
+const FloatingChatbot = lazy(() => import('../components/FloatingChatbot'));
 import RouteRefreshSkeleton from '../components/loading/RouteRefreshSkeleton';
 import RouteInitialLoading from '../components/loading/RouteInitialLoading';
 
+const FLOATING_CHATBOT_ROLES = ['ADMIN', 'SENIOR_TL', 'TL'];
 const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
 const ADMIN_AND_SENIOR_TL_ROLES = ['ADMIN', 'SENIOR_TL'];
 const ADMIN_ONLY_ROLES = ['ADMIN'];
@@ -105,6 +108,7 @@ const nav = [
   },
   { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/profile', label: 'Profile', icon: User },
+  { path: '/requests', label: 'Requests', icon: Inbox },
   { path: '/sessions', label: 'Sessions', icon: Shield },
   {
     path: '/internops',
@@ -218,13 +222,36 @@ const adminNav = [
 const FULL_LOGO_SRC = '/UptoSkills.webp';
 const MINI_LOGO_SRC = '/Uptoskills_log_fevicon.png';
 const COORDINATED_LOADING_ROUTES = new Set([
+  '/admin',
+  '/audit',
   '/dashboard',
+  '/departments',
   '/team',
   '/hr',
   '/profile',
+  '/quick-generate',
+  '/certificates',
+  '/bulk-generate',
+  '/canva-templates',
+  '/feature-flags',
+  '/github-sync',
   '/tasks',
   '/notifications',
+  '/sessions',
+  '/internops',
+  '/performance-intelligence',
+  '/reports',
+  '/report-templates',
+  '/exports',
+  '/notices',
 ]);
+const COORDINATED_LOADING_ROUTE_PATTERNS = [
+  /^\/departments\/[^/]+\/projects$/,
+  /^\/departments\/[^/]+\/projects\/[^/]+$/,
+  /^\/admin\/departments\/[^/]+\/attendance$/,
+  /^\/admin\/departments\/[^/]+\/ratings$/,
+  /^\/admin\/departments\/[^/]+\/tasks$/,
+];
 
 function canShowNavItem(item, role, flags, flagsLoaded) {
   if (item.excludedRoles && item.excludedRoles.includes(role)) return false;
@@ -256,9 +283,13 @@ const NavLink = memo(({ n, active, collapsed, onLinkClick }) => {
         }`}
     >
       <Icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2.5 : 2} />
-      {!collapsed && <span className="whitespace-nowrap">{n.label}</span>}
+      {!collapsed && (
+        <span className="min-w-0 flex-1 truncate whitespace-nowrap">
+          {n.label}
+        </span>
+      )}
       {!collapsed && active && (
-        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600" />
+        <span className="ml-2 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-600" />
       )}
       {collapsed && active && (
         <span className="absolute right-1.5 w-1.5 h-6 rounded-full bg-white/80" />
@@ -341,10 +372,12 @@ export default function DashboardLayout() {
   }, [accessToken, queryClient, user?.mustChangePassword]);
 
   const role = user?.role;
+  const canUseFloatingChatbot = FLOATING_CHATBOT_ROLES.includes(role);
   const flags = useFeatureFlagsStore((s) => s.flags);
   const flagsLoaded = useFeatureFlagsStore((s) => s.loaded);
   const SIDEBAR_KEY = 'sidebar_scroll';
   const sidebarNavRef = useRef(null);
+  const mainContentRef = useRef(null);
 
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('sidebar') === 'collapsed'
@@ -532,6 +565,11 @@ export default function DashboardLayout() {
     logout();
     navigate('/login');
   };
+  useLayoutEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+  }, [loc.pathname]);
   useLayoutEffect(() => {
     if (previousPathRef.current !== loc.pathname) {
       setAnimatedRoutePath(loc.pathname);
@@ -838,9 +876,12 @@ export default function DashboardLayout() {
             </button>
           </div>
         )}
-        <main className="flex-1 overflow-auto p-5 sm:p-6">
+        <main ref={mainContentRef} className="flex-1 overflow-auto p-5 sm:p-6">
           <div key={loc.pathname} className="min-h-[calc(100vh-7rem)]">
-            {COORDINATED_LOADING_ROUTES.has(loc.pathname) ? (
+            {COORDINATED_LOADING_ROUTES.has(loc.pathname) ||
+            COORDINATED_LOADING_ROUTE_PATTERNS.some((pattern) =>
+              pattern.test(loc.pathname)
+            ) ? (
               <RouteInitialLoading animate={shouldAnimateRoute}>
                 <Outlet />
               </RouteInitialLoading>
@@ -870,7 +911,11 @@ export default function DashboardLayout() {
         onCancel={() => setShowLogoutConfirm(false)}
         danger={true}
       />
-      {loc.pathname !== '/profile' && <FloatingChatbot />}
+      {loc.pathname !== '/profile' && canUseFloatingChatbot && (
+        <Suspense fallback={null}>
+          <FloatingChatbot />
+        </Suspense>
+      )}
     </div>
   );
 }

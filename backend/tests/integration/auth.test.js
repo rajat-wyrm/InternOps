@@ -101,6 +101,21 @@ async function login(
 }
 
 describe('Auth Integration Tests', () => {
+  it('keeps session bootstrap routes on dedicated rate-limit budgets', () => {
+    const routesSource = require('fs').readFileSync(
+      require('path').resolve(__dirname, '../../src/modules/auth/routes.js'),
+      'utf8'
+    );
+    const configSource = require('fs').readFileSync(
+      require('path').resolve(__dirname, '../../src/config/index.js'),
+      'utf8'
+    );
+    expect(routesSource).toContain('max: config.rateLimit.refreshMax');
+    expect(routesSource).toContain('max: config.rateLimit.csrfMax');
+    expect(configSource).toContain('RATE_LIMIT_REFRESH_MAX');
+    expect(configSource).toContain('RATE_LIMIT_CSRF_MAX');
+  });
+
   describe('POST /api/auth/login', () => {
     it('should login with valid credentials', async () => {
       const res = await login();

@@ -32,6 +32,7 @@ import {
   ConfirmationModal,
 } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 const CATEGORIES = [
   'GENERAL',
@@ -170,7 +171,7 @@ function NoticeForm({
             className="h-16 w-32 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
           />
         )}
-        <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+        <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700/80 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
           {isUploading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
@@ -203,6 +204,7 @@ function NoticeForm({
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         disabled={isPending}
+        className="dark:!border-slate-700 dark:!bg-slate-800/70"
       />
 
       <textarea
@@ -211,31 +213,33 @@ function NoticeForm({
         onChange={(e) => setContent(e.target.value)}
         rows={3}
         disabled={isPending}
-        className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none transition disabled:opacity-60 disabled:cursor-not-allowed"
+        className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700/80 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none transition disabled:opacity-60 disabled:cursor-not-allowed"
       />
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <Input
-          placeholder="Action Button Text (e.g. Apply Now)"
-          value={action_button_text}
-          onChange={(e) => setActionButtonText(e.target.value)}
-          disabled={isPending}
-          className="flex-1"
-        />
-        <div className="flex-1 relative">
-          <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="min-w-0">
+          <Input
+            placeholder="Action Button Text (e.g. Apply Now)"
+            value={action_button_text}
+            onChange={(e) => setActionButtonText(e.target.value)}
+            disabled={isPending}
+            className="h-[52px] min-w-0 rounded-2xl text-sm dark:!border-slate-700 dark:!bg-slate-800/70"
+          />
+        </div>
+        <div className="relative min-w-0">
+          <LinkIcon className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="url"
             placeholder="Action Button Link (https://...)"
             value={action_button_link}
             onChange={(e) => setActionButtonLink(e.target.value)}
             disabled={isPending}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pl-10 pr-4 py-2 text-sm text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-400/50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            className="h-[52px] w-full min-w-0 rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-700/80 dark:text-slate-200 dark:placeholder:text-slate-500"
           />
         </div>
       </div>
 
-      <div className="flex items-center gap-2 ml-1 mb-2">
+      <div className="ml-1 mt-1 flex items-center gap-2">
         <input
           type="checkbox"
           id="is_featured"
@@ -252,15 +256,15 @@ function NoticeForm({
         </label>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="w-full sm:w-64">
+      <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="h-[52px] w-full sm:w-72">
           <CustomSelect
             value={category}
             onChange={setCategory}
             options={CATEGORY_OPTIONS}
             placeholder="Select category"
             disabled={isPending}
-            className="w-full"
+            className="h-[52px] w-full dark:!border-slate-700 dark:!bg-slate-800/70"
           />
         </div>
 
@@ -268,18 +272,22 @@ function NoticeForm({
           disabled={
             isPending || isUploading || !title.trim() || !content.trim()
           }
-          onClick={() =>
-            onSubmit({
+          onClick={() => {
+            const payload = {
               title: title.trim(),
               content: content.trim(),
               category,
-              image_url: image_url || null,
-              action_button_text: action_button_text || null,
-              action_button_link: action_button_link || null,
               is_featured,
-            })
-          }
-          className="rounded-2xl"
+            };
+            const imageUrl = image_url.trim();
+            const actionButtonText = action_button_text.trim();
+            const actionButtonLink = action_button_link.trim();
+            if (imageUrl) payload.image_url = imageUrl;
+            if (actionButtonText) payload.action_button_text = actionButtonText;
+            if (actionButtonLink) payload.action_button_link = actionButtonLink;
+            onSubmit(payload);
+          }}
+          className="h-[52px] min-w-[180px] rounded-2xl px-5"
         >
           {isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -335,6 +343,8 @@ export default function Notices() {
         .get(`/notices?page=${page}&limit=10`)
         .then((r) => r.data || { notices: [], count: 0 }),
   });
+
+  useRouteInitialLoading(isLoading && !noticesData);
 
   const notices = Array.isArray(noticesData)
     ? noticesData
@@ -393,7 +403,7 @@ export default function Notices() {
   });
 
   return (
-    <div className="">
+    <div className="mx-auto max-w-7xl">
       <ConfirmationModal
         open={!!noticeToDelete}
         title="Delete Notice"
@@ -407,24 +417,24 @@ export default function Notices() {
         danger={true}
       />
 
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300 rounded-lg shadow-sm border border-amber-100 dark:border-amber-900/60">
+      <div className="mb-7 flex items-center gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-amber-100 text-amber-600 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
           <Megaphone className="w-6 h-6" />
         </div>
 
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
             Notice Board
           </h1>
 
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Manage announcements visible on the login page
           </p>
         </div>
       </div>
 
-      <Card className="p-6 mb-6 shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-        <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+      <Card className="mb-6 border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
+        <h3 className="mb-4 flex items-center gap-2 text-xl font-extrabold text-slate-900 dark:text-white">
           <Plus className="w-4 h-4 text-amber-500" /> New Notice
         </h3>
 
@@ -454,15 +464,6 @@ export default function Notices() {
             </Btn>
           </div>
         </Card>
-      ) : isLoading ? (
-        <div className="flex flex-col gap-3">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-32 bg-slate-100 dark:bg-slate-800 rounded-xl animate-pulse"
-            />
-          ))}
-        </div>
       ) : notices.length === 0 ? (
         <EmptyState
           icon="📭"
@@ -474,7 +475,7 @@ export default function Notices() {
           {notices.map((n) => (
             <Card
               key={n.id}
-              className={`p-5 transition-all group border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 ${
+              className={`group border border-slate-200 bg-white p-4 transition-all dark:border-slate-700 dark:bg-slate-900 md:p-5 ${
                 !n.is_active ? 'opacity-60' : ''
               }`}
             >
@@ -487,7 +488,7 @@ export default function Notices() {
                   submitLabel="Save Changes"
                 />
               ) : (
-                <div className="flex flex-col sm:flex-row items-start gap-4">
+                <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
                   {n.image_url && (
                     <img
                       src={n.image_url}
@@ -558,7 +559,7 @@ export default function Notices() {
           ))}
 
           {/* Pagination Buttons */}
-          <div className="flex items-center justify-between pt-4 mt-2 border-t border-slate-200 dark:border-slate-700">
+          <div className="mt-1 flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-700">
             <button
               onClick={() => setPage((p) => p - 1)}
               disabled={page === 1}
