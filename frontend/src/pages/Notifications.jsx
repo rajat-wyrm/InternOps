@@ -82,11 +82,6 @@ export default function Notifications() {
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['notifications', page] });
       const previousData = queryClient.getQueryData(['notifications', page]);
-      const previousUnreadData = queryClient.getQueryData([
-        'notifications',
-        'unread-count',
-      ]);
-
       if (previousData) {
         queryClient.setQueryData(['notifications', page], {
           ...previousData,
@@ -95,24 +90,11 @@ export default function Notifications() {
           ),
         });
       }
-
-      if (typeof previousUnreadData?.unread === 'number') {
-        queryClient.setQueryData(['notifications', 'unread-count'], {
-          unread: Math.max(0, previousUnreadData.unread - 1),
-        });
-      }
-
-      return { previousData, previousUnreadData };
+      return { previousData };
     },
     onError: (err, id, context) => {
       if (context?.previousData) {
         queryClient.setQueryData(['notifications', page], context.previousData);
-      }
-      if (context?.previousUnreadData) {
-        queryClient.setQueryData(
-          ['notifications', 'unread-count'],
-          context.previousUnreadData
-        );
       }
     },
     onSettled: () => {
@@ -125,35 +107,17 @@ export default function Notifications() {
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['notifications', page] });
       const previousData = queryClient.getQueryData(['notifications', page]);
-      const previousUnreadData = queryClient.getQueryData([
-        'notifications',
-        'unread-count',
-      ]);
-
       if (previousData) {
         queryClient.setQueryData(['notifications', page], {
           ...previousData,
           data: previousData.data.map((n) => ({ ...n, read: true })),
         });
       }
-
-      if (typeof previousUnreadData?.unread === 'number') {
-        queryClient.setQueryData(['notifications', 'unread-count'], {
-          unread: 0,
-        });
-      }
-
-      return { previousData, previousUnreadData };
+      return { previousData };
     },
     onError: (err, variables, context) => {
       if (context?.previousData) {
         queryClient.setQueryData(['notifications', page], context.previousData);
-      }
-      if (context?.previousUnreadData) {
-        queryClient.setQueryData(
-          ['notifications', 'unread-count'],
-          context.previousUnreadData
-        );
       }
     },
     onSettled: () => {
