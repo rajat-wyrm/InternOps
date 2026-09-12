@@ -204,6 +204,7 @@ describe('Environment Variable Validation Tests', () => {
     process.env.DATABASE_URL = 'postgresql://localhost:5432';
     process.env.NODE_ENV = 'development';
     delete process.env.REDIS_URL;
+    delete process.env.REDIS_HOST;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.EMAIL_API_KEY;
 
