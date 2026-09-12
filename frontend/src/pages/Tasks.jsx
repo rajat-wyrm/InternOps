@@ -16,6 +16,7 @@ import {
   X,
   Trash2,
   Pencil,
+  Eye,
   Building2,
   GitPullRequest as GithubIcon,
   Sparkles,
@@ -517,6 +518,13 @@ export default function Tasks({
 
                       {canManageTask && (
                         <div className="flex items-center gap-1 shrink-0">
+                          <Link
+                            to={`/tasks/${t.id}`}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                            title="View task details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Link>
                           <button
                             type="button"
                             className="p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"

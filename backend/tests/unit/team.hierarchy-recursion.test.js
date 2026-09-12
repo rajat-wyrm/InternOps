@@ -17,6 +17,10 @@ jest.mock('argon2', () => ({
 }));
 
 const repository = require('../../src/modules/team/repository');
+const {
+  MAX_HIERARCHY_DEPTH,
+  MAX_HIERARCHY_ROWS,
+} = require('../../src/utils/hierarchy');
 
 describe('Team Repository - Recursive CTE Depth Guards (#1755)', () => {
   const repoFilePath = path.resolve(
@@ -32,70 +36,82 @@ describe('Team Repository - Recursive CTE Depth Guards (#1755)', () => {
   });
 
   describe('Contract and query structure validation', () => {
-    it('1. getTeamMembers contains a bounded recursive CTE with depth column and depth < 100 guard', () => {
+    it('1. getTeamMembers contains a bounded recursive CTE with depth column and parameterized guard', () => {
       // Base case starts at depth 1
       expect(repoContent).toMatch(
-        /team AS \([\s\S]*?1 AS depth[\s\S]*?FROM users/
+        /team AS \([\s\S]*?SELECT u\.id, u\.manager_id, 1 AS depth, ARRAY\[r\.id, u\.id\] AS path/
       );
       // Recursive step increments depth
       expect(repoContent).toMatch(
-        /t\.depth \+ 1[\s\S]*?FROM users u INNER JOIN team t/
+        /SELECT u\.id, u\.manager_id, t\.depth \+ 1, t\.path \|\| u\.id/
       );
+      expect(repoContent).toMatch(/NOT u\.id = ANY\(t\.path\)/);
       // Guard condition
-      expect(repoContent).toMatch(/t\.depth < 100/);
+      expect(repoContent).toMatch(/t\.depth < \$3/);
     });
 
-    it('2. getPendingProofs contains a bounded recursive CTE with depth column and depth < 100 guard', () => {
+    it('2. getPendingProofs contains a bounded recursive CTE with depth column and parameterized guard', () => {
       // Base case starts at depth 1
       expect(repoContent).toMatch(
-        /team AS \([\s\S]*?SELECT u\.id, 1 AS depth FROM users u/
+        /team AS \([\s\S]*?SELECT u\.id, u\.manager_id, 1 AS depth, ARRAY\[r\.id, u\.id\] AS path/
       );
       // Recursive step increments depth
       expect(repoContent).toMatch(
-        /SELECT u\.id, t\.depth \+ 1 FROM users u INNER JOIN team t/
+        /SELECT u\.id, u\.manager_id, t\.depth \+ 1, t\.path \|\| u\.id/
       );
+      expect(repoContent).toMatch(/NOT u\.id = ANY\(t\.path\)/);
       // Guard condition
-      expect(repoContent).toMatch(/t\.depth < 100/);
+      expect(repoContent).toMatch(/t\.depth < \$3/);
     });
 
-    it('3. updateMemberManager cycle check contains a bounded recursive CTE with depth column and depth < 100 guard', () => {
+    it('3. updateMemberManager cycle check contains a bounded recursive CTE with depth column and parameterized guard', () => {
       // Base case starts at depth 1
       expect(repoContent).toMatch(
-        /subordinates AS \([\s\S]*?SELECT id, 1 AS depth FROM users WHERE manager_id = \$1/
+        /subordinates AS \([\s\S]*?SELECT u\.id, u\.manager_id, 1 AS depth, ARRAY\[\$1::uuid, u\.id\] AS path/
       );
       // Recursive step increments depth
       expect(repoContent).toMatch(
-        /SELECT u\.id, s\.depth \+ 1[\s\S]*?FROM users u INNER JOIN subordinates s/
+        /SELECT u\.id, u\.manager_id, s\.depth \+ 1, s\.path \|\| u\.id/
       );
+      expect(repoContent).toMatch(/NOT u\.id = ANY\(s\.path\)/);
       // Guard condition
-      expect(repoContent).toMatch(/s\.depth < 100/);
+      expect(repoContent).toMatch(/s\.depth < \$3/);
     });
   });
 
   describe('Query execution with depth guards', () => {
-    it('getTeamMembers passes a query containing "t.depth < 100" to pool.query', async () => {
+    it('getTeamMembers passes a query containing a bounded depth parameter to pool.query', async () => {
       mockQuery.mockResolvedValueOnce({ rows: [] });
       await repository.getTeamMembers('manager-123', 'dept-456');
 
       expect(mockQuery).toHaveBeenCalledTimes(1);
-      const sql = mockQuery.mock.calls[0][0];
+      const [sql, params] = mockQuery.mock.calls[0];
       expect(sql).toContain('1 AS depth');
       expect(sql).toContain('t.depth + 1');
-      expect(sql).toContain('t.depth < 100');
+      expect(sql).toContain('NOT u.id = ANY(t.path)');
+      expect(sql).toContain('t.depth < $3');
+      expect(params).toEqual([
+        'manager-123',
+        'dept-456',
+        MAX_HIERARCHY_DEPTH,
+        MAX_HIERARCHY_ROWS + 1,
+      ]);
     });
 
-    it('getPendingProofs passes a query containing "t.depth < 100" to pool.query', async () => {
+    it('getPendingProofs passes a query containing a bounded depth parameter to pool.query', async () => {
       mockQuery.mockResolvedValueOnce({ rows: [] });
       await repository.getPendingProofs('manager-123', 25);
 
       expect(mockQuery).toHaveBeenCalledTimes(1);
-      const sql = mockQuery.mock.calls[0][0];
+      const [sql, params] = mockQuery.mock.calls[0];
       expect(sql).toContain('1 AS depth');
       expect(sql).toContain('t.depth + 1');
-      expect(sql).toContain('t.depth < 100');
+      expect(sql).toContain('NOT u.id = ANY(t.path)');
+      expect(sql).toContain('t.depth < $3');
+      expect(params).toEqual(['manager-123', 25, MAX_HIERARCHY_DEPTH]);
     });
 
-    it('updateMemberManager cycle-check query contains "s.depth < 100" and "1 AS depth"', async () => {
+    it('updateMemberManager cycle-check query contains a bounded depth parameter and path guard', async () => {
       // 1. BEGIN
       mockClient.query.mockResolvedValueOnce({});
       // 2. Lock check: return member (INTERN) and manager (TL)
@@ -128,7 +144,13 @@ describe('Team Repository - Recursive CTE Depth Guards (#1755)', () => {
       expect(cycleSql).toContain('WITH RECURSIVE subordinates AS');
       expect(cycleSql).toContain('1 AS depth');
       expect(cycleSql).toContain('s.depth + 1');
-      expect(cycleSql).toContain('s.depth < 100');
+      expect(cycleSql).toContain('NOT u.id = ANY(s.path)');
+      expect(cycleSql).toContain('s.depth < $3');
+      expect(mockClient.query.mock.calls[2][1]).toEqual([
+        'intern-1',
+        'manager-1',
+        MAX_HIERARCHY_DEPTH,
+      ]);
     });
 
     it('updateMemberManager rejects assignment if a cycle is detected', async () => {
@@ -175,7 +197,7 @@ describe('Team Repository - Recursive CTE Depth Guards (#1755)', () => {
 
         const nextLevel = [];
         for (const item of currentLevel) {
-          // Check depth condition (e.g. depth < 100)
+          // Check depth condition (e.g. depth < MAX_HIERARCHY_DEPTH)
           if (maxDepthCondition(item.depth)) {
             const children = getNextRows(item);
             for (const child of children) {
@@ -190,7 +212,7 @@ describe('Team Repository - Recursive CTE Depth Guards (#1755)', () => {
       return { allResults, iterations };
     }
 
-    it('terminates safely when encountering a cyclic manager chain due to depth cap (< 100)', () => {
+    it('terminates safely when encountering a cyclic manager chain due to depth cap', () => {
       // Pathological cyclic graph: User 1 -> User 2 -> User 3 -> User 1 (cycle)
       const users = [
         { id: 'u1', manager_id: 'u3' },
@@ -207,16 +229,18 @@ describe('Team Repository - Recursive CTE Depth Guards (#1755)', () => {
         });
       }).toThrow('Infinite recursion detected');
 
-      // Bounded recursion with depth < 100 terminates predictably:
+      // Bounded recursion with the configured depth cap terminates predictably:
       const bounded = simulateRecursiveCTE({
         initialRows: users.filter((u) => u.manager_id === 'u1'),
         getNextRows: (curr) => users.filter((u) => u.manager_id === curr.id),
-        maxDepthCondition: (depth) => depth < 100, // s.depth < 100
+        maxDepthCondition: (depth) => depth < MAX_HIERARCHY_DEPTH,
       });
 
-      expect(bounded.iterations).toBe(100);
-      expect(bounded.allResults.length).toBe(100);
-      expect(Math.max(...bounded.allResults.map((r) => r.depth))).toBe(100);
+      expect(bounded.iterations).toBe(MAX_HIERARCHY_DEPTH);
+      expect(bounded.allResults.length).toBe(MAX_HIERARCHY_DEPTH);
+      expect(Math.max(...bounded.allResults.map((r) => r.depth))).toBe(
+        MAX_HIERARCHY_DEPTH
+      );
     });
 
     it('terminates safely on a pathological deep (1000-deep) hierarchy without running unbounded', () => {
@@ -229,13 +253,15 @@ describe('Team Repository - Recursive CTE Depth Guards (#1755)', () => {
       const bounded = simulateRecursiveCTE({
         initialRows: users.filter((u) => u.manager_id === 'u0'),
         getNextRows: (curr) => users.filter((u) => u.manager_id === curr.id),
-        maxDepthCondition: (depth) => depth < 100,
+        maxDepthCondition: (depth) => depth < MAX_HIERARCHY_DEPTH,
       });
 
-      // Does not traverse all 1000 levels; caps cleanly at 100
-      expect(bounded.iterations).toBe(100);
-      expect(bounded.allResults.length).toBe(100);
-      expect(Math.max(...bounded.allResults.map((r) => r.depth))).toBe(100);
+      // Does not traverse all 1000 levels; caps cleanly at the configured depth.
+      expect(bounded.iterations).toBe(MAX_HIERARCHY_DEPTH);
+      expect(bounded.allResults.length).toBe(MAX_HIERARCHY_DEPTH);
+      expect(Math.max(...bounded.allResults.map((r) => r.depth))).toBe(
+        MAX_HIERARCHY_DEPTH
+      );
     });
   });
 });

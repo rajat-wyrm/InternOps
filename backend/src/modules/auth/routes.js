@@ -294,6 +294,8 @@ async function routes(fastify) {
         path: '/api/v1/auth/refresh',
       });
 
+      rotateAndSetCsrf(req, reply, tokens.user.id);
+
       return {
         accessToken: tokens.accessToken,
         user: tokens.user,

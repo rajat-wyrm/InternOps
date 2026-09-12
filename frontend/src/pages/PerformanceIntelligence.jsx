@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
+import api from '../lib/axios';
 import {
   Sparkles,
   TrendingUp,
@@ -54,22 +55,17 @@ export default function PerformanceIntelligence() {
 
   const fetchInterns = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/team/members?role=INTERN', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const list = data.members || data || [];
-        setInterns(list);
-        if (list.length > 0) {
-          setSelectedInternId(list[0].id);
-        } else if (currentUser.id) {
-          setSelectedInternId(currentUser.id);
-        }
-      } else {
-        // Fallback for demo/self view
-        setSelectedInternId(currentUser.id || 'demo-user');
+      const res = await api.get('/team/members?role=INTERN');
+
+      const data = res.data;
+      const list = data.members || data || [];
+
+      setInterns(list);
+
+      if (list.length > 0) {
+        setSelectedInternId(list[0].id);
+      } else if (currentUser.id) {
+        setSelectedInternId(currentUser.id);
       }
     } catch (err) {
       console.warn('Using demo intern list fallback:', err);
@@ -80,30 +76,15 @@ export default function PerformanceIntelligence() {
   const fetchReviewData = async (internId) => {
     setLoading(true);
     setError(null);
+
     try {
-      const token = localStorage.getItem('token');
       const [reviewRes, historyRes] = await Promise.all([
-        fetch(`/api/ai/performance/${internId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`/api/ai/performance/${internId}/history`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+        api.get(`/ai/performance/${internId}`),
+        api.get(`/ai/performance/${internId}/history`),
       ]);
 
-      if (reviewRes.ok) {
-        const data = await reviewRes.json();
-        setReview(data);
-      } else {
-        setReview(getMockReview(internId));
-      }
-
-      if (historyRes.ok) {
-        const histData = await historyRes.json();
-        setHistory(histData.history || []);
-      } else {
-        setHistory(getMockHistory());
-      }
+      setReview(reviewRes.data);
+      setHistory(historyRes.data.history || []);
     } catch (err) {
       console.warn('API connection offline, rendering local evidence model');
       setReview(getMockReview(internId));
@@ -112,33 +93,20 @@ export default function PerformanceIntelligence() {
       setLoading(false);
     }
   };
-
   const handleGenerateReview = async () => {
     setGenerating(true);
+
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(
-        `/api/ai/performance/${selectedInternId}/generate`,
+      const res = await api.post(
+        `/ai/performance/${selectedInternId}/generate`,
         {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            periodStart: new Date(Date.now() - 30 * 86400000).toISOString(),
-            periodEnd: new Date().toISOString(),
-          }),
+          periodStart: new Date(Date.now() - 30 * 86400000).toISOString(),
+          periodEnd: new Date().toISOString(),
         }
       );
 
-      if (res.ok) {
-        const newReview = await res.json();
-        setReview(newReview);
-        fetchReviewData(selectedInternId);
-      } else {
-        setReview(getMockReview(selectedInternId));
-      }
+      setReview(res.data);
+      fetchReviewData(selectedInternId);
     } catch (err) {
       console.warn('Generation completed with mock fallback');
       setReview(getMockReview(selectedInternId));

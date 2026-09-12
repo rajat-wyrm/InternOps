@@ -133,6 +133,17 @@ function notifyGlobalApiError(err) {
 let csrfToken = null;
 let csrfPromise = null;
 let csrfGeneration = 0;
+const CSRF_EXEMPT_PATHS = [
+  '/auth/login',
+  '/auth/refresh',
+  '/auth/logout',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+];
+
+function isCsrfExempt(url) {
+  return Boolean(url && CSRF_EXEMPT_PATHS.some((path) => url.includes(path)));
+}
 
 async function getCsrfToken() {
   if (csrfToken) {
@@ -251,7 +262,10 @@ api.interceptors.request.use(async (config) => {
 
   const method = (config.method || 'get').toLowerCase();
 
-  if (!['get', 'head', 'options'].includes(method)) {
+  if (
+    !['get', 'head', 'options'].includes(method) &&
+    !isCsrfExempt(config.url)
+  ) {
     try {
       config.headers = config.headers || {};
       config.headers['X-CSRF-Token'] = await getCsrfToken();
@@ -317,6 +331,26 @@ api.interceptors.response.use(
         original.url.includes('/auth/register'));
 
     const hasToken = !!getMemoryAccessToken();
+
+    if (
+      status === 403 &&
+      !original._csrfRetry &&
+      err.response?.data?.error === 'CSRF validation failed'
+    ) {
+      original._csrfRetry = true;
+      clearCsrfToken();
+      try {
+        original.headers = original.headers || {};
+        original.headers['X-CSRF-Token'] = await getCsrfToken();
+        return api(original);
+      } catch (retryErr) {
+        console.error(
+          '[CSRF] Token refetch failed after 403; falling back to original error',
+          retryErr,
+          original.url
+        );
+      }
+    }
 
     if (
       status === 401 &&

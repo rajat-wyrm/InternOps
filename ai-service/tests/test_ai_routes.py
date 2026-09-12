@@ -289,3 +289,40 @@ async def test_chat_dedupes_identical_requests_via_single_orchestrator_cache(mon
     finally:
         orchestrator_module._circuit_breakers.clear()
         clear_cache()
+
+def test_tl_cannot_access_health_endpoint(client, monkeypatch):
+    from app.core.auth import get_current_user, User
+
+    client.app.dependency_overrides[get_current_user] = lambda: User(
+        id="tl_user", roles=["TL"]
+    )
+    r = client.get("/ai/health")
+    assert r.status_code == 403
+
+
+def test_tl_cannot_access_usage_endpoint(client, monkeypatch):
+    from app.core.auth import get_current_user, User
+
+    client.app.dependency_overrides[get_current_user] = lambda: User(
+        id="tl_user", roles=["TL"]
+    )
+    r = client.get("/ai/usage")
+    assert r.status_code == 403
+
+
+def test_tl_can_access_chat_endpoint(client, monkeypatch):
+    from app.core.auth import get_current_user, User
+    import app.api.ai_routes as ai_routes_module
+    from app.models.ai import ProviderResult
+
+    client.app.dependency_overrides[get_current_user] = lambda: User(
+        id="tl_user", roles=["TL"]
+    )
+
+    async def fake_call_provider(user_id, messages):
+        return ProviderResult(provider="fake-provider", cached=False, content="hi!")
+
+    monkeypatch.setattr(ai_routes_module, "call_provider", fake_call_provider)
+
+    r = client.post("/ai/chat", json={"prompt": "hello"})
+    assert r.status_code == 200

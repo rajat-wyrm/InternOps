@@ -1,3 +1,4 @@
+const config = require('../../config');
 const argon2 = require('argon2');
 const crypto = require('crypto');
 const { UnauthorizedError } = require('../../utils/errors');
@@ -139,6 +140,42 @@ function publicUser(user) {
     mustChangePassword: Boolean(user.must_change_password),
   };
 }
+function refreshTokenExpiryDate() {
+  const expiresIn = config.jwt.refreshExpiry;
+
+  if (typeof expiresIn === 'number' && Number.isFinite(expiresIn)) {
+    return new Date(Date.now() + expiresIn * 1000);
+  }
+
+  const match = String(expiresIn || '')
+    .trim()
+    .match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w|y)?$/i);
+
+  if (!match) {
+    return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  }
+
+  const amount = Number(match[1]);
+  const unit = (match[2] || 'ms').toLowerCase();
+
+  const multipliers = {
+    ms: 1,
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+    w: 7 * 24 * 60 * 60 * 1000,
+    y: 365 * 24 * 60 * 60 * 1000,
+  };
+
+  const durationMs = amount * multipliers[unit];
+
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  }
+
+  return new Date(Date.now() + durationMs);
+}
 
 async function login(email, password, ip, userAgent) {
   let currentAttempts = 0;
@@ -224,8 +261,7 @@ async function login(email, password, ip, userAgent) {
 
   const access = generateAccessToken(user);
   const refresh = generateRefreshToken(user);
-  const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
+  const expires = refreshTokenExpiryDate();
   await repo.storeRefreshTokenRedis(user.id, hashToken(refresh), expires);
 
   return {
@@ -262,8 +298,7 @@ async function refreshTokens(token, ip, userAgent) {
 
   const publicSessionUser = publicUser(user);
 
-  const replacementExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
+  const replacementExpiresAt = refreshTokenExpiryDate();
   const recoveryExpiresAt = new Date(
     Date.now() + REFRESH_RECOVERY_SECONDS * 1000
   );

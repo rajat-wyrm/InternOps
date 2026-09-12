@@ -133,6 +133,37 @@ function buildRedisConfig() {
   };
 }
 
+function parseDurationToSeconds(value, fallbackSeconds) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+
+  const match = String(value || '')
+    .trim()
+    .match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w|y)?$/i);
+
+  if (!match) return fallbackSeconds;
+
+  const amount = Number(match[1]);
+  const unit = (match[2] || 'ms').toLowerCase();
+
+  const multipliers = {
+    ms: 1 / 1000,
+    s: 1,
+    m: 60,
+    h: 60 * 60,
+    d: 24 * 60 * 60,
+    w: 7 * 24 * 60 * 60,
+    y: 365 * 24 * 60 * 60,
+  };
+
+  const seconds = amount * multipliers[unit];
+
+  return Number.isFinite(seconds) && seconds > 0
+    ? Math.floor(seconds)
+    : fallbackSeconds;
+}
+
 function buildCookieConfig() {
   const production = process.env.NODE_ENV === 'production';
   const sameSite = (
@@ -142,8 +173,20 @@ function buildCookieConfig() {
     ? process.env.COOKIE_SECURE === 'true'
     : production;
   const domain = process.env.COOKIE_DOMAIN?.trim() || undefined;
-  return { secure, sameSite, domain };
+
+  const refreshExpiry =
+    process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '7d';
+
+  const refreshMaxAge = parseDurationToSeconds(refreshExpiry, 7 * 24 * 60 * 60);
+
+  return {
+    secure,
+    sameSite,
+    domain,
+    maxAge: refreshMaxAge,
+  };
 }
+
 function resolveRefreshSecret() {
   const secret = process.env.JWT_REFRESH_SECRET;
 
