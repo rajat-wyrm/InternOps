@@ -27,9 +27,7 @@ const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
 const { setupCronJobs } = require('./utils/cron');
 const githubSyncOrchestrator = require('./modules/github-sync/orchestrator');
-const {
-  normalizeValidationDetails,
-} = require('./utils/validationError');
+const { normalizeValidationDetails } = require('./utils/validationError');
 
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
@@ -420,9 +418,7 @@ app.setErrorHandler((error, request, reply) => {
       'Validation error'
     );
 
-    const validationDetails = normalizeValidationDetails(
-      error.validation
-    );
+    const validationDetails = normalizeValidationDetails(error.validation);
 
     const payload = validationPayload(validationDetails, request.id);
 
@@ -445,9 +441,7 @@ app.setErrorHandler((error, request, reply) => {
       'Zod validation error'
     );
 
-    const validationDetails = normalizeValidationDetails(
-      error.issues || []
-    );
+    const validationDetails = normalizeValidationDetails(error.issues || []);
 
     const payload = validationPayload(validationDetails, request.id);
 
@@ -550,10 +544,7 @@ const start = async () => {
 const SHUTDOWN_TIMEOUT = 20000;
 
 const gracefulShutdown = async (signal) => {
-  app.log.info(
-    { signal },
-    `Received ${signal}, shutting down gracefully...`
-  );
+  app.log.info({ signal }, `Received ${signal}, shutting down gracefully...`);
 
   const forceShutdown = setTimeout(() => {
     console.error('Shutdown timed out. Forcing exit.');
@@ -572,10 +563,7 @@ const gracefulShutdown = async (signal) => {
         app.log.info('WebSocket server closed');
       }
     } catch (wsErr) {
-      app.log.warn(
-        { err: wsErr },
-        'Error closing WebSocket server'
-      );
+      app.log.warn({ err: wsErr }, 'Error closing WebSocket server');
     }
 
     await pool.end();
@@ -584,10 +572,7 @@ const gracefulShutdown = async (signal) => {
     try {
       githubSyncOrchestrator.shutdown();
     } catch (syncErr) {
-      app.log.warn(
-        { err: syncErr },
-        'Error shutting down GitHub sync'
-      );
+      app.log.warn({ err: syncErr }, 'Error shutting down GitHub sync');
     }
 
     try {
@@ -616,10 +601,7 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 process.on('unhandledRejection', (reason) => {
-  app.log.error(
-    { err: reason },
-    'Unhandled promise rejection'
-  );
+  app.log.error({ err: reason }, 'Unhandled promise rejection');
 
   sentryCaptureException(
     reason instanceof Error ? reason : new Error(String(reason)),
@@ -628,19 +610,13 @@ process.on('unhandledRejection', (reason) => {
 });
 
 process.on('uncaughtException', (error) => {
-  app.log.error(
-    { err: error },
-    'Uncaught exception - process will exit'
-  );
+  app.log.error({ err: error }, 'Uncaught exception - process will exit');
 
   sentryCaptureException(error, {
     extra: { type: 'uncaughtException' },
   });
 
-  const forceExit = setTimeout(
-    () => process.exit(1),
-    3000
-  );
+  const forceExit = setTimeout(() => process.exit(1), 3000);
 
   flushSentry(2000).finally(() => {
     clearTimeout(forceExit);

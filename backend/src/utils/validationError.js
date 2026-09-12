@@ -1,13 +1,9 @@
 function escapeJsonPointerSegment(value) {
-  return String(value)
-    .replace(/~/g, '~0')
-    .replace(/\//g, '~1');
+  return String(value).replace(/~/g, '~0').replace(/\//g, '~1');
 }
 
 function unescapeJsonPointerSegment(value) {
-  return String(value)
-    .replace(/~1/g, '/')
-    .replace(/~0/g, '~');
+  return String(value).replace(/~1/g, '/').replace(/~0/g, '~');
 }
 
 function pathToSegments(value) {
@@ -23,10 +19,7 @@ function pathToSegments(value) {
 
   // Already a JSON Pointer.
   if (raw.startsWith('/')) {
-    return raw
-      .split('/')
-      .slice(1)
-      .map(unescapeJsonPointerSegment);
+    return raw.split('/').slice(1).map(unescapeJsonPointerSegment);
   }
 
   // Support AJV/Fastify dot/bracket paths.
