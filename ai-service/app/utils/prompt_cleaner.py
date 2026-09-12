@@ -11,8 +11,14 @@ def clean_and_parse_json(raw_response: str) -> Dict[str, Any]:
     cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE)
     cleaned = cleaned.strip()
     
-    # Extract outer braces if surrounding conversational text remains
-    match = re.search(r"(\{.*\})", cleaned, re.DOTALL)
+    # Attempt direct parsing first
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # Extract outer braces or brackets if surrounding conversational text remains
+    match = re.search(r"(\{.*\}|\[.*\])", cleaned, re.DOTALL)
     if match:
         cleaned = match.group(1)
     

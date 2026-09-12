@@ -16,9 +16,8 @@ import {
   X,
   Trash2,
   Pencil,
+  Eye,
   Building2,
-  CalendarCheck,
-  Star,
   GitPullRequest as GithubIcon,
   Sparkles,
   AlertTriangle,
@@ -26,16 +25,9 @@ import {
 } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 import CreateTaskForm from '../components/CreateTaskForm';
-import CustomSelect from '../components/CustomSelect';
-import {
-  Card,
-  Btn,
-  Badge,
-  EmptyState,
-  Spinner,
-  ApiErrorState,
-} from '../components/ui';
+import { Card, Btn, Badge, EmptyState, ApiErrorState } from '../components/ui';
 
 const PLATFORM_ICON = {
   LinkedIn: <Briefcase className="w-5 h-5" />,
@@ -50,8 +42,9 @@ const overdue = (d) => new Date(d) < new Date();
 export default function Tasks({
   isProjectView = false,
   deptId: propDeptId,
-  roster = [],
 } = {}) {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const { deptId: routeDeptId } = useParams();
   const deptId = propDeptId || routeDeptId;
   const { user } = useAuthStore();
@@ -72,7 +65,6 @@ export default function Tasks({
     files: [],
     previews: [],
   });
-  const [selectedTask, setSelectedTask] = useState(null);
   const [draftEngagement, setDraftEngagement] = useState({
     didComment: false,
     didRepost: false,
@@ -103,10 +95,10 @@ export default function Tasks({
     user?.role
   );
 
-  const { data: departments = [] } = useQuery({
+  const { data: departments = [], isLoading: departmentsLoading } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
-    enabled: isAdmin,
+    enabled: hydrated && !!accessToken && isAdmin,
   });
 
   const activeDepartment = departments.find((d) => d.id === activeDeptId);
@@ -114,6 +106,7 @@ export default function Tasks({
   const {
     data: tasks,
     isLoading,
+    isFetchedAfterMount,
     isError: tasksIsError,
     error: tasksError,
     refetch: refetchTasks,
@@ -125,20 +118,36 @@ export default function Tasks({
           params: { department_id: activeDeptId || undefined },
         })
         .then((res) => res.data),
+    enabled: hydrated && !!accessToken,
     retry: 1,
   });
+
+  const hasCachedTasks = Array.isArray(tasks) && tasks.length > 0;
+  const departmentTasksInitialLoading =
+    !!deptId &&
+    !tasksIsError &&
+    ((isAdmin && departmentsLoading && !activeDepartment) ||
+      (!hasCachedTasks && !isFetchedAfterMount));
+  useRouteInitialLoading(
+    !tasksIsError &&
+      (!hydrated ||
+        !accessToken ||
+        isLoading ||
+        !tasks ||
+        departmentTasksInitialLoading)
+  );
 
   const { data: proofs, refetch: refetchProofs } = useQuery({
     queryKey: ['proofs', selectedProofTaskId],
     queryFn: () =>
       api.get(`/proofs/task/${selectedProofTaskId}`).then((res) => res.data),
-    enabled: !!selectedProofTaskId,
+    enabled: hydrated && !!accessToken && !!selectedProofTaskId,
   });
 
   const { data: myProofs } = useQuery({
     queryKey: ['myProofs'],
     queryFn: () => api.get('/proofs/my').then((res) => res.data),
-    enabled: user?.role === 'INTERN',
+    enabled: hydrated && !!accessToken && user?.role === 'INTERN',
   });
 
   const submitMutation = useMutation({
@@ -310,8 +319,9 @@ export default function Tasks({
     setDraftFiles({ taskId, files, previews });
   };
 
+  if (departmentTasksInitialLoading) return null;
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* Admin Department Navigation Context Banner */}
       {isAdmin && activeDeptId && !isProjectView && (
         <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-indigo-500/20 animate-fade-in">
@@ -387,10 +397,14 @@ export default function Tasks({
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-800 dark:text-white tracking-tight">
-                Social Media Tasks
+                {deptId
+                  ? `${activeDepartment?.name || 'Department'} Tasks`
+                  : 'All Social Media Tasks'}
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                Campaigns & proof verification
+                {deptId
+                  ? 'Department campaigns and proof verification'
+                  : 'Campaigns and proof verification across all departments'}
               </p>
             </div>
           </div>
@@ -413,20 +427,11 @@ export default function Tasks({
 
       {showForm && canCreateTask && (
         <div className="mb-5 animate-fade-in-up">
-          <CreateTaskForm />
+          <CreateTaskForm departmentId={activeDeptId || undefined} />
         </div>
       )}
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-          {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="p-5 md:p-6 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse h-48"
-            />
-          ))}
-        </div>
-      ) : tasksIsError ? (
+      {tasksIsError ? (
         <ApiErrorState
           error={tasksError}
           title="Failed to load tasks"
@@ -513,6 +518,13 @@ export default function Tasks({
 
                       {canManageTask && (
                         <div className="flex items-center gap-1 shrink-0">
+                          <Link
+                            to={`/tasks/${t.id}`}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                            title="View task details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Link>
                           <button
                             type="button"
                             className="p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"

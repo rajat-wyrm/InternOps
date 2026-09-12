@@ -136,19 +136,27 @@ async function updateProfile(userId, fields) {
 }
 
 // Redis integration fallback functions
-const { getRedisClient } = require('../../config/redis');
+const { runRedisOperation } = require('../../config/redis');
 
 async function storeRefreshTokenRedis(userId, tokenHash, expiresAt) {
-  const redis = await getRedisClient();
-  if (redis) {
-    const ttl = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
-    await redis.set(
-      `refresh_token:${tokenHash}`,
-      JSON.stringify({ userId, createdAt: Date.now() }),
-      { EX: ttl }
-    );
-    await redis.sAdd(`user_tokens:${userId}`, tokenHash);
-  }
+  await runRedisOperation(
+    'session cache write',
+    'persisting the refresh token in PostgreSQL only',
+    async (redis) => {
+      const ttl = Math.max(
+        1,
+        Math.floor((expiresAt.getTime() - Date.now()) / 1000)
+      );
+      await redis.set(
+        `refresh_token:${tokenHash}`,
+        JSON.stringify({ userId, createdAt: Date.now() }),
+        { EX: ttl }
+      );
+      await redis.sAdd(`user_tokens:${userId}`, tokenHash);
+      return true;
+    },
+    false
+  );
   // ALWAYS persist to the primary database so a Redis flush / restart
   // doesn't wipe every active session. Redis is a cache, not the source
   // of truth (#392).
@@ -156,18 +164,24 @@ async function storeRefreshTokenRedis(userId, tokenHash, expiresAt) {
 }
 
 async function getRefreshTokenRedis(tokenHash) {
-  const redis = await getRedisClient();
-
-  if (redis) {
-    const raw = await redis.get(`refresh_token:${tokenHash}`);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw);
-      return { user_id: parsed.userId };
-    } catch {
-      // Legacy fallback: plain string stored before JSON format was introduced
-      return { user_id: raw };
+  const cachedToken = await runRedisOperation(
+    'session cache read',
+    'reading the refresh token from PostgreSQL',
+    async (redis) => {
+      const raw = await redis.get(`refresh_token:${tokenHash}`);
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(raw);
+        return { user_id: parsed.userId };
+      } catch {
+        // Legacy fallback: plain string stored before JSON format was introduced
+        return { user_id: raw };
+      }
     }
+  );
+
+  if (cachedToken) {
+    return cachedToken;
   }
 
   const res = await pool.query(
@@ -179,11 +193,13 @@ async function getRefreshTokenRedis(tokenHash) {
 }
 
 async function validateRefreshToken(tokenHash) {
-  const redis = await getRedisClient();
-  if (redis) {
-    const userId = await redis.get(`refresh_token:${tokenHash}`);
-    if (userId) return true;
-  }
+  const cachedUserId = await runRedisOperation(
+    'session cache validation',
+    'validating the refresh token in PostgreSQL',
+    (redis) => redis.get(`refresh_token:${tokenHash}`)
+  );
+  if (cachedUserId) return true;
+
   const { rows } = await pool.query(
     'SELECT 1 FROM refresh_tokens WHERE token_hash=$1 AND revoked=FALSE AND expires_at>NOW()',
     [tokenHash]
@@ -194,10 +210,8 @@ async function validateRefreshToken(tokenHash) {
 // Atomically claim a refresh token — returns userId string if claimed, null if
 // already used/revoked (race condition or replay attack).
 async function claimRefreshToken(tokenHash) {
-  const redis = await getRedisClient();
-  if (redis) {
-    // Lua script: GET then DEL only if key still exists — atomic, no TOCTOU.
-    const lua = `
+  // Lua script: GET then DEL only if key still exists — atomic, no TOCTOU.
+  const lua = `
       local val = redis.call('GET', KEYS[1])
       if val then
         redis.call('DEL', KEYS[1])
@@ -205,11 +219,26 @@ async function claimRefreshToken(tokenHash) {
       end
       return false
     `;
-    const raw = await redis.eval(lua, {
-      keys: [`refresh_token:${tokenHash}`],
-      arguments: [],
-    });
-    if (!raw) return null;
+
+  const redisClaim = await runRedisOperation(
+    'session token claim',
+    'atomically claiming the refresh token in PostgreSQL',
+    async (redis) => ({
+      available: true,
+      raw: await redis.eval(lua, {
+        keys: [`refresh_token:${tokenHash}`],
+        arguments: [],
+      }),
+    }),
+    { available: false, raw: null }
+  );
+
+  if (redisClaim.available && !redisClaim.raw) {
+    return null;
+  }
+
+  if (redisClaim.raw) {
+    const raw = redisClaim.raw;
     // Also revoke in Postgres so token can't be replayed after Redis restart
     await pool
       .query(
@@ -223,6 +252,7 @@ async function claimRefreshToken(tokenHash) {
       return raw; // legacy plain-string fallback
     }
   }
+
   // Postgres fallback: atomic UPDATE — only one concurrent request can flip
   // revoked=FALSE → TRUE; the second gets 0 rows back.
   const { rows } = await pool.query(
@@ -235,21 +265,193 @@ async function claimRefreshToken(tokenHash) {
   return rows[0]?.user_id ?? null;
 }
 
-async function revokeRefreshTokenRedis(tokenHash) {
-  const redis = await getRedisClient();
-  if (redis) {
-    const raw = await redis.get(`refresh_token:${tokenHash}`);
-    if (raw) {
-      let actualUserId;
-      try {
-        actualUserId = JSON.parse(raw).userId;
-      } catch {
-        actualUserId = raw; // legacy plain-string fallback
-      }
-      await redis.del(`refresh_token:${tokenHash}`);
-      await redis.sRem(`user_tokens:${actualUserId}`, tokenHash); // ✅ correct key
+async function rotateRefreshTokenWithRecovery({
+  consumedTokenHash,
+  userId,
+  replacementTokenHash,
+  replacementExpiresAt,
+  clientFingerprint,
+  encryptedPayload,
+  recoveryExpiresAt,
+}) {
+  let client;
+
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const claimResult = await client.query(
+      `UPDATE refresh_tokens
+       SET revoked = TRUE
+       WHERE token_hash = $1
+         AND revoked = FALSE
+         AND expires_at > NOW()
+       RETURNING user_id`,
+      [consumedTokenHash]
+    );
+
+    if (claimResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    const claimedUserId = claimResult.rows[0].user_id;
+
+    if (String(claimedUserId) !== String(userId)) {
+      await client.query('ROLLBACK');
+      return {
+        claimedUserId,
+        rotated: false,
+      };
+    }
+    // Once the replacement token is used successfully, the browser proved it
+    // received the rotated cookie. The predecessor no longer needs recovery.
+    await client.query(
+      `DELETE FROM refresh_token_recovery
+       WHERE replacement_token_hash = $1`,
+      [consumedTokenHash]
+    );
+
+    await client.query(
+      `UPDATE refresh_tokens
+       SET revoked = TRUE
+       WHERE user_id = $1
+         AND revoked = FALSE`,
+      [userId]
+    );
+
+    await client.query(
+      `INSERT INTO refresh_tokens
+       (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [userId, replacementTokenHash, replacementExpiresAt]
+    );
+
+    await client.query(
+      `INSERT INTO refresh_token_recovery (
+         consumed_token_hash,
+         user_id,
+         replacement_token_hash,
+         client_fingerprint,
+         encrypted_payload,
+         expires_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (consumed_token_hash)
+       DO UPDATE SET
+         user_id = EXCLUDED.user_id,
+         replacement_token_hash =
+           EXCLUDED.replacement_token_hash,
+         client_fingerprint =
+           EXCLUDED.client_fingerprint,
+         encrypted_payload =
+           EXCLUDED.encrypted_payload,
+         expires_at = EXCLUDED.expires_at,
+         created_at = NOW()`,
+      [
+        consumedTokenHash,
+        userId,
+        replacementTokenHash,
+        clientFingerprint,
+        encryptedPayload,
+        recoveryExpiresAt,
+      ]
+    );
+
+    await client.query(
+      `DELETE FROM refresh_token_recovery
+       WHERE expires_at <= NOW()`
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      claimedUserId,
+      rotated: true,
+    };
+  } catch (error) {
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+    }
+
+    throw error;
+  } finally {
+    if (client) {
+      client.release();
     }
   }
+}
+
+async function getRefreshRecoveryPostgres(consumedTokenHash) {
+  const result = await pool.query(
+    `SELECT
+       recovery.user_id,
+       recovery.client_fingerprint,
+       recovery.encrypted_payload,
+       recovery.replacement_token_hash
+     FROM refresh_token_recovery recovery
+     INNER JOIN refresh_tokens replacement
+       ON replacement.token_hash =
+          recovery.replacement_token_hash
+     WHERE recovery.consumed_token_hash = $1
+       AND recovery.expires_at > NOW()
+       AND replacement.revoked = FALSE
+       AND replacement.expires_at > NOW()
+     LIMIT 1`,
+    [consumedTokenHash]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function cacheRefreshToken(userId, tokenHash, expiresAt) {
+  return runRedisOperation(
+    'session cache write',
+    'continuing with PostgreSQL as the source of truth',
+    async (redis) => {
+      const ttl = Math.max(
+        1,
+        Math.floor((expiresAt.getTime() - Date.now()) / 1000)
+      );
+
+      await redis.set(
+        `refresh_token:${tokenHash}`,
+        JSON.stringify({
+          userId,
+          createdAt: Date.now(),
+        }),
+        { EX: ttl }
+      );
+
+      await redis.sAdd(`user_tokens:${userId}`, tokenHash);
+
+      return true;
+    },
+    false
+  );
+}
+
+async function revokeRefreshTokenRedis(tokenHash) {
+  await runRedisOperation(
+    'session cache revocation',
+    'revoking the refresh token in PostgreSQL only',
+    async (redis) => {
+      const raw = await redis.get(`refresh_token:${tokenHash}`);
+      if (raw) {
+        let actualUserId;
+        try {
+          actualUserId = JSON.parse(raw).userId;
+        } catch {
+          actualUserId = raw; // legacy plain-string fallback
+        }
+        await redis.del(`refresh_token:${tokenHash}`);
+        await redis.sRem(`user_tokens:${actualUserId}`, tokenHash);
+      }
+      return true;
+    },
+    false
+  );
+
   await revokeRefreshToken(tokenHash);
 }
 
@@ -284,9 +486,10 @@ async function revokeAllUserTokensRedis(userId) {
     }
   }
   // 2. Redis cleanup (best-effort)
-  try {
-    const redis = await getRedisClient();
-    if (redis) {
+  await runRedisOperation(
+    'session cache revocation',
+    'keeping the PostgreSQL revocation and skipping Redis cleanup',
+    async (redis) => {
       const tokens = await redis.sMembers(`user_tokens:${userId}`);
       if (tokens.length > 0) {
         const multi = redis.multi();
@@ -296,13 +499,10 @@ async function revokeAllUserTokensRedis(userId) {
         multi.del(`user_tokens:${userId}`);
         await multi.exec();
       }
-    }
-  } catch (err) {
-    console.error(
-      `Failed to clean up Redis sessions for user ${userId} in revokeAllUserTokensRedis:`,
-      err
-    );
-  }
+      return true;
+    },
+    false
+  );
 }
 
 module.exports = {
@@ -324,4 +524,7 @@ module.exports = {
   getRefreshTokenRedis,
   validateRefreshToken,
   claimRefreshToken,
+  rotateRefreshTokenWithRecovery: rotateRefreshTokenWithRecovery,
+  getRefreshRecoveryPostgres: getRefreshRecoveryPostgres,
+  cacheRefreshToken: cacheRefreshToken,
 };

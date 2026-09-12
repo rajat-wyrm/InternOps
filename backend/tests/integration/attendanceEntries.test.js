@@ -49,4 +49,50 @@ describe('Attendance Bulk API', () => {
     const body = JSON.parse(res.body);
     expect(body.error).toBe('Validation failed');
   });
+
+  test('POST /attendance/bulk rejects future dates', async () => {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 5);
+    const futureDateStr = futureDate.toISOString().slice(0, 10);
+
+    const entries = [
+      {
+        user_id: '00000000-0000-0000-0000-000000000099',
+        date: futureDateStr,
+        status: 'PRESENT',
+      },
+    ];
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/attendance/bulk',
+      headers: { authorization: `Bearer ${captainToken}` },
+      payload: { entries },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error).toBe('Attendance cannot be marked for future dates');
+  });
+
+  test('POST /attendance/mark rejects future dates', async () => {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 5);
+    const futureDateStr = futureDate.toISOString().slice(0, 10);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/attendance/mark',
+      headers: { authorization: `Bearer ${captainToken}` },
+      payload: {
+        user_id: '00000000-0000-0000-0000-000000000099',
+        date: futureDateStr,
+        status: 'PRESENT',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error).toBe('Attendance cannot be marked for future dates');
+  });
 });

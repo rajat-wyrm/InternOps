@@ -6,8 +6,12 @@ to use, where the API key comes from) — that's added here rather than
 inside the adapters themselves, so the adapters stay focused purely on
 "how do I talk to this vendor."
 
+The default provider name comes from `settings.PRIMARY_AI_PROVIDER` (the
+same centralized, validated configuration source the orchestrator uses) —
+there is deliberately no separate `AI_PROVIDER` environment variable, so
+provider selection can't drift between code paths.
+
 Env vars:
-  AI_PROVIDER        - "gemini" (default) or any supported provider name
   <PROVIDER>_API_KEY - required for each provider (HUGGINGFACE uses _TOKEN)
   <PROVIDER>_MODEL   - optional override (defaults to adapter's default)
 """
@@ -85,7 +89,12 @@ def get_provider(name: Optional[str] = None) -> BaseAIProvider:
     API key configured — callers should let that propagate to the route's
     error handling rather than catching it here.
     """
-    return _build_provider(name or os.environ.get("AI_PROVIDER", "gemini"))
+    # Imported lazily to avoid a circular import: app.core.config's startup
+    # validation (validate_and_resolve) imports this module (has_adapter) to
+    # verify every active provider has a matching adapter.
+    from app.core.config import settings
+
+    return _build_provider(name or settings.PRIMARY_AI_PROVIDER)
 
 
 def has_adapter(name: str) -> bool:

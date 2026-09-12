@@ -24,8 +24,11 @@ import {
   Spinner,
   PageHeader,
 } from '../../components/ui';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 export default function Departments() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const currentUser = useAuthStore((state) => state.user);
   const isAdmin = currentUser?.role === 'ADMIN';
   const queryClient = useQueryClient();
@@ -49,7 +52,9 @@ export default function Departments() {
   } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
+  useRouteInitialLoading(isLoading && isAdmin && departments.length === 0);
 
   useEffect(() => {
     if (isAdmin || isLoading || isError) return;
@@ -133,7 +138,7 @@ export default function Departments() {
   }
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* Professional Header Block */}
       <PageHeader
         title="Departments"
@@ -222,10 +227,6 @@ export default function Departments() {
           <Btn className="mt-4" onClick={() => refetch()}>
             Retry
           </Btn>
-        </div>
-      ) : isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner />
         </div>
       ) : departments.length === 0 ? (
         <EmptyState

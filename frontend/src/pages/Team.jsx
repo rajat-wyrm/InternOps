@@ -1,14 +1,24 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
 import { resolveUploadUrl } from '../lib/uploadUrl';
 import useAuthStore from '../store/auth';
-import { ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  LayoutGrid,
+  List,
+  Users,
+  Eye,
+  ShieldCheck,
+} from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
 import CustomDatePicker from '../components/CustomDatePicker';
 import { ApiErrorState } from '../components/ui';
 import { getTeamRoleBreakdown } from '../utils/teamRoleBreakdown';
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 
 const ROLE_LABEL = {
   SENIOR_TL: 'Senior TL',
@@ -48,6 +58,8 @@ const STATUS_BADGE = {
     'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60',
   TERMINATED:
     'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60',
+  DISCONTINUED:
+    'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600',
 };
 
 // A manager may add any member ranked below themselves.
@@ -191,16 +203,58 @@ function RatingWithBadge({ value }) {
 }
 
 const EDIT_FIELDS = [
-  { key: 'full_name', label: 'Full name' },
-  { key: 'phone', label: 'Phone' },
-  { key: 'location', label: 'City / Location' },
-  { key: 'college', label: 'College' },
-  { key: 'course', label: 'Course' },
-  { key: 'year_of_study', label: 'Year of study' },
-  { key: 'position', label: 'Position / Designation' },
-  { key: 'joining_date', label: 'Joining date', type: 'date' },
-  { key: 'internship_status', label: 'Status', type: 'select' },
-  { key: 'notes', label: 'Notes', type: 'textarea' },
+  { key: 'full_name', label: 'Full name', section: 'Account' },
+  { key: 'email', label: 'Email', type: 'email', section: 'Account' },
+  { key: 'phone', label: 'Phone', section: 'Contact and education' },
+  {
+    key: 'location',
+    label: 'City / Location',
+    section: 'Contact and education',
+  },
+  { key: 'college', label: 'College', section: 'Contact and education' },
+  { key: 'course', label: 'Course', section: 'Contact and education' },
+  {
+    key: 'year_of_study',
+    label: 'Year of study',
+    section: 'Contact and education',
+  },
+  { key: 'position', label: 'Position / Designation', section: 'Organization' },
+  { key: 'intern_code', label: 'Intern Code', section: 'Organization' },
+  {
+    key: 'internship_domain',
+    label: 'Internship Domain',
+    section: 'Organization',
+  },
+  {
+    key: 'department_id',
+    label: 'Department',
+    type: 'department',
+    section: 'Organization',
+  },
+  {
+    key: 'joining_date',
+    label: 'Joining date',
+    type: 'date',
+    section: 'Internship dates',
+  },
+  {
+    key: 'internship_status',
+    label: 'Status',
+    type: 'select',
+    section: 'Internship dates',
+  },
+  {
+    key: 'offer_letter_url',
+    label: 'Offer Letter URL',
+    type: 'url',
+    section: 'Documents and notes',
+  },
+  {
+    key: 'notes',
+    label: 'Notes',
+    type: 'textarea',
+    section: 'Documents and notes',
+  },
 ];
 
 function StatCard({ label, value, sub }) {
@@ -646,7 +700,11 @@ function Row({ label, value }) {
     <div className="flex justify-between gap-4 py-2 border-b border-slate-100 dark:border-slate-700 last:border-0">
       <dt className="text-slate-500 dark:text-slate-400 shrink-0">{label}</dt>
       <dd className="text-slate-800 dark:text-slate-100 text-right break-words">
-        {value || <span className="text-slate-300 dark:text-slate-600">—</span>}
+        {value !== null && value !== undefined && value !== '' ? (
+          value
+        ) : (
+          <span className="text-slate-300 dark:text-slate-600">—</span>
+        )}
       </dd>
     </div>
   );
@@ -654,6 +712,7 @@ function Row({ label, value }) {
 
 function MemberDetail({ memberId, onClose }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
 
   const [form, setForm] = useState(null);
@@ -664,6 +723,9 @@ function MemberDetail({ memberId, onClose }) {
   const [newRole, setNewRole] = useState('');
   const [newManager, setNewManager] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showUserView, setShowUserView] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [viewReason, setViewReason] = useState('');
 
   const {
     data: teamMembers = [],
@@ -693,6 +755,11 @@ function MemberDetail({ memberId, onClose }) {
     if (member && !edit) {
       setForm({
         full_name: member.full_name || '',
+        email: member.email || '',
+        department_id: member.department_id || '',
+        intern_code: member.intern_code || '',
+        internship_domain: member.internship_domain || '',
+        offer_letter_url: member.offer_letter_url || '',
         phone: member.phone || '',
         location: member.location || '',
         college: member.college || '',
@@ -758,7 +825,7 @@ function MemberDetail({ memberId, onClose }) {
     }
 
     if (
-      form.internship_status === 'TERMINATED' &&
+      ['TERMINATED', 'DISCONTINUED'].includes(form.internship_status) &&
       !form.lifecycle_effective_date
     ) {
       setError('Effective date is required');
@@ -767,7 +834,7 @@ function MemberDetail({ memberId, onClose }) {
     }
 
     if (
-      form.internship_status === 'TERMINATED' &&
+      ['TERMINATED', 'DISCONTINUED'].includes(form.internship_status) &&
       form.lifecycle_effective_date > lifecycleToday
     ) {
       setError('Effective date cannot be in the future');
@@ -804,7 +871,9 @@ function MemberDetail({ memberId, onClose }) {
     if (form.internship_status === 'COMPLETED') {
       payload.lifecycle_effective_date = null;
       payload.extended_completion_date = null;
-    } else if (form.internship_status === 'TERMINATED') {
+    } else if (
+      ['TERMINATED', 'DISCONTINUED'].includes(form.internship_status)
+    ) {
       payload.completion_date = null;
       payload.extended_completion_date = null;
     } else if (form.internship_status === 'ACTIVE') {
@@ -870,13 +939,39 @@ function MemberDetail({ memberId, onClose }) {
     },
   });
 
+  const startUserViewMut = useMutation({
+    mutationFn: () =>
+      api.post('/auth/impersonation/start', {
+        targetUserId: memberId,
+        password: adminPassword,
+        reason: viewReason.trim(),
+      }),
+    onSuccess: ({ data }) => {
+      useAuthStore.getState().startImpersonation(data);
+      queryClient.clear();
+      navigate('/dashboard', { replace: true });
+    },
+    onError: (err) =>
+      setError(err.response?.data?.error || 'Unable to start user view'),
+  });
   const pct = member ? attendancePct(member) : null;
   const lifecycleToday = localDateValue();
 
-  const editStatusOptions = STATUS_OPTIONS.map((s) => ({
+  const editStatusOptions = [...STATUS_OPTIONS, 'DISCONTINUED'].map((s) => ({
     value: s,
-    label: s,
+    label: s.replace('_', ' '),
   }));
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => api.get('/departments').then((response) => response.data),
+  });
+  const editDepartmentOptions = [
+    { value: '', label: '—' },
+    ...departments.map((department) => ({
+      value: department.id,
+      label: department.name,
+    })),
+  ];
 
   const manageRoleOptions = rolesBelow(user?.role).map((r) => ({
     value: r,
@@ -1039,6 +1134,19 @@ function MemberDetail({ memberId, onClose }) {
 
                   {!edit ? (
                     <dl className="space-y-1 text-sm">
+                      <Row label="Email" value={member.email} />
+                      <Row
+                        label="Role"
+                        value={ROLE_LABEL[member.role] || member.role}
+                      />
+                      <Row
+                        label="Account created"
+                        value={
+                          member.created_at
+                            ? new Date(member.created_at).toLocaleDateString()
+                            : null
+                        }
+                      />
                       <Row label="Reports to" value={member.manager_name} />
                       <Row label="Department" value={member.department_name} />
                       <Row label="Intern Code" value={member.intern_code} />
@@ -1060,30 +1168,36 @@ function MemberDetail({ memberId, onClose }) {
                             : null
                         }
                       />
-                      {member.lifecycle_effective_date && (
-                        <Row
-                          label="Lifecycle Effective Date"
-                          value={new Date(
-                            member.lifecycle_effective_date
-                          ).toLocaleDateString()}
-                        />
-                      )}
-                      {member.completion_date && (
-                        <Row
-                          label="Completion Date"
-                          value={new Date(
-                            member.completion_date
-                          ).toLocaleDateString()}
-                        />
-                      )}
-                      {member.extended_completion_date && (
-                        <Row
-                          label="Extended Completion Date"
-                          value={new Date(
-                            member.extended_completion_date
-                          ).toLocaleDateString()}
-                        />
-                      )}
+                      <Row
+                        label="Planned Completion Date"
+                        value={
+                          member.completion_date
+                            ? new Date(
+                                member.completion_date
+                              ).toLocaleDateString()
+                            : null
+                        }
+                      />
+                      <Row
+                        label="Extended Completion Date"
+                        value={
+                          member.extended_completion_date
+                            ? new Date(
+                                member.extended_completion_date
+                              ).toLocaleDateString()
+                            : null
+                        }
+                      />
+                      <Row
+                        label="Lifecycle Effective Date"
+                        value={
+                          member.lifecycle_effective_date
+                            ? new Date(
+                                member.lifecycle_effective_date
+                              ).toLocaleDateString()
+                            : null
+                        }
+                      />
                       <Row
                         label="Status"
                         value={
@@ -1111,10 +1225,10 @@ function MemberDetail({ memberId, onClose }) {
                           )
                         }
                       />
-                      {member.offer_letter_url && (
-                        <Row
-                          label="Offer Letter"
-                          value={
+                      <Row
+                        label="Offer Letter"
+                        value={
+                          member.offer_letter_url ? (
                             <a
                               href={member.offer_letter_url}
                               target="_blank"
@@ -1123,10 +1237,41 @@ function MemberDetail({ memberId, onClose }) {
                             >
                               View offer letter
                             </a>
-                          }
-                        />
-                      )}
+                          ) : null
+                        }
+                      />
                       <Row label="Notes" value={member.notes} />
+                      <Row
+                        label="Present records"
+                        value={member.present_count}
+                      />
+                      <Row
+                        label="Informed records"
+                        value={member.informed_count}
+                      />
+                      <Row label="Leave records" value={member.leave_count} />
+                      <Row
+                        label="Total attendance records"
+                        value={member.attendance_total}
+                      />
+                      <Row
+                        label="Average rating"
+                        value={
+                          member.avg_rating == null
+                            ? null
+                            : `${member.avg_rating}/10`
+                        }
+                      />
+                      <Row label="Rating count" value={member.rating_count} />
+                      <Row
+                        label="Verified tasks"
+                        value={member.verified_tasks}
+                      />
+                      <Row
+                        label="Pending proofs"
+                        value={member.pending_proofs}
+                      />
+                      <Row label="Total tasks" value={member.total_tasks} />
                     </dl>
                   ) : (
                     <div className="space-y-3">
@@ -1155,10 +1300,12 @@ function MemberDetail({ memberId, onClose }) {
                                       : value === 'ACTIVE'
                                         ? form.completion_date || ''
                                         : '',
-                                  lifecycle_effective_date:
-                                    value === 'TERMINATED'
-                                      ? lifecycleToday
-                                      : '',
+                                  lifecycle_effective_date: [
+                                    'TERMINATED',
+                                    'DISCONTINUED',
+                                  ].includes(value)
+                                    ? lifecycleToday
+                                    : '',
                                   extended_completion_date:
                                     value === 'ACTIVE'
                                       ? form.extended_completion_date || ''
@@ -1167,6 +1314,16 @@ function MemberDetail({ memberId, onClose }) {
                               }}
                               options={editStatusOptions}
                               placeholder="Select status"
+                              className="w-full"
+                            />
+                          ) : f.type === 'department' ? (
+                            <CustomSelect
+                              value={form[f.key]}
+                              onChange={(value) =>
+                                setForm({ ...form, [f.key]: value })
+                              }
+                              options={editDepartmentOptions}
+                              placeholder="Select department"
                               className="w-full"
                             />
                           ) : f.type === 'date' ? (
@@ -1180,7 +1337,7 @@ function MemberDetail({ memberId, onClose }) {
                             />
                           ) : (
                             <input
-                              type="text"
+                              type={f.type || 'text'}
                               className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-3 w-full rounded-2xl"
                               value={form[f.key]}
                               onChange={(e) =>
@@ -1230,8 +1387,16 @@ function MemberDetail({ memberId, onClose }) {
                           />
                         </Field>
                       )}
-                      {form.internship_status === 'TERMINATED' && (
-                        <Field label="Effective Date">
+                      {['TERMINATED', 'DISCONTINUED'].includes(
+                        form.internship_status
+                      ) && (
+                        <Field
+                          label={
+                            form.internship_status === 'TERMINATED'
+                              ? 'Termination Effective Date'
+                              : 'Discontinuation Effective Date'
+                          }
+                        >
                           <CustomDatePicker
                             value={form.lifecycle_effective_date}
                             onChange={(value) =>
@@ -1364,6 +1529,73 @@ function MemberDetail({ memberId, onClose }) {
                 </div>
               )}
 
+              {user?.role === 'ADMIN' && member.role !== 'ADMIN' && (
+                <button
+                  type="button"
+                  onClick={() => setShowUserView(true)}
+                  disabled={member.suspended}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-900"
+                >
+                  <Eye className="h-4 w-4" /> View as User
+                </button>
+              )}
+              {showUserView && (
+                <div className="rounded-3xl border border-indigo-200 bg-indigo-50 p-5 dark:border-indigo-800 dark:bg-indigo-950/40">
+                  <div className="mb-4 flex items-start gap-3">
+                    <ShieldCheck className="mt-0.5 h-5 w-5 text-indigo-600" />
+                    <div>
+                      <h4 className="font-extrabold">
+                        Start read-only user view?
+                      </h4>
+                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                        Re-enter the administrator password and explain the
+                        troubleshooting reason. Changes are blocked and the
+                        session expires after 10 minutes.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <input
+                      type="password"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      placeholder="Administrator password"
+                      className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    />
+                    <textarea
+                      value={viewReason}
+                      onChange={(e) => setViewReason(e.target.value)}
+                      placeholder="Reason for viewing this account"
+                      maxLength={300}
+                      rows={3}
+                      className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => startUserViewMut.mutate()}
+                        disabled={
+                          startUserViewMut.isPending ||
+                          !adminPassword ||
+                          viewReason.trim().length < 5
+                        }
+                        className="flex-1 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-extrabold text-white disabled:opacity-50"
+                      >
+                        {startUserViewMut.isPending
+                          ? 'Starting...'
+                          : 'View as User'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowUserView(false)}
+                        className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Suspend / activate */}
               <button
                 onClick={() => statusMut.mutate(!member.suspended)}
@@ -1383,6 +1615,229 @@ function MemberDetail({ memberId, onClose }) {
     </div>
   );
 }
+
+// ─── Memoized table row — only re-renders when its own member data changes ──
+const TableRow = memo(function TableRow({ member: m, index, onSelect }) {
+  const pct = attendancePct(m);
+  return (
+    <tr
+      className={`group border-b border-slate-100 dark:border-slate-700 last:border-b-0 cursor-pointer transition ${
+        index % 2 === 0
+          ? 'bg-white dark:bg-slate-900'
+          : 'bg-slate-50/50 dark:bg-slate-800/35'
+      } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
+      onClick={() => onSelect(m.id)}
+    >
+      <td
+        className={`sticky left-0 z-10 w-[260px] min-w-[260px] px-3 py-4 shadow-[8px_0_14px_-14px_rgba(15,23,42,0.7)] transition-colors ${
+          index % 2 === 0
+            ? 'bg-white group-hover:bg-indigo-50 dark:bg-[#1e293b] dark:group-hover:bg-[#263348]'
+            : 'bg-[#f8fafc] group-hover:bg-indigo-50 dark:bg-[#1e293b] dark:group-hover:bg-[#263348]'
+        }`}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar m={m} />
+          <div className="min-w-0">
+            <div className="truncate font-extrabold text-slate-900 dark:text-white">
+              {m.full_name || '—'}
+            </div>
+            <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+              {m.email}
+            </div>
+          </div>
+        </div>
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle">
+        <span
+          className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
+            ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
+          }`}
+        >
+          {ROLE_LABEL[m.role] || m.role}
+        </span>
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
+        {m.department_name || '—'}
+      </td>
+
+      <td
+        className="truncate px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300"
+        title={m.internship_domain || undefined}
+      >
+        {m.internship_domain || '—'}
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
+        {m.phone || '—'}
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle">
+        {pct === null ? (
+          <span className="text-slate-400 dark:text-slate-500">No data</span>
+        ) : (
+          <div className="mx-auto flex max-w-28 items-center justify-center gap-1.5">
+            <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${pctColor(pct)}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-xs w-9 text-right text-slate-600 dark:text-slate-300">
+              {pct}%
+            </span>
+          </div>
+        )}
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle [&>div]:justify-center">
+        <RatingWithBadge value={m.rating ?? m.avg_rating} />
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
+        {m.verified_tasks}/{m.total_tasks}
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle">
+        {Number(m.pending_proofs) > 0 ? (
+          <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60">
+            {m.pending_proofs} to verify
+          </span>
+        ) : (
+          <span
+            className="font-bold tabular-nums text-slate-500 dark:text-slate-400"
+            title="No submitted task proofs are awaiting verification"
+          >
+            0
+          </span>
+        )}
+      </td>
+
+      <td className="px-1.5 py-4 text-center align-middle">
+        {m.suspended ? (
+          <span className="inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60">
+            Suspended
+          </span>
+        ) : (
+          <span
+            className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold ${
+              STATUS_BADGE[m.internship_status] || STATUS_BADGE.ACTIVE
+            }`}
+          >
+            {m.internship_status || 'ACTIVE'}
+          </span>
+        )}
+      </td>
+    </tr>
+  );
+});
+
+// ─── Memoized card item — only re-renders when its own member data changes ───
+const CardItem = memo(function CardItem({ member: m, onSelect }) {
+  const pct = attendancePct(m);
+  return (
+    <div
+      onClick={() => onSelect(m.id)}
+      className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition"
+    >
+      <div className="flex items-center gap-3 mb-4">
+        <Avatar m={m} size="w-12 h-12" />
+        <div className="min-w-0">
+          <div className="font-extrabold text-slate-900 dark:text-white truncate">
+            {m.full_name || m.email}
+          </div>
+          <span
+            className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${
+              ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
+            }`}
+          >
+            {ROLE_LABEL[m.role] || m.role}
+          </span>
+        </div>
+      </div>
+
+      <div className="mb-4 space-y-1 text-sm text-slate-600 dark:text-slate-300">
+        <p>📞 {m.phone || '—'}</p>
+        <p>Domain: {m.internship_domain || '—'}</p>
+        <p>🎓 {m.college || '—'}</p>
+        <p>🏢 {m.department_name || '—'}</p>
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-700 pt-3">
+        <span>
+          Att:{' '}
+          <b className="text-slate-800 dark:text-white">
+            {pct === null ? '—' : `${pct}%`}
+          </b>
+        </span>
+        <span>
+          <RatingWithBadge value={m.rating ?? m.avg_rating} />
+        </span>
+        <span>
+          Tasks:{' '}
+          <b className="text-slate-800 dark:text-white">
+            {m.verified_tasks}/{m.total_tasks}
+          </b>
+        </span>
+      </div>
+
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+        <span
+          className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+            m.suspended
+              ? STATUS_BADGE.TERMINATED
+              : STATUS_BADGE[m.internship_status] || STATUS_BADGE.ACTIVE
+          }`}
+        >
+          {m.suspended ? 'Suspended' : m.internship_status || 'ACTIVE'}
+        </span>
+        {Number(m.pending_proofs) > 0 && (
+          <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
+            {m.pending_proofs} pending
+          </span>
+        )}
+      </div>
+    </div>
+  );
+});
+
+// ─── Memoized proof item row — prevents full list re-render on verify ───────
+const ProofItem = memo(function ProofItem({
+  proof,
+  onMember,
+  onVerify,
+  isPending,
+}) {
+  return (
+    <div
+      key={proof.id}
+      className="flex items-center justify-between gap-3 py-3 text-sm"
+    >
+      <div className="min-w-0">
+        <button
+          onClick={() => onMember(proof.intern_id)}
+          className="font-bold text-slate-800 dark:text-white hover:underline truncate text-left"
+        >
+          {proof.intern_name || proof.intern_email}
+        </button>
+
+        <div className="text-slate-500 dark:text-slate-400 text-xs truncate">
+          {proof.task_title || 'Task'} ·{' '}
+          {new Date(proof.created_at).toLocaleDateString()}
+        </div>
+      </div>
+
+      <button
+        onClick={() => onVerify(proof.id)}
+        disabled={isPending}
+        className="shrink-0 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-60"
+      >
+        Verify
+      </button>
+    </div>
+  );
+});
 
 function PendingProofsPanel({ onMember }) {
   const queryClient = useQueryClient();
@@ -1457,32 +1912,13 @@ function PendingProofsPanel({ onMember }) {
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-80 overflow-auto">
               {proofs.map((p) => (
-                <div
+                <ProofItem
                   key={p.id}
-                  className="flex items-center justify-between gap-3 py-3 text-sm"
-                >
-                  <div className="min-w-0">
-                    <button
-                      onClick={() => onMember(p.intern_id)}
-                      className="font-bold text-slate-800 dark:text-white hover:underline truncate text-left"
-                    >
-                      {p.intern_name || p.intern_email}
-                    </button>
-
-                    <div className="text-slate-500 dark:text-slate-400 text-xs truncate">
-                      {p.task_title || 'Task'} ·{' '}
-                      {new Date(p.created_at).toLocaleDateString()}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => verifyMut.mutate(p.id)}
-                    disabled={verifyMut.isPending}
-                    className="shrink-0 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-60"
-                  >
-                    Verify
-                  </button>
-                </div>
+                  proof={p}
+                  onMember={onMember}
+                  onVerify={(id) => verifyMut.mutate(id)}
+                  isPending={verifyMut.isPending}
+                />
               ))}
             </div>
           )}
@@ -1499,7 +1935,10 @@ export default function Team() {
   const [roleFilter, setRoleFilter] = useState('');
   const [ratingFilter, setRatingFilter] = useState('');
   const [eligibilityFilter, setEligibilityFilter] = useState('');
-  const [view, setView] = useState('table');
+  const [view, setView] = useState(() => {
+    const storedView = window.localStorage.getItem('internops-team-view');
+    return storedView === 'cards' ? 'cards' : 'table';
+  });
   const [selected, setSelected] = useState(null);
   const [adding, setAdding] = useState(false);
   const tableScrollRef = useRef(null);
@@ -1508,7 +1947,13 @@ export default function Team() {
     canScrollRight: true,
   });
 
+  useEffect(() => {
+    window.localStorage.setItem('internops-team-view', view);
+  }, [view]);
+
   const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const hydrated = useAuthStore((s) => s.hydrated);
   const canAdd = rolesBelow(user?.role).length > 0;
 
   const {
@@ -1520,6 +1965,7 @@ export default function Team() {
   } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const filtered = useMemo(() => {
@@ -1685,6 +2131,11 @@ export default function Team() {
     return { active, avgAtt, avgRating, pendingProofs, memberBreakdown };
   }, [members, user?.role]);
 
+  // ─── Stable callbacks — prevents inline rows from re-rendering ───────────
+  const handleSelectMember = useCallback((id) => setSelected(id), []);
+  const handleCloseDetail = useCallback(() => setSelected(null), []);
+  const handleCloseAdd = useCallback(() => setAdding(false), []);
+
   const updateTableScrollState = () => {
     const element = tableScrollRef.current;
     if (!element) return;
@@ -1733,11 +2184,7 @@ export default function Team() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <p className="text-slate-600 dark:text-slate-300">Loading team...</p>
-    );
-  }
+  useRouteInitialLoading(!hydrated || !accessToken || isLoading);
 
   if (isError) {
     return (
@@ -1751,7 +2198,7 @@ export default function Team() {
   }
 
   return (
-    <div className="animate-fade-in-up">
+    <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
         {/* Left Side: Title and Icon */}
         <div className="flex items-center gap-4">
@@ -1769,9 +2216,46 @@ export default function Team() {
           </div>
         </div>
 
-        {/* Right Side: Action Buttons */}
+        {/* Right Side: View and action controls */}
         <div className="flex items-center gap-2">
+          <div
+            className="flex rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm"
+            role="group"
+            aria-label="Team member view"
+          >
+            <button
+              type="button"
+              onClick={() => setView('table')}
+              aria-label="Show team members as a table"
+              aria-pressed={view === 'table'}
+              title="Table view"
+              className={`p-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-inset ${
+                view === 'table'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <List className="w-5 h-5" aria-hidden="true" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setView('cards')}
+              aria-label="Show team members as cards"
+              aria-pressed={view === 'cards'}
+              title="Card view"
+              className={`p-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-inset ${
+                view === 'cards'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <LayoutGrid className="w-5 h-5" aria-hidden="true" />
+            </button>
+          </div>
+
           <button
+            type="button"
             onClick={exportCsv}
             className="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
           >
@@ -1866,58 +2350,6 @@ export default function Team() {
           placeholder="All"
           className="w-full sm:w-40 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
         />
-
-        <div className="flex w-full items-center justify-between gap-3">
-          <div className="flex h-12 items-stretch overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <button
-              onClick={() => setView('table')}
-              className={`px-4 py-3 text-sm font-bold transition ${
-                view === 'table'
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
-              }`}
-            >
-              Table
-            </button>
-
-            <button
-              onClick={() => setView('cards')}
-              className={`px-4 py-3 text-sm font-bold transition ${
-                view === 'cards'
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
-              }`}
-            >
-              Cards
-            </button>
-          </div>
-
-          {view === 'table' && (
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => scrollTeamTable(-1)}
-                disabled={!tableScrollState.canScrollLeft}
-                aria-label="Scroll team table left"
-                title="Scroll table left"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-indigo-500 dark:hover:bg-slate-700 dark:hover:text-white"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => scrollTeamTable(1)}
-                disabled={!tableScrollState.canScrollRight}
-                aria-label="Scroll team table right"
-                title="Scroll table right"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-indigo-500 dark:hover:bg-slate-700 dark:hover:text-white"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -1983,127 +2415,14 @@ export default function Team() {
                 </thead>
 
                 <tbody>
-                  {filtered.map((m, index) => {
-                    const pct = attendancePct(m);
-
-                    return (
-                      <tr
-                        key={m.id}
-                        className={`group border-b border-slate-100 dark:border-slate-700 last:border-b-0 cursor-pointer transition ${
-                          index % 2 === 0
-                            ? 'bg-white dark:bg-slate-900'
-                            : 'bg-slate-50/50 dark:bg-slate-800/35'
-                        } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
-                        onClick={() => setSelected(m.id)}
-                      >
-                        <td
-                          className={`sticky left-0 z-10 w-[260px] min-w-[260px] px-3 py-4 shadow-[8px_0_14px_-14px_rgba(15,23,42,0.7)] transition-colors ${
-                            index % 2 === 0
-                              ? 'bg-white group-hover:bg-indigo-50 dark:bg-[#1e293b] dark:group-hover:bg-[#263348]'
-                              : 'bg-[#f8fafc] group-hover:bg-indigo-50 dark:bg-[#1e293b] dark:group-hover:bg-[#263348]'
-                          }`}
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <Avatar m={m} />
-
-                            <div className="min-w-0">
-                              <div className="truncate font-extrabold text-slate-900 dark:text-white">
-                                {m.full_name || '—'}
-                              </div>
-
-                              <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                                {m.email}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle">
-                          <span
-                            className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
-                              ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
-                            }`}
-                          >
-                            {ROLE_LABEL[m.role] || m.role}
-                          </span>
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
-                          {m.department_name || '—'}
-                        </td>
-                        <td
-                          className="truncate px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300"
-                          title={m.internship_domain || undefined}
-                        >
-                          {m.internship_domain || '—'}
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
-                          {m.phone || '—'}
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle">
-                          {pct === null ? (
-                            <span className="text-slate-400 dark:text-slate-500">
-                              No data
-                            </span>
-                          ) : (
-                            <div className="mx-auto flex max-w-28 items-center justify-center gap-1.5">
-                              <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full ${pctColor(pct)}`}
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                              <span className="text-xs w-9 text-right text-slate-600 dark:text-slate-300">
-                                {pct}%
-                              </span>
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle [&>div]:justify-center">
-                          <RatingWithBadge value={m.rating ?? m.avg_rating} />
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
-                          {m.verified_tasks}/{m.total_tasks}
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle">
-                          {Number(m.pending_proofs) > 0 ? (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60">
-                              {m.pending_proofs} to verify
-                            </span>
-                          ) : (
-                            <span
-                              className="font-bold tabular-nums text-slate-500 dark:text-slate-400"
-                              title="No submitted task proofs are awaiting verification"
-                            >
-                              0
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-1.5 py-4 text-center align-middle">
-                          {m.suspended ? (
-                            <span className="inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60">
-                              Suspended
-                            </span>
-                          ) : (
-                            <span
-                              className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                                STATUS_BADGE[m.internship_status] ||
-                                STATUS_BADGE.ACTIVE
-                              }`}
-                            >
-                              {m.internship_status || 'ACTIVE'}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filtered.map((m, index) => (
+                    <TableRow
+                      key={m.id}
+                      member={m}
+                      index={index}
+                      onSelect={handleSelectMember}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -2111,73 +2430,19 @@ export default function Team() {
         </>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((m) => {
-            const pct = attendancePct(m);
-
-            return (
-              <div
-                key={m.id}
-                onClick={() => setSelected(m.id)}
-                className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition"
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <Avatar m={m} size="w-12 h-12" />
-
-                  <div className="min-w-0">
-                    <div className="font-extrabold text-slate-900 dark:text-white truncate">
-                      {m.full_name || m.email}
-                    </div>
-
-                    <span
-                      className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${
-                        ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
-                      }`}
-                    >
-                      {ROLE_LABEL[m.role] || m.role}
-                    </span>
-                  </div>
-                </div>
-                <div className="mb-4 space-y-1 text-sm text-slate-600 dark:text-slate-300">
-                  <p>📞 {m.phone || '—'}</p>
-                  <p>Domain: {m.internship_domain || '—'}</p>
-                  <p>🎓 {m.college || '—'}</p>
-                </div>
-
-                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-700 pt-3">
-                  <span>
-                    Att:{' '}
-                    <b className="text-slate-800 dark:text-white">
-                      {pct === null ? '—' : `${pct}%`}
-                    </b>
-                  </span>
-
-                  <span>
-                    <RatingWithBadge value={m.rating ?? m.avg_rating} />
-                  </span>
-
-                  <span>
-                    Tasks:{' '}
-                    <b className="text-slate-800 dark:text-white">
-                      {m.verified_tasks}/{m.total_tasks}
-                    </b>
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+          {filtered.map((m) => (
+            <CardItem key={m.id} member={m} onSelect={handleSelectMember} />
+          ))}
         </div>
       )}
 
       {selected &&
         createPortal(
-          <MemberDetail
-            memberId={selected}
-            onClose={() => setSelected(null)}
-          />,
+          <MemberDetail memberId={selected} onClose={handleCloseDetail} />,
           document.body
         )}
 
-      {adding && <AddMemberModal onClose={() => setAdding(false)} />}
+      {adding && <AddMemberModal onClose={handleCloseAdd} />}
     </div>
   );
 }

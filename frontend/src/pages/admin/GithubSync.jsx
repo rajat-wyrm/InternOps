@@ -22,7 +22,6 @@ import {
   Server,
   Zap,
   Wifi,
-  WifiOff,
   BugPlay,
   Gauge,
   HardDrive,
@@ -32,8 +31,6 @@ import {
   Calendar,
 } from 'lucide-react';
 import {
-  LineChart,
-  Line,
   BarChart,
   Bar,
   PieChart,
@@ -48,11 +45,28 @@ import {
   AreaChart,
   Area,
 } from 'recharts';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import { Card, Btn, Badge, Spinner } from '../../components/ui';
 import { getBaseUrl } from '../../lib/axios';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 const WEBHOOK_URL = `${getBaseUrl()}/github/webhook`;
+const STATUS_CARD_TONES = {
+  gray: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
+  indigo:
+    'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300',
+  green:
+    'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-300',
+  purple:
+    'bg-violet-50 text-violet-600 dark:bg-violet-950/60 dark:text-violet-300',
+};
+const LOG_STATUS_CLASSES = {
+  success: 'text-green-500',
+  failed: 'text-red-500',
+  skipped: 'text-yellow-500',
+  default: 'text-gray-500',
+};
 
 function CopyableField({ label, value, mono }) {
   const [copied, setCopied] = useState(false);
@@ -70,6 +84,8 @@ function CopyableField({ label, value, mono }) {
         <button
           onClick={() => {
             navigator.clipboard.writeText(value);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1600);
           }}
           className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-gray-400"
         >
@@ -89,19 +105,17 @@ function StatusCard({ icon: Icon, label, value, color, sub }) {
     <div className="p-5 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="flex items-center gap-3">
         <div
-          className={`w-11 h-11 rounded-xl flex items-center justify-center`}
-          style={{
-            backgroundColor: `var(--${color}-50, #f0fdf4)`,
-            color: `var(--${color}-600, #16a34a)`,
-          }}
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+            STATUS_CARD_TONES[color] ?? STATUS_CARD_TONES.gray
+          }`}
         >
           <Icon className="w-5 h-5" />
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
             {label}
           </p>
-          <p className="text-xl font-bold text-gray-800 dark:text-white">
+          <p className="break-words text-xl font-bold text-gray-800 dark:text-white">
             {value}
           </p>
           {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
@@ -113,14 +127,8 @@ function StatusCard({ icon: Icon, label, value, color, sub }) {
 
 function LogCard({ log }) {
   const [expanded, setExpanded] = useState(false);
-  const statusColor =
-    log.status === 'success'
-      ? 'green'
-      : log.status === 'failed'
-        ? 'red'
-        : log.status === 'skipped'
-          ? 'yellow'
-          : 'gray';
+  const statusClass =
+    LOG_STATUS_CLASSES[log.status] ?? LOG_STATUS_CLASSES.default;
   const StatusIcon =
     log.status === 'success'
       ? CheckCircle
@@ -134,7 +142,7 @@ function LogCard({ log }) {
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          <StatusIcon className={`w-4 h-4 shrink-0 text-${statusColor}-500`} />
+          <StatusIcon className={`h-4 w-4 shrink-0 ${statusClass}`} />
           <div className="min-w-0">
             <p className="font-semibold text-sm text-gray-800 dark:text-gray-200 truncate">
               {log.event_type}.{log.action}
@@ -281,6 +289,8 @@ function SetupGuide() {
 }
 
 export default function GithubSync() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
   const [showGuide, setShowGuide] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
@@ -292,6 +302,7 @@ export default function GithubSync() {
   });
   const [activeTab, setActiveTab] = useState('overview');
   const [cleanupDays, setCleanupDays] = useState(90);
+  const [analyticsDays, setAnalyticsDays] = useState(30);
 
   const {
     data: status,
@@ -301,51 +312,73 @@ export default function GithubSync() {
   } = useQuery({
     queryKey: ['github-sync-status'],
     queryFn: () => api.get('/github/status').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const { data: orchestratorStatus } = useQuery({
     queryKey: ['github-orchestrator'],
     queryFn: () => api.get('/github/orchestrator').then((r) => r.data),
     refetchInterval: 30000,
+    enabled: hydrated && !!accessToken,
   });
 
   const { data: rateLimit } = useQuery({
     queryKey: ['github-rate-limit'],
     queryFn: () => api.get('/github/rate-limit').then((r) => r.data),
     refetchInterval: 60000,
+    enabled: hydrated && !!accessToken,
   });
 
   const { data: logs, isLoading: logsLoading } = useQuery({
     queryKey: ['github-sync-logs'],
     queryFn: () => api.get('/github/logs?limit=50').then((r) => r.data),
     refetchInterval: 15000,
+    enabled: hydrated && !!accessToken,
   });
 
-  const { data: counts } = useQuery({
+  const { data: counts, isLoading: countsLoading } = useQuery({
     queryKey: ['github-sync-counts'],
     queryFn: () => api.get('/github/stats/count').then((r) => r.data),
     refetchInterval: 30000,
+    enabled: hydrated && !!accessToken,
   });
 
-  const { data: issues, isLoading: issuesLoading } = useQuery({
+  const githubSyncInitialLoading =
+    (statusLoading && !status) || (countsLoading && !counts);
+  useRouteInitialLoading(githubSyncInitialLoading);
+  // renders a single-request error state for Synced Issues
+  const {
+    data: issues,
+    isLoading: issuesLoading,
+    isError: issuesError,
+    error: issuesRequestError,
+    refetch: refetchIssues,
+  } = useQuery({
     queryKey: ['github-synced-issues'],
-    queryFn: () => api.get('/github/issues?limit=20').then((r) => r.data),
-    enabled: activeTab === 'issues',
+    queryFn: ({ signal }) =>
+      api
+        .get('/github/issues?limit=20', {
+          signal,
+          _suppressGlobalError: true,
+        })
+        .then((r) => r.data),
+    enabled: hydrated && !!accessToken && activeTab === 'issues',
+    retry: false,
   });
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
     queryKey: ['github-sync-analytics', analyticsDays],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api
-        .get(`/github/stats/analytics?days=${analyticsDays}`)
+        .get(`/github/stats/analytics?days=${analyticsDays}`, { signal })
         .then((r) => r.data),
-    enabled: activeTab === 'analytics',
+    enabled: hydrated && !!accessToken && activeTab === 'analytics',
     refetchInterval: 60000,
   });
-
   const { data: settingsData } = useQuery({
     queryKey: ['github-sync-settings'],
     queryFn: () => api.get('/github/settings').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const syncMutation = useMutation({
@@ -454,8 +487,6 @@ export default function GithubSync() {
     return <Badge color="yellow">Not Configured</Badge>;
   };
 
-  const [analyticsDays, setAnalyticsDays] = useState(30);
-
   const tabs = [
     { id: 'overview', label: 'Overview', icon: Activity },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
@@ -465,8 +496,8 @@ export default function GithubSync() {
   ];
 
   return (
-    <div className="animate-fade-in-up space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-gray-900 text-white flex items-center justify-center shadow-sm">
             <Github className="w-6 h-6" />
@@ -484,17 +515,26 @@ export default function GithubSync() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Btn variant="secondary" onClick={() => setShowGuide(!showGuide)}>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap lg:items-center">
+          <Btn
+            variant="secondary"
+            onClick={() => setShowGuide(!showGuide)}
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap"
+          >
             <Terminal className="w-4 h-4" />{' '}
             {showGuide ? 'Hide Guide' : 'Setup Guide'}
           </Btn>
-          <Btn variant="secondary" onClick={openSettings}>
+          <Btn
+            variant="secondary"
+            onClick={openSettings}
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap"
+          >
             <Settings className="w-4 h-4" /> Settings
           </Btn>
           <Btn
             onClick={() => syncMutation.mutate(status?.repo || '')}
             disabled={syncMutation.isPending}
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap"
           >
             <RefreshCw
               className={`w-4 h-4 ${syncMutation.isPending ? 'animate-spin' : ''}`}
@@ -612,12 +652,12 @@ export default function GithubSync() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-2xl bg-gray-100 dark:bg-gray-800 w-fit">
+      <div className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-2xl bg-gray-100 p-1 dark:bg-gray-800">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${activeTab === tab.id ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${activeTab === tab.id ? 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
             <tab.icon className="w-4 h-4" /> {tab.label}
           </button>
@@ -671,6 +711,7 @@ export default function GithubSync() {
               variant="secondary"
               onClick={() => retryMutation.mutate()}
               disabled={retryMutation.isPending}
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap"
             >
               <RotateCcw
                 className={`w-4 h-4 ${retryMutation.isPending ? 'animate-spin' : ''}`}
@@ -681,6 +722,7 @@ export default function GithubSync() {
               variant="secondary"
               onClick={() => registerWebhookMutation.mutate()}
               disabled={registerWebhookMutation.isPending}
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap"
             >
               <Zap className="w-4 h-4" /> Auto-Register Webhook
             </Btn>
@@ -688,6 +730,7 @@ export default function GithubSync() {
               variant="secondary"
               onClick={() => cleanupMutation.mutate(cleanupDays)}
               disabled={cleanupMutation.isPending}
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap"
             >
               <Trash2 className="w-4 h-4" /> Clean Logs ({cleanupDays}d)
             </Btn>
@@ -816,6 +859,23 @@ export default function GithubSync() {
             <div className="flex items-center justify-center py-12">
               <Spinner label="Loading..." />
             </div>
+          ) : issuesError ? (
+            <Card className="p-8 text-center">
+              <p className="font-semibold text-red-600 dark:text-red-300">
+                Could not load synced issues
+              </p>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                {issuesRequestError?.userMessage ||
+                  'The synced issues request failed. Please try again.'}
+              </p>
+              <Btn
+                variant="secondary"
+                className="mt-4 inline-flex items-center justify-center gap-2 whitespace-nowrap"
+                onClick={() => refetchIssues()}
+              >
+                <RefreshCw className="h-4 w-4" /> Retry
+              </Btn>
+            </Card>
           ) : !issues?.tasks?.length ? (
             <Card className="p-8 text-center">
               <p className="text-gray-500">No issues synced yet</p>

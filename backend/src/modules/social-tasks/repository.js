@@ -13,6 +13,7 @@ async function createTask({
   githubIssueUrl,
   source,
   imagePath,
+  departmentId,
 }) {
   const hasGithubFields =
     githubIssueId || githubIssueNumber || githubRepo || githubIssueUrl;
@@ -20,8 +21,9 @@ async function createTask({
     const res = await pool.query(
       `INSERT INTO social_tasks
         (title, description, target_platform, task_link, deadline, created_by,
-         github_issue_id, github_issue_number, github_repo, github_issue_url, source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         github_issue_id, github_issue_number, github_repo, github_issue_url, source,
+         department_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
       [
         title,
@@ -35,12 +37,13 @@ async function createTask({
         githubRepo || null,
         githubIssueUrl || null,
         source || 'manual',
+        departmentId || null,
       ]
     );
     return res.rows[0];
   }
   const res = await pool.query(
-    'INSERT INTO social_tasks (title, description, target_platform, task_link, deadline, created_by, image_path) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+    'INSERT INTO social_tasks (title, description, target_platform, task_link, deadline, created_by, image_path, department_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
     [
       title,
       description,
@@ -49,6 +52,7 @@ async function createTask({
       deadline,
       createdBy,
       imagePath || null,
+      departmentId || null,
     ]
   );
   return res.rows[0];
@@ -70,6 +74,14 @@ async function assignTask(taskId, userIds, assignedBy) {
     [taskId, ...userIds, assignedBy]
   );
 }
+async function getActiveDepartmentById(departmentId) {
+  const res = await pool.query(
+    'SELECT id, name FROM departments WHERE id = $1 AND deleted_at IS NULL',
+    [departmentId]
+  );
+  return res.rows[0] || null;
+}
+
 async function getUserEmail(userId) {
   const res = await pool.query('SELECT email FROM users WHERE id = $1', [
     userId,
@@ -148,11 +160,21 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
     const pIdx = params.length;
     where.push(
       `(
-         st.created_by IN (SELECT id FROM users WHERE department_id = $${pIdx}::uuid AND deleted_at IS NULL)
-         OR st.id IN (
-           SELECT ta.task_id FROM task_assignments ta 
-           JOIN users u ON u.id = ta.user_id 
-           WHERE u.department_id = $${pIdx}::uuid AND ta.deleted_at IS NULL
+         st.department_id = $${pIdx}::uuid
+         OR (
+           st.department_id IS NULL
+           AND (
+             st.created_by IN (
+               SELECT id FROM users
+               WHERE department_id = $${pIdx}::uuid AND deleted_at IS NULL
+             )
+             OR st.id IN (
+               SELECT ta.task_id FROM task_assignments ta
+               JOIN users u ON u.id = ta.user_id
+               WHERE u.department_id = $${pIdx}::uuid
+                 AND ta.deleted_at IS NULL
+             )
+           )
          )
       )`
     );
@@ -171,7 +193,7 @@ async function getTasks(filters, userId, userRole, page = 1, limit = 50) {
     SELECT st.*
     FROM social_tasks st
     ${whereSql}
-    ORDER BY st.created_at DESC
+    ORDER BY st.github_issue_number DESC NULLS LAST, st.created_at DESC
     LIMIT $${params.length - 1}
     OFFSET $${params.length}
   `;
@@ -500,6 +522,7 @@ module.exports = {
   deleteTask,
   assignTask,
   getUserEmail,
+  getActiveDepartmentById,
   isTaskAssignedToUser,
   getTasks,
   submitProof,

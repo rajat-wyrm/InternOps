@@ -1,6 +1,7 @@
 const {
   sanitizationMiddleware: sanitize,
 } = require('../../middleware/sanitize');
+const rbac = require('../../middleware/rbac');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -11,6 +12,12 @@ const config = require('../../config');
 const ALLOWED = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 
 const ALLOWED_EXTS = ['.png', '.jpg', '.jpeg', '.webp'];
+const MIME_BY_EXT = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+};
 
 const MAGIC_BYTES = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
@@ -59,30 +66,42 @@ async function routes(fastify) {
     },
     async (req, reply) => {
       const data = await req.file();
-      if (!data) return reply.status(400).send({ error: 'No file uploaded' });
+
+      if (!data) {
+        return reply.status(400).send({
+          error: 'No file uploaded',
+        });
+      }
 
       const ext = path.extname(data.filename || '').toLowerCase();
+
       if (!ALLOWED.includes(data.mimetype) || !ALLOWED_EXTS.includes(ext)) {
-        return reply.status(400).send({ error: 'Unsupported file type' });
+        return reply.status(400).send({
+          error: 'Unsupported file type',
+        });
       }
 
       const buffer = await data.toBuffer();
 
       if (data.file.truncated) {
-        return reply
-          .status(413)
-          .send({ error: 'File exceeds maximum size of 5MB' });
+        return reply.status(413).send({
+          error: 'File exceeds maximum size of 5MB',
+        });
       }
 
-      // Magic-byte verification — defends against MIME spoofing
+      // Magic-byte verification
       const detectedMime = detectMimeFromBuffer(buffer);
+
       if (!detectedMime || detectedMime !== data.mimetype) {
-        return reply
-          .status(400)
-          .send({ error: 'File contents do not match declared image type' });
+        return reply.status(400).send({
+          error: 'File contents do not match declared image type',
+        });
       }
 
-      const fileName = `avatar_${req.user.id}_${crypto.randomBytes(6).toString('hex')}${ext}`;
+      const fileName =
+        `avatar_${req.user.id}_` +
+        `${crypto.randomBytes(6).toString('hex')}${ext}`;
+
       const uploadPath = path.join(
         __dirname,
         '..',
@@ -91,13 +110,17 @@ async function routes(fastify) {
         config.uploadDir
       );
 
-      // Calculate the absolute path of the target file
       const targetFilePath = path.resolve(uploadPath, fileName);
       const absoluteUploadPath = path.resolve(uploadPath);
 
-      // Security Check: Path Traversal Protection
-      if (!targetFilePath.startsWith(absoluteUploadPath)) {
-        return reply.status(400).send({ error: 'Invalid file path' });
+      // Path traversal protection
+      if (
+        targetFilePath !== absoluteUploadPath &&
+        !targetFilePath.startsWith(absoluteUploadPath + path.sep)
+      ) {
+        return reply.status(400).send({
+          error: 'Invalid file path',
+        });
       }
 
       fs.mkdirSync(uploadPath, { recursive: true });
@@ -115,6 +138,13 @@ async function routes(fastify) {
         });
 
         await repo.updateAvatarUrl(req.user.id, url);
+        await repo.saveImageMetadata(
+          req.user.id,
+          fileName,
+          url,
+          detectedMime,
+          buffer.length
+        );
       } catch (err) {
         // Remove the uploaded file if database persistence fails.
         try {
@@ -131,7 +161,114 @@ async function routes(fastify) {
         throw err;
       }
 
-      return { success: true, avatar_url: url };
+      return {
+        success: true,
+        avatar_url: url,
+      };
+    }
+  );
+
+  // Retrieve / download an uploaded image
+  fastify.get(
+    '/:fileName',
+    {
+      preHandler: [auth],
+      schema: {
+        tags: ['Uploads'],
+        description: 'Retrieve an uploaded image',
+      },
+    },
+    async (req, reply) => {
+      const { fileName } = req.params;
+
+      const safeFileName = path.basename(fileName);
+
+      if (safeFileName !== fileName) {
+        return reply.status(400).send({
+          error: 'Invalid file name',
+        });
+      }
+
+      const uploadPath = path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        config.uploadDir
+      );
+
+      const filePath = path.resolve(uploadPath, safeFileName);
+      const absoluteUploadPath = path.resolve(uploadPath);
+
+      if (
+        filePath !== absoluteUploadPath &&
+        !filePath.startsWith(absoluteUploadPath + path.sep)
+      ) {
+        return reply.status(400).send({
+          error: 'Invalid file path',
+        });
+      }
+
+      if (!fs.existsSync(filePath)) {
+        return reply.status(404).send({
+          error: 'Image not found',
+        });
+      }
+
+      const mimeType = MIME_BY_EXT[path.extname(safeFileName).toLowerCase()];
+      if (!mimeType) {
+        return reply.status(400).send({
+          error: 'Unsupported image type',
+        });
+      }
+      return reply
+        .header('Cross-Origin-Resource-Policy', 'cross-origin')
+        .type(mimeType)
+        .send(fs.createReadStream(filePath));
+    }
+  );
+
+  // Delete an uploaded image
+  fastify.delete(
+    '/:fileName',
+    {
+      preHandler: [auth, sanitize],
+      schema: {
+        tags: ['Uploads'],
+        description: 'Delete an uploaded image',
+      },
+    },
+    async (req, reply) => {
+      const { fileName } = req.params;
+
+      // Prevent path traversal
+      const safeFileName = path.basename(fileName);
+
+      if (safeFileName !== fileName) {
+        return reply.status(400).send({
+          error: 'Invalid file name',
+        });
+      }
+
+      // Check that the image belongs to the current user
+      const image = await repo.findImageByFileName(req.user.id, safeFileName);
+
+      if (!image) {
+        return reply.status(404).send({
+          error: 'Image not found',
+        });
+      }
+
+      // Delete the physical file
+      await repo.deleteFile(image.file_path);
+
+      // Delete metadata from database
+      await repo.deleteImageMetadata(image.id);
+
+      return {
+        success: true,
+        message: 'Image deleted successfully',
+      };
     }
   );
 
@@ -139,7 +276,7 @@ async function routes(fastify) {
   fastify.post(
     '/notice-image',
     {
-      preHandler: [auth, sanitize],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
       schema: {
         tags: ['Uploads'],
         description: 'Upload a notice image (multipart)',

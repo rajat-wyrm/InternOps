@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple
 
 from app.core.config import settings
+from app.core.cache import cache_key, get_cached, set_cached
 from app.core.redis_client import get_redis
 from app.providers.base import AIProviderError, ProviderAPIError
 from app.providers.registry import get_provider
@@ -21,27 +22,17 @@ def generate_cache_key(
 ) -> str:
     """
     Generates a deterministic SHA-256 cache key from request parameters.
+    Delegates to app.core.cache.cache_key for consistent key generation.
     """
-    normalized_kwargs = kwargs or {}
-    
-    # Exclude non-serializable or schema objects if passed as kwargs to ensure clean serialization
-    serializable_kwargs = {}
-    for k, v in normalized_kwargs.items():
-        try:
-            json.dumps(v)
-            serializable_kwargs[k] = v
-        except (TypeError, OverflowError):
-            serializable_kwargs[k] = str(v)
-
-    payload = {
-        "prompt": prompt,
-        "provider": provider_name.lower().strip(),
-        "temperature": float(temperature),
-        "kwargs": sorted(serializable_kwargs.items()),
-    }
-    serialized = json.dumps(payload, sort_keys=True)
-    hash_digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-    return f"ai_cache:{hash_digest}"
+    kw = kwargs or {}
+    model = kw.get("model", "")
+    return cache_key(
+        provider=provider_name,
+        model=model,
+        prompt=prompt,
+        temperature=temperature,
+        **{k: v for k, v in kw.items() if k != "model"},
+    )
 
 
 class CircuitBreaker:
@@ -223,30 +214,29 @@ class AIOrchestrator:
                 )
                 continue
 
-            cache_key = generate_cache_key(
+            extra_kwargs = {
+                k: v for k, v in kwargs.items()
+                if k not in ("prompt", "temperature", "model")
+            }
+            c_key = cache_key(
+                provider=provider_name,
+                model=provider.model_name,
                 prompt=prompt,
-                provider_name=provider_name,
                 temperature=temperature,
-                kwargs={
-                 **kwargs,
-                 "model": provider.model_name,
-                  },
+                **extra_kwargs,
             )
-            # 1. Check Redis Cache
-            redis = get_redis()
-            if redis:
-                try:
-                    cached_val = await redis.get(cache_key)
-                    if cached_val:
-                        logger.info(
-                            f"AI response cache hit for provider '{provider_name}'."
-                        )
-                        cached_result = json.loads(cached_val)
-                        return cached_result, provider.provider_name
-                except Exception as e:
-                    logger.warning(
-                        f"Redis cache read failed for key '{cache_key}': {str(e)}"
+            # 1. Check TTL Cache (In-Memory + Redis)
+            try:
+                cached_val = await get_cached(c_key)
+                if cached_val is not None:
+                    logger.info(
+                        f"AI response cache hit for provider '{provider_name}'."
                     )
+                    return cached_val, provider.provider_name
+            except Exception as e:
+                logger.warning(
+                    f"Cache read failed for key '{c_key}': {str(e)}"
+                )
 
             # 2. Call Provider on Cache Miss
             try:
@@ -263,16 +253,12 @@ class AIOrchestrator:
                 await cb.record_success()
 
                 # 3. Cache Result on Success
-                if redis and result is not None:
+                if result is not None:
                     try:
-                        await redis.set(
-                            name=cache_key,
-                            value=json.dumps(result),
-                            ex=settings.AI_CACHE_TTL,
-                        )
+                        await set_cached(c_key, result)
                     except Exception as e:
                         logger.warning(
-                            f"Redis cache write failed for key '{cache_key}': {str(e)}"
+                            f"Cache write failed for key '{c_key}': {str(e)}"
                         )
 
                 return result, provider.provider_name

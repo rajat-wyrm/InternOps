@@ -16,8 +16,10 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 import useFeatureFlagsStore from '../../store/featureFlags';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 // ─── Role badge colours ───────────────────────────────────────────────────────
 const ROLE_COLORS = {
@@ -242,10 +244,10 @@ function FlagCard({ flag, onEdit, onKillSwitch, onEnable, toggling }) {
 
       <div className="pl-5 pr-5 pt-5 pb-4">
         {/* Top row */}
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className="font-mono text-sm font-extrabold text-slate-800 dark:text-white tracking-tight">
+        <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex min-w-0 flex-wrap items-center gap-2">
+              <span className="min-w-0 break-all font-mono text-sm font-extrabold tracking-tight text-slate-800 dark:text-white">
                 {flag.key}
               </span>
               <span
@@ -269,7 +271,7 @@ function FlagCard({ flag, onEdit, onKillSwitch, onEnable, toggling }) {
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 xl:justify-end">
             {isOn ? (
               <button
                 id={`kill-${flag.key}`}
@@ -313,7 +315,7 @@ function FlagCard({ flag, onEdit, onKillSwitch, onEnable, toggling }) {
         </div>
 
         {/* Stats row */}
-        <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
+        <div className="grid grid-cols-2 items-center gap-x-3 gap-y-2 text-xs text-slate-500 dark:text-slate-400 xl:grid-cols-[auto_auto_1fr]">
           <span className="flex items-center gap-1">
             <BarChart2 className="w-3 h-3" />
             {flag.rollout_pct ?? 100}% rollout
@@ -323,7 +325,7 @@ function FlagCard({ flag, onEdit, onKillSwitch, onEnable, toggling }) {
             {roles.length > 0 ? `${roles.length} role(s)` : 'All roles'}
           </span>
           {flag.updated_at && (
-            <span className="ml-auto">
+            <span className="col-span-2 justify-self-end whitespace-nowrap text-right xl:col-span-1">
               Updated {new Date(flag.updated_at).toLocaleDateString()}
             </span>
           )}
@@ -369,25 +371,43 @@ function FlagCard({ flag, onEdit, onKillSwitch, onEnable, toggling }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function FeatureFlags() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const qc = useQueryClient();
   const refreshStore = useFeatureFlagsStore((s) => s.refresh);
   const [editTarget, setEditTarget] = useState(null);
   const [toggling, setToggling] = useState(null);
   const [toast, setToast] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const showToast = useCallback((msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
   }, []);
-
   // ── Fetch all definitions (admin view)
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['feature-flags-definitions'],
     queryFn: () =>
       api.get('/feature-flags/definitions').then((r) => r.data.flags),
     staleTime: 10_000,
+    enabled: hydrated && !!accessToken,
   });
+  const handleRefresh = async () => {
+    if (isRefreshing) return;
 
+    setIsRefreshing(true);
+
+    try {
+      await refetch();
+      refreshStore();
+    } catch {
+      showToast('Refresh failed. Please try again.', 'error');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+  const featureFlagsInitialLoading = isLoading && !data;
+  useRouteInitialLoading(featureFlagsInitialLoading);
   const flags = data ?? [];
   const enabledCount = flags.filter((f) => f.enabled).length;
 
@@ -444,16 +464,32 @@ export default function FeatureFlags() {
   const handleSave = (updates) => {
     updateMutation.mutate({ key: editTarget.key, body: updates });
   };
-
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
+      {isRefreshing && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/20 dark:bg-slate-950/40 backdrop-blur-[2px]"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-white dark:bg-slate-900 px-6 py-5 shadow-2xl border border-slate-200 dark:border-slate-700">
+            <Loader2 className="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-spin" />
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+              Refreshing feature flags...
+            </p>
+          </div>
+        </div>
+      )}
       {/* ── Toast ── */}
       {toast && (
         <div
-          className={`fixed top-6 right-6 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl border text-sm font-bold transition-all duration-300 ${
+          style={{
+            backgroundColor: toast.type === 'error' ? '#4c0519' : '#052e2b',
+          }}
+          className={`fixed top-[4.25rem] right-4 z-[100] flex max-w-[calc(100vw-2rem)] items-start gap-3 rounded-2xl border px-5 py-3 text-sm font-bold shadow-2xl transition-all duration-300 sm:right-6 sm:max-w-md ${
             toast.type === 'error'
-              ? 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300'
-              : 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+              ? 'bg-rose-50 dark:bg-rose-950 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+              : 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
           }`}
         >
           {toast.type === 'error' ? (
@@ -461,7 +497,7 @@ export default function FeatureFlags() {
           ) : (
             <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
           )}
-          {toast.msg}
+          <span className="min-w-0 break-words">{toast.msg}</span>
         </div>
       )}
 
@@ -483,20 +519,20 @@ export default function FeatureFlags() {
             </p>
           </div>
         </div>
-
         <button
           id="refresh-flags"
-          onClick={() => {
-            refetch();
-            refreshStore();
-          }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
+          {isRefreshing ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
-
       {/* ── Stats bar ── */}
       <div className="grid grid-cols-3 gap-4 mb-8">
         {[
@@ -539,14 +575,7 @@ export default function FeatureFlags() {
       </div>
 
       {/* ── Flags grid ── */}
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Loading feature flags…
-          </p>
-        </div>
-      ) : isError ? (
+      {isError ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <AlertTriangle className="w-8 h-8 text-rose-400" />
           <p className="text-sm text-slate-500 dark:text-slate-400">

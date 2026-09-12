@@ -4,7 +4,7 @@ AI routes — Python/FastAPI port of ai_routes.js
 Split to match ai-service/app's layout (api/ + core/ + models/ + providers/):
   - app/models/ai.py         -> request/response schemas
   - app/core/auth.py          -> get_current_user (STUB)
-  - app/core/rbac.py          -> require_roles (STUB)
+   - app/core/rbac.py          -> require_permission (STUB)
   - app/core/rate_limit.py    -> enforce_rate_limit (STUB)
   - app/core/usage.py         -> daily usage tracking (STUB)
   - app/providers/*           -> base/gemini/openai adapters
@@ -17,7 +17,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.auth import User, get_current_user
-from app.core.rate_limit import enforce_rate_limit
+from app.core.rate_limiter import chat_rate_limiter
 from app.core.rbac import require_permission
 from app.core.security import sanitize_prompt
 from app.core.usage import (
@@ -33,7 +33,6 @@ from app.models.ai import (
     ProviderHealthEntry,
     ProviderResult,
     UsageResponse,
-    GenerationRequest,
     ImageGenerationRequest,
     ImageGenerationResponse,
 )
@@ -94,7 +93,7 @@ async def chat(
     request: Request,
     body: ChatBody,
     current_user: User = Depends(get_current_user),
-    _rate_limited: None = Depends(enforce_rate_limit),
+    _rate_limited: None = Depends(chat_rate_limiter.check_rate_limit),
 ):
     # Sanitize prompt or messages
     try:
@@ -188,39 +187,6 @@ async def chat(
             detail="AI service unavailable",
         )
 
-
-# ---------------------------------------------------------------------------
-# POST /ai/generate
-# ---------------------------------------------------------------------------
-@router.post(
-    "/generate",
-    summary="Generate text from a prompt or a structured conversation history",
-    response_model=ProviderResult,
-)
-async def generate_text(request: GenerationRequest):
-    provider = get_provider()
-
-    if request.messages:
-        # Preserve role/content structure instead of flattening the
-        # conversation into a single prompt string.
-        conversation = [
-            {"role": msg.role.value, "content": msg.content}
-            for msg in request.messages
-        ]
-        content = await provider.generate_chat(
-            conversation, temperature=request.temperature
-        )
-    else:
-        content = await provider.generate_text(
-            request.prompt, temperature=request.temperature
-        )
-
-    return ProviderResult(
-        provider=provider.provider_name,
-        cached=False,
-        content=content,
-    )
-
 # ---------------------------------------------------------------------------
 # POST /ai/generate-image
 # ---------------------------------------------------------------------------
@@ -233,7 +199,7 @@ async def generate_text(request: GenerationRequest):
 async def generate_image(
     body: ImageGenerationRequest,
     current_user: User = Depends(get_current_user),
-    _rate_limited: None = Depends(enforce_rate_limit),
+    _rate_limited: None = Depends(chat_rate_limiter.check_rate_limit),
 ):
     usage = await get_today_usage(current_user.id)
     if usage >= DAILY_AI_LIMIT:

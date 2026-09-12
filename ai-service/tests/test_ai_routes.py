@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.ai_routes import router
-from app.core.rate_limit import chat_rate_limiter
+from app.core.rate_limiter import chat_rate_limiter
 
 
 from app.core.auth import get_current_user, User
@@ -41,12 +41,11 @@ def client(monkeypatch):
 
     # Force the limiter to use our fake client instead of a real Redis connection.
     fake_redis = FakeRedis()
-    monkeypatch.setattr(rate_limit_module, "redis_client", fake_redis)
+    monkeypatch.setattr(rate_limit_module, "get_redis", lambda: fake_redis)
 
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: User(id="test_user", roles=["ADMIN"])
-    chat_rate_limiter._hits.clear()
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -108,103 +107,17 @@ def test_chat_happy_path_with_mocked_provider(client, monkeypatch):
     assert body == {"provider": "fake-provider", "cached": False, "content": "hi there!"}
 
 
-def test_generate_requires_prompt_or_messages(client):
-    r = client.post("/ai/generate", json={})
-    assert r.status_code == 422  # pydantic model_validator raises ValueError
-
-
-def test_generate_rejects_invalid_role(client):
-    r = client.post(
-        "/ai/generate", json={"messages": [{"role": "bogus", "content": "hi"}]}
-    )
-    assert r.status_code == 422  # pydantic enum validation
-
-
-def test_generate_preserves_structured_messages(client, monkeypatch):
-    import app.api.ai_routes as ai_routes_module
-
-    captured = {}
-
-    class FakeProvider:
-        provider_name = "fake-provider"
-
-        async def generate_chat(self, messages, temperature=0.7, **kwargs):
-            captured["messages"] = messages
-            captured["temperature"] = temperature
-            return "structured reply"
-
-        async def generate_text(self, prompt, temperature=0.7, **kwargs):
-            captured["flattened_prompt"] = prompt
-            return "flattened reply"
-
-    monkeypatch.setattr(
-        ai_routes_module, "get_provider", lambda: FakeProvider()
-    )
-
-    r = client.post(
-        "/ai/generate",
-        json={
-            "messages": [
-                {"role": "system", "content": "Be concise."},
-                {"role": "user", "content": "Hi"},
-                {"role": "assistant", "content": "Hello!"},
-                {"role": "user", "content": "How are you?"},
-            ],
-            "temperature": 0.3,
-        },
-    )
-
-    assert r.status_code == 200
-    body = r.json()
-    assert body == {
-        "provider": "fake-provider",
-        "cached": False,
-        "content": "structured reply",
-    }
-
-    # The conversation must reach the provider as structured messages,
-    # not collapsed into a single flattened prompt string.
-    assert "flattened_prompt" not in captured
-    assert captured["messages"] == [
-        {"role": "system", "content": "Be concise."},
-        {"role": "user", "content": "Hi"},
-        {"role": "assistant", "content": "Hello!"},
-        {"role": "user", "content": "How are you?"},
-    ]
-    assert captured["temperature"] == 0.3
-
-
-def test_generate_falls_back_to_flat_prompt(client, monkeypatch):
-    import app.api.ai_routes as ai_routes_module
-
-    captured = {}
-
-    class FakeProvider:
-        provider_name = "fake-provider"
-
-        async def generate_chat(self, messages, temperature=0.7, **kwargs):
-            captured["messages"] = messages
-            return "structured reply"
-
-        async def generate_text(self, prompt, temperature=0.7, **kwargs):
-            captured["flattened_prompt"] = prompt
-            return "flattened reply"
-
-    monkeypatch.setattr(
-        ai_routes_module, "get_provider", lambda: FakeProvider()
-    )
-
-    r = client.post("/ai/generate", json={"prompt": "hello"})
-
-    assert r.status_code == 200
-    assert r.json()["content"] == "flattened reply"
-    assert captured["flattened_prompt"] == "hello"
-    assert "messages" not in captured
-
-
 def test_health_endpoint(client, monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    for key in [
+        "GEMINI_API_KEY",
+        "OPENAI_API_KEY",
+        "GROQ_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "HUGGINGFACE_TOKEN",
+        "NVIDIA_API_KEY",
+    ]:
+        monkeypatch.delenv(key, raising=False)
     r = client.get("/ai/health")
     assert r.status_code == 200
     body = r.json()
@@ -312,7 +225,7 @@ def test_chat_uses_cache_for_identical_requests(client, monkeypatch):
     async def fake_get_cached(key):
         return cache.get(key)
 
-    async def fake_set_cached(key, value):
+    async def fake_set_cached(key, value, *args, **kwargs):
         cache[key] = value
 
     monkeypatch.setattr(
@@ -351,3 +264,42 @@ def test_chat_uses_cache_for_identical_requests(client, monkeypatch):
     # First request is a cache miss, second is a cache hit.
     assert first.json()["cached"] is False
     assert second.json()["cached"] is True
+
+
+
+def test_tl_cannot_access_health_endpoint(client, monkeypatch):
+    from app.core.auth import get_current_user, User
+
+    client.app.dependency_overrides[get_current_user] = lambda: User(
+        id="tl_user", roles=["TL"]
+    )
+    r = client.get("/ai/health")
+    assert r.status_code == 403
+
+
+def test_tl_cannot_access_usage_endpoint(client, monkeypatch):
+    from app.core.auth import get_current_user, User
+
+    client.app.dependency_overrides[get_current_user] = lambda: User(
+        id="tl_user", roles=["TL"]
+    )
+    r = client.get("/ai/usage")
+    assert r.status_code == 403
+
+
+def test_tl_can_access_chat_endpoint(client, monkeypatch):
+    from app.core.auth import get_current_user, User
+    import app.api.ai_routes as ai_routes_module
+    from app.models.ai import ProviderResult
+
+    client.app.dependency_overrides[get_current_user] = lambda: User(
+        id="tl_user", roles=["TL"]
+    )
+
+    async def fake_call_provider(user_id, messages):
+        return ProviderResult(provider="fake-provider", cached=False, content="hi!")
+
+    monkeypatch.setattr(ai_routes_module, "call_provider", fake_call_provider)
+
+    r = client.post("/ai/chat", json={"prompt": "hello"})
+    assert r.status_code == 200

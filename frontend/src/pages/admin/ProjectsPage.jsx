@@ -13,11 +13,11 @@ import {
 import api from '../../lib/axios';
 import useAuthStore from '../../store/auth';
 import ManageTlModal from '../../components/admin/ManageTlModal';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 import {
   PageHeader,
   Card,
   Badge,
-  Spinner,
   ApiErrorState,
   Btn,
   Input,
@@ -29,6 +29,8 @@ const WEAK_PASSWORD_MESSAGE =
   'Password is too weak. Use at least 8 characters with uppercase, lowercase, number, and special character.';
 
 export default function ProjectsPage() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const currentUser = useAuthStore((state) => state.user);
   const isAdmin = currentUser?.role === 'ADMIN';
   const canOpenHierarchyCard = (team) =>
@@ -51,9 +53,10 @@ export default function ProjectsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const { data: departments = [] } = useQuery({
+  const { data: departments = [], isLoading: departmentsLoading } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const {
@@ -64,9 +67,12 @@ export default function ProjectsPage() {
   } = useQuery({
     queryKey: ['departmentTeams', deptId],
     queryFn: () => api.get(`/departments/${deptId}/teams`).then((r) => r.data),
-    enabled: !!deptId,
+    enabled: hydrated && !!accessToken && !!deptId,
   });
 
+  useRouteInitialLoading(
+    isLoading || (departmentsLoading && departments.length === 0)
+  );
   const createSeniorTlMutation = useMutation({
     mutationFn: (data) =>
       api.post('/team/members', data, { _suppressGlobalError: true }),
@@ -112,7 +118,7 @@ export default function ProjectsPage() {
     hasSeniorTl && (isAdmin || currentUser?.role === 'SENIOR_TL');
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       <div className="mb-5">
         {isAdmin && (
           <Btn
@@ -170,11 +176,7 @@ export default function ProjectsPage() {
         />
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center p-8">
-          <Spinner />
-        </div>
-      ) : teamsError ? (
+      {teamsError ? (
         <ApiErrorState
           error={teamsError}
           title="Failed to load department projects"

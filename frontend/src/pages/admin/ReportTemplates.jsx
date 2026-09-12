@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
 
 import {
@@ -14,6 +15,7 @@ import {
   EmptyState,
   ConfirmationModal,
 } from '../../components/ui';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 const DEFAULT_COLUMNS = ['employee', 'attendance', 'rating', 'tasks'];
 
@@ -65,6 +67,8 @@ function emptyForm() {
 }
 
 export default function ReportTemplates() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState(emptyForm());
@@ -84,6 +88,7 @@ export default function ReportTemplates() {
     queryKey: ['reportTemplates'],
 
     queryFn: () => api.get('/report-templates').then((res) => res.data),
+    enabled: hydrated && !!accessToken,
   });
 
   const versionsQuery = useQuery({
@@ -144,6 +149,7 @@ export default function ReportTemplates() {
     },
   });
 
+  useRouteInitialLoading(!hydrated || !accessToken || templatesQuery.isLoading);
   const templates = templatesQuery.data || [];
 
   function openCreate() {
@@ -440,9 +446,7 @@ export default function ReportTemplates() {
 
       {/* Template List */}
 
-      {templatesQuery.isLoading ? (
-        <Spinner />
-      ) : templatesQuery.isError ? (
+      {templatesQuery.isError ? (
         <Card className="p-5">
           <p className="text-red-600 dark:text-red-400">
             Failed to load report templates.

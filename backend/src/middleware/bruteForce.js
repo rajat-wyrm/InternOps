@@ -90,7 +90,6 @@ async function isAccountLocked(email, ip) {
     logger.error({ err }, 'Redis brute force check error');
   }
 
-  // Fallback to DB query ONLY if Redis returned null or errored
   const windowStart = new Date(Date.now() - LOCKOUT_MINUTES * 60 * 1000);
 
   const emailRes = await pool.query(
@@ -111,15 +110,20 @@ async function isAccountLocked(email, ip) {
   return emailLocked || ipLocked;
 }
 
+function createLockoutError() {
+  const err = new UnauthorizedError(
+    'Account temporarily locked. Please try again later.'
+  );
+  err.statusCode = 429;
+  err.status = 429;
+  return err;
+}
+
 async function assertNotLocked(email, ip) {
   const locked = await isAccountLocked(email, ip);
   if (locked) {
     await notifyLockoutOnce(email, ip);
-    const err = new UnauthorizedError(
-      'Account temporarily locked. Please try again later.'
-    );
-    err.statusCode = 429;
-    throw err;
+    throw createLockoutError();
   }
 }
 
@@ -129,24 +133,15 @@ async function checkAndRecordAttempt(email, ip) {
   if (count > 0) {
     if (count >= MAX_ATTEMPTS) {
       await notifyLockoutOnce(email, ip);
-      const err = new UnauthorizedError(
-        'Account temporarily locked. Please try again later.'
-      );
-      err.statusCode = 429;
-      throw err;
+      throw createLockoutError();
     }
     return count;
   }
 
-  // Fallback check if Redis was unavailable or increment returned 0
   const locked = await isAccountLocked(email, ip);
   if (locked) {
     await notifyLockoutOnce(email, ip);
-    const err = new UnauthorizedError(
-      'Account temporarily locked. Please try again later.'
-    );
-    err.statusCode = 429;
-    throw err;
+    throw createLockoutError();
   }
 
   return 0;
@@ -182,8 +177,9 @@ async function bruteForceCheck(request, reply) {
     await assertNotLocked(email, request.ip);
   } catch (err) {
     if (
-      err instanceof UnauthorizedError &&
-      (err.statusCode === 429 || err.message.includes('locked'))
+      (err instanceof UnauthorizedError || err.statusCode === 429) &&
+      (err.statusCode === 429 ||
+        (err.message && err.message.includes('locked')))
     ) {
       return reply.status(429).send({
         error: err.message,

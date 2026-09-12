@@ -16,7 +16,7 @@ const { verifyEmail, sendVerificationEmail } = require('./verificationService');
 const repo = require('./repository');
 const { forgotPassword, resetPassword } = require('./resetService');
 const { toSchema } = require('../../utils/schemaHelper');
-const isProduction = process.env.NODE_ENV === 'production';
+const config = require('../../config');
 const isTestEnv = process.env.NODE_ENV === 'test';
 const pLimit = require('p-limit');
 
@@ -217,8 +217,7 @@ async function routes(fastify) {
       const result = await service.login(email, password, req.ip, userAgent);
       reply.setCookie('refreshToken', result.refreshToken, {
         httpOnly: true,
-        secure: isProduction,
-        sameSite: isProduction ? 'none' : 'lax',
+        ...config.cookie,
         path: '/api/v1/auth/refresh',
       });
 
@@ -258,22 +257,44 @@ async function routes(fastify) {
     {
       preHandler: [sanitize],
       schema: { tags: ['Authentication'], description: 'Refresh access token' },
+      config: {
+        rateLimit: {
+          max: config.rateLimit.refreshMax,
+          timeWindow: config.rateLimit.timeWindow,
+        },
+      },
     },
     async (req, reply) => {
       const token = req.cookies.refreshToken;
 
       if (!token) {
-        return reply.status(400).send({ error: 'Refresh token required' });
+        req.log.warn(
+          {
+            origin: req.headers.origin || null,
+            hasCookieHeader: Boolean(req.headers.cookie),
+            cookieNames: Object.keys(req.cookies || {}),
+          },
+          'Authentication refresh cookie was not received'
+        );
+        return reply.status(401).send({
+          error: 'Session expired. Please log in again.',
+          code: 'REFRESH_COOKIE_MISSING',
+        });
       }
 
-      const tokens = await service.refreshTokens(token, req.ip);
+      const tokens = await service.refreshTokens(
+        token,
+        req.ip,
+        req.headers['user-agent']
+      );
 
       reply.setCookie('refreshToken', tokens.refreshToken, {
         httpOnly: true,
-        secure: isProduction,
-        sameSite: isProduction ? 'none' : 'lax',
+        ...config.cookie,
         path: '/api/v1/auth/refresh',
       });
+
+      rotateAndSetCsrf(req, reply, tokens.user.id);
 
       return {
         accessToken: tokens.accessToken,
@@ -314,17 +335,78 @@ async function routes(fastify) {
         req.headers['user-agent']
       );
 
-      reply.clearCookie('refreshToken', { path: '/api/v1/auth/refresh' });
+      reply.clearCookie('refreshToken', {
+        ...config.cookie,
+        path: '/api/v1/auth/refresh',
+      });
 
       rotateAndSetCsrf(req, reply, null);
       return { message: 'Logged out' };
     }
   );
 
+  fastify.post(
+    '/impersonation/start',
+    {
+      preHandler: [auth, rbac('ADMIN'), sanitize],
+      schema: {
+        tags: ['Authentication'],
+        description: 'Start a short-lived read-only user view',
+        body: {
+          type: 'object',
+          required: ['targetUserId', 'password', 'reason'],
+          properties: {
+            targetUserId: { type: 'string', format: 'uuid' },
+            password: { type: 'string', minLength: 1 },
+            reason: { type: 'string', minLength: 5, maxLength: 300 },
+          },
+        },
+      },
+    },
+    async (req) =>
+      service.startImpersonation(
+        req.user,
+        req.body.targetUserId,
+        req.body.password,
+        req.body.reason.trim(),
+        req.ip,
+        req.headers['user-agent']
+      )
+  );
+  fastify.post(
+    '/impersonation/exit',
+    {
+      preHandler: [auth, sanitize],
+      schema: {
+        tags: ['Authentication'],
+        description: 'Exit read-only user view',
+      },
+    },
+    async (req) => {
+      if (!req.user.impersonatedBy) {
+        return { message: 'No active user view' };
+      }
+      await service.exitImpersonation(
+        req.user.impersonatedBy,
+        req.user.id,
+        req.ip,
+        req.headers['user-agent']
+      );
+      return { message: 'User view ended' };
+    }
+  );
   // Get CSRF token
   fastify.get(
     '/csrf-token',
-    { schema: { tags: ['Authentication'], description: 'Get CSRF token' } },
+    {
+      schema: { tags: ['Authentication'], description: 'Get CSRF token' },
+      config: {
+        rateLimit: {
+          max: config.rateLimit.csrfMax,
+          timeWindow: config.rateLimit.timeWindow,
+        },
+      },
+    },
     async (req, reply) => {
       const csrfToken = generateToken(req, reply);
       return { csrfToken };

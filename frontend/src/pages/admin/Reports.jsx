@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
-import { PageHeader, Card, Badge, Spinner } from '../../components/ui';
+import { PageHeader, Card, Badge } from '../../components/ui';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 import CustomDatePicker from '../../components/CustomDatePicker';
 
 const ROLE_COLOR = {
@@ -19,6 +21,8 @@ const STATUS_COLOR = {
 };
 
 export default function Reports() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const today = new Date().toISOString().slice(0, 10);
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
@@ -46,8 +50,16 @@ export default function Reports() {
   const tasksQuery = useQuery({
     queryKey: ['reportTasks'],
     queryFn: () => api.get('/reports/task-completion').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
+  useRouteInitialLoading(
+    !hydrated ||
+      !accessToken ||
+      attendanceQuery.isLoading ||
+      ratingsQuery.isLoading ||
+      tasksQuery.isLoading
+  );
   const attendanceData = attendanceQuery.data || [];
   const ratingsData = ratingsQuery.data || [];
   const tasksData = tasksQuery.data || [];
@@ -109,8 +121,6 @@ export default function Reports() {
             <p className="text-gray-400 dark:text-slate-500 text-sm">
               Fix the date range above to view this report.
             </p>
-          ) : attendanceQuery.isLoading ? (
-            <Spinner />
           ) : attendanceQuery.isError ? (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
               <p className="text-red-600 dark:text-red-400 text-sm font-medium">
@@ -157,8 +167,6 @@ export default function Reports() {
             <p className="text-gray-400 dark:text-slate-500 text-sm">
               Fix the date range above to view this report.
             </p>
-          ) : ratingsQuery.isLoading ? (
-            <Spinner />
           ) : ratingsQuery.isError ? (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
               <p className="text-red-600 dark:text-red-400 text-sm font-medium">
@@ -206,9 +214,7 @@ export default function Reports() {
             🎯 Task Completion
           </h3>
 
-          {tasksQuery.isLoading ? (
-            <Spinner />
-          ) : tasksQuery.isError ? (
+          {tasksQuery.isError ? (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
               <p className="text-red-600 dark:text-red-400 text-sm font-medium">
                 Failed to load tasks data:{' '}

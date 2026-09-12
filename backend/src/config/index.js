@@ -10,6 +10,41 @@ const log = pino(
 );
 
 function buildRedisConfig() {
+  const redisUrl = process.env.REDIS_URL?.trim();
+
+  if (redisUrl) {
+    try {
+      const parsed = new URL(redisUrl);
+
+      if (!['redis:', 'rediss:'].includes(parsed.protocol)) {
+        throw new Error('REDIS_URL must use redis:// or rediss://');
+      }
+
+      const database = Number.parseInt(parsed.pathname.replace(/^\//, ''), 10);
+
+      return {
+        enabled: true,
+        available: false,
+        source: 'REDIS_URL',
+        host: parsed.hostname,
+        port: Number.parseInt(parsed.port, 10) || 6379,
+        username: parsed.username
+          ? decodeURIComponent(parsed.username)
+          : 'default',
+        password: parsed.password
+          ? decodeURIComponent(parsed.password)
+          : undefined,
+        database: Number.isInteger(database) ? database : 0,
+        tls: parsed.protocol === 'rediss:',
+      };
+    } catch (err) {
+      log.warn(
+        { err: err?.message },
+        'Invalid REDIS_URL; Redis-dependent features will use fallbacks'
+      );
+    }
+  }
+
   const explicitHost = process.env.REDIS_HOST;
   const explicitPort = parseInt(process.env.REDIS_PORT, 10) || 6379;
   const explicitUsername = process.env.REDIS_USERNAME || 'default';
@@ -28,10 +63,13 @@ function buildRedisConfig() {
 
     return {
       enabled: true,
+      available: false,
+      source: 'REDIS_HOST',
       host: explicitHost,
       port: explicitPort,
       username: explicitUsername,
       password: explicitPassword || undefined,
+      database: Number.parseInt(process.env.REDIS_DB, 10) || 0,
       tls: useTls,
     };
   }
@@ -42,10 +80,13 @@ function buildRedisConfig() {
   if (!restUrl || !token || restUrl === 'your-redis-url') {
     return {
       enabled: false,
+      available: false,
+      source: null,
       host: null,
       port: 6379,
       username: 'default',
       password: null,
+      database: 0,
       tls: false,
     };
   }
@@ -68,21 +109,81 @@ function buildRedisConfig() {
   if (!host) {
     return {
       enabled: false,
+      available: false,
+      source: null,
       host: null,
       port: 6379,
       username: 'default',
       password: null,
+      database: 0,
       tls: false,
     };
   }
 
   return {
     enabled: true,
+    available: false,
+    source: 'UPSTASH_REDIS_REST_URL',
     host,
     port: 6379,
     username: 'default',
     password: token,
+    database: 0,
     tls: true,
+  };
+}
+
+function parseDurationToSeconds(value, fallbackSeconds) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+
+  const match = String(value || '')
+    .trim()
+    .match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w|y)?$/i);
+
+  if (!match) return fallbackSeconds;
+
+  const amount = Number(match[1]);
+  const unit = (match[2] || 'ms').toLowerCase();
+
+  const multipliers = {
+    ms: 1 / 1000,
+    s: 1,
+    m: 60,
+    h: 60 * 60,
+    d: 24 * 60 * 60,
+    w: 7 * 24 * 60 * 60,
+    y: 365 * 24 * 60 * 60,
+  };
+
+  const seconds = amount * multipliers[unit];
+
+  return Number.isFinite(seconds) && seconds > 0
+    ? Math.floor(seconds)
+    : fallbackSeconds;
+}
+
+function buildCookieConfig() {
+  const production = process.env.NODE_ENV === 'production';
+  const sameSite = (
+    process.env.COOKIE_SAME_SITE || (production ? 'none' : 'lax')
+  ).toLowerCase();
+  const secure = process.env.COOKIE_SECURE
+    ? process.env.COOKIE_SECURE === 'true'
+    : production;
+  const domain = process.env.COOKIE_DOMAIN?.trim() || undefined;
+
+  const refreshExpiry =
+    process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '7d';
+
+  const refreshMaxAge = parseDurationToSeconds(refreshExpiry, 7 * 24 * 60 * 60);
+
+  return {
+    secure,
+    sameSite,
+    domain,
+    maxAge: refreshMaxAge,
   };
 }
 
@@ -123,6 +224,7 @@ module.exports = {
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   appUrl:
     process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
+  cookie: buildCookieConfig(),
   redis: buildRedisConfig(),
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,
@@ -153,6 +255,12 @@ module.exports = {
     authMax:
       parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) ||
       (process.env.NODE_ENV === 'test' ? 10000 : 50),
+    refreshMax:
+      parseInt(process.env.RATE_LIMIT_REFRESH_MAX, 10) ||
+      (process.env.NODE_ENV === 'test' ? 10000 : 60),
+    csrfMax:
+      parseInt(process.env.RATE_LIMIT_CSRF_MAX, 10) ||
+      (process.env.NODE_ENV === 'test' ? 10000 : 300),
     timeWindow: process.env.RATE_LIMIT_TIME_WINDOW || '1 minute',
     passwordResetCooldownMs:
       parseInt(process.env.PASSWORD_RESET_COOLDOWN_MS, 10) || 5 * 60 * 1000,

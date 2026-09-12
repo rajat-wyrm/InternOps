@@ -32,6 +32,7 @@ internops-diagnostic-report.txt
 internops-crash.log
 server-debug.log
 backend-test-report.txt
+/ai-service/pytest_*.txt
 _dbtest.cjs
 _fix_async.cjs
 _fix_routes.cjs

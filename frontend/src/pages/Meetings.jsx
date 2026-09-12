@@ -37,6 +37,8 @@ export default function Meetings({
   deptId,
   roster = [],
 } = {}) {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
 
@@ -94,13 +96,13 @@ export default function Meetings({
   } = useQuery({
     queryKey: ['teamMembers'],
     queryFn: () => api.get('/team/members').then((res) => res.data),
-    enabled: canCreate && !isProjectView,
+    enabled: hydrated && !!accessToken && canCreate && !isProjectView,
   });
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => api.get('/departments').then((res) => res.data),
-    enabled: canCreate && !isProjectView,
+    enabled: hydrated && !!accessToken && canCreate && !isProjectView,
   });
 
   const createMutation = useMutation({
@@ -139,7 +141,7 @@ export default function Meetings({
   const effectiveTeam = isProjectView ? roster : team;
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="">
       {/* Professional Header Block */}
       {isProjectView ? (
         <div className="flex justify-between items-center mb-5">

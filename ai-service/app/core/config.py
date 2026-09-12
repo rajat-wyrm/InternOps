@@ -59,7 +59,6 @@ def _get_key_attr(provider_name: str) -> str:
         return "HUGGINGFACE_TOKEN"
     return f"{provider_clean.upper()}_API_KEY"
 
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",

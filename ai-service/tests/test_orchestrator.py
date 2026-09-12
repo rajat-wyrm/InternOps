@@ -6,14 +6,17 @@ from typing import Dict, Any
 from app.providers.base import BaseAIProvider, AIProviderError, ProviderAPIError, ProviderRateLimitError, ProviderTimeoutError
 from app.providers.orchestrator import AIOrchestrator, get_circuit_breaker, _circuit_breakers
 from app.core.config import settings
+from app.core.cache import clear_cache
 
 # Ensure ai-service root is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @pytest.fixture(autouse=True)
 def reset_circuit_breakers():
+    clear_cache()
     _circuit_breakers.clear()
     yield
+    clear_cache()
     _circuit_breakers.clear()
 
 class MockProvider(BaseAIProvider):
@@ -108,6 +111,7 @@ async def test_orchestrator_circuit_breaker_trips_and_bypasses(monkeypatch):
 
     # Trigger 3 failures to trip the circuit breaker (FAILURE_LIMIT = 3)
     for i in range(3):
+        clear_cache()
         content, provider_name = await orchestrator.generate_chat_with_fallback([{"role": "user", "content": "test"}])
         assert provider_name == "openai"
         assert providers["gemini"].calls == i + 1
@@ -117,6 +121,7 @@ async def test_orchestrator_circuit_breaker_trips_and_bypasses(monkeypatch):
     assert cb_gemini.failures == 3
 
     # 4th call should bypass gemini entirely
+    clear_cache()
     content, provider_name = await orchestrator.generate_chat_with_fallback([{"role": "user", "content": "test"}])
     assert provider_name == "openai"
     assert providers["gemini"].calls == 3  # Gemini calls did not increase
@@ -139,6 +144,7 @@ async def test_orchestrator_circuit_breaker_half_open_recovery(monkeypatch):
     cb_gemini = get_circuit_breaker("gemini")
 
     for _ in range(3):
+        clear_cache()
         await orchestrator.generate_chat_with_fallback([{"role": "user", "content": "test"}])
 
     assert await cb_gemini.is_open()
@@ -154,6 +160,7 @@ async def test_orchestrator_circuit_breaker_half_open_recovery(monkeypatch):
     assert not await cb_gemini.is_open()
 
     # Next call should attempt primary again, succeed, and reset failure counts
+    clear_cache()
     content, provider_name = await orchestrator.generate_chat_with_fallback([{"role": "user", "content": "test"}])
     assert provider_name == "gemini"
     assert content == "Response from gemini"

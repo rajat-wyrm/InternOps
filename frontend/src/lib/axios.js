@@ -133,6 +133,17 @@ function notifyGlobalApiError(err) {
 let csrfToken = null;
 let csrfPromise = null;
 let csrfGeneration = 0;
+const CSRF_EXEMPT_PATHS = [
+  '/auth/login',
+  '/auth/refresh',
+  '/auth/logout',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+];
+
+function isCsrfExempt(url) {
+  return Boolean(url && CSRF_EXEMPT_PATHS.some((path) => url.includes(path)));
+}
 
 async function getCsrfToken() {
   if (csrfToken) {
@@ -193,11 +204,52 @@ let _authStore = null;
 
 export function registerAuthStore(store) {
   _authStore = store;
-  removeLegacyAuthStorage();
 }
 
 function getMemoryAccessToken() {
   return _authStore?.getState?.()?.accessToken || null;
+}
+let sharedRefreshPromise = null;
+async function performRefresh() {
+  const generation = _authStore?.getState?.().authGeneration ?? 0;
+  try {
+    const response = await api.post(
+      '/auth/refresh',
+      {},
+      { _isRefreshRequest: true }
+    );
+    const accessToken = response.data?.accessToken;
+    const user = response.data?.user;
+    if (!accessToken || !user)
+      throw new Error('Refresh returned incomplete session');
+    _authStore?.getState?.().setAuth({ accessToken, user });
+    clearCsrfToken();
+    return { accessToken, user };
+  } catch (error) {
+    const current = _authStore?.getState?.();
+    if (current && current.authGeneration === generation) {
+      current.logout();
+      if (typeof window !== 'undefined')
+        window.dispatchEvent(new Event('auth:logout'));
+    }
+    throw error;
+  }
+}
+export function refreshSession() {
+  if (sharedRefreshPromise) return sharedRefreshPromise;
+  const execute = () => performRefresh();
+  const coordinated =
+    typeof navigator !== 'undefined' && navigator.locks?.request
+      ? navigator.locks.request(
+          'internops-refresh-token',
+          { mode: 'exclusive' },
+          execute
+        )
+      : execute();
+  sharedRefreshPromise = Promise.resolve(coordinated).finally(() => {
+    sharedRefreshPromise = null;
+  });
+  return sharedRefreshPromise;
 }
 
 api.interceptors.request.use(async (config) => {
@@ -210,7 +262,10 @@ api.interceptors.request.use(async (config) => {
 
   const method = (config.method || 'get').toLowerCase();
 
-  if (!['get', 'head', 'options'].includes(method)) {
+  if (
+    !['get', 'head', 'options'].includes(method) &&
+    !isCsrfExempt(config.url)
+  ) {
     try {
       config.headers = config.headers || {};
       config.headers['X-CSRF-Token'] = await getCsrfToken();
@@ -227,24 +282,7 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Silent refresh: when an access token expires, the server returns 401.
-// Before destroying the session, try the refresh-token flow once. The refresh
-// token is stored in an HttpOnly cookie, so JavaScript cannot read it.
-// The new access token is stored only in Zustand memory.
-let isRefreshing = false;
-let failedQueue = [];
-
-function processQueue(error, token = null) {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
-  });
-  failedQueue = [];
-}
-
+// Silent refresh is coordinated by refreshSession() for startup, interceptors, and browser tabs.
 api.interceptors.response.use(
   (res) => {
     const url = res.config?.url;
@@ -262,6 +300,9 @@ api.interceptors.response.use(
     return res;
   },
   async (err) => {
+    if (axios.isCancel(err)) {
+      return Promise.reject(err);
+    }
     console.error(
       '[Global API Error]',
       err.response?.data || err.message,
@@ -291,81 +332,49 @@ api.interceptors.response.use(
 
     const hasToken = !!getMemoryAccessToken();
 
-    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
-      // Another refresh is already in flight — queue this request.
-      if (isRefreshing) {
-        original._retry = true;
-
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        }).then((token) => {
-          original.headers = original.headers || {};
-          original.headers.Authorization = `Bearer ${token}`;
-          return api(original);
-        });
-      }
-
-      original._retry = true;
-      isRefreshing = true;
-
+    if (
+      status === 403 &&
+      !original._csrfRetry &&
+      err.response?.data?.error === 'CSRF validation failed'
+    ) {
+      original._csrfRetry = true;
+      clearCsrfToken();
       try {
-        const refreshRes = await api.post('/auth/refresh', {});
-        const newToken = refreshRes.data?.accessToken;
-
-        if (newToken) {
-          const meRes = await api.get('/users/me', {
-            headers: { Authorization: `Bearer ${newToken}` },
-          });
-          // Store refreshed token in memory only.
-          if (_authStore) {
-            _authStore
-              .getState()
-              .setAuth({ accessToken: newToken, user: meRes.data });
-          }
-
-          // The server rotated the refresh cookie. The CSRF token may also
-          // have changed, so reset it so the next request picks up a fresh one.
-          clearCsrfToken();
-          removeLegacyAuthStorage();
-
-          processQueue(null, newToken);
-
-          original.headers = original.headers || {};
-          original.headers.Authorization = `Bearer ${newToken}`;
-
-          return api(original);
-        }
-
-        throw new Error('Refresh returned no token');
-      } catch (refreshErr) {
-        processQueue(refreshErr);
-
-        if (_authStore) {
-          _authStore.getState().logout();
-        } else {
-          removeLegacyAuthStorage();
-          clearCsrfToken();
-
-          try {
-            if (typeof window !== 'undefined') {
-              window.localStorage.removeItem('user');
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-
-        // Emit an event that React Router can catch
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('auth:logout'));
-        }
-
-        return Promise.reject(refreshErr);
-      } finally {
-        isRefreshing = false;
+        original.headers = original.headers || {};
+        original.headers['X-CSRF-Token'] = await getCsrfToken();
+        return api(original);
+      } catch (retryErr) {
+        console.error(
+          '[CSRF] Token refetch failed after 403; falling back to original error',
+          retryErr,
+          original.url
+        );
       }
     }
 
+    if (
+      status === 401 &&
+      !original._retry &&
+      !isAuthRoute &&
+      hasToken &&
+      _authStore?.getState?.().impersonation
+    ) {
+      original._retry = true;
+      _authStore.getState().exitImpersonation();
+      const adminToken = getMemoryAccessToken();
+      if (adminToken) {
+        original.headers = original.headers || {};
+        original.headers.Authorization = `Bearer ${adminToken}`;
+        return api(original);
+      }
+    }
+    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
+      original._retry = true;
+      const { accessToken } = await refreshSession();
+      original.headers = original.headers || {};
+      original.headers.Authorization = `Bearer ${accessToken}`;
+      return api(original);
+    }
     const errorInfo = getApiErrorInfo(err);
     err.userMessage = errorInfo.message;
     err.errorCode = errorInfo.code;

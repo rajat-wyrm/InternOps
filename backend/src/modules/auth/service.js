@@ -121,7 +121,6 @@ async function login(email, password, ip, userAgent) {
   try {
     await checkAndRecordAttempt(email, ip);
   } catch (err) {
-    // If it's a lockout error (429 or 'locked'), preserve the 429 status code
     if (
       (err instanceof UnauthorizedError || err.statusCode === 429) &&
       (err.statusCode === 429 ||
@@ -132,8 +131,6 @@ async function login(email, password, ip, userAgent) {
       throw err;
     }
 
-    // Otherwise, it was a Redis/infrastructure failure:
-    // The test requires this specific error and stops authentication early
     throw new UnauthorizedError(
       'Login temporarily unavailable. Please try again later.'
     );
@@ -192,9 +189,9 @@ async function refreshTokens(token, ip) {
     throw new UnauthorizedError('Invalid refresh token');
   }
 
-  const hash = hashToken(token);
+  const consumedTokenHash = hashToken(token);
 
-  const claimedUserId = await repo.claimRefreshToken(hash);
+  const claimedUserId = await repo.claimRefreshToken(consumedTokenHash);
 
   if (!claimedUserId) {
     throw new UnauthorizedError('Token revoked/expired');

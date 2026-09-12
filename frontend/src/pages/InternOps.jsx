@@ -25,13 +25,14 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
+import useAuthStore from '../store/auth';
 import api from '../lib/axios';
+import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 import {
   Card,
   PageHeader,
   Badge,
   Stars,
-  Spinner,
   ApiErrorState,
 } from '../components/ui';
 
@@ -51,6 +52,8 @@ const STATUS_ICONS = {
 };
 
 export default function InternOps() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -80,8 +83,12 @@ export default function InternOps() {
       api
         .get('/internops/summary', { params: { startDate, endDate } })
         .then((res) => res.data),
+    enabled: hydrated && !!accessToken,
     staleTime: 30 * 1000, // cache for 30s
   });
+  useRouteInitialLoading(
+    !isError && (!hydrated || !accessToken || isLoading || !interns)
+  );
 
   // Calculate Date Ranges for Quick Picks
   const handlePickerPreset = (preset) => {
@@ -203,7 +210,7 @@ export default function InternOps() {
   }, [interns, selectedInternId]);
 
   return (
-    <div className="relative min-h-[80vh] animate-fade-in-up text-slate-900 dark:text-white">
+    <div className="relative min-h-[80vh] text-slate-900 dark:text-white">
       {/* Header Block */}
       <PageHeader
         title="InternOps"
@@ -243,25 +250,25 @@ export default function InternOps() {
             <div className="flex flex-wrap gap-1.5 w-full sm:w-auto justify-start sm:justify-end">
               <button
                 onClick={() => handlePickerPreset('THIS_WEEK')}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:border dark:border-slate-600 dark:bg-slate-700/80 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
               >
                 This Week
               </button>
               <button
                 onClick={() => handlePickerPreset('LAST_WEEK')}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:border dark:border-slate-600 dark:bg-slate-700/80 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
               >
                 Last Week
               </button>
               <button
                 onClick={() => handlePickerPreset('THIS_MONTH')}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:border dark:border-slate-600 dark:bg-slate-700/80 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
               >
                 This Month
               </button>
               <button
                 onClick={() => handlePickerPreset('LAST_MONTH')}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:border dark:border-slate-600 dark:bg-slate-700/80 hover:bg-indigo-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
               >
                 Last Month
               </button>
@@ -317,12 +324,7 @@ export default function InternOps() {
               )
             )}
           </div>
-
-          {isLoading ? (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl p-12 transition-all">
-              <Spinner label="Loading intern records..." />
-            </div>
-          ) : isError ? (
+          {isError ? (
             <ApiErrorState
               error={error}
               title="Failed to fetch InternOps data"
@@ -337,12 +339,19 @@ export default function InternOps() {
           ) : (
             <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-55 dark:bg-slate-950 text-left text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-extrabold select-none">
+                <table className="w-full table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-[31%]" />
+                    <col className="w-[25%]" />
+                    <col className="w-[19%]" />
+                    <col className="w-[20%]" />
+                    <col className="w-[5%]" />
+                  </colgroup>
+                  <thead className="border-b border-slate-200 bg-slate-50/80 font-extrabold text-slate-500 dark:border-slate-700 dark:bg-slate-700/70 dark:text-slate-300 select-none">
                     <tr>
                       <th
                         onClick={() => handleSort('name')}
-                        className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"
+                        className="cursor-pointer px-6 py-4 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-700/60"
                       >
                         <div className="flex items-center gap-1.5">
                           Intern Name &amp; ID
@@ -351,32 +360,32 @@ export default function InternOps() {
                       </th>
                       <th
                         onClick={() => handleSort('attendance')}
-                        className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"
+                        className="cursor-pointer px-4 py-4 text-center transition-colors hover:bg-slate-100 dark:hover:bg-slate-700/60"
                       >
-                        <div className="flex items-center gap-1.5 font-bold">
+                        <div className="flex items-center justify-center gap-1.5 font-bold">
                           Attendance %
                           <ArrowUpDown className="w-3.5 h-3.5 opacity-60" />
                         </div>
                       </th>
                       <th
                         onClick={() => handleSort('rating')}
-                        className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"
+                        className="cursor-pointer px-4 py-4 text-center transition-colors hover:bg-slate-100 dark:hover:bg-slate-700/60"
                       >
-                        <div className="flex items-center gap-1.5 font-bold">
+                        <div className="flex items-center justify-center gap-1.5 font-bold">
                           Avg Rating
                           <ArrowUpDown className="w-3.5 h-3.5 opacity-60" />
                         </div>
                       </th>
                       <th
                         onClick={() => handleSort('status')}
-                        className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"
+                        className="cursor-pointer px-4 py-4 text-center transition-colors hover:bg-slate-100 dark:hover:bg-slate-700/60"
                       >
-                        <div className="flex items-center gap-1.5 font-bold">
+                        <div className="flex items-center justify-center gap-1.5 font-bold">
                           Status
                           <ArrowUpDown className="w-3.5 h-3.5 opacity-60" />
                         </div>
                       </th>
-                      <th className="px-6 py-4"></th>
+                      <th className="px-2 py-4 text-center"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
@@ -398,8 +407,8 @@ export default function InternOps() {
                             {i.email}
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
+                        <td className="px-4 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
                             <div className="w-20 bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                               <div
                                 className={`h-full rounded-full ${
@@ -415,8 +424,8 @@ export default function InternOps() {
                             </span>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
+                        <td className="px-4 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
                             <span className="font-extrabold text-amber-500">
                               {i.avgRating || '—'}
                             </span>
@@ -425,12 +434,14 @@ export default function InternOps() {
                             </span>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <Badge color={STATUS_COLORS[i.status]}>
-                            {i.status}
-                          </Badge>
+                        <td className="px-4 py-4 text-center">
+                          <div className="flex justify-center">
+                            <Badge color={STATUS_COLORS[i.status]}>
+                              {i.status}
+                            </Badge>
+                          </div>
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-2 py-4 text-center">
                           <ChevronRight className="w-4 h-4 text-indigo-400 inline-block transition hover:translate-x-0.5" />
                         </td>
                       </tr>
