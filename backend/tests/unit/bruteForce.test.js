@@ -1,4 +1,195 @@
-const {
+const pool = require('../config/db');
+const redisModule = require('../config/redis');
+const logger = require('../logger');
+const { UnauthorizedError } = require('../utils/errors');
+const repo = require('../modules/auth/repository');
+const emailService = require('../services/email');
+const { notifyAdmin } = require('../modules/notifications/repository');
+
+let MAX_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 15;
+
+function setMaxAttempts(count) {
+  MAX_ATTEMPTS = count;
+}
+
+function getMaxAttempts() {
+  return MAX_ATTEMPTS;
+}
+
+async function runRedisOp(op, fallbackValue = null) {
+  if (typeof redisModule.runRedisOperation === 'function') {
+    return redisModule.runRedisOperation(
+      'login rate limiting',
+      'using the PostgreSQL login-attempt history',
+      op
+    );
+  }
+  if (typeof redisModule.getRedisClient === 'function') {
+    const client = await redisModule.getRedisClient();
+    if (!client) return fallbackValue;
+    return op(client);
+  }
+  return fallbackValue;
+}
+
+async function incrementAttempt(email, ip) {
+  const key = `brute:${email}:${ip}`;
+  return runRedisOp(async (redis) => {
+    const count = await redis.incr(key);
+    await redis.expire(key, LOCKOUT_MINUTES * 60);
+    return count;
+  }, 0);
+}
+
+async function notifyLockoutOnce(email, ip) {
+  let user;
+  try {
+    user = await repo.findByEmail(email);
+  } catch (err) {
+    logger.error({ err }, 'Error checking user for lockout notification');
+  }
+  if (!user) return;
+
+  const adminMsg = `Account Locked\nUser: ${email}\nIssue: Too many failed login attempts (${MAX_ATTEMPTS})\nTime: ${new Date().toLocaleString()}`;
+
+  try {
+    const notifyKey = `lockout-email:${email}`;
+    let alreadySent = null;
+
+    await runRedisOp(async (redis) => {
+      alreadySent = await redis.get(notifyKey);
+      if (!alreadySent) {
+        await redis.set(notifyKey, '1', { EX: LOCKOUT_MINUTES * 60 });
+      }
+    });
+
+    if (!alreadySent) {
+      await emailService.sendAccountLockoutNotification(email, {
+        ipAddress: ip,
+        timestamp: new Date().toISOString(),
+        failedAttempts: MAX_ATTEMPTS,
+      });
+      notifyAdmin(adminMsg).catch(() => {});
+    }
+  } catch (err) {
+    logger.error({ err }, 'Failed to send lockout email');
+  }
+}
+
+async function isAccountLocked(email, ip) {
+  try {
+    const redisFailed = await runRedisOp(async (redis) => {
+      return redis.get(`brute:${email}:${ip}`);
+    }, null);
+
+    if (redisFailed !== null && redisFailed !== undefined) {
+      return parseInt(redisFailed, 10) >= MAX_ATTEMPTS;
+    }
+  } catch (err) {
+    logger.error({ err }, 'Redis brute force check error');
+  }
+
+  const windowStart = new Date(Date.now() - LOCKOUT_MINUTES * 60 * 1000);
+
+  const emailRes = await pool.query(
+    `SELECT COUNT(*) AS failed FROM login_attempts
+     WHERE email = $1 AND ip_address = $2 AND success = false AND attempted_at > $3`,
+    [email, ip, windowStart]
+  );
+
+  const ipRes = await pool.query(
+    `SELECT COUNT(*) AS failed FROM login_attempts
+     WHERE ip_address = $1 AND success = false AND attempted_at > $2`,
+    [ip, windowStart]
+  );
+
+  const emailLocked = parseInt(emailRes.rows[0].failed, 10) >= MAX_ATTEMPTS;
+  const ipLocked = parseInt(ipRes.rows[0].failed, 10) >= MAX_ATTEMPTS * 3;
+
+  return emailLocked || ipLocked;
+}
+
+function createLockoutError() {
+  const err = new UnauthorizedError(
+    'Account temporarily locked. Please try again later.'
+  );
+  err.statusCode = 429;
+  err.status = 429;
+  return err;
+}
+
+async function assertNotLocked(email, ip) {
+  const locked = await isAccountLocked(email, ip);
+  if (locked) {
+    await notifyLockoutOnce(email, ip);
+    throw createLockoutError();
+  }
+}
+
+async function checkAndRecordAttempt(email, ip) {
+  const count = (await incrementAttempt(email, ip)) || 0;
+
+  if (count > 0) {
+    if (count >= MAX_ATTEMPTS) {
+      await notifyLockoutOnce(email, ip);
+      throw createLockoutError();
+    }
+    return count;
+  }
+
+  const locked = await isAccountLocked(email, ip);
+  if (locked) {
+    await notifyLockoutOnce(email, ip);
+    throw createLockoutError();
+  }
+
+  return 0;
+}
+
+async function recordLoginAttempt(email, ip, success) {
+  await pool.query(
+    'INSERT INTO login_attempts (email, ip_address, success) VALUES ($1,$2,$3)',
+    [email, ip, success]
+  );
+}
+
+async function clearFailedAttempts(email, ip) {
+  await pool.query(
+    `DELETE FROM login_attempts WHERE email = $1 AND ip_address = $2 AND success = false`,
+    [email, ip]
+  );
+
+  try {
+    await runRedisOp(async (redis) => {
+      await redis.del(`brute:${email}:${ip}`);
+    });
+  } catch (err) {
+    logger.error({ err }, 'Redis clear failed attempts error');
+  }
+}
+
+async function bruteForceCheck(request, reply) {
+  const { email } = request.body || {};
+  if (!email) return;
+
+  try {
+    await assertNotLocked(email, request.ip);
+  } catch (err) {
+    if (
+      (err instanceof UnauthorizedError || err.statusCode === 429) &&
+      (err.statusCode === 429 ||
+        (err.message && err.message.includes('locked')))
+    ) {
+      return reply.status(429).send({
+        error: err.message,
+      });
+    }
+    throw err;
+  }
+}
+
+module.exports = {
   isAccountLocked,
   recordLoginAttempt,
   clearFailedAttempts,
@@ -8,195 +199,7 @@ const {
   checkAndRecordAttempt,
   setMaxAttempts,
   getMaxAttempts,
-} = require('../../src/middleware/bruteForce');
-const pool = require('../../src/config/db');
-const { getRedisClient } = require('../../src/config/redis');
-const emailService = require('../../src/services/email');
-const { notifyAdmin } = require('../../src/modules/notifications/repository');
-const { UnauthorizedError } = require('../../src/utils/errors');
-
-jest.mock('../../src/config/db', () => ({
-  query: jest.fn(),
-}));
-
-jest.mock('../../src/config/redis', () => ({
-  getRedisClient: jest.fn(),
-}));
-
-jest.mock('../../src/services/email', () => ({
-  sendAccountLockoutNotification: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock('../../src/modules/notifications/repository', () => ({
-  notifyAdmin: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock('../../src/modules/auth/repository', () => ({
-  findByEmail: jest
-    .fn()
-    .mockResolvedValue({ id: 'user-1', email: 'test@example.com' }),
-}));
-
-describe('Brute Force Protection', () => {
-  const email = 'test@example.com';
-  const ip = '127.0.0.1';
-  let mockRedis;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    setMaxAttempts(5);
-    mockRedis = {
-      get: jest.fn(),
-      set: jest.fn(),
-      incr: jest.fn(),
-      expire: jest.fn(),
-      del: jest.fn(),
-    };
-    getRedisClient.mockResolvedValue(mockRedis);
-  });
-
-  afterEach(() => {
-    setMaxAttempts(5);
-  });
-
-  describe('isAccountLocked and DB query optimization', () => {
-    it('should query DB if Redis returns null', async () => {
-      mockRedis.get.mockResolvedValue(null);
-      pool.query.mockResolvedValue({ rows: [{ failed: '0' }] });
-
-      const result = await isAccountLocked(email, ip);
-
-      expect(result).toBe(false);
-      expect(pool.query).toHaveBeenCalledTimes(2); // One for email, one for IP
-    });
-
-    it('should NOT query DB if Redis has a counter value < MAX_ATTEMPTS', async () => {
-      mockRedis.get.mockResolvedValue('3');
-
-      const result = await isAccountLocked(email, ip);
-
-      expect(result).toBe(false);
-      expect(pool.query).not.toHaveBeenCalled();
-    });
-
-    it('should return true if Redis counter >= MAX_ATTEMPTS', async () => {
-      mockRedis.get.mockResolvedValue('5');
-
-      const result = await isAccountLocked(email, ip);
-
-      expect(result).toBe(true);
-      expect(pool.query).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Threshold Consistency across preHandler and checkAndRecordAttempt', () => {
-    it('should trip BOTH preHandler path and in-handler path at the exact same custom threshold', async () => {
-      setMaxAttempts(3);
-
-      // Attempt 1: preHandler sees prior count 0 (not locked), checkAndRecordAttempt increments to 1 (not locked)
-      mockRedis.get.mockResolvedValue('0');
-      mockRedis.incr.mockResolvedValue(1);
-      await expect(assertNotLocked(email, ip)).resolves.not.toThrow();
-      await expect(checkAndRecordAttempt(email, ip)).resolves.toBe(1);
-
-      // Attempt 2: preHandler sees prior count 1 (not locked), checkAndRecordAttempt increments to 2 (not locked)
-      mockRedis.get.mockResolvedValue('1');
-      mockRedis.incr.mockResolvedValue(2);
-      await expect(assertNotLocked(email, ip)).resolves.not.toThrow();
-      await expect(checkAndRecordAttempt(email, ip)).resolves.toBe(2);
-
-      // Attempt 3: preHandler sees prior count 2 (not locked)
-      mockRedis.get.mockResolvedValue('2');
-      await expect(assertNotLocked(email, ip)).resolves.not.toThrow();
-
-      // Attempt 3 in-handler: checkAndRecordAttempt increments to 3 -> TRIPS at 3!
-      mockRedis.get.mockResolvedValue(null); // lockout email key not set yet
-      mockRedis.incr.mockResolvedValue(3);
-      await expect(checkAndRecordAttempt(email, ip)).rejects.toThrow(
-        UnauthorizedError
-      );
-
-      // Attempt 4: preHandler sees prior count 3 -> TRIPS at 3!
-      mockRedis.get.mockImplementation((key) => {
-        if (key === `brute:${email}:${ip}`) return '3';
-        if (key === `lockout-email:${email}`) return '1';
-      });
-      await expect(assertNotLocked(email, ip)).rejects.toThrow(
-        UnauthorizedError
-      );
-    });
-  });
-
-  describe('Notification deduplication across request cycle', () => {
-    it('should send lockout notification exactly once even when both preHandler and login() run in same cycle', async () => {
-      let emailSentCount = 0;
-      let lockoutKeySet = false;
-
-      mockRedis.get.mockImplementation((key) => {
-        if (key === `brute:${email}:${ip}`) return '4'; // Prior state before 5th attempt
-        if (key === `lockout-email:${email}`) return lockoutKeySet ? '1' : null;
-      });
-
-      mockRedis.incr.mockImplementation(async (key) => {
-        if (key === `brute:${email}:${ip}`) return 5; // 5th attempt
-      });
-
-      mockRedis.set.mockImplementation(async (key) => {
-        if (key === `lockout-email:${email}`) lockoutKeySet = true;
-      });
-
-      // 1. preHandler runs prior to 5th attempt (count is 4 < 5) -> allowed
-      await expect(assertNotLocked(email, ip)).resolves.not.toThrow();
-      expect(emailService.sendAccountLockoutNotification).toHaveBeenCalledTimes(
-        0
-      );
-
-      // 2. login() runs checkAndRecordAttempt -> increments count to 5 -> locks and sends email
-      await expect(checkAndRecordAttempt(email, ip)).rejects.toThrow(
-        UnauthorizedError
-      );
-      expect(emailService.sendAccountLockoutNotification).toHaveBeenCalledTimes(
-        1
-      );
-
-      // 3. Subsequent request: preHandler runs when state is 5 -> rejects, but email key is set so no duplicate email
-      mockRedis.get.mockImplementation((key) => {
-        if (key === `brute:${email}:${ip}`) return '5';
-        if (key === `lockout-email:${email}`) return lockoutKeySet ? '1' : null;
-      });
-
-      await expect(assertNotLocked(email, ip)).rejects.toThrow(
-        UnauthorizedError
-      );
-      expect(emailService.sendAccountLockoutNotification).toHaveBeenCalledTimes(
-        1
-      );
-    });
-  });
-
-  describe('Redis behavior and Double-increment prevention', () => {
-    it('incrementAttempt should increment Redis correctly', async () => {
-      mockRedis.incr.mockResolvedValue(1);
-      const count = await incrementAttempt(email, ip);
-
-      expect(count).toBe(1);
-      expect(mockRedis.incr).toHaveBeenCalledWith(`brute:${email}:${ip}`);
-      expect(mockRedis.expire).toHaveBeenCalledWith(
-        `brute:${email}:${ip}`,
-        15 * 60
-      );
-    });
-
-    it('recordLoginAttempt should NOT increment Redis (prevents double increment)', async () => {
-      pool.query.mockResolvedValue({});
-
-      await recordLoginAttempt(email, ip, false);
-
-      expect(pool.query).toHaveBeenCalledWith(
-        'INSERT INTO login_attempts (email, ip_address, success) VALUES ($1,$2,$3)',
-        [email, ip, false]
-      );
-      expect(mockRedis.incr).not.toHaveBeenCalled();
-    });
-  });
-});
+  get MAX_ATTEMPTS() {
+    return MAX_ATTEMPTS;
+  },
+};

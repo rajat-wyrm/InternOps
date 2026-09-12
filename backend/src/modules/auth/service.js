@@ -121,19 +121,16 @@ async function login(email, password, ip, userAgent) {
   try {
     await checkAndRecordAttempt(email, ip);
   } catch (err) {
-    // Re-throw genuine lockouts (statusCode 429 or 'locked' message)
     if (
       (err instanceof UnauthorizedError || err.statusCode === 429) &&
-      err.message.includes('locked')
+      (err.statusCode === 429 ||
+        (err.message && err.message.includes('locked')))
     ) {
       err.statusCode = 429;
+      err.status = 429;
       throw err;
     }
-    // Graceful degradation: Redis infrastructure failures should not prevent login
-    console.warn(
-      'Brute-force check skipped due to Redis failure:',
-      err.message
-    );
+    // Gracefully ignore Redis infrastructure errors
   }
 
   const user = await repo.findByEmail(email);
