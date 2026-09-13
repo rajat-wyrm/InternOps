@@ -131,9 +131,10 @@ class AIOrchestrator:
         prompt: str,
         **kwargs,
     ) -> Tuple[str, str]:
-        return await self._execute_with_failover(
+        result, provider_name, _cached = await self._execute_with_failover(
             "generate_image", prompt, **kwargs
         )
+        return result, provider_name
 
     async def generate_text_with_fallback(
         self,
@@ -141,12 +142,13 @@ class AIOrchestrator:
         temperature: float = 0.7,
         **kwargs,
     ) -> Tuple[str, str]:
-        return await self._execute_with_failover(
+        result, provider_name, _cached = await self._execute_with_failover(
             "generate_text",
             prompt,
             temperature=temperature,
             **kwargs,
         )
+        return result, provider_name
 
     async def generate_chat_with_fallback(
         self,
@@ -154,6 +156,32 @@ class AIOrchestrator:
         temperature: float = 0.7,
         **kwargs,
     ) -> Tuple[str, str]:
+        content, provider_name, _cached = await self._execute_with_failover(
+            "generate_chat",
+            messages,
+            temperature=temperature,
+            **kwargs
+        )
+        return content, provider_name
+
+    async def generate_chat_with_cache_status(
+        self,
+        messages: list[dict],
+        temperature: float = 0.7,
+        **kwargs,
+    ) -> Tuple[str, str, bool]:
+        """
+        Same as generate_chat_with_fallback(), but also reports whether the
+        response came from the orchestrator's cache (see cache_key() /
+        _execute_with_failover() below) instead of a live provider call.
+
+        POST /ai/chat is the one caller that needs this, since its response
+        body includes a `cached` flag. Every other caller keeps using
+        generate_chat_with_fallback()/generate_text_with_fallback()/etc.,
+        which still return the plain (result, provider_name) pair — the
+        caching itself is identical either way, this just also surfaces
+        the hit/miss status instead of discarding it.
+        """
         return await self._execute_with_failover(
             "generate_chat",
             messages,
@@ -173,13 +201,14 @@ class AIOrchestrator:
         and falling back to active secondary providers if failures occur.
         Returns (parsed_json_dict, successful_provider_name).
         """
-        return await self._execute_with_failover(
+        result, provider_name, _cached = await self._execute_with_failover(
             "generate_json", prompt, schema=schema, temperature=temperature, **kwargs
         )
+        return result, provider_name
 
     async def _execute_with_failover(
         self, method_name: str, *args, **kwargs
-    ) -> Tuple[Any, str]:
+    ) -> Tuple[Any, str, bool]:
         primary = settings.PRIMARY_AI_PROVIDER
         fallbacks = settings.ACTIVE_FALLBACK_PROVIDERS
 
@@ -232,7 +261,7 @@ class AIOrchestrator:
                     logger.info(
                         f"AI response cache hit for provider '{provider_name}'."
                     )
-                    return cached_val, provider.provider_name
+                    return cached_val, provider.provider_name, True
             except Exception as e:
                 logger.warning(
                     f"Cache read failed for key '{c_key}': {str(e)}"
@@ -261,7 +290,7 @@ class AIOrchestrator:
                             f"Cache write failed for key '{c_key}': {str(e)}"
                         )
 
-                return result, provider.provider_name
+                return result, provider.provider_name, False
 
             except ProviderAPIError as e:
                 # 413 Entity Too Large is unrecoverable, propagate immediately without failover
