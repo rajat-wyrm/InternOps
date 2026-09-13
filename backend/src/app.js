@@ -27,6 +27,7 @@ const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
 const { setupCronJobs } = require('./utils/cron');
 const githubSyncOrchestrator = require('./modules/github-sync/orchestrator');
+const { normalizeValidationDetails } = require('./utils/validationError');
 
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
@@ -68,6 +69,7 @@ app.get(
   },
   metrics.metricsEndpoint
 );
+
 app.get(
   '/health',
   {
@@ -134,6 +136,7 @@ app.get(
     });
   }
 );
+
 app.register(require('@fastify/cors'), {
   origin: (origin, cb) => {
     if (config.nodeEnv !== 'production') {
@@ -197,6 +200,7 @@ app.register(require('@fastify/rate-limit'), {
 });
 
 app.register(require('@fastify/cookie'));
+
 app.addHook('preHandler', async (request, reply) => {
   const path = request.routerPath ?? request.routeOptions?.url;
   if (path === '/api/v1/auth/logout') return;
@@ -373,6 +377,7 @@ function formatValidationPath(value) {
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/^./, (character) => character.toUpperCase());
 }
+
 function validationDetailMessage(detail) {
   const message = detail?.message || 'is invalid';
   const field = formatValidationPath(
@@ -380,11 +385,13 @@ function validationDetailMessage(detail) {
   );
   return field ? `${field}: ${message}` : message;
 }
+
 function validationPayload(details, requestId) {
   const validationDetails = details || [];
   const validationMessage = validationDetails.length
     ? validationDetailMessage(validationDetails[0])
     : 'Please check the submitted values.';
+
   return {
     error: 'Validation error',
     message: validationMessage,
@@ -393,6 +400,7 @@ function validationPayload(details, requestId) {
     requestId,
   };
 }
+
 app.setErrorHandler((error, request, reply) => {
   if (error.validation) {
     request.log.warn(
@@ -409,12 +417,11 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Validation error'
     );
-    const validationDetails = error.validation.map((v) => ({
-      path: v.instancePath || v.dataPath,
-      message: v.message,
-      keyword: v.keyword,
-    }));
+
+    const validationDetails = normalizeValidationDetails(error.validation);
+
     const payload = validationPayload(validationDetails, request.id);
+
     return reply.status(400).send(payload);
   }
 
@@ -433,8 +440,11 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Zod validation error'
     );
-    const validationDetails = error.issues || [];
+
+    const validationDetails = normalizeValidationDetails(error.issues || []);
+
     const payload = validationPayload(validationDetails, request.id);
+
     return reply.status(400).send(payload);
   }
 
@@ -446,6 +456,7 @@ app.setErrorHandler((error, request, reply) => {
     isClientError || isOperational
       ? error.message || 'Request failed'
       : 'Internal Server Error';
+
   const responseCode =
     isClientError || isOperational
       ? error.code || 'REQUEST_ERROR'
@@ -466,6 +477,7 @@ app.setErrorHandler((error, request, reply) => {
 
   if (statusCode >= 500) {
     request.log.error(logPayload, 'Unhandled server error');
+
     sentryCaptureException(error, {
       userId: request.user?.id || null,
       tags: {
@@ -503,14 +515,17 @@ const {
 const start = async () => {
   try {
     const database = await checkDatabase(pool, config.databaseUrl);
+
     await app.listen({
       port: config.port,
       host: config.host,
     });
+
     initializeWebSocket(app.server, app.log);
     await getRedisClient();
     await bulkJobQueue.init();
     await verificationService.initQueue();
+
     writeStartupSummary({
       logger: app.log,
       database,
@@ -541,6 +556,7 @@ const gracefulShutdown = async (signal) => {
 
     try {
       const io = getIO();
+
       if (io) {
         app.log.info('Closing WebSocket server...');
         await new Promise((resolve) => io.close(resolve));
@@ -567,12 +583,14 @@ const gracefulShutdown = async (signal) => {
 
     clearTimeout(forceShutdown);
     app.log.info('Cleanup completed. Exiting now.');
+
     if (process.env.NODE_ENV !== 'test') {
       process.exit(0);
     }
   } catch (err) {
     app.log.error({ err }, 'Error during shutdown');
     clearTimeout(forceShutdown);
+
     if (process.env.NODE_ENV !== 'test') {
       process.exit(1);
     }
@@ -581,17 +599,25 @@ const gracefulShutdown = async (signal) => {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 process.on('unhandledRejection', (reason) => {
   app.log.error({ err: reason }, 'Unhandled promise rejection');
+
   sentryCaptureException(
     reason instanceof Error ? reason : new Error(String(reason)),
     { extra: { type: 'unhandledRejection' } }
   );
 });
+
 process.on('uncaughtException', (error) => {
   app.log.error({ err: error }, 'Uncaught exception - process will exit');
-  sentryCaptureException(error, { extra: { type: 'uncaughtException' } });
+
+  sentryCaptureException(error, {
+    extra: { type: 'uncaughtException' },
+  });
+
   const forceExit = setTimeout(() => process.exit(1), 3000);
+
   flushSentry(2000).finally(() => {
     clearTimeout(forceExit);
     process.exit(1);
