@@ -239,6 +239,7 @@ export function StatCard({
   value,
   sub,
   icon,
+  badge,
   gradient = 'from-indigo-500 to-blue-600',
 }) {
   return (
@@ -262,6 +263,8 @@ export function StatCard({
               {sub}
             </p>
           )}
+
+          {badge && <div className="mt-2">{badge}</div>}
         </div>
 
         {icon && (

@@ -65,6 +65,58 @@ async function routes(fastify) {
     }
   );
 
+  // Get department by ID
+  fastify.get(
+    '/:id',
+    {
+      preHandler: [auth],
+      schema: {
+        tags: ['Departments'],
+        description: 'Get department by ID',
+        params: {
+          type: 'object',
+          required: ['id'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const parsed = z
+        .object({
+          id: z.string().uuid(),
+        })
+        .safeParse(req.params);
+
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Invalid department id',
+          details: parsed.error.issues,
+        });
+      }
+
+      const department = await repo.getById(parsed.data.id);
+
+      if (!department) {
+        return reply.status(404).send({
+          error: 'Department not found',
+        });
+      }
+
+      if (
+        req.user.role !== 'ADMIN' &&
+        req.user.departmentId !== department.id
+      ) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+        });
+      }
+
+      return department;
+    }
+  );
+
   fastify.get(
     '/:deptId/teams',
     {

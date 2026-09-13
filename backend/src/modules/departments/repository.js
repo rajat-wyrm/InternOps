@@ -30,13 +30,24 @@ async function getAll() {
   ).rows;
 }
 
+async function getById(id) {
+  const { rows } = await pool.query(
+    `SELECT *
+     FROM departments
+     WHERE id = $1
+       AND deleted_at IS NULL`,
+    [id]
+  );
+
+  return rows[0] || null;
+}
+
 async function getDepartmentTeams(departmentId, options = {}) {
   const hierarchyLimit = Math.min(
     Math.max(Number(options.hierarchyLimit) || MAX_HIERARCHY_ROWS, 1),
     MAX_HIERARCHY_ROWS
   );
   const cappedHierarchyLimit = hierarchyLimit + 1;
-
   const { rows } = await pool.query(
     `WITH RECURSIVE leaders AS (
        SELECT id, full_name, role, department_id
@@ -343,9 +354,11 @@ async function handoverSeniorTl(
     client.release();
   }
 }
+
 module.exports = {
   createDepartment,
   getAll,
+  getById,
   getDepartmentTeams,
   deleteDepartment,
   handoverSeniorTl,
