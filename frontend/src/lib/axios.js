@@ -139,6 +139,7 @@ const CSRF_EXEMPT_PATHS = [
   '/auth/logout',
   '/auth/forgot-password',
   '/auth/reset-password',
+  '/client-error',
 ];
 
 function isCsrfExempt(url) {
