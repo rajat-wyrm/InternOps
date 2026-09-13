@@ -10,6 +10,7 @@ import {
   PlaySquare,
   Upload,
   CheckCircle,
+  XCircle,
   Link as LinkIcon,
   Clock,
   Plus,
@@ -23,6 +24,8 @@ import {
   AlertTriangle,
   BarChart3,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import ErrorBoundary from '../components/ErrorBoundary';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
@@ -38,6 +41,43 @@ const PLATFORM_ICON = {
 };
 
 const overdue = (d) => new Date(d) < new Date();
+
+export function getProofActivityLogs(p) {
+  if (Array.isArray(p.activity_logs) && p.activity_logs.length > 0) {
+    return p.activity_logs;
+  }
+  const logs = [];
+  if (p.created_at || p.submitted_at) {
+    logs.push({
+      id: `submit-${p.id}`,
+      action: 'SUBMITTED',
+      status: 'PENDING',
+      actor: p.intern_name || p.intern_email || 'Intern',
+      timestamp: p.created_at || p.submitted_at,
+      message: `Proof submitted by ${p.intern_name || p.intern_email || 'Intern'}`,
+    });
+  }
+  if (p.status === 'VERIFIED' || p.status === 'APPROVED') {
+    logs.push({
+      id: `verified-${p.id}`,
+      action: 'APPROVED',
+      status: p.status,
+      actor: p.verified_by_name || 'Supervisor',
+      timestamp: p.verified_at || new Date().toISOString(),
+      message: `Proof approved by ${p.verified_by_name || 'Supervisor'}`,
+    });
+  } else if (p.status === 'REJECTED') {
+    logs.push({
+      id: `rejected-${p.id}`,
+      action: 'REJECTED',
+      status: 'REJECTED',
+      actor: p.verified_by_name || 'Supervisor',
+      timestamp: p.verified_at || new Date().toISOString(),
+      message: `Proof rejected by ${p.verified_by_name || 'Supervisor'}`,
+    });
+  }
+  return logs;
+}
 
 export default function Tasks({
   isProjectView = false,
@@ -188,31 +228,128 @@ export default function Tasks({
     },
   });
 
-  const verifyMutation = useMutation({
-    mutationFn: ({ proofId }) => {
+  const reviewProofMutation = useMutation({
+    mutationFn: async ({ proofId, action = 'approve' }) => {
       if (!proofId) {
-        throw new Error('Cannot verify proof: proof ID is missing');
+        throw new Error('Cannot review proof: proof ID is missing');
+      }
+
+      if (action === 'reject') {
+        return api.patch(`/proofs/${proofId}/reject`);
       }
 
       return api.patch(`/proofs/${proofId}/verify`);
     },
-    onSuccess: (_, variables) => {
-      showNotification('Proof verified successfully');
+    onMutate: async ({ proofId, taskId, action = 'approve' }) => {
+      const newStatus = action === 'reject' ? 'REJECTED' : 'APPROVED';
+      const actionLabel = action === 'reject' ? 'rejected' : 'approved';
+      const actorName = user?.full_name || user?.email || 'Supervisor';
+      const now = new Date().toISOString();
 
-      queryClient.invalidateQueries({
-        queryKey: ['proofs', variables.taskId],
+      // 1. Cancel in-flight queries
+      if (taskId) {
+        await queryClient.cancelQueries({ queryKey: ['proofs', taskId] });
+      }
+      await queryClient.cancelQueries({ queryKey: ['proofs'] });
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+
+      // 2. Snapshot current state
+      const previousProofs = taskId
+        ? queryClient.getQueryData(['proofs', taskId])
+        : undefined;
+      const previousAllTasks = queryClient.getQueriesData({
+        queryKey: ['tasks'],
       });
-      queryClient.invalidateQueries({ queryKey: ['proofs'] });
+
+      // 3. Immediately update proof cache & tracking log
+      if (taskId && previousProofs) {
+        queryClient.setQueryData(['proofs', taskId], (oldProofs) => {
+          if (!Array.isArray(oldProofs)) return oldProofs;
+          return oldProofs.map((p) => {
+            if (p.id !== proofId) return p;
+
+            const existingLogs = getProofActivityLogs(p);
+            const newLogEntry = {
+              id: `opt-log-${Date.now()}`,
+              action: action === 'reject' ? 'REJECTED' : 'APPROVED',
+              status: newStatus,
+              actor: actorName,
+              timestamp: now,
+              message: `Proof ${actionLabel} by ${actorName}`,
+              optimistic: true,
+            };
+
+            return {
+              ...p,
+              status: newStatus,
+              verified_at: now,
+              verified_by: user?.id,
+              verified_by_name: actorName,
+              activity_logs: [newLogEntry, ...existingLogs],
+            };
+          });
+        });
+      }
+
+      // 4. Immediately update task card queries
+      queryClient.setQueriesData({ queryKey: ['tasks'] }, (oldTasks) => {
+        if (!Array.isArray(oldTasks)) return oldTasks;
+        return oldTasks.map((t) => {
+          if (t.id !== taskId) return t;
+          return {
+            ...t,
+            last_proof_status: newStatus,
+            last_proof_update: now,
+          };
+        });
+      });
+
+      return { previousProofs, previousAllTasks, taskId, proofId, action };
     },
-    onError: (error) => {
+    onSuccess: (_, variables) => {
+      const label = variables.action === 'reject' ? 'rejected' : 'approved';
+      toast.success(`Proof ${label} successfully`);
+      showNotification(`Proof ${label} successfully`);
+    },
+    onError: (error, variables, context) => {
+      // Rollback proofs cache
+      if (context?.taskId && context?.previousProofs !== undefined) {
+        queryClient.setQueryData(
+          ['proofs', context.taskId],
+          context.previousProofs
+        );
+      }
+
+      // Rollback tasks cache
+      if (context?.previousAllTasks) {
+        for (const [key, data] of context.previousAllTasks) {
+          queryClient.setQueryData(key, data);
+        }
+      }
+
       const errorMsg =
         error.response?.data?.error ||
+        error.userMessage ||
         error.message ||
-        'Could not verify proof. Please try again.';
+        `Could not ${variables.action === 'reject' ? 'reject' : 'approve'} proof. Changes have been rolled back.`;
 
+      toast.error(errorMsg);
       showNotification(errorMsg);
     },
+    onSettled: (_, __, variables) => {
+      if (variables?.taskId) {
+        queryClient.invalidateQueries({
+          queryKey: ['proofs', variables.taskId],
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['proofs'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['taskAnalytics'] });
+      queryClient.invalidateQueries({ queryKey: ['teamPendingProofs'] });
+    },
   });
+
+  const verifyMutation = reviewProofMutation;
 
   const deleteMutation = useMutation({
     mutationFn: ({ proofId }) => {
@@ -449,678 +586,798 @@ export default function Tasks({
           }
         />
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-          {tasks.map((t) => {
-            const isOverdue = t.deadline && overdue(t.deadline);
+        <ErrorBoundary
+          fallback={(error, reset) => (
+            <ApiErrorState
+              error={error}
+              title="Failed to render task cards"
+              fallback="An unexpected error occurred in the task workspace."
+              onRetry={reset}
+            />
+          )}
+        >
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            {tasks.map((t) => {
+              const isOverdue = t.deadline && overdue(t.deadline);
 
-            return (
-              <Card
-                key={t.id}
-                className="p-5 md:p-6 card-hover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-600 text-white flex items-center justify-center text-xl shrink-0 shadow-md">
-                    {PLATFORM_ICON[t.target_platform] || (
-                      <Target className="w-5 h-5" />
-                    )}
-                  </div>
+              return (
+                <Card
+                  key={t.id}
+                  className="p-5 md:p-6 card-hover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-600 text-white flex items-center justify-center text-xl shrink-0 shadow-md">
+                      {PLATFORM_ICON[t.target_platform] || (
+                        <Target className="w-5 h-5" />
+                      )}
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
-                          {t.title}
-                        </h3>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
+                            {t.title}
+                          </h3>
 
-                        {t.target_platform && (
-                          <Badge color="purple">{t.target_platform}</Badge>
+                          {t.target_platform && (
+                            <Badge color="purple">{t.target_platform}</Badge>
+                          )}
+
+                          {t.deadline && (
+                            <Badge color={isOverdue ? 'red' : 'green'}>
+                              {isOverdue ? 'Overdue' : 'Active'}
+                            </Badge>
+                          )}
+
+                          {t.source === 'github' && (
+                            <>
+                              <a
+                                href={t.github_issue_url || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-900 text-white dark:bg-gray-700 dark:text-gray-100 hover:bg-gray-700 dark:hover:bg-gray-600 transition"
+                                title={`Issue #${t.github_issue_number || ''}`}
+                              >
+                                <GithubIcon className="w-3 h-3" />
+                                {t.github_issue_number
+                                  ? `#${t.github_issue_number}`
+                                  : 'GitHub'}
+                              </a>
+                              {canManageTask && (
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition disabled:opacity-50"
+                                  title="Sync task changes to GitHub"
+                                  disabled={syncToGithubMutation.isPending}
+                                  onClick={() =>
+                                    syncToGithubMutation.mutate(t.id)
+                                  }
+                                >
+                                  <GithubIcon className="w-3 h-3" />
+                                  {syncToGithubMutation.isPending
+                                    ? 'Syncing...'
+                                    : 'Sync'}
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+
+                        {canManageTask && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Link
+                              to={`/tasks/${t.id}`}
+                              className="p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                              title="View task details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Link>
+                            <button
+                              type="button"
+                              className="p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                              title="Edit task"
+                              onClick={() => {
+                                setEditingTask(t.id);
+                                setEditForm({
+                                  title: t.title,
+                                  description: t.description || '',
+                                  targetPlatform: t.target_platform || '',
+                                  taskLink: t.task_link || '',
+                                  deadline: t.deadline
+                                    ? new Date(t.deadline)
+                                        .toISOString()
+                                        .slice(0, 16)
+                                    : '',
+                                });
+                              }}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            {deletingTaskId === t.id ? (
+                              <div className="flex items-center gap-1 animate-fade-in">
+                                <button
+                                  type="button"
+                                  className="px-2 py-1 text-xs rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                                  onClick={() => setDeletingTaskId(null)}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  className="px-2 py-1 text-xs rounded-xl bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60"
+                                  disabled={deleteTaskMutation.isPending}
+                                  onClick={() =>
+                                    deleteTaskMutation.mutate(t.id)
+                                  }
+                                >
+                                  {deleteTaskMutation.isPending
+                                    ? 'Deleting…'
+                                    : 'Confirm'}
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="p-1.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition"
+                                title="Delete task"
+                                onClick={() => setDeletingTaskId(t.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {t.source === 'github' &&
+                        t.github_labels &&
+                        (() => {
+                          const meta =
+                            typeof t.github_labels === 'string'
+                              ? JSON.parse(t.github_labels)
+                              : t.github_labels;
+                          const author = meta?.author;
+                          const avatar = meta?.authorAvatar;
+                          const commentCount = meta?.commentCount;
+                          return (
+                            <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                              {avatar && (
+                                <img
+                                  src={avatar}
+                                  alt={author}
+                                  className="w-5 h-5 rounded-full"
+                                />
+                              )}
+                              {author && (
+                                <span className="font-medium">{author}</span>
+                              )}
+                              {commentCount !== undefined && (
+                                <span className="flex items-center gap-1">
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  {commentCount} comment
+                                  {commentCount !== 1 ? 's' : ''}
+                                </span>
+                              )}
+                              <a
+                                href={t.github_issue_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:underline"
+                              >
+                                View on GitHub
+                              </a>
+                            </div>
+                          );
+                        })()}
+
+                      {t.description && t.source !== 'github' && (
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                          {t.description}
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-3 mt-4 text-xs text-slate-500 dark:text-slate-400">
+                        {t.task_link && (
+                          <a
+                            href={t.task_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold"
+                          >
+                            <LinkIcon className="w-3.5 h-3.5" /> Task link
+                          </a>
                         )}
 
                         {t.deadline && (
-                          <Badge color={isOverdue ? 'red' : 'green'}>
-                            {isOverdue ? 'Overdue' : 'Active'}
-                          </Badge>
-                        )}
-
-                        {t.source === 'github' && (
-                          <>
-                            <a
-                              href={t.github_issue_url || '#'}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-900 text-white dark:bg-gray-700 dark:text-gray-100 hover:bg-gray-700 dark:hover:bg-gray-600 transition"
-                              title={`Issue #${t.github_issue_number || ''}`}
-                            >
-                              <GithubIcon className="w-3 h-3" />
-                              {t.github_issue_number
-                                ? `#${t.github_issue_number}`
-                                : 'GitHub'}
-                            </a>
-                            {canManageTask && (
-                              <button
-                                type="button"
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition disabled:opacity-50"
-                                title="Sync task changes to GitHub"
-                                disabled={syncToGithubMutation.isPending}
-                                onClick={() =>
-                                  syncToGithubMutation.mutate(t.id)
-                                }
-                              >
-                                <GithubIcon className="w-3 h-3" />
-                                {syncToGithubMutation.isPending
-                                  ? 'Syncing...'
-                                  : 'Sync'}
-                              </button>
-                            )}
-                          </>
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" />
+                            {new Date(t.deadline).toLocaleString('en-IN', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                              timeZone: 'Asia/Kolkata',
+                            })}{' '}
+                            IST
+                          </span>
                         )}
                       </div>
-
-                      {canManageTask && (
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Link
-                            to={`/tasks/${t.id}`}
-                            className="p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
-                            title="View task details"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Link>
-                          <button
-                            type="button"
-                            className="p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
-                            title="Edit task"
-                            onClick={() => {
-                              setEditingTask(t.id);
-                              setEditForm({
-                                title: t.title,
-                                description: t.description || '',
-                                targetPlatform: t.target_platform || '',
-                                taskLink: t.task_link || '',
-                                deadline: t.deadline
-                                  ? new Date(t.deadline)
-                                      .toISOString()
-                                      .slice(0, 16)
-                                  : '',
-                              });
-                            }}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          {deletingTaskId === t.id ? (
-                            <div className="flex items-center gap-1 animate-fade-in">
-                              <button
-                                type="button"
-                                className="px-2 py-1 text-xs rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-                                onClick={() => setDeletingTaskId(null)}
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                className="px-2 py-1 text-xs rounded-xl bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60"
-                                disabled={deleteTaskMutation.isPending}
-                                onClick={() => deleteTaskMutation.mutate(t.id)}
-                              >
-                                {deleteTaskMutation.isPending
-                                  ? 'Deleting…'
-                                  : 'Confirm'}
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className="p-1.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition"
-                              title="Delete task"
-                              onClick={() => setDeletingTaskId(t.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {t.source === 'github' &&
-                      t.github_labels &&
-                      (() => {
-                        const meta =
-                          typeof t.github_labels === 'string'
-                            ? JSON.parse(t.github_labels)
-                            : t.github_labels;
-                        const author = meta?.author;
-                        const avatar = meta?.authorAvatar;
-                        const commentCount = meta?.commentCount;
-                        return (
-                          <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
-                            {avatar && (
-                              <img
-                                src={avatar}
-                                alt={author}
-                                className="w-5 h-5 rounded-full"
-                              />
-                            )}
-                            {author && (
-                              <span className="font-medium">{author}</span>
-                            )}
-                            {commentCount !== undefined && (
-                              <span className="flex items-center gap-1">
-                                <MessageCircle className="w-3.5 h-3.5" />
-                                {commentCount} comment
-                                {commentCount !== 1 ? 's' : ''}
-                              </span>
-                            )}
-                            <a
-                              href={t.github_issue_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-indigo-600 hover:underline"
-                            >
-                              View on GitHub
-                            </a>
-                          </div>
-                        );
-                      })()}
-
-                    {t.description && t.source !== 'github' && (
-                      <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
-                        {t.description}
-                      </p>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-3 mt-4 text-xs text-slate-500 dark:text-slate-400">
-                      {t.task_link && (
-                        <a
-                          href={t.task_link}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold"
-                        >
-                          <LinkIcon className="w-3.5 h-3.5" /> Task link
-                        </a>
-                      )}
-
-                      {t.deadline && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5" />
-                          {new Date(t.deadline).toLocaleString('en-IN', {
-                            dateStyle: 'medium',
-                            timeStyle: 'short',
-                            timeZone: 'Asia/Kolkata',
-                          })}{' '}
-                          IST
-                        </span>
-                      )}
                     </div>
                   </div>
-                </div>
 
-                {editingTask === t.id && (
-                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3 animate-fade-in">
-                    <p className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      Edit Task
-                    </p>
-                    <input
-                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
-                      placeholder="Title"
-                      value={editForm.title}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, title: e.target.value })
-                      }
-                    />
-                    <textarea
-                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none resize-none"
-                      placeholder="Description"
-                      rows={2}
-                      value={editForm.description}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          description: e.target.value,
-                        })
-                      }
-                    />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {editingTask === t.id && (
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3 animate-fade-in">
+                      <p className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        Edit Task
+                      </p>
                       <input
-                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
-                        placeholder="Platform"
-                        value={editForm.targetPlatform}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
+                        placeholder="Title"
+                        value={editForm.title}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, title: e.target.value })
+                        }
+                      />
+                      <textarea
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none resize-none"
+                        placeholder="Description"
+                        rows={2}
+                        value={editForm.description}
                         onChange={(e) =>
                           setEditForm({
                             ...editForm,
-                            targetPlatform: e.target.value,
+                            description: e.target.value,
                           })
                         }
                       />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <input
+                          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
+                          placeholder="Platform"
+                          value={editForm.targetPlatform}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              targetPlatform: e.target.value,
+                            })
+                          }
+                        />
+                        <input
+                          type="datetime-local"
+                          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
+                          value={editForm.deadline}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              deadline: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
                       <input
-                        type="datetime-local"
-                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
-                        value={editForm.deadline}
+                        type="url"
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
+                        placeholder="Task link (https://…)"
+                        value={editForm.taskLink}
                         onChange={(e) =>
-                          setEditForm({ ...editForm, deadline: e.target.value })
+                          setEditForm({ ...editForm, taskLink: e.target.value })
                         }
                       />
+                      <div className="flex items-center gap-2">
+                        <Btn
+                          variant="outline"
+                          className="rounded-2xl py-1.5 text-sm"
+                          onClick={() => setEditingTask(null)}
+                        >
+                          Cancel
+                        </Btn>
+                        <Btn
+                          variant="primary"
+                          className="rounded-2xl py-1.5 text-sm"
+                          disabled={updateTaskMutation.isPending}
+                          onClick={() =>
+                            updateTaskMutation.mutate({
+                              id: t.id,
+                              data: editForm,
+                            })
+                          }
+                        >
+                          {updateTaskMutation.isPending
+                            ? 'Saving…'
+                            : 'Save changes'}
+                        </Btn>
+                      </div>
                     </div>
-                    <input
-                      type="url"
-                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-2xl px-4 py-2.5 w-full text-sm focus:ring-2 focus:ring-indigo-400/50 outline-none"
-                      placeholder="Task link (https://…)"
-                      value={editForm.taskLink}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, taskLink: e.target.value })
-                      }
-                    />
-                    <div className="flex items-center gap-2">
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2 mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
+                    {canManageTask && (
+                      <Link
+                        to={`/admin/tasks/${t.id}`}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition"
+                      >
+                        <BarChart3 className="w-3.5 h-3.5" />
+                        {'Details & Analytics'}
+                      </Link>
+                    )}
+
+                    {canVerify && (
                       <Btn
                         variant="outline"
-                        className="rounded-2xl py-1.5 text-sm"
-                        onClick={() => setEditingTask(null)}
-                      >
-                        Cancel
-                      </Btn>
-                      <Btn
-                        variant="primary"
-                        className="rounded-2xl py-1.5 text-sm"
-                        disabled={updateTaskMutation.isPending}
+                        className="rounded-2xl"
                         onClick={() =>
-                          updateTaskMutation.mutate({
-                            id: t.id,
-                            data: editForm,
-                          })
+                          setSelectedProofTaskId(
+                            selectedProofTaskId === t.id ? null : t.id
+                          )
                         }
                       >
-                        {updateTaskMutation.isPending
-                          ? 'Saving…'
-                          : 'Save changes'}
+                        {selectedProofTaskId === t.id
+                          ? 'Hide proofs'
+                          : 'View proofs'}
                       </Btn>
-                    </div>
-                  </div>
-                )}
+                    )}
 
-                <div className="flex flex-wrap items-center gap-2 mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
-                  {canManageTask && (
-                    <Link
-                      to={`/admin/tasks/${t.id}`}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition"
-                    >
-                      <BarChart3 className="w-3.5 h-3.5" /> Details & Analytics
-                    </Link>
-                  )}
-
-                  {canVerify && (
-                    <Btn
-                      variant="outline"
-                      className="rounded-2xl"
-                      onClick={() =>
-                        setSelectedProofTaskId(
-                          selectedProofTaskId === t.id ? null : t.id
-                        )
-                      }
-                    >
-                      {selectedProofTaskId === t.id
-                        ? 'Hide proofs'
-                        : 'View proofs'}
-                    </Btn>
-                  )}
-
-                  {user?.role === 'INTERN' &&
-                    (myProofs?.some((p) => p.task_id === t.id) ? (
-                      <div className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed">
-                        <CheckCircle className="w-4 h-4" /> Submitted
-                      </div>
-                    ) : draftFiles.taskId === t.id ? (
-                      <div className="flex flex-col gap-3 w-full animate-fade-in">
-                        <div className="flex gap-2 overflow-x-auto pb-2">
-                          {draftFiles.previews.map((src, i) => (
-                            <img
-                              key={i}
-                              src={src}
-                              alt="Preview"
-                              className="w-16 h-16 object-cover rounded-xl border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm"
-                            />
-                          ))}
+                    {user?.role === 'INTERN' &&
+                      (myProofs?.some((p) => p.task_id === t.id) ? (
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed">
+                          <CheckCircle className="w-4 h-4" /> Submitted
                         </div>
-                        <div className="flex gap-4 text-sm">
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={draftEngagement.didComment}
-                              disabled={submitMutation.isPending}
-                              onChange={(e) =>
-                                setDraftEngagement({
-                                  ...draftEngagement,
-                                  didComment: e.target.checked,
-                                })
-                              }
-                            />
-                            Comment
-                          </label>
-
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={draftEngagement.didRepost}
-                              disabled={submitMutation.isPending}
-                              onChange={(e) =>
-                                setDraftEngagement({
-                                  ...draftEngagement,
-                                  didRepost: e.target.checked,
-                                })
-                              }
-                            />
-                            Repost
-                          </label>
-
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={draftEngagement.didShare}
-                              disabled={submitMutation.isPending}
-                              onChange={(e) =>
-                                setDraftEngagement({
-                                  ...draftEngagement,
-                                  didShare: e.target.checked,
-                                })
-                              }
-                            />
-                            Share
-                          </label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Btn
-                            variant="outline"
-                            className="text-sm rounded-2xl py-1.5"
-                            onClick={() => {
-                              setDraftFiles({
-                                taskId: null,
-                                files: [],
-                                previews: [],
-                              });
-                              setDraftEngagement({
-                                didComment: false,
-                                didRepost: false,
-                                didShare: false,
-                              });
-                            }}
-                          >
-                            Cancel
-                          </Btn>
-                          <Btn
-                            variant="success"
-                            className="text-sm rounded-2xl py-1.5 flex items-center gap-2"
-                            onClick={() => {
-                              if (
-                                !draftEngagement.didComment &&
-                                !draftEngagement.didRepost &&
-                                !draftEngagement.didShare
-                              ) {
-                                showNotification(
-                                  'Please select at least one engagement action.'
-                                );
-                                return;
-                              }
-                              submitMutation.mutate({
-                                taskId: t.id,
-                                files: draftFiles.files,
-                                didComment: draftEngagement.didComment,
-                                didRepost: draftEngagement.didRepost,
-                                didShare: draftEngagement.didShare,
-                              });
-                            }}
-                            disabled={submitMutation.isPending}
-                          >
-                            {submitMutation.isPending && (
-                              <span className="w-3 h-3 rounded-full border-2 border-t-white border-white/30 animate-spin" />
-                            )}
-                            {submitMutation.isPending
-                              ? 'Submitting...'
-                              : 'Confirm Upload'}
-                          </Btn>
-                        </div>
-                      </div>
-                    ) : (
-                      <label className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white cursor-pointer hover:shadow-lg hover:shadow-emerald-200 dark:hover:shadow-none transition">
-                        <Upload className="w-4 h-4" /> Select Proof
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={(e) => handleFileSelect(e, t.id)}
-                          className="hidden"
-                        />
-                      </label>
-                    ))}
-                </div>
-
-                {selectedProofTaskId === t.id && (
-                  <div className="mt-5 border-t border-slate-200 dark:border-slate-700 pt-5 space-y-3 animate-fade-in">
-                    <div className="flex items-center justify-between gap-3">
-                      <h4 className="text-sm font-extrabold text-slate-800 dark:text-white">
-                        Proof submissions
-                      </h4>
-
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {proofs?.length || 0} submission
-                        {proofs?.length === 1 ? '' : 's'}
-                      </span>
-                    </div>
-
-                    {!proofs?.length ? (
-                      <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          No submissions yet.
-                        </p>
-                      </div>
-                    ) : (
-                      proofs.map((p) => (
-                        <div
-                          key={p.id}
-                          className="flex flex-col gap-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 w-full"
-                        >
-                          <div className="flex flex-col md:flex-row items-start md:items-center gap-3 w-full">
-                            {(() => {
-                              const images =
-                                p.images && p.images.length > 0
-                                  ? p.images
-                                  : p.image_path
-                                    ? [{ image_path: p.image_path }]
-                                    : [];
-                              if (!images.length) return null;
-
-                              return (
-                                <div className="flex gap-2 overflow-x-auto max-w-[200px] md:max-w-[300px]">
-                                  {images.map((imgObj, i) => {
-                                    const imgPath = imgObj.image_path || imgObj;
-                                    const normalized = imgPath
-                                      .replace(/\\/g, '/')
-                                      .replace(/^\/+/, '');
-                                    const base = (
-                                      import.meta.env.VITE_API_URL ||
-                                      import.meta.env.VITE_API_BASE_URL ||
-                                      ''
-                                    ).replace(/\/+$/, '');
-                                    const src = base
-                                      ? `${base}/${normalized}`
-                                      : `/${normalized}`;
-                                    return (
-                                      <div
-                                        key={i}
-                                        className="relative group shrink-0"
-                                      >
-                                        <img
-                                          src={src}
-                                          alt="proof"
-                                          className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer hover:opacity-80 transition"
-                                          onClick={() =>
-                                            window.open(src, '_blank')
-                                          }
-                                          onError={(e) => {
-                                            e.currentTarget.style.visibility =
-                                              'hidden';
-                                          }}
-                                        />
-                                        {user?.role === 'ADMIN' &&
-                                          imgObj.id && (
-                                            <button
-                                              type="button"
-                                              className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-sm hover:bg-red-600"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                deleteImageMutation.mutate(
-                                                  imgObj.id
-                                                );
-                                              }}
-                                              title="Delete this image"
-                                            >
-                                              <X className="w-3 h-3" />
-                                            </button>
-                                          )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })()}
-
-                            <div className="flex-1 min-w-[120px] w-full md:w-auto text-xs overflow-hidden">
-                              <Badge
-                                color={
-                                  p.status === 'VERIFIED' ? 'green' : 'yellow'
+                      ) : draftFiles.taskId === t.id ? (
+                        <div className="flex flex-col gap-3 w-full animate-fade-in">
+                          <div className="flex gap-2 overflow-x-auto pb-2">
+                            {draftFiles.previews.map((src, i) => (
+                              <img
+                                key={i}
+                                src={src}
+                                alt="Preview"
+                                className="w-16 h-16 object-cover rounded-xl border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm"
+                              />
+                            ))}
+                          </div>
+                          <div className="flex gap-4 text-sm">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={draftEngagement.didComment}
+                                disabled={submitMutation.isPending}
+                                onChange={(e) =>
+                                  setDraftEngagement({
+                                    ...draftEngagement,
+                                    didComment: e.target.checked,
+                                  })
                                 }
-                              >
-                                {p.status}
-                              </Badge>
+                              />
+                              Comment
+                            </label>
 
-                              <div
-                                className="flex flex-wrap items-center gap-1.5 mt-2"
-                                aria-label="Reported engagement actions"
-                              >
-                                {p.did_comment && (
-                                  <Badge color="blue">Comment</Badge>
-                                )}
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={draftEngagement.didRepost}
+                                disabled={submitMutation.isPending}
+                                onChange={(e) =>
+                                  setDraftEngagement({
+                                    ...draftEngagement,
+                                    didRepost: e.target.checked,
+                                  })
+                                }
+                              />
+                              Repost
+                            </label>
 
-                                {p.did_repost && (
-                                  <Badge color="purple">Repost</Badge>
-                                )}
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={draftEngagement.didShare}
+                                disabled={submitMutation.isPending}
+                                onChange={(e) =>
+                                  setDraftEngagement({
+                                    ...draftEngagement,
+                                    didShare: e.target.checked,
+                                  })
+                                }
+                              />
+                              Share
+                            </label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Btn
+                              variant="outline"
+                              className="text-sm rounded-2xl py-1.5"
+                              onClick={() => {
+                                setDraftFiles({
+                                  taskId: null,
+                                  files: [],
+                                  previews: [],
+                                });
+                                setDraftEngagement({
+                                  didComment: false,
+                                  didRepost: false,
+                                  didShare: false,
+                                });
+                              }}
+                            >
+                              Cancel
+                            </Btn>
+                            <Btn
+                              variant="success"
+                              className="text-sm rounded-2xl py-1.5 flex items-center gap-2"
+                              onClick={() => {
+                                if (
+                                  !draftEngagement.didComment &&
+                                  !draftEngagement.didRepost &&
+                                  !draftEngagement.didShare
+                                ) {
+                                  showNotification(
+                                    'Please select at least one engagement action.'
+                                  );
+                                  return;
+                                }
+                                submitMutation.mutate({
+                                  taskId: t.id,
+                                  files: draftFiles.files,
+                                  didComment: draftEngagement.didComment,
+                                  didRepost: draftEngagement.didRepost,
+                                  didShare: draftEngagement.didShare,
+                                });
+                              }}
+                              disabled={submitMutation.isPending}
+                            >
+                              {submitMutation.isPending && (
+                                <span className="w-3 h-3 rounded-full border-2 border-t-white border-white/30 animate-spin" />
+                              )}
+                              {submitMutation.isPending
+                                ? 'Submitting...'
+                                : 'Confirm Upload'}
+                            </Btn>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white cursor-pointer hover:shadow-lg hover:shadow-emerald-200 dark:hover:shadow-none transition">
+                          <Upload className="w-4 h-4" /> Select Proof
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) => handleFileSelect(e, t.id)}
+                            className="hidden"
+                          />
+                        </label>
+                      ))}
+                  </div>
 
-                                {p.did_share && (
-                                  <Badge color="green">Share</Badge>
-                                )}
+                  {selectedProofTaskId === t.id && (
+                    <div className="mt-5 border-t border-slate-200 dark:border-slate-700 pt-5 space-y-3 animate-fade-in">
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="text-sm font-extrabold text-slate-800 dark:text-white">
+                          Proof submissions
+                        </h4>
 
-                                {!p.did_comment &&
-                                  !p.did_repost &&
-                                  !p.did_share && (
-                                    <span className="text-xs text-slate-400 dark:text-slate-500">
-                                      No action data recorded
-                                    </span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {proofs?.length || 0} submission
+                          {proofs?.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+
+                      {!proofs?.length ? (
+                        <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 p-4">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            No submissions yet.
+                          </p>
+                        </div>
+                      ) : (
+                        proofs.map((p) => (
+                          <div
+                            key={p.id}
+                            className="flex flex-col gap-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 w-full"
+                          >
+                            <div className="flex flex-col md:flex-row items-start md:items-center gap-3 w-full">
+                              {(() => {
+                                const images =
+                                  p.images && p.images.length > 0
+                                    ? p.images
+                                    : p.image_path
+                                      ? [{ image_path: p.image_path }]
+                                      : [];
+                                if (!images.length) return null;
+
+                                return (
+                                  <div className="flex gap-2 overflow-x-auto max-w-[200px] md:max-w-[300px]">
+                                    {images.map((imgObj, i) => {
+                                      const imgPath =
+                                        imgObj.image_path || imgObj;
+                                      const normalized = imgPath
+                                        .replace(/\\/g, '/')
+                                        .replace(/^\/+/, '');
+                                      const base = (
+                                        import.meta.env.VITE_API_URL ||
+                                        import.meta.env.VITE_API_BASE_URL ||
+                                        ''
+                                      ).replace(/\/+$/, '');
+                                      const src = base
+                                        ? `${base}/${normalized}`
+                                        : `/${normalized}`;
+                                      return (
+                                        <div
+                                          key={i}
+                                          className="relative group shrink-0"
+                                        >
+                                          <img
+                                            src={src}
+                                            alt="proof"
+                                            className="w-14 h-14 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer hover:opacity-80 transition"
+                                            onClick={() =>
+                                              window.open(src, '_blank')
+                                            }
+                                            onError={(e) => {
+                                              e.currentTarget.style.visibility =
+                                                'hidden';
+                                            }}
+                                          />
+                                          {user?.role === 'ADMIN' &&
+                                            imgObj.id && (
+                                              <button
+                                                type="button"
+                                                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-sm hover:bg-red-600"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  deleteImageMutation.mutate(
+                                                    imgObj.id
+                                                  );
+                                                }}
+                                                title="Delete this image"
+                                              >
+                                                <X className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()}
+
+                              <div className="flex-1 min-w-[120px] w-full md:w-auto text-xs overflow-hidden">
+                                <Badge
+                                  color={
+                                    ['VERIFIED', 'APPROVED'].includes(p.status)
+                                      ? 'green'
+                                      : p.status === 'REJECTED'
+                                        ? 'red'
+                                        : 'yellow'
+                                  }
+                                >
+                                  {p.status}
+                                </Badge>
+
+                                <div
+                                  className="flex flex-wrap items-center gap-1.5 mt-2"
+                                  aria-label="Reported engagement actions"
+                                >
+                                  {p.did_comment && (
+                                    <Badge color="blue">Comment</Badge>
                                   )}
+
+                                  {p.did_repost && (
+                                    <Badge color="purple">Repost</Badge>
+                                  )}
+
+                                  {p.did_share && (
+                                    <Badge color="green">Share</Badge>
+                                  )}
+
+                                  {!p.did_comment &&
+                                    !p.did_repost &&
+                                    !p.did_share && (
+                                      <span className="text-xs text-slate-400 dark:text-slate-500">
+                                        No action data recorded
+                                      </span>
+                                    )}
+                                </div>
+
+                                <p className="text-slate-500 dark:text-slate-400 mt-2 truncate w-full">
+                                  Intern:{' '}
+                                  {p.intern_name ||
+                                    p.intern_email ||
+                                    `${p.intern_id.slice(0, 8)}…`}
+                                </p>
                               </div>
 
-                              <p className="text-slate-500 dark:text-slate-400 mt-2 truncate w-full">
-                                Intern:{' '}
-                                {p.intern_name ||
-                                  p.intern_email ||
-                                  `${p.intern_id.slice(0, 8)}…`}
-                              </p>
-                            </div>
+                              <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0 md:ml-auto">
+                                {canVerify &&
+                                  (p.status === 'PENDING' ||
+                                    p.status === 'PENDING_PROOF') && (
+                                    <div className="flex items-center gap-2">
+                                      <Btn
+                                        variant="success"
+                                        className="rounded-2xl"
+                                        onClick={() =>
+                                          reviewProofMutation.mutate({
+                                            proofId: p.id,
+                                            taskId: t.id,
+                                            action: 'approve',
+                                          })
+                                        }
+                                        disabled={
+                                          reviewProofMutation.isPending &&
+                                          reviewProofMutation.variables
+                                            ?.proofId === p.id
+                                        }
+                                      >
+                                        <span className="flex items-center gap-1">
+                                          <CheckCircle className="w-4 h-4" />
+                                          {reviewProofMutation.isPending &&
+                                          reviewProofMutation.variables
+                                            ?.proofId === p.id &&
+                                          reviewProofMutation.variables
+                                            ?.action === 'approve'
+                                            ? 'Approving...'
+                                            : 'Approve'}
+                                        </span>
+                                      </Btn>
 
-                            <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0 md:ml-auto">
-                              {canVerify && p.status === 'PENDING' && (
-                                <Btn
-                                  variant="success"
-                                  className="rounded-2xl"
-                                  onClick={() =>
-                                    verifyMutation.mutate({
-                                      proofId: p.id,
-                                      taskId: t.id,
-                                    })
-                                  }
-                                  disabled={verifyMutation.isPending}
-                                >
-                                  <span className="flex items-center gap-1">
-                                    <CheckCircle className="w-4 h-4" />
-                                    {verifyMutation.isPending
-                                      ? 'Verifying...'
-                                      : 'Verify'}
-                                  </span>
-                                </Btn>
-                              )}
+                                      <Btn
+                                        variant="outline"
+                                        className="rounded-2xl text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40"
+                                        onClick={() =>
+                                          reviewProofMutation.mutate({
+                                            proofId: p.id,
+                                            taskId: t.id,
+                                            action: 'reject',
+                                          })
+                                        }
+                                        disabled={
+                                          reviewProofMutation.isPending &&
+                                          reviewProofMutation.variables
+                                            ?.proofId === p.id
+                                        }
+                                      >
+                                        <span className="flex items-center gap-1">
+                                          <XCircle className="w-4 h-4" />
+                                          {reviewProofMutation.isPending &&
+                                          reviewProofMutation.variables
+                                            ?.proofId === p.id &&
+                                          reviewProofMutation.variables
+                                            ?.action === 'reject'
+                                            ? 'Rejecting...'
+                                            : 'Reject'}
+                                        </span>
+                                      </Btn>
+                                    </div>
+                                  )}
 
-                              {user?.role === 'ADMIN' &&
-                                (deletingProofId === p.id ? (
-                                  <div className="flex items-center gap-2 animate-fade-in">
+                                {user?.role === 'ADMIN' &&
+                                  (deletingProofId === p.id ? (
+                                    <div className="flex items-center gap-2 animate-fade-in">
+                                      <Btn
+                                        variant="outline"
+                                        className="rounded-2xl py-1 px-3 text-xs"
+                                        onClick={() => setDeletingProofId(null)}
+                                      >
+                                        Cancel
+                                      </Btn>
+                                      <Btn
+                                        variant="danger"
+                                        className="rounded-2xl py-1 px-3 text-xs bg-red-500 hover:bg-red-600 text-white border-transparent"
+                                        onClick={() =>
+                                          deleteMutation.mutate({
+                                            proofId: p.id,
+                                            taskId: t.id,
+                                          })
+                                        }
+                                        disabled={deleteMutation.isPending}
+                                      >
+                                        {deleteMutation.isPending
+                                          ? 'Deleting...'
+                                          : 'Confirm'}
+                                      </Btn>
+                                    </div>
+                                  ) : (
                                     <Btn
                                       variant="outline"
-                                      className="rounded-2xl py-1 px-3 text-xs"
-                                      onClick={() => setDeletingProofId(null)}
+                                      className="rounded-2xl text-red-500 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                      onClick={() => setDeletingProofId(p.id)}
                                     >
-                                      Cancel
+                                      <span className="flex items-center gap-1">
+                                        <Trash2 className="w-4 h-4" /> Delete
+                                      </span>
                                     </Btn>
-                                    <Btn
-                                      variant="danger"
-                                      className="rounded-2xl py-1 px-3 text-xs bg-red-500 hover:bg-red-600 text-white border-transparent"
-                                      onClick={() =>
-                                        deleteMutation.mutate({
-                                          proofId: p.id,
-                                          taskId: t.id,
-                                        })
-                                      }
-                                      disabled={deleteMutation.isPending}
-                                    >
-                                      {deleteMutation.isPending
-                                        ? 'Deleting...'
-                                        : 'Confirm'}
-                                    </Btn>
-                                  </div>
-                                ) : (
-                                  <Btn
-                                    variant="outline"
-                                    className="rounded-2xl text-red-500 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                    onClick={() => setDeletingProofId(p.id)}
-                                  >
-                                    <span className="flex items-center gap-1">
-                                      <Trash2 className="w-4 h-4" /> Delete
-                                    </span>
-                                  </Btn>
-                                ))}
+                                  ))}
+                              </div>
                             </div>
-                          </div>
 
-                          {p.aiSummary && (
-                            <div className="border-t border-slate-200/60 dark:border-slate-700/50 pt-2.5 mt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[11px] text-slate-600 dark:text-slate-300">
-                              <div className="flex items-start gap-2 max-w-full sm:max-w-[70%]">
-                                <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
-                                <div className="space-y-0.5">
-                                  <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block sm:inline mr-1">
-                                    AI Summary:
-                                  </span>
-                                  <span>{p.aiSummary.summary}</span>
+                            {p.aiSummary && (
+                              <div className="border-t border-slate-200/60 dark:border-slate-700/50 pt-2.5 mt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[11px] text-slate-600 dark:text-slate-300">
+                                <div className="flex items-start gap-2 max-w-full sm:max-w-[70%]">
+                                  <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+                                  <div className="space-y-0.5">
+                                    <span className="font-extrabold text-indigo-600 dark:text-indigo-400 block sm:inline mr-1">
+                                      AI Summary:
+                                    </span>
+                                    <span>{p.aiSummary.summary}</span>
+                                  </div>
+                                </div>
+                                <div className="shrink-0 flex items-center">
+                                  {p.aiSummary.consistencyFlag ===
+                                  'needs_review' ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-bold border border-amber-200/50 dark:border-amber-900/40 shadow-sm animate-pulse">
+                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                                      Needs Review
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200/50 dark:border-emerald-900/40 shadow-sm">
+                                      <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                                      Consistent
+                                    </span>
+                                  )}
                                 </div>
                               </div>
-                              <div className="shrink-0 flex items-center">
-                                {p.aiSummary.consistencyFlag ===
-                                'needs_review' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-bold border border-amber-200/50 dark:border-amber-900/40 shadow-sm animate-pulse">
-                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                                    Needs Review
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200/50 dark:border-emerald-900/40 shadow-sm">
-                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
-                                    Consistent
+                            )}
+
+                            {/* Activity & Tracking Log */}
+                            <div
+                              className="w-full mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-700/60"
+                              data-testid={`activity-logs-${p.id}`}
+                            >
+                              <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-slate-400" />
+                                  Activity &amp; Tracking Log
+                                </span>
+                                {p.activity_logs?.some((l) => l.optimistic) && (
+                                  <span className="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 animate-pulse">
+                                    Updating…
                                   </span>
                                 )}
                               </div>
+                              <div className="space-y-1.5 bg-white/70 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/50">
+                                {getProofActivityLogs(p).map((log) => (
+                                  <div
+                                    key={log.id || log.timestamp}
+                                    className="flex items-center justify-between text-xs gap-2 text-slate-600 dark:text-slate-300"
+                                    data-testid="activity-log-item"
+                                  >
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <span
+                                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                          ['APPROVED', 'VERIFIED'].includes(
+                                            log.status
+                                          ) ||
+                                          log.action === 'APPROVED' ||
+                                          log.action === 'PROOF_APPROVED'
+                                            ? 'bg-emerald-500'
+                                            : log.status === 'REJECTED' ||
+                                                log.action === 'REJECTED' ||
+                                                log.action === 'PROOF_REJECTED'
+                                              ? 'bg-rose-500'
+                                              : 'bg-amber-500'
+                                        }`}
+                                      />
+                                      <span className="truncate font-medium">
+                                        {log.message ||
+                                          `${log.action} (${log.status}) by ${log.actor}`}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 font-mono">
+                                      {new Date(
+                                        log.timestamp
+                                      ).toLocaleTimeString([], {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </ErrorBoundary>
       )}
     </div>
   );
