@@ -27,16 +27,27 @@ function verifySigned(value, signature) {
 function parseCookies(header) {
   const out = {};
   if (!header) return out;
+
   for (const part of header.split(';')) {
     const eq = part.indexOf('=');
     if (eq === -1) continue;
+
     const k = part.slice(0, eq).trim();
     const v = part.slice(eq + 1).trim();
-    if (k) out[k] = decodeURIComponent(v);
+
+    if (!k) continue;
+
+    try {
+      out[k] = decodeURIComponent(v);
+    } catch (err) {
+      // Ignore malformed cookie values instead of allowing
+      // decodeURIComponent() to throw and cause a 500 response.
+      continue;
+    }
   }
+
   return out;
 }
-
 function newSessionId() {
   return crypto.randomBytes(24).toString('hex');
 }
