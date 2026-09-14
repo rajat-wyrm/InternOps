@@ -1,57 +1,16 @@
+﻿const db = require('../../config/db');
 const pool = require('../../config/db');
 const { MAX_HIERARCHY_DEPTH } = require('../../utils/hierarchy');
 
-const EDITABLE_USER_COLUMNS = new Set([
-  'full_name',
-  'email',
-  'role',
-  'department_id',
-  'manager_id',
-]);
-
-async function listUsersByRole(role) {
-  return pool.query(
-    'SELECT id,email,role,full_name,suspended FROM users WHERE deleted_at IS NULL AND role=$1',
-    [role]
-  );
-}
-
-async function listUsersPaginated({
-  role,
-  suspended,
-  search,
-  page,
-  limit,
-  offset,
-  departmentId,
-  filterDepartmentId,
-}) {
-  const where = ['users.deleted_at IS NULL'];
-  const params = [];
-
-  if (departmentId) {
-    params.push(departmentId);
-    where.push(`users.department_id = $${params.length}`);
-  }
-  if (filterDepartmentId === 'unassigned') {
-    where.push('users.department_id IS NULL');
-  } else if (filterDepartmentId) {
-    params.push(filterDepartmentId);
-    where.push(`users.department_id = $${params.length}`);
+class UserRepository {
+  constructor(database = db) {
+    this.db = database;
   }
 
-  if (search) {
-    params.push(`%${search}%`);
-    where.push(
-      `(users.full_name ILIKE $${params.length} OR users.email ILIKE $${params.length})`
-    );
-  }
-
-  if (role) {
-    params.push(role);
-    where.push(`users.role = $${params.length}`);
-  }
-
+  async findPaginated({ page, limit, search, sortBy, sortOrder }) {
+    const offset = (page - 1) * limit;
+    let whereClause = '';
+    const params = [];
   if (typeof suspended === 'boolean') {
     params.push(suspended);
     where.push(`users.suspended = $${params.length}`);
@@ -261,182 +220,111 @@ async function updateHierarchyAssignment({
       selectedInternIds = eligibleInterns.rows.map((row) => row.id);
     }
 
-    if (selectedCaptainIds.length) {
-      const eligibleCaptains = await client.query(
-        `SELECT id FROM users
-         WHERE id=ANY($1::uuid[]) AND department_id=$2 AND role='CAPTAIN'
-           AND suspended=FALSE AND deleted_at IS NULL FOR UPDATE`,
-        [selectedCaptainIds, departmentId]
-      );
-      if (eligibleCaptains.rowCount !== selectedCaptainIds.length) {
-        throw Object.assign(
-          new Error(
-            'Only active Captains from the same department can be assigned to a TL'
-          ),
-          { statusCode: 400 }
-        );
-      }
-      await client.query(
-        'UPDATE users SET manager_id=$1,updated_at=NOW() WHERE id=ANY($2::uuid[])',
-        [userId, selectedCaptainIds]
-      );
+    if (search) {
+      whereClause = `WHERE (u.name ILIKE $1 OR u.email ILIKE $1)`;
+      params.push(`%${search}%`);
     }
 
-    if (selectedInternIds.length) {
-      const eligibleInterns = await client.query(
-        `SELECT id FROM users
-         WHERE id=ANY($1::uuid[]) AND department_id=$2 AND role='INTERN'
-           AND suspended=FALSE AND deleted_at IS NULL FOR UPDATE`,
-        [selectedInternIds, departmentId]
-      );
-      if (eligibleInterns.rowCount !== selectedInternIds.length) {
-        throw Object.assign(
-          new Error(
-            'Only active Interns from the same department can be assigned'
-          ),
-          { statusCode: 400 }
-        );
-      }
-      await client.query(
-        'UPDATE users SET manager_id=$1,updated_at=NOW() WHERE id=ANY($2::uuid[])',
-        [userId, selectedInternIds]
-      );
-    }
+    const allowedSortColumns = ['name', 'created_at', 'last_login'];
+    const orderColumn = allowedSortColumns.includes(sortBy)
+      ? sortBy
+      : 'created_at';
+    const orderDirection = sortOrder === 'desc' ? 'DESC' : 'ASC';
 
-    await client.query('COMMIT');
+    const countQuery = `SELECT COUNT(*) as total FROM users u ${whereClause}`;
+    const totalResult = await this.db.query(countQuery, params);
+    const total = parseInt(totalResult.rows[0].total, 10);
+
+    const dataQuery = `
+      SELECT u.id, u.name, u.email, u.role, u.created_at, u.last_login
+      FROM users u
+      ${whereClause}
+      ORDER BY ${orderColumn} ${orderDirection}
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `;
+
+    const dataResult = await this.db.query(dataQuery, [
+      ...params,
+      limit,
+      offset,
+    ]);
+
     return {
-      success: true,
-      assignedCaptainCount: selectedCaptainIds.length,
-      assignedInternCount: selectedInternIds.length,
+      data: dataResult.rows,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
     };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-async function countDirectReports(id) {
-  const result = await pool.query(
-    'SELECT COUNT(*)::int AS total FROM users WHERE manager_id=$1 AND deleted_at IS NULL',
-    [id]
-  );
-  return result.rows[0].total;
-}
-
-async function updateUser(id, data) {
-  const fields = [];
-  const params = [];
-
-  for (const [column, value] of Object.entries(data)) {
-    if (!EDITABLE_USER_COLUMNS.has(column)) {
-      throw new Error(`Unsupported user update field: ${column}`);
-    }
-
-    params.push(value);
-    fields.push(`${column} = $${params.length}`);
   }
 
-  if (fields.length === 0) return null;
+  async findById(id) {
+    const result = await this.db.query('SELECT * FROM users WHERE id = $1', [
+      id,
+    ]);
+    return result.rows[0] || null;
+  }
 
-  params.push(id);
-  const result = await pool.query(
-    `UPDATE users
-     SET ${fields.join(', ')}, updated_at = NOW()
-     WHERE id = $${params.length} AND deleted_at IS NULL
-     RETURNING id, email, role, full_name, suspended, avatar_url, created_at,
-               department_id, manager_id, updated_at`,
-    params
-  );
+  async create(userData) {
+    const { name, email, password, role = 'INTERN' } = userData;
 
-  return result.rows[0] || null;
-}
+    const result = await this.db.query(
+      `INSERT INTO users (name, email, password, role, created_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       RETURNING id, name, email, role, created_at`,
+      [name, email, password, role]
+    );
 
-async function suspendUser(id) {
-  await pool.query(
-    'UPDATE users SET suspended=TRUE, updated_at=NOW() WHERE id=$1',
-    [id]
-  );
-}
+    return result.rows[0];
+  }
+  async update(id, updates) {
+    const {
+      full_name = null,
+      email = null,
+      role = null,
+      department_id = null,
+      manager_id = null,
+    } = updates;
 
-async function activateUser(id) {
-  await pool.query(
-    'UPDATE users SET suspended=FALSE, updated_at=NOW() WHERE id=$1',
-    [id]
-  );
-}
+    const result = await this.db.query(
+      `UPDATE users
+       SET full_name = COALESCE($1, full_name),
+           email = COALESCE($2, email),
+           role = COALESCE($3, role),
+           department_id = $4,
+           manager_id = $5,
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [
+        full_name,
+        email ? email.trim().toLowerCase() : null,
+        role,
+        department_id,
+        manager_id,
+        id,
+      ]
+    );
 
-async function safelyRemoveUser(id) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const targetResult = await client.query(
-      `SELECT id, email, full_name, role, department_id, manager_id
-       FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`,
+    return result.rows[0] || null;
+  }
+  async delete(id) {
+    const result = await this.db.query(
+      `UPDATE users
+       SET full_name = 'Removed User',
+           email = CONCAT('deleted+', id, '@deleted.local'),
+           manager_id = NULL,
+           department_id = NULL,
+           suspended = TRUE,
+           deleted_at = NOW(),
+           must_change_password = FALSE
+       WHERE id = $1
+       RETURNING id`,
       [id]
     );
-    const target = targetResult.rows[0];
-    if (!target) {
-      await client.query('ROLLBACK');
-      return null;
-    }
-    await client.query(
-      'UPDATE users SET manager_id=$1,updated_at=NOW() WHERE manager_id=$2 AND deleted_at IS NULL',
-      [target.manager_id || null, id]
-    );
-    await client.query('DELETE FROM notifications WHERE user_id=$1', [id]);
-    await client.query('DELETE FROM refresh_tokens WHERE user_id=$1', [id]);
-    await client.query('DELETE FROM password_reset_tokens WHERE user_id=$1', [
-      id,
-    ]);
-    await client.query('DELETE FROM email_verifications WHERE user_id=$1', [
-      id,
-    ]);
-    const removedEmail = `removed+${id}@deleted.invalid`;
-    await client.query(
-      `UPDATE users SET email=$1,full_name='Removed User',phone=NULL,college=NULL,
-       course=NULL,year_of_study=NULL,position=NULL,internship_domain=NULL,
-       offer_letter_url=NULL,location=NULL,notes=NULL,avatar_url=NULL,
-       intern_code=NULL,manager_id=NULL,department_id=NULL,suspended=TRUE,
-       deleted_at=NOW(),updated_at=NOW() WHERE id=$2`,
-      [removedEmail, id]
-    );
-    await client.query('COMMIT');
-    return { ...target, removedEmail };
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw error;
-  } finally {
-    client.release();
+
+    return result.rows[0] || null;
   }
 }
 
-async function countOtherActiveAdmins(id) {
-  const result = await pool.query(
-    `SELECT COUNT(*)::int AS total
-     FROM users
-     WHERE role = 'ADMIN'
-       AND suspended = FALSE
-       AND deleted_at IS NULL
-       AND id != $1`,
-    [id]
-  );
-
-  return result.rows[0].total;
-}
-
-module.exports = {
-  listUsersByRole,
-  listUsersPaginated,
-  listManageableUserIds,
-  getUserById,
-  getDepartmentById,
-  countDirectReports,
-  listDepartmentMembers,
-  updateHierarchyAssignment,
-  updateUser,
-  suspendUser,
-  activateUser,
-  safelyRemoveUser,
-  countOtherActiveAdmins,
-};
+module.exports = UserRepository;
