@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+
 import { useSearchParams } from 'react-router-dom';
 import {
   useQuery,
@@ -6,6 +8,7 @@ import {
   useQueryClient,
   keepPreviousData,
 } from '@tanstack/react-query';
+
 import {
   Search,
   ChevronLeft,
@@ -101,7 +104,7 @@ export default function AdminDashboard() {
   const [bulkUserOpen, setBulkUserOpen] = useState(false);
   const [workbookImportOpen, setWorkbookImportOpen] = useState(false);
 
-  const limit = 10;
+  const limit = 100;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -201,6 +204,8 @@ export default function AdminDashboard() {
       ),
     onSettled: () => setDeletingUserId(null),
   });
+  const actionBusy =
+    suspendMut.isPending || activateMut.isPending || deleteMut.isPending;
 
   const canManageUser = (target) =>
     isAdmin ? target.id !== currentUser?.id : target.can_manage === true;
@@ -208,6 +213,15 @@ export default function AdminDashboard() {
   const total = data?.total ?? data?.count ?? rows.length;
   const totalPages = Math.max(Math.ceil(total / limit), 1);
   useRouteInitialLoading(isLoading && !data);
+
+  const parentRef = useRef(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rows?.length || 0,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 60,
+    overscan: 5,
+  });
 
   const handleRoleFilterChange = (value) => {
     setRoleFilter(value);
@@ -221,6 +235,25 @@ export default function AdminDashboard() {
   const handleStatusFilterChange = (value) => {
     setStatusFilter(value);
     setPage(1);
+  };
+
+  const handleEdit = (user) => {
+    setActionError('');
+    setEditingUser(user);
+  };
+
+  const handleSuspend = (user) => {
+    if (!user?.id || suspendMut.isPending) return;
+
+    setActionError('');
+    suspendMut.mutate(user.id);
+  };
+
+  const handleActivate = (user) => {
+    if (!user?.id || activateMut.isPending) return;
+
+    setActionError('');
+    activateMut.mutate(user.id);
   };
 
   const handleDelete = (user) => {
@@ -386,8 +419,11 @@ export default function AdminDashboard() {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div
+            ref={parentRef}
+            className="overflow-x-auto overflow-y-auto max-h-[600px]"
+          >
+            <table className="w-full min-w-[900px] text-sm">
               <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-600">
                 <tr>
                   <th className="px-6 py-4 font-extrabold whitespace-nowrap">
@@ -410,97 +446,103 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
 
-              <tbody>
-                {rows.map((u, index) => (
-                  <tr
-                    key={u.id}
-                    className={`group transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
-                      index % 2 === 0
-                        ? 'bg-white dark:bg-slate-900'
-                        : 'bg-slate-50/50 dark:bg-slate-800/40'
-                    } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-4">
-                        <div
-                          className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xs font-extrabold border ${
-                            AVATAR_COLOR[u.role] || AVATAR_COLOR.INTERN
+              <tbody
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  position: 'relative',
+                  display: 'block',
+                }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const u = rows[virtualRow.index];
+                  const index = virtualRow.index;
+                  if (!u) return null;
+
+                  return (
+                    <tr
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                        display: 'table',
+                        tableLayout: 'fixed',
+                        boxSizing: 'border-box',
+                      }}
+
+                      className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                    >
+                      {/* User */}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex h-10 w-10 items-center justify-center rounded-full border font-semibold ${
+                              AVATAR_COLOR[u.role] || AVATAR_COLOR.INTERN
+                            }`}
+                          >
+                            {initials(u)}
+                          </div>
+
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {u.full_name || u.name || 'Unknown User'}
+                            </p>
+
+                            <p className="text-sm text-gray-500">{u.email}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Role */}
+                      <td className="px-6 py-4">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            ROLE_COLOR[u.role] || ROLE_COLOR.INTERN
                           }`}
                         >
-                          {initials(u)}
-                        </div>
-
-                        <div className="min-w-0">
-                          <div className="font-extrabold text-slate-900 dark:text-white truncate">
-                            {u.full_name || '—'}
-                          </div>
-
-                          <div className="text-xs md:text-sm text-slate-500 dark:text-slate-400 truncate">
-                            {u.email}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4 text-center">
-                      <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
-                          ROLE_COLOR[u.role] || ROLE_COLOR.INTERN
-                        }`}
-                      >
-                        {ROLE_LABEL[u.role] || u.role}
-                      </span>
-                    </td>
-                    {isAdmin && (
-                      <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap text-center">
-                        {u.role === 'ADMIN'
-                          ? 'Platform-wide'
-                          : u.department_name || 'Not assigned'}
+                          {ROLE_LABEL[u.role] || u.role}
+                        </span>
                       </td>
-                    )}
+                      {/* Department */}
+                      {isAdmin && (
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {u.role === 'ADMIN'
+                            ? 'Platform-wide'
+                            : u.department_name || 'Not assigned'}
+                        </td>
+                      )}
 
-                    <td className="px-6 py-4 text-center">
-                      <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
-                          u.suspended
-                            ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-800/80'
-                            : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/80'
-                        }`}
-                      >
-                        {u.suspended ? 'Suspended' : 'Active'}
-                      </span>
-                    </td>
+                      {/* Status */}
+                      <td className="px-6 py-4">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            u.suspended
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}
+                        >
+                          {u.suspended ? 'Suspended' : 'Active'}
+                        </span>
+                      </td>
 
-                    <td className="px-6 py-4 text-right">
-                      <div className="inline-flex text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 transition">
+                      {/* Actions */}
+                      <td className="px-6 py-4">
                         {canManageUser(u) && (
                           <UserActionMenu
                             user={u}
-                            busy={
-                              deletingUserId === u.id ||
-                              deleteMut.isPending ||
-                              suspendMut.isPending ||
-                              activateMut.isPending
-                            }
-                            onEdit={(target) => {
-                              setActionError('');
-                              setEditingUser(target);
-                            }}
-                            onSuspend={(target) => {
-                              setActionError('');
-                              suspendMut.mutate(target.id);
-                            }}
-                            onActivate={(target) => {
-                              setActionError('');
-                              activateMut.mutate(target.id);
-                            }}
+                            busy={actionBusy}
+                            onEdit={handleEdit}
+                            onSuspend={handleSuspend}
+                            onActivate={handleActivate}
                             onDelete={handleDelete}
                           />
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

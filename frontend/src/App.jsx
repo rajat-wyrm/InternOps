@@ -47,7 +47,6 @@ function PageLoader() {
 function PublicLazyPage({ children }) {
   return <Suspense fallback={null}>{children}</Suspense>;
 }
-
 let bootRefreshPromise = null;
 
 function Private({ children }) {

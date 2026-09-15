@@ -369,13 +369,6 @@ api.interceptors.response.use(
         return api(original);
       }
     }
-    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
-      original._retry = true;
-      const { accessToken } = await refreshSession();
-      original.headers = original.headers || {};
-      original.headers.Authorization = `Bearer ${accessToken}`;
-      return api(original);
-    }
     const errorInfo = getApiErrorInfo(err);
     err.userMessage = errorInfo.message;
     err.errorCode = errorInfo.code;
