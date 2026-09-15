@@ -1,4 +1,4 @@
-﻿const {
+const {
   sanitizationMiddleware: sanitize,
 } = require('../../middleware/sanitize');
 const auth = require('../../middleware/auth');

@@ -175,8 +175,8 @@ async function createMember(data) {
   } = await pool.query(
     `INSERT INTO users
        (email, password_hash, role, manager_id, department_id, full_name,
-        phone, college, course, year_of_study, position, internship_domain, joining_date, internship_status, location, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        phone, college, course, year_of_study, position, joining_date, internship_status, location, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING id`,
     [
       normalizedEmail,
@@ -190,7 +190,6 @@ async function createMember(data) {
       data.course || null,
       data.year_of_study || null,
       data.position || null,
-      data.internship_domain || null,
       data.joining_date || null,
       data.internship_status || 'ACTIVE',
       data.location || null,

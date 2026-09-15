@@ -9,7 +9,7 @@ async function createDepartment(name, createdBy) {
   try {
     const res = await pool.query(
       'INSERT INTO departments (name, created_by) VALUES ($1,$2) RETURNING *',
-      [name.trim(), createdBy]
+      [name, createdBy]
     );
     return res.rows[0];
   } catch (error) {

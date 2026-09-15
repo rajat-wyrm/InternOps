@@ -331,7 +331,6 @@ function AddMemberModal({ onClose }) {
     course: '',
     year_of_study: '',
     position: '',
-    internship_domain: '',
     joining_date: '',
     location: '',
   });
@@ -540,16 +539,6 @@ function AddMemberModal({ onClose }) {
                   value={form.position}
                   onChange={(e) =>
                     setForm({ ...form, position: e.target.value })
-                  }
-                />
-              </Field>
-
-              <Field label="Internship domain">
-                <input
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white p-3 w-full rounded-2xl focus:ring-2 focus:ring-indigo-400/50 outline-none"
-                  value={form.internship_domain}
-                  onChange={(e) =>
-                    setForm({ ...form, internship_domain: e.target.value })
                   }
                 />
               </Field>

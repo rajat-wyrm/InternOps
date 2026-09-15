@@ -118,51 +118,9 @@ function toCsv(rows) {
     'joining_date',
     'internship_status',
   ];
-
-  const extraHeaders = [
-    'Domain',
-    'Attendance',
-    'Rating',
-    'Tasks',
-    'Proofs Pending',
-    'Status',
-  ];
-
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const header = [...cols, ...extraHeaders].join(',');
-
-  const body = rows
-    .map((r) => {
-      const total = Number(r.attendance_total);
-      const present = Number(r.present_count);
-
-      const attendance =
-        Number.isFinite(total) && total > 0 && Number.isFinite(present)
-          ? `${Math.round((present / total) * 100)}%`
-          : 'No data';
-
-      const rawRating = r.rating ?? r.avg_rating;
-      const rating =
-        rawRating == null ||
-        rawRating === '' ||
-        !Number.isFinite(Number(rawRating))
-          ? '—'
-          : Math.round(Number(rawRating));
-
-      const values = [
-        ...cols.map((c) => r[c]),
-        r.internship_domain || '—',
-        attendance,
-        rating,
-        `${r.verified_tasks ?? 0}/${r.total_tasks ?? 0}`,
-        Number(r.pending_proofs) || 0,
-        r.suspended ? 'Suspended' : r.internship_status || 'ACTIVE',
-      ];
-
-      return values.map(esc).join(',');
-    })
-    .join('\n');
-
+  const header = cols.join(',');
+  const body = rows.map((r) => cols.map((c) => esc(r[c])).join(',')).join('\n');
   return `${header}\n${body}\n`;
 }
 
@@ -252,7 +210,6 @@ async function routes(fastify) {
             course: { type: 'string', maxLength: 255 },
             year_of_study: { type: 'string', maxLength: 50 },
             position: { type: 'string', maxLength: 255 },
-            internship_domain: { type: 'string', maxLength: 255 },
             joining_date: { type: 'string', maxLength: 20 },
             internship_status: {
               type: 'string',
