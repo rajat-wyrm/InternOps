@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
 import { resolveUploadUrl } from '../lib/uploadUrl';
+import { getApiErrorMessage } from '../lib/apiError';
 import useAuthStore from '../store/auth';
 import {
   ChevronLeft,
@@ -361,8 +362,7 @@ function AddMemberModal({ onClose }) {
       queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
       onClose();
     },
-    onError: (err) =>
-      setError(err.response?.data?.error || 'Failed to add member'),
+    onError: (err) => setError(getApiErrorMessage(err, 'Failed to add member')),
   });
 
   const submit = (e) => {
@@ -936,7 +936,7 @@ function MemberDetail({ memberId, onClose }) {
       setTimeout(() => setMessage(''), 2500);
     },
     onError: (err) => {
-      setError(err.response?.data?.error || 'Failed to update password');
+      setError(getApiErrorMessage(err, 'Failed to update password'));
       setMessage('');
     },
   });

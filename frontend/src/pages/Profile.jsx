@@ -33,6 +33,7 @@ import {
 import useAuthStore from '../store/auth';
 import useFeatureFlagsStore from '../store/featureFlags';
 import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
+import { getApiErrorMessage } from '../lib/apiError';
 
 const ROLE_COLOR = {
   ADMIN: 'purple',
@@ -164,7 +165,7 @@ export default function Profile() {
       setConfirmPassword('');
     },
     onError: (err) =>
-      setError(err.response?.data?.error || 'Failed to change password'),
+      setError(getApiErrorMessage(err, 'Failed to change password')),
   });
 
   const avatarMut = useMutation({

@@ -6,9 +6,10 @@ const GENERIC_MESSAGES = new Set([
   'something went wrong',
   'internal server error',
 ]);
-
+// Avoid treating user-facing validation messages containing "password" as secrets.
+// Only match sensitive keywords when they appear in key/value or credential-like patterns.
 const SECRET_PATTERN =
-  /(?:api[-_ ]?key|token|secret|password|authorization|bearer|postgres(?:ql)?:\/\/|database_url|private[-_ ]?key)/i;
+  /(?:api[-_ ]?key|token|secret|authorization|bearer|password)\s*[:=]|postgres(?:ql)?:\/\/|database_url|private[-_ ]?key|:[^/\s:@]+@/i;
 
 function cleanText(value) {
   if (typeof value !== 'string') return null;

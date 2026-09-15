@@ -5,6 +5,7 @@ import api from '../../lib/axios';
 import { PageHeader, Card, Badge } from '../../components/ui';
 import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 import CustomDatePicker from '../../components/CustomDatePicker';
+import { getApiErrorMessage } from '../../lib/apiError';
 
 const ROLE_COLOR = {
   ADMIN: 'purple',
@@ -125,7 +126,10 @@ export default function Reports() {
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
               <p className="text-red-600 dark:text-red-400 text-sm font-medium">
                 Failed to load attendance data:{' '}
-                {attendanceQuery.error?.message || 'Unknown error'}
+                {getApiErrorMessage(
+                  attendanceQuery.error,
+                  'Unable to load report'
+                )}{' '}
               </p>
             </div>
           ) : !attendanceData?.length ? (

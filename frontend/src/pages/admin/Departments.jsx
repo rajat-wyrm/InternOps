@@ -25,6 +25,7 @@ import {
   PageHeader,
 } from '../../components/ui';
 import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
+import { getApiErrorMessage } from '../../lib/apiError';
 
 export default function Departments() {
   const hydrated = useAuthStore((s) => s.hydrated);
@@ -83,7 +84,7 @@ export default function Departments() {
       }
     },
     onError: (err) =>
-      setError(err.response?.data?.error || 'Failed to create department'),
+      setError(getApiErrorMessage(err, 'Failed to create department')),
   });
 
   const deleteMut = useMutation({

@@ -14,6 +14,7 @@ import {
 import api from '../../lib/axios';
 import useAuthStore from '../../store/auth';
 import CustomSelect from '../CustomSelect';
+import { getApiErrorMessage } from '../../lib/apiError';
 
 const ROLE_OPTIONS = [
   { value: '', label: 'Select Role' },
@@ -150,7 +151,7 @@ export default function CreateUserModal({ open, onClose }) {
       }, 1400);
     },
     onError: (err) => {
-      setError(err.response?.data?.error || 'Registration failed');
+      setError(getApiErrorMessage(err, 'Registration failed'));
       setSuccessMsg('');
     },
   });
