@@ -15,6 +15,7 @@ import {
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import NoticeBoard from '../components/NoticeBoard';
+import { getApiErrorMessage } from '../lib/apiError';
 
 const UPTOSKILLS_LOGO = '/UptoSkills.webp';
 
@@ -224,7 +225,7 @@ export default function Login() {
         replace: true,
       });
     },
-    onError: (err) => setError(err.response?.data?.error || 'Login failed'),
+    onError: (err) => setError(getApiErrorMessage(err, 'Login failed')),
   });
 
   const handleSubmit = (e) => {

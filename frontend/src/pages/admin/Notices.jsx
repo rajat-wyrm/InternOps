@@ -33,6 +33,7 @@ import {
 } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
 import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
+import { getApiErrorMessage } from '../../lib/apiError';
 
 const CATEGORIES = [
   'GENERAL',
@@ -360,7 +361,7 @@ export default function Notices() {
       inv();
     },
     onError: (err) =>
-      setFormError(err.response?.data?.error || 'Failed to create notice'),
+      setFormError(getApiErrorMessage(err, 'Failed to create notice')),
     enabled: hydrated && !!accessToken,
   });
 
@@ -374,11 +375,7 @@ export default function Notices() {
     },
 
     onError: (err) => {
-      setFormError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          'Failed to update notice'
-      );
+      setFormError(getApiErrorMessage(err, 'Failed to update notice'));
     },
   });
 
