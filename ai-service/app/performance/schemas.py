@@ -124,6 +124,18 @@ class EvidenceItem(BaseModel):
     impact: str
 
 
+class PerformanceReviewJobAccepted(BaseModel):
+    """Returned immediately when a performance review has been queued."""
+    job_id: str
+    status: str = "pending"
+
+
+class PerformanceReviewJobStatus(BaseModel):
+    """Returned while a queued performance review is still processing."""
+    job_id: str
+    status: str
+
+
 class PerformanceReviewResponse(BaseModel):
     overall_score: float
     performance_level: str
