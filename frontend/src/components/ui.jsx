@@ -249,38 +249,81 @@ export function StatCard({
   gradient = 'from-indigo-500 to-blue-600',
 }) {
   return (
-    <Card className="p-6 card-hover relative min-h-[150px] bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
+    <Card
+      className="
+        group relative overflow-hidden
+        min-h-[156px] p-5 sm:p-6
+        border border-slate-200/80 dark:border-slate-700
+        bg-white dark:bg-slate-900
+        shadow-sm hover:shadow-xl
+        transition-all duration-300
+        hover:-translate-y-1
+      "
+    >
+      {/* Decorative background glow */}
       <div
-        className={`absolute -right-8 -top-8 w-28 h-28 rounded-full bg-gradient-to-br ${gradient} opacity-15 dark:opacity-20`}
+        className={`absolute -right-10 -top-10 h-28 w-28 rounded-full
+          bg-gradient-to-br ${gradient}
+          opacity-[0.08] dark:opacity-[0.12]
+          transition-transform duration-300
+          group-hover:scale-125`}
       />
 
-      <div className="relative z-10 flex items-start justify-between gap-4">
-        <div className="pt-6">
-          <p className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+      <div className="relative z-10 flex h-full flex-col justify-between gap-6">
+        {/* Icon + label */}
+        <div className="flex items-start justify-between gap-3">
+          <div
+            className={`flex h-11 w-11 shrink-0 items-center justify-center
+              rounded-xl bg-gradient-to-br ${gradient}
+              text-lg text-white
+              shadow-md shadow-slate-200/60 dark:shadow-none
+              transition-transform duration-300
+              group-hover:scale-105`}
+          >
+            <span aria-hidden="true">{icon}</span>
+          </div>
+
+          <span
+            className="
+              rounded-full
+              bg-slate-100 px-2.5 py-1
+              text-[11px] font-bold uppercase tracking-wider
+              text-slate-500
+              dark:bg-slate-800 dark:text-slate-400
+            "
+          >
+            Overview
+          </span>
+        </div>
+
+        {/* Metric */}
+        <div>
+          <p
+            className="
+              text-3xl sm:text-4xl
+              font-extrabold tracking-tight
+              text-slate-900 dark:text-white
+            "
+          >
             {value}
           </p>
 
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">
-            {label}
-          </p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-1.5">
+            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+              {label}
+            </p>
 
-          {sub && (
-            <p className="text-xs text-slate-500 dark:text-slate-500">{sub}</p>
-          )}
-        </div>
-
-        {icon && (
-          <div
-            className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${gradient} text-white flex items-center justify-center text-2xl shadow-lg shadow-slate-300/40 dark:shadow-none`}
-          >
-            {icon}
+            {sub && (
+              <span className="text-xs text-slate-400 dark:text-slate-500">
+                {sub}
+              </span>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </Card>
   );
 }
-
 export function EmptyState({ icon = '📭', title = 'Nothing here yet', text }) {
   return (
     <Card className="p-12 text-center bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
