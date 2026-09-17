@@ -148,11 +148,7 @@ app.register(require('@fastify/cors'), {
       }
     }
 
-    const configured = Array.isArray(config.corsOrigin)
-      ? config.corsOrigin
-      : typeof config.corsOrigin === 'string' && config.corsOrigin.includes(',')
-        ? config.corsOrigin.split(',').map((o) => o.trim())
-        : [config.corsOrigin];
+    const configured = config.corsOrigin;
 
     if (!origin || configured.includes(origin)) {
       return cb(null, true);

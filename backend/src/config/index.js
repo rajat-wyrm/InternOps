@@ -289,7 +289,10 @@ module.exports = {
   apiKey: process.env.API_KEY,
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE, 10) || 5242880,
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  corsOrigin: (process.env.CORS_ORIGINS || 'http://localhost:5173')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
   appUrl:
     process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
   cookie: buildCookieConfig(),
