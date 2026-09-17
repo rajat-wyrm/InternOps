@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import {
   ExternalLink,
   Download,
@@ -8,6 +10,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { PageHeader, Card, Badge, Spinner } from '../../components/ui';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 import {
   useCanvaStatus,
   useCanvaAuthUrl,
@@ -18,15 +21,51 @@ import {
   useTemplates,
   useCreateTemplate,
   useDeleteTemplate,
+  useSeedTemplates,
 } from '../../hooks/useCertificates';
 
-export default function CanvaTemplates() {
+function colorsFor(template) {
+  return template.colorScheme || template.template_data?.colorScheme;
+}
+
+function CanvaTemplates() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const error = searchParams.get('error');
+
+    if (success === 'true') {
+      alert('Canva connected successfully!');
+      setSearchParams({});
+    }
+
+    if (error) {
+      alert(`Canva connection failed: ${error}`);
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
   const [newTemplate, setNewTemplate] = useState({
     name: '',
     description: '',
     colorScheme: ['#3B82F6', '#10B981', '#F59E0B'],
   });
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    const handleKey = (e) => e.key === 'Escape' && setShowCreateModal(false);
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [showCreateModal]);
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [showCreateModal]);
 
   const { data: canvaStatusResp, isLoading: statusLoading } = useCanvaStatus();
   const canvaStatus = canvaStatusResp?.data || {};
@@ -44,9 +83,13 @@ export default function CanvaTemplates() {
     refetch: refetchTemplates,
   } = useTemplates();
   const templates = templatesResp?.data || [];
+  const canvaTemplatesInitialLoading =
+    (statusLoading && !canvaStatusResp) || (templatesLoading && !templatesResp);
+  useRouteInitialLoading(canvaTemplatesInitialLoading);
   const importMutation = useCanvaImport();
   const createMutation = useCreateTemplate();
   const deleteMutation = useDeleteTemplate();
+  const seedMutation = useSeedTemplates();
 
   const isConnected = canvaStatus?.connected;
 
@@ -94,7 +137,7 @@ export default function CanvaTemplates() {
 
   const handleSeedDefaults = async () => {
     try {
-      await createMutation.mutateAsync({ seed: true });
+      await seedMutation.mutateAsync({});
       refetchTemplates();
     } catch (error) {
       console.error('Failed to seed templates:', error);
@@ -118,18 +161,14 @@ export default function CanvaTemplates() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-      <PageHeader
-        title="Templates & Canva"
-        icon="🎨"
-        description="Manage certificate templates and connect to Canva for design imports"
-      />
+    <div>
+      <PageHeader title="Templates & Canva" icon="🎨" />
 
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="mx-auto max-w-7xl space-y-5">
         {/* Connection Status Card */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+        <Card className="p-5 sm:p-6">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
               <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl">
                 <Palette className="w-6 h-6 text-white" />
               </div>
@@ -143,30 +182,26 @@ export default function CanvaTemplates() {
               </div>
             </div>
 
-            <div className="flex items-center space-x-4">
-              {statusLoading ? (
-                <Spinner size="sm" />
-              ) : (
-                <Badge variant={isConnected ? 'success' : 'danger'}>
-                  {isConnected ? (
-                    <span className="flex items-center gap-1">
-                      <Check className="w-3 h-3" />
-                      Connected
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <X className="w-3 h-3" />
-                      Not Connected
-                    </span>
-                  )}
-                </Badge>
-              )}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Badge variant={isConnected ? 'success' : 'danger'}>
+                {isConnected ? (
+                  <span className="flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    Connected
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <X className="w-3 h-3" />
+                    Not Connected
+                  </span>
+                )}
+              </Badge>
 
               {!isConnected && (
                 <button
                   onClick={handleConnectCanva}
                   disabled={!authUrlData?.url}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
+                  className="flex w-full items-center justify-center gap-2 px-4 py-2 sm:w-auto bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
                 >
                   <ExternalLink className="w-4 h-4" />
                   Connect to Canva
@@ -253,8 +288,8 @@ export default function CanvaTemplates() {
         )}
 
         {/* Local Templates Section */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
+        <Card className="p-5 sm:p-6">
+          <div className="mb-5 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                 Local Templates
@@ -263,10 +298,10 @@ export default function CanvaTemplates() {
                 Manage your certificate templates
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
               <button
                 onClick={handleSeedDefaults}
-                disabled={createMutation.isPending}
+                disabled={seedMutation.isPending}
                 className="flex items-center gap-2 px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
               >
                 <Palette className="w-4 h-4" />
@@ -282,12 +317,8 @@ export default function CanvaTemplates() {
             </div>
           </div>
 
-          {templatesLoading ? (
-            <div className="flex justify-center py-12">
-              <Spinner size="lg" />
-            </div>
-          ) : templates?.length === 0 ? (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+          {templates?.length === 0 ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center py-8 text-center text-gray-500 dark:text-gray-400">
               <Palette className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No templates yet. Create one or seed default templates.</p>
             </div>
@@ -320,16 +351,18 @@ export default function CanvaTemplates() {
 
                     {/* Color Scheme Preview */}
                     <div className="flex items-center gap-1">
-                      {template.colorScheme?.slice(0, 5).map((color, index) => (
-                        <div
-                          key={index}
-                          className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
-                          style={{ backgroundColor: color }}
-                        />
-                      ))}
-                      {template.colorScheme?.length > 5 && (
+                      {colorsFor(template)
+                        ?.slice(0, 5)
+                        .map((color, index) => (
+                          <div
+                            key={index}
+                            className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                      {colorsFor(template)?.length > 5 && (
                         <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
-                          +{template.colorScheme.length - 5}
+                          +{colorsFor(template).length - 5}
                         </span>
                       )}
                     </div>
@@ -349,134 +382,146 @@ export default function CanvaTemplates() {
       </div>
 
       {/* Create Template Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div
-              className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"
-              onClick={() => setShowCreateModal(false)}
-            />
+      {showCreateModal &&
+        createPortal(
+          <div
+            className="internops-modal-backdrop fixed inset-0 z-50 overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-title"
+          >
+            <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+              <div
+                className="fixed inset-0 transition-opacity bg-slate-950/60 backdrop-blur-sm"
+                onClick={() => setShowCreateModal(false)}
+              />
 
-            <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-bottom transition-all transform bg-white dark:bg-gray-800 shadow-xl rounded-2xl sm:my-8 sm:align-middle sm:max-w-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Create New Template
-                </h3>
-                <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateTemplate} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Template Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newTemplate.name}
-                    onChange={(e) =>
-                      setNewTemplate((prev) => ({
-                        ...prev,
-                        name: e.target.value,
-                      }))
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="Enter template name"
-                    required
-                  />
+              <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-bottom transition-all transform bg-white dark:bg-gray-800 shadow-xl rounded-2xl sm:my-8 sm:align-middle sm:max-w-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <h3
+                    id="modal-title"
+                    className="text-lg font-semibold text-gray-900 dark:text-white"
+                  >
+                    Create New Template
+                  </h3>
+                  <button
+                    onClick={() => setShowCreateModal(false)}
+                    className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={newTemplate.description}
-                    onChange={(e) =>
-                      setNewTemplate((prev) => ({
-                        ...prev,
-                        description: e.target.value,
-                      }))
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="Enter template description"
-                    rows={3}
-                  />
-                </div>
+                <form onSubmit={handleCreateTemplate} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Template Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newTemplate.name}
+                      onChange={(e) =>
+                        setNewTemplate((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Enter template name"
+                      required
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Color Scheme
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {newTemplate.colorScheme.map((color, index) => (
-                      <div key={index} className="relative group">
-                        <input
-                          type="color"
-                          value={color}
-                          onChange={(e) => {
-                            const newColors = [...newTemplate.colorScheme];
-                            newColors[index] = e.target.value;
-                            setNewTemplate((prev) => ({
-                              ...prev,
-                              colorScheme: newColors,
-                            }));
-                          }}
-                          className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200 dark:border-gray-600"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeColorFromScheme(index)}
-                          className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Description
+                    </label>
+                    <textarea
+                      value={newTemplate.description}
+                      onChange={(e) =>
+                        setNewTemplate((prev) => ({
+                          ...prev,
+                          description: e.target.value,
+                        }))
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Enter template description"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Color Scheme
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {newTemplate.colorScheme.map((color, index) => (
+                        <div key={index} className="relative group">
+                          <input
+                            type="color"
+                            value={color}
+                            onChange={(e) => {
+                              const newColors = [...newTemplate.colorScheme];
+                              newColors[index] = e.target.value;
+                              setNewTemplate((prev) => ({
+                                ...prev,
+                                colorScheme: newColors,
+                              }));
+                            }}
+                            className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200 dark:border-gray-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeColorFromScheme(index)}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={addColorToScheme}
+                        className="w-10 h-10 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center text-gray-400 hover:border-blue-500 hover:text-blue-500 transition-colors"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 mt-6">
                     <button
                       type="button"
-                      onClick={addColorToScheme}
-                      className="w-10 h-10 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center text-gray-400 hover:border-blue-500 hover:text-blue-500 transition-colors"
+                      onClick={() => setShowCreateModal(false)}
+                      className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                     >
-                      +
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={
+                        createMutation.isPending || !newTemplate.name.trim()
+                      }
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {createMutation.isPending ? (
+                        <Spinner size="sm" />
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          Create Template
+                        </>
+                      )}
                     </button>
                   </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateModal(false)}
-                    className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={
-                      createMutation.isPending || !newTemplate.name.trim()
-                    }
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {createMutation.isPending ? (
-                      <Spinner size="sm" />
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" />
-                        Create Template
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+                </form>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
+
+export default CanvaTemplates;

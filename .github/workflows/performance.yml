@@ -1,0 +1,139 @@
+name: InternOps Performance
+
+on:
+  workflow_dispatch:
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: internops_test
+          POSTGRES_INITDB_ARGS: "--username=postgres"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # Test-only credentials for ephemeral GitHub Actions runners.
+    # These values are safe because the environment is temporary and never used in production.
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
+      JWT_SECRET: ci-test-secret-do-not-use-in-prod
+      JWT_REFRESH_SECRET: ci-test-refresh-secret
+      JWT_REFRESH_EXPIRES_IN: 7d
+      PORT: 5000
+      CORS_ORIGIN: http://localhost:5173
+      SEED_ADMIN_EMAIL: admin@internops.com
+      SEED_ADMIN_PASSWORD: Admin@123
+      BASE_URL: http://127.0.0.1:5000
+
+    steps:
+      # Checkout the repository so the workflow can access the existing backend and load-test files.
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # Set up Node.js with the same version and dependency caching strategy used by CI.
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      # Install dependencies the same way as CI so workspaces and backend scripts resolve correctly.
+      - name: Install all dependencies
+        shell: bash
+        run: npm ci --no-audit --no-fund
+
+      # Install k6 using the official Grafana package repository for GitHub-hosted runners.
+      - name: Install k6
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates gnupg
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      # Wait for PostgreSQL to accept connections before running the backend setup steps.
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      # Apply the existing backend migrations and seed data so the load tests have a known starting state.
+      - name: Run backend migrations
+        run: cd backend && npm run migrate
+
+      - name: Seed test data
+        run: cd backend && npm run seed
+
+      # Start the backend with the repository's existing start script so the load tests can target a live service.
+      - name: Start backend
+        shell: bash
+        run: |
+          mkdir -p backend/tests/load/reports
+          nohup npm run start --workspace=backend > backend/tests/load/reports/backend.log 2>&1 &
+          echo $! > backend/tests/load/reports/backend.pid
+
+      # Poll the health endpoint until the API is ready instead of relying on a fixed sleep.
+      - name: Wait for backend health
+        shell: bash
+        run: |
+          for attempt in {1..60}; do
+            if curl -fsS "http://127.0.0.1:${PORT}/health" > /dev/null; then
+              echo "Backend is healthy"
+              exit 0
+            fi
+            echo "Waiting for backend..."
+            sleep 5
+          done
+          echo "Backend did not become healthy in time"
+          cat backend/tests/load/reports/backend.log
+          exit 1
+
+      # Run the existing mixed-workload k6 suite with the base URL supplied as an environment variable.
+      - name: Run mixed workload test
+        working-directory: backend/tests/load/k6
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+        run: |
+          mkdir -p ../reports
+          k6 run --summary-export ../reports/mixed-workload-summary.json mixed-workload.js
+
+      # Upload the generated load-test summaries and logs so they are available after the workflow completes.
+      - name: Upload load test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-reports
+          path: |
+            backend/tests/load/reports/**
+            backend/tests/load/reports/backend.log
+          if-no-files-found: warn
+
+      # Stop the background backend process after the run finishes.
+      - name: Stop backend
+        if: always()
+        shell: bash
+        run: |
+          if [ -f backend/tests/load/reports/backend.pid ]; then
+            PID=$(cat backend/tests/load/reports/backend.pid)
+            kill "$PID" || true
+            pkill -P "$PID" || true
+          fi

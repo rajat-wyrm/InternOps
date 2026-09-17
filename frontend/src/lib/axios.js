@@ -1,6 +1,9 @@
 import axios from 'axios';
+import { toast } from 'sonner';
+import { captureException } from './sentry';
+import { getApiErrorInfo, getApiErrorMessage } from './apiError';
 
-function getBaseUrl() {
+export function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
   if (!raw) return '/api/v1';
   let url = raw.trim();
@@ -12,11 +15,18 @@ function getBaseUrl() {
   }
   url = url.replace(/\/+$/, '');
 
-  // Append /api/v1 if the URL is an origin-only value (no path component yet).
-  // This keeps all API calls working correctly when VITE_API_URL is set to
-  // just "http://localhost:5000" rather than "http://localhost:5000/api/v1".
-  if (!/\/api\/v\d+/.test(url)) {
-    url = `${url}/api/v1`;
+  // Normalize bare API URLs to the versioned backend path.
+  // This keeps API calls working correctly when VITE_API_URL is set to
+  // "http://localhost:5000", "http://localhost:5000/api", or "http://localhost:5000/api/v1".
+  const hasApiVersionPath = /\/api\/v\d+(?:\/|$)/i.test(url);
+  const hasApiOnlyPath = /\/api$/i.test(url);
+
+  if (!hasApiVersionPath) {
+    if (hasApiOnlyPath) {
+      url = url.replace(/\/api$/i, '/api/v1');
+    } else {
+      url = `${url}/api/v1`;
+    }
   }
 
   return url;
@@ -27,6 +37,93 @@ const api = axios.create({
   timeout: 15000,
 });
 
+function shouldShowGlobalToast(err) {
+  const original = err.config || {};
+  const isAuthRoute =
+    original.url &&
+    (original.url.includes('/auth/login') ||
+      original.url.includes('/auth/refresh') ||
+      original.url.includes('/auth/register'));
+
+  return !(
+    original._retry ||
+    original._suppressGlobalError ||
+    isAuthRoute ||
+    original.url?.includes('/auth/refresh')
+  );
+}
+
+// Classifies a failed AI chat request (POST /ai/chat) into a single,
+// user-friendly message. Callers that show this message inline should mark
+// their request config with `_suppressGlobalError: true` so the global
+// response interceptor below does not *also* toast a second, generic error
+// for the same failure (see issue #1795).
+function getAiChatErrorMessage(err) {
+  if (!err?.response) {
+    if (err?.code === 'ECONNABORTED') {
+      return {
+        message: 'The AI assistant took too long to respond. Please try again.',
+        retryable: true,
+      };
+    }
+    return {
+      message:
+        'Unable to reach the AI assistant. Check your connection and try again.',
+      retryable: true,
+    };
+  }
+
+  const status = err.response.status;
+
+  if (status === 401 || status === 403) {
+    return {
+      message: "You don't have access to the AI assistant right now.",
+      retryable: false,
+    };
+  }
+
+  if (status === 429) {
+    const responseData = err.response.data;
+    const hasServerMessage = Boolean(
+      responseData &&
+      (responseData.error ||
+        responseData.message ||
+        responseData.detail ||
+        responseData.description ||
+        responseData.details?.length ||
+        responseData.errors?.length)
+    );
+    return {
+      message: hasServerMessage
+        ? getApiErrorMessage(err)
+        : "You've reached the AI assistant's usage limit. Please try again later.",
+      retryable: false,
+    };
+  }
+
+  if (status >= 500) {
+    return {
+      message:
+        'The AI assistant is temporarily unavailable. Please try again in a moment.',
+      retryable: true,
+    };
+  }
+
+  const serverMessage = getApiErrorMessage(err);
+  return {
+    message:
+      serverMessage || 'Could not process that request. Please try rephrasing.',
+    retryable: false,
+  };
+}
+
+function notifyGlobalApiError(err) {
+  if (!shouldShowGlobalToast(err)) {
+    return;
+  }
+  toast.error(getApiErrorMessage(err));
+}
+
 // The backend's CSRF guard requires the X-CSRF-Token header on mutating
 // requests. We fetch a real token once and reuse it. If the call to obtain
 // a real token fails we REFUSE to send the request — silently substituting
@@ -36,6 +133,18 @@ const api = axios.create({
 let csrfToken = null;
 let csrfPromise = null;
 let csrfGeneration = 0;
+const CSRF_EXEMPT_PATHS = [
+  '/auth/login',
+  '/auth/refresh',
+  '/auth/logout',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/client-error',
+];
+
+function isCsrfExempt(url) {
+  return Boolean(url && CSRF_EXEMPT_PATHS.some((path) => url.includes(path)));
+}
 
 async function getCsrfToken() {
   if (csrfToken) {
@@ -96,11 +205,52 @@ let _authStore = null;
 
 export function registerAuthStore(store) {
   _authStore = store;
-  removeLegacyAuthStorage();
 }
 
 function getMemoryAccessToken() {
   return _authStore?.getState?.()?.accessToken || null;
+}
+let sharedRefreshPromise = null;
+async function performRefresh() {
+  const generation = _authStore?.getState?.().authGeneration ?? 0;
+  try {
+    const response = await api.post(
+      '/auth/refresh',
+      {},
+      { _isRefreshRequest: true }
+    );
+    const accessToken = response.data?.accessToken;
+    const user = response.data?.user;
+    if (!accessToken || !user)
+      throw new Error('Refresh returned incomplete session');
+    _authStore?.getState?.().setAuth({ accessToken, user });
+    clearCsrfToken();
+    return { accessToken, user };
+  } catch (error) {
+    const current = _authStore?.getState?.();
+    if (current && current.authGeneration === generation) {
+      current.logout();
+      if (typeof window !== 'undefined')
+        window.dispatchEvent(new Event('auth:logout'));
+    }
+    throw error;
+  }
+}
+export function refreshSession() {
+  if (sharedRefreshPromise) return sharedRefreshPromise;
+  const execute = () => performRefresh();
+  const coordinated =
+    typeof navigator !== 'undefined' && navigator.locks?.request
+      ? navigator.locks.request(
+          'internops-refresh-token',
+          { mode: 'exclusive' },
+          execute
+        )
+      : execute();
+  sharedRefreshPromise = Promise.resolve(coordinated).finally(() => {
+    sharedRefreshPromise = null;
+  });
+  return sharedRefreshPromise;
 }
 
 api.interceptors.request.use(async (config) => {
@@ -113,7 +263,10 @@ api.interceptors.request.use(async (config) => {
 
   const method = (config.method || 'get').toLowerCase();
 
-  if (!['get', 'head', 'options'].includes(method)) {
+  if (
+    !['get', 'head', 'options'].includes(method) &&
+    !isCsrfExempt(config.url)
+  ) {
     try {
       config.headers = config.headers || {};
       config.headers['X-CSRF-Token'] = await getCsrfToken();
@@ -130,52 +283,7 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Silent refresh: when an access token expires, the server returns 401.
-// Before destroying the session, try the refresh-token flow once. The refresh
-// token is stored in an HttpOnly cookie, so JavaScript cannot read it.
-// The new access token is stored only in Zustand memory.
-let isRefreshing = false;
-let failedQueue = [];
-
-function processQueue(error, token = null) {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
-  });
-  failedQueue = [];
-}
-
-function handleLogout() {
-  try {
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.removeItem('user');
-      } catch {
-        /* ignore localStorage unavailability */
-      }
-
-      clearCsrfToken();
-
-      try {
-        if (!window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login';
-        }
-      } catch {
-        /* ignore location assignment errors */
-      }
-    } else {
-      // If there's no window (SSR), still clear tokens in memory
-      clearCsrfToken();
-    }
-  } catch {
-    /* defensive: ensure logout doesn't throw */
-    clearCsrfToken();
-  }
-}
-
+// Silent refresh is coordinated by refreshSession() for startup, interceptors, and browser tabs.
 api.interceptors.response.use(
   (res) => {
     const url = res.config?.url;
@@ -193,11 +301,26 @@ api.interceptors.response.use(
     return res;
   },
   async (err) => {
+    if (axios.isCancel(err)) {
+      return Promise.reject(err);
+    }
     console.error(
       '[Global API Error]',
       err.response?.data || err.message,
       err.config?.url
     );
+
+    const errorStatus = err.response?.status;
+    if (errorStatus >= 500) {
+      captureException(err, {
+        tags: {
+          source: 'api',
+          statusCode: String(errorStatus),
+          route: err.config?.url,
+        },
+        extra: { responseData: err.response?.data },
+      });
+    }
 
     const original = err.config || {};
     const status = err.response?.status;
@@ -208,84 +331,59 @@ api.interceptors.response.use(
         original.url.includes('/auth/refresh') ||
         original.url.includes('/auth/register'));
 
-    if (status === 401 && !original._retry && !isAuthRoute) {
-      // Another refresh is already in flight — queue this request.
-      if (isRefreshing) {
-        original._retry = true;
+    const hasToken = !!getMemoryAccessToken();
 
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        }).then((token) => {
-          original.headers = original.headers || {};
-          original.headers.Authorization = `Bearer ${token}`;
-          return api(original);
-        });
-      }
-
-      original._retry = true;
-      isRefreshing = true;
-
+    if (
+      status === 403 &&
+      !original._csrfRetry &&
+      err.response?.data?.error === 'CSRF validation failed'
+    ) {
+      original._csrfRetry = true;
+      clearCsrfToken();
       try {
-        const refreshRes = await api.post('/auth/refresh', {});
-        const newToken = refreshRes.data?.accessToken;
-
-        if (newToken) {
-          const meRes = await api.get('/users/me');
-          // Store refreshed token in memory only.
-          if (_authStore) {
-            _authStore
-              .getState()
-              .setAuth({ accessToken: newToken, user: meRes.data });
-          }
-
-          // The server rotated the refresh cookie. The CSRF token may also
-          // have changed, so reset it so the next request picks up a fresh one.
-          clearCsrfToken();
-          removeLegacyAuthStorage();
-
-          processQueue(null, newToken);
-
-          original.headers = original.headers || {};
-          original.headers.Authorization = `Bearer ${newToken}`;
-
-          return api(original);
-        }
-
-        throw new Error('Refresh returned no token');
-      } catch (refreshErr) {
-        processQueue(refreshErr);
-
-        if (_authStore) {
-          _authStore.getState().logout();
-        } else {
-          removeLegacyAuthStorage();
-          clearCsrfToken();
-
-          try {
-            if (typeof window !== 'undefined') {
-              window.localStorage.removeItem('user');
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-
-        if (
-          typeof window !== 'undefined' &&
-          !window.location.pathname.startsWith('/login')
-        ) {
-          window.location.href = '/login';
-        }
-
-        return Promise.reject(refreshErr);
-      } finally {
-        isRefreshing = false;
+        original.headers = original.headers || {};
+        original.headers['X-CSRF-Token'] = await getCsrfToken();
+        return api(original);
+      } catch (retryErr) {
+        console.error(
+          '[CSRF] Token refetch failed after 403; falling back to original error',
+          retryErr,
+          original.url
+        );
       }
     }
 
+    if (
+      status === 401 &&
+      !original._retry &&
+      !isAuthRoute &&
+      hasToken &&
+      _authStore?.getState?.().impersonation
+    ) {
+      original._retry = true;
+      _authStore.getState().exitImpersonation();
+      const adminToken = getMemoryAccessToken();
+      if (adminToken) {
+        original.headers = original.headers || {};
+        original.headers.Authorization = `Bearer ${adminToken}`;
+        return api(original);
+      }
+    }
+    if (status === 401 && !original._retry && !isAuthRoute && hasToken) {
+      original._retry = true;
+      const { accessToken } = await refreshSession();
+      original.headers = original.headers || {};
+      original.headers.Authorization = `Bearer ${accessToken}`;
+      return api(original);
+    }
+    const errorInfo = getApiErrorInfo(err);
+    err.userMessage = errorInfo.message;
+    err.errorCode = errorInfo.code;
+    err.requestId = errorInfo.requestId;
+    notifyGlobalApiError(err);
     return Promise.reject(err);
   }
 );
 
 export default api;
-export { clearCsrfToken };
+export { clearCsrfToken, getAiChatErrorMessage, getApiErrorMessage };

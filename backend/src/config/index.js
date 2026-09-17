@@ -1,6 +1,7 @@
 require('dotenv').config();
 const pino = require('pino');
 const { z } = require('zod');
+const { resolveDatabaseUrl } = require('./testDatabase');
 
 const log = pino(
   process.env.NODE_ENV === 'development'
@@ -9,33 +10,84 @@ const log = pino(
 );
 
 function buildRedisConfig() {
-  const restUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const redisUrl = process.env.REDIS_URL?.trim();
+
+  if (redisUrl) {
+    try {
+      const parsed = new URL(redisUrl);
+
+      if (!['redis:', 'rediss:'].includes(parsed.protocol)) {
+        throw new Error('REDIS_URL must use redis:// or rediss://');
+      }
+
+      const database = Number.parseInt(parsed.pathname.replace(/^\//, ''), 10);
+
+      return {
+        enabled: true,
+        available: false,
+        source: 'REDIS_URL',
+        host: parsed.hostname,
+        port: Number.parseInt(parsed.port, 10) || 6379,
+        username: parsed.username
+          ? decodeURIComponent(parsed.username)
+          : 'default',
+        password: parsed.password
+          ? decodeURIComponent(parsed.password)
+          : undefined,
+        database: Number.isInteger(database) ? database : 0,
+        tls: parsed.protocol === 'rediss:',
+      };
+    } catch (err) {
+      log.warn(
+        { err: err?.message },
+        'Invalid REDIS_URL; Redis-dependent features will use fallbacks'
+      );
+    }
+  }
 
   const explicitHost = process.env.REDIS_HOST;
   const explicitPort = parseInt(process.env.REDIS_PORT, 10) || 6379;
   const explicitUsername = process.env.REDIS_USERNAME || 'default';
   const explicitPassword = process.env.REDIS_PASSWORD;
 
-  if (explicitHost && explicitPassword) {
+  if (explicitHost) {
+    const isLocalHost =
+      explicitHost === 'localhost' ||
+      explicitHost === '127.0.0.1' ||
+      explicitHost === 'redis';
+
+    const useTls =
+      process.env.REDIS_TLS !== undefined
+        ? process.env.REDIS_TLS === 'true'
+        : !isLocalHost;
+
     return {
       enabled: true,
+      available: false,
+      source: 'REDIS_HOST',
       host: explicitHost,
       port: explicitPort,
       username: explicitUsername,
-      password: explicitPassword,
-      tls: process.env.REDIS_TLS !== 'false',
+      password: explicitPassword || undefined,
+      database: Number.parseInt(process.env.REDIS_DB, 10) || 0,
+      tls: useTls,
     };
   }
 
-  if (!restUrl || !token) {
+  const restUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (!restUrl || !token || restUrl === 'your-redis-url') {
     return {
       enabled: false,
+      available: false,
+      source: null,
       host: null,
       port: 6379,
       username: 'default',
       password: null,
-      tls: true,
+      database: 0,
+      tls: false,
     };
   }
 
@@ -57,38 +109,165 @@ function buildRedisConfig() {
   if (!host) {
     return {
       enabled: false,
+      available: false,
+      source: null,
       host: null,
       port: 6379,
       username: 'default',
       password: null,
-      tls: true,
+      database: 0,
+      tls: false,
     };
   }
 
   return {
     enabled: true,
+    available: false,
+    source: 'UPSTASH_REDIS_REST_URL',
     host,
     port: 6379,
     username: 'default',
     password: token,
+    database: 0,
     tls: true,
   };
 }
 
-function resolveRefreshSecret() {
-  const independent = process.env.JWT_REFRESH_SECRET;
-  if (independent && independent.trim() !== '') return independent;
+function buildStorageConfig() {
+  const driver = (process.env.STORAGE_DRIVER || 'local').toLowerCase();
 
-  if (process.env.NODE_ENV !== 'test') {
-    log.warn(
-      'JWT_REFRESH_SECRET is not set; using a derived fallback. Set an independent JWT_REFRESH_SECRET (required in production).'
-    );
+  // Cloudinary credentials
+  const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
+  const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY?.trim();
+  const cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
+  const isCloudinaryConfigured = Boolean(
+    cloudinaryCloudName && cloudinaryApiKey && cloudinaryApiSecret
+  );
+
+  // R2 / S3 credentials
+  const accountId = process.env.R2_ACCOUNT_ID?.trim();
+  const accessKeyId =
+    process.env.R2_ACCESS_KEY_ID?.trim() ||
+    process.env.AWS_ACCESS_KEY_ID?.trim();
+  const secretAccessKey =
+    process.env.R2_SECRET_ACCESS_KEY?.trim() ||
+    process.env.AWS_SECRET_ACCESS_KEY?.trim();
+  const bucketName =
+    process.env.R2_BUCKET_NAME?.trim() || process.env.AWS_BUCKET_NAME?.trim();
+  const publicUrl =
+    process.env.R2_PUBLIC_URL?.trim() || process.env.AWS_PUBLIC_URL?.trim();
+  const endpoint =
+    process.env.R2_ENDPOINT?.trim() ||
+    (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : undefined);
+  const region = process.env.AWS_REGION || 'auto';
+
+  const isS3Configured = Boolean(accessKeyId && secretAccessKey && bucketName);
+
+  let activeDriver = 'local';
+  if (
+    (driver === 'cloudinary' || driver === 'cloud') &&
+    isCloudinaryConfigured
+  ) {
+    activeDriver = 'cloudinary';
+  } else if (
+    isCloudinaryConfigured &&
+    !isS3Configured &&
+    driver !== 's3' &&
+    driver !== 'r2'
+  ) {
+    activeDriver = 'cloudinary';
+  } else if (['r2', 's3'].includes(driver) && isS3Configured) {
+    activeDriver = driver;
+  } else if (isS3Configured) {
+    activeDriver = 'r2';
   }
-  return process.env.JWT_SECRET
-    ? `${process.env.JWT_SECRET}_refresh`
-    : undefined;
+
+  return {
+    driver: activeDriver,
+    cloudinary: {
+      cloudName: cloudinaryCloudName,
+      apiKey: cloudinaryApiKey,
+      apiSecret: cloudinaryApiSecret,
+      isConfigured: isCloudinaryConfigured,
+    },
+    isCloudConfigured: isS3Configured || isCloudinaryConfigured,
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    bucketName,
+    publicUrl: publicUrl ? publicUrl.replace(/\/+$/, '') : null,
+    endpoint,
+    region,
+  };
 }
 
+function parseDurationToSeconds(value, fallbackSeconds) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+
+  const match = String(value || '')
+    .trim()
+    .match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w|y)?$/i);
+
+  if (!match) return fallbackSeconds;
+
+  const amount = Number(match[1]);
+  const unit = (match[2] || 'ms').toLowerCase();
+
+  const multipliers = {
+    ms: 1 / 1000,
+    s: 1,
+    m: 60,
+    h: 60 * 60,
+    d: 24 * 60 * 60,
+    w: 7 * 24 * 60 * 60,
+    y: 365 * 24 * 60 * 60,
+  };
+
+  const seconds = amount * multipliers[unit];
+
+  return Number.isFinite(seconds) && seconds > 0
+    ? Math.floor(seconds)
+    : fallbackSeconds;
+}
+
+function buildCookieConfig() {
+  const production = process.env.NODE_ENV === 'production';
+  const sameSite = (
+    process.env.COOKIE_SAME_SITE || (production ? 'none' : 'lax')
+  ).toLowerCase();
+  const secure = process.env.COOKIE_SECURE
+    ? process.env.COOKIE_SECURE === 'true'
+    : production;
+  const domain = process.env.COOKIE_DOMAIN?.trim() || undefined;
+
+  const refreshExpiry =
+    process.env.JWT_REFRESH_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '7d';
+
+  const refreshMaxAge = parseDurationToSeconds(refreshExpiry, 7 * 24 * 60 * 60);
+
+  return {
+    secure,
+    sameSite,
+    domain,
+    maxAge: refreshMaxAge,
+  };
+}
+
+function resolveRefreshSecret() {
+  const secret = process.env.JWT_REFRESH_SECRET;
+
+  if (!secret || secret.trim() === '') {
+    console.warn(
+      '[Config] JWT_REFRESH_SECRET is not configured. Using derived secret from JWT_SECRET.'
+    );
+
+    return `${process.env.JWT_SECRET}_refresh`;
+  }
+
+  return secret;
+}
 const envSchema = z.object({
   PORT: z.coerce.number().default(5000),
 });
@@ -97,7 +276,7 @@ module.exports = {
   port: env.PORT,
   host: process.env.HOST || '0.0.0.0',
   nodeEnv: process.env.NODE_ENV,
-  databaseUrl: process.env.DATABASE_URL,
+  databaseUrl: resolveDatabaseUrl(process.env),
   dbPoolMax: parseInt(process.env.DB_POOL_MAX, 10) || 20,
   jwt: {
     secret: process.env.JWT_SECRET,
@@ -111,7 +290,11 @@ module.exports = {
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE, 10) || 5242880,
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  appUrl:
+    process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
+  cookie: buildCookieConfig(),
   redis: buildRedisConfig(),
+  storage: buildStorageConfig(),
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -141,7 +324,17 @@ module.exports = {
     authMax:
       parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) ||
       (process.env.NODE_ENV === 'test' ? 10000 : 50),
+    refreshMax:
+      parseInt(process.env.RATE_LIMIT_REFRESH_MAX, 10) ||
+      (process.env.NODE_ENV === 'test' ? 10000 : 60),
+    csrfMax:
+      parseInt(process.env.RATE_LIMIT_CSRF_MAX, 10) ||
+      (process.env.NODE_ENV === 'test' ? 10000 : 300),
     timeWindow: process.env.RATE_LIMIT_TIME_WINDOW || '1 minute',
+    passwordResetCooldownMs:
+      parseInt(process.env.PASSWORD_RESET_COOLDOWN_MS, 10) || 5 * 60 * 1000,
+    passwordResetHourlyMax:
+      parseInt(process.env.PASSWORD_RESET_HOURLY_MAX, 10) || 5,
   },
   email: {
     host: process.env.SMTP_HOST,
@@ -156,5 +349,14 @@ module.exports = {
     rateLimitPerRecipient: parseInt(process.env.EMAIL_RATE_LIMIT, 10) || 5,
     rateLimitWindowMs: parseInt(process.env.EMAIL_RATE_WINDOW, 10) || 60000,
     bounceCheckEnabled: process.env.EMAIL_BOUNCE_CHECK === 'true',
+  },
+  sentry: {
+    dsn: process.env.SENTRY_DSN || null,
+    tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
+  },
+  websocket: {
+    maxUnauthenticatedConnections:
+      parseInt(process.env.MAX_UNAUTHENTICATED_WEBSOCKET_CONNECTIONS, 10) || 20,
+    authTimeoutMs: parseInt(process.env.WEBSOCKET_AUTH_TIMEOUT_MS, 10) || 5000,
   },
 };

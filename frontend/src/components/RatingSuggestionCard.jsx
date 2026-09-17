@@ -1,6 +1,6 @@
 import { Card } from './ui';
 
-export default function RatingSuggestionCard({ suggestion, loading }) {
+export default function RatingSuggestionCard({ suggestion, loading, error }) {
   if (loading) {
     return (
       <Card className="p-4 mb-4">
@@ -9,6 +9,13 @@ export default function RatingSuggestionCard({ suggestion, loading }) {
     );
   }
 
+  if (error) {
+    return (
+      <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+        AI suggestion unavailable. You can still rate manually.
+      </div>
+    );
+  }
   if (!suggestion) {
     return null;
   }

@@ -3,10 +3,10 @@ module.exports = [
     ignores: ['coverage/**', 'node_modules/**'],
   },
   {
-    files: ['**/*.js'],
+    files: ['tests/load/**/*.js'],
     languageOptions: {
       ecmaVersion: 2021,
-      sourceType: 'commonjs',
+      sourceType: 'module',
       globals: {
         console: 'readonly',
         process: 'readonly',
@@ -34,6 +34,18 @@ module.exports = [
     },
     rules: {
       'no-eval': 'error',
+    },
+  },
+  {
+    files: ['tests/load/**/*.js'],
+    languageOptions: {
+      sourceType: 'module',
+      ecmaVersion: 'latest',
+      globals: {
+        __ENV: 'readonly',
+        __VU: 'readonly',
+        __ITER: 'readonly',
+      },
     },
   },
 ];

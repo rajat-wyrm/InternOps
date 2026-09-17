@@ -77,7 +77,9 @@ export function useBulkGenerate() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload) => {
-      const { data } = await api.post('/certificates/bulk/generate', payload);
+      const { data } = await api.post('/certificates/bulk/generate', payload, {
+        timeout: 120000,
+      });
       return data;
     },
     onSuccess: () => {
@@ -94,6 +96,9 @@ export function useBulkJobStatus(jobId) {
       return data;
     },
     enabled: !!jobId,
+    refetchInterval: (data) => (data?.status === 'processing' ? 2000 : false),
+    refetchIntervalInBackground: true,
+    staleTime: 1000,
   });
 }
 

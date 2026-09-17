@@ -4,6 +4,7 @@ import api from '../lib/axios';
 import { Card, Btn, Input, Textarea } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDateTimePicker from './CustomDateTimePicker';
+import { getApiErrorMessage } from '../lib/apiError';
 
 const PLATFORMS = [
   'LinkedIn',
@@ -14,7 +15,7 @@ const PLATFORMS = [
   'Other',
 ];
 
-export default function CreateTaskForm() {
+export default function CreateTaskForm({ departmentId } = {}) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     title: '',
@@ -25,11 +26,16 @@ export default function CreateTaskForm() {
   });
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const [generatedImage, setGeneratedImage] = useState(null);
+  const [imageError, setImageError] = useState('');
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   const createMutation = useMutation({
     mutationFn: (data) => api.post('/tasks', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({
+        queryKey: ['tasks', departmentId || ''],
+      });
       setError('');
       setMsg('✓ Task created');
       setForm({
@@ -41,8 +47,36 @@ export default function CreateTaskForm() {
       });
       setTimeout(() => setMsg(''), 2000);
     },
-    onError: (err) => setError(err.response?.data?.error || 'Failed'),
+    onError: (err) =>
+      setError(getApiErrorMessage(err, 'Failed to create task')),
   });
+
+  const handleGenerateImage = async () => {
+    if (isGeneratingImage) return; // prevent duplicate requests
+    if (!form.description.trim()) {
+      setImageError('Add a description first to generate an image');
+      return;
+    }
+
+    setIsGeneratingImage(true);
+    setImageError('');
+
+    try {
+      const res = await api.post('/ai/generate-image', {
+        prompt: form.description,
+      });
+      setGeneratedImage({
+        base64: res.data.image_base64,
+        path: res.data.image_path,
+      });
+    } catch (err) {
+      setImageError(
+        err.response?.data?.error || 'Image generation failed. Try again.'
+      );
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
 
   const platformOptions = PLATFORMS.map((platform) => ({
     value: platform,
@@ -81,7 +115,11 @@ export default function CreateTaskForm() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          createMutation.mutate(form);
+          createMutation.mutate({
+            ...form,
+            imagePath: generatedImage?.path,
+            ...(departmentId ? { department_id: departmentId } : {}),
+          });
         }}
         className="space-y-5"
       >
@@ -110,6 +148,34 @@ export default function CreateTaskForm() {
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             disabled={createMutation.isPending}
           />
+        </div>
+
+        <div>
+          <Btn
+            type="button"
+            variant="secondary"
+            onClick={handleGenerateImage}
+            disabled={isGeneratingImage || createMutation.isPending}
+            className="rounded-2xl"
+          >
+            {isGeneratingImage ? 'Generating…' : '✨ Generate Image'}
+          </Btn>
+
+          {imageError && (
+            <p className="text-rose-600 dark:text-rose-400 text-sm mt-2">
+              {imageError}
+            </p>
+          )}
+
+          {generatedImage && (
+            <div className="mt-3">
+              <img
+                src={`data:image/png;base64,${generatedImage.base64}`}
+                alt="Generated assignment visual"
+                className="rounded-2xl border border-slate-200 dark:border-slate-700 max-w-xs"
+              />
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

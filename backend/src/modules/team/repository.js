@@ -1,11 +1,17 @@
 const pool = require('../../config/db');
 const argon2 = require('argon2');
+const {
+  MAX_HIERARCHY_DEPTH,
+  MAX_HIERARCHY_ROWS,
+  ROLE_RANK,
+  roleRankSql,
+} = require('../../utils/hierarchy');
 
 // Detail columns a manager is allowed to read for each member.
 const MEMBER_COLUMNS = `
   u.id, u.email, u.role, u.full_name, u.suspended, u.avatar_url, u.created_at,
-  u.department_id, u.manager_id, u.phone, u.college, u.course, u.year_of_study,
-  u.position, u.joining_date, u.internship_status, u.location, u.notes
+  u.department_id, u.manager_id, u.intern_code, u.phone, u.college, u.course, u.year_of_study,
+  u.position, u.internship_domain, u.offer_letter_url, u.joining_date, u.internship_status, u.lifecycle_effective_date, u.completion_date, u.extended_completion_date, u.location, u.notes
 `;
 
 // Performance summary (attendance %, avg rating, verified tasks) joined per member.
@@ -15,7 +21,8 @@ const PERFORMANCE_JOINS = `
   LEFT JOIN (
     SELECT user_id,
            COUNT(*) FILTER (WHERE status = 'PRESENT')  AS present_count,
-           COUNT(*) FILTER (WHERE status = 'HALF_DAY') AS half_day_count,
+           COUNT(*) FILTER (WHERE status = 'INFORMED') AS informed_count,
+           COUNT(*) FILTER (WHERE status = 'LEAVE')    AS leave_count,
            COUNT(*)                                    AS attendance_total
     FROM attendance WHERE deleted_at IS NULL GROUP BY user_id
   ) att ON att.user_id = u.id
@@ -36,7 +43,8 @@ const PERFORMANCE_COLUMNS = `
   m.full_name AS manager_name,
   d.name AS department_name,
   COALESCE(att.present_count, 0)   AS present_count,
-  COALESCE(att.half_day_count, 0)  AS half_day_count,
+  COALESCE(att.informed_count, 0) AS informed_count,
+  COALESCE(att.leave_count, 0)    AS leave_count,
   COALESCE(att.attendance_total, 0) AS attendance_total,
   rat.avg_rating,
   COALESCE(rat.rating_count, 0)    AS rating_count,
@@ -48,22 +56,57 @@ const PERFORMANCE_COLUMNS = `
 // Everyone in the requester's downward hierarchy (direct + indirect reports).
 async function getTeamMembers(managerId, departmentId) {
   const query = `
-    WITH RECURSIVE team AS (
-      SELECT id, manager_id, 1 AS depth
-      FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+    WITH RECURSIVE requester AS (
+      SELECT id, role, department_id
+      FROM users
+      WHERE id = $1 AND deleted_at IS NULL
+    ), team AS (
+      SELECT u.id, u.manager_id, 1 AS depth, ARRAY[r.id, u.id] AS path,
+         ${roleRankSql('u')} AS structural_rank
+      FROM requester r
+      INNER JOIN users u
+        ON u.deleted_at IS NULL
+       AND u.role <> 'ADMIN'
+       AND u.id <> r.id
+       AND u.manager_id = r.id
       UNION ALL
-      SELECT u.id, u.manager_id, t.depth + 1
-      FROM users u INNER JOIN team t ON u.manager_id = t.id
-      WHERE u.deleted_at IS NULL
+      SELECT u.id, u.manager_id, t.depth + 1, t.path || u.id,
+             ${roleRankSql('u')} AS structural_rank
+      FROM team t
+      INNER JOIN users u
+        ON u.manager_id = t.id
+       AND u.deleted_at IS NULL
+       AND u.role <> 'ADMIN'
+       AND NOT u.id = ANY(t.path)
+      WHERE t.depth < $3
     )
-    SELECT ${MEMBER_COLUMNS}, t.depth, ${PERFORMANCE_COLUMNS}
+    SELECT ${MEMBER_COLUMNS}, MIN(t.depth) AS depth, ${PERFORMANCE_COLUMNS}
     FROM team t
     JOIN users u ON u.id = t.id
     ${PERFORMANCE_JOINS}
     WHERE ($2::uuid IS NULL OR u.department_id = $2)
-    ORDER BY t.depth, u.role, u.full_name
+    GROUP BY u.id, m.full_name, d.name, att.present_count, att.informed_count,
+      att.leave_count, att.attendance_total, rat.avg_rating, rat.rating_count,
+      tsk.verified_tasks, tsk.pending_proofs, tsk.total_tasks
+    ORDER BY
+      MIN(t.structural_rank),
+      MIN(t.depth),
+      LOWER(COALESCE(NULLIF(TRIM(u.full_name), ''), u.email)),
+      LOWER(u.email),
+      u.id
+    LIMIT $4
   `;
-  const { rows } = await pool.query(query, [managerId, departmentId || null]);
+  const { rows } = await pool.query(query, [
+    managerId,
+    departmentId || null,
+    MAX_HIERARCHY_DEPTH,
+    MAX_HIERARCHY_ROWS + 1,
+  ]);
+  if (rows.length > MAX_HIERARCHY_ROWS) {
+    const err = new Error('Team too large');
+    err.statusCode = 416;
+    throw err;
+  }
   return rows;
 }
 
@@ -79,6 +122,11 @@ async function getMemberById(id) {
 }
 
 const EDITABLE_FIELDS = [
+  'email',
+  'department_id',
+  'intern_code',
+  'internship_domain',
+  'offer_letter_url',
   'full_name',
   'phone',
   'college',
@@ -86,6 +134,9 @@ const EDITABLE_FIELDS = [
   'year_of_study',
   'position',
   'joining_date',
+  'lifecycle_effective_date',
+  'completion_date',
+  'extended_completion_date',
   'internship_status',
   'location',
   'notes',
@@ -96,7 +147,13 @@ async function updateMember(id, data) {
   const params = [];
   for (const field of EDITABLE_FIELDS) {
     if (data[field] !== undefined) {
-      params.push(data[field] === '' ? null : data[field]);
+      const value =
+        field === 'email' && typeof data[field] === 'string'
+          ? data[field].trim().toLowerCase()
+          : data[field] === ''
+            ? null
+            : data[field];
+      params.push(value);
       sets.push(`${field} = $${params.length}`);
     }
   }
@@ -111,17 +168,18 @@ async function updateMember(id, data) {
 
 // Create a new member under the given manager, with optional detail fields.
 async function createMember(data) {
+  const normalizedEmail = data.email.trim().toLowerCase();
   const hash = await argon2.hash(data.password);
   const {
     rows: [created],
   } = await pool.query(
     `INSERT INTO users
        (email, password_hash, role, manager_id, department_id, full_name,
-        phone, college, course, year_of_study, position, joining_date, internship_status, location, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        phone, college, course, year_of_study, position, internship_domain, joining_date, internship_status, location, notes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      RETURNING id`,
     [
-      data.email,
+      normalizedEmail,
       hash,
       data.role,
       data.manager_id,
@@ -132,6 +190,7 @@ async function createMember(data) {
       data.course || null,
       data.year_of_study || null,
       data.position || null,
+      data.internship_domain || null,
       data.joining_date || null,
       data.internship_status || 'ACTIVE',
       data.location || null,
@@ -181,11 +240,26 @@ async function getMemberHistory(id) {
 // Recent proofs awaiting verification across the requester's whole team.
 async function getPendingProofs(managerId, limit = 50) {
   const query = `
-    WITH RECURSIVE team AS (
-      SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+    WITH RECURSIVE requester AS (
+      SELECT id, role, department_id FROM users
+      WHERE id = $1 AND deleted_at IS NULL
+    ), team AS (
+      SELECT u.id, u.manager_id, 1 AS depth, ARRAY[r.id, u.id] AS path
+      FROM requester r
+      INNER JOIN users u
+        ON u.deleted_at IS NULL
+       AND u.role <> 'ADMIN'
+       AND u.id <> r.id
+       AND u.manager_id = r.id
       UNION ALL
-      SELECT u.id FROM users u INNER JOIN team t ON u.manager_id = t.id
-      WHERE u.deleted_at IS NULL
+      SELECT u.id, u.manager_id, t.depth + 1, t.path || u.id
+      FROM team t
+      INNER JOIN users u
+        ON u.manager_id = t.id
+       AND u.deleted_at IS NULL
+       AND u.role <> 'ADMIN'
+       AND NOT u.id = ANY(t.path)
+      WHERE t.depth < $3
     )
     SELECT p.id, p.intern_id, p.image_path, p.status, p.created_at,
            u.full_name AS intern_name, u.email AS intern_email,
@@ -198,11 +272,13 @@ async function getPendingProofs(managerId, limit = 50) {
     ORDER BY p.created_at DESC
     LIMIT $2
   `;
-  const { rows } = await pool.query(query, [managerId, limit]);
+  const { rows } = await pool.query(query, [
+    managerId,
+    limit,
+    MAX_HIERARCHY_DEPTH,
+  ]);
   return rows;
 }
-
-const { ROLE_RANK } = require('../../utils/hierarchy');
 
 async function setMemberStatus(id, suspended) {
   await pool.query(
@@ -290,14 +366,20 @@ async function updateMemberManager(id, managerId) {
 
     const cycleCheck = await client.query(
       `WITH RECURSIVE subordinates AS (
-         SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+         SELECT u.id, u.manager_id, 1 AS depth, ARRAY[$1::uuid, u.id] AS path
+         FROM users u
+         WHERE u.manager_id = $1 AND u.deleted_at IS NULL
          UNION ALL
-         SELECT u.id
-         FROM users u INNER JOIN subordinates s ON u.manager_id = s.id
-         WHERE u.deleted_at IS NULL
+         SELECT u.id, u.manager_id, s.depth + 1, s.path || u.id
+         FROM subordinates s
+         INNER JOIN users u
+           ON u.manager_id = s.id
+          AND u.deleted_at IS NULL
+          AND NOT u.id = ANY(s.path)
+         WHERE s.depth < $3
        )
-       SELECT 1 FROM subordinates WHERE id = $2`,
-      [id, managerId]
+       SELECT 1 FROM subordinates WHERE id = $2 LIMIT 1`,
+      [id, managerId, MAX_HIERARCHY_DEPTH]
     );
     if (cycleCheck.rowCount > 0) {
       throw new Error('That assignment would create a cycle');

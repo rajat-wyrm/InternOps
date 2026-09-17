@@ -28,6 +28,14 @@ function formatMeeting(m) {
   };
 }
 
+const safeUrlSchema = z
+  .string()
+  .url()
+  .optional()
+  .refine((v) => !v || /^https?:\/\//i.test(v), {
+    message: 'Only HTTP/HTTPS URLs allowed',
+  });
+
 const createMeetingBody = z.object({
   title: z.string().min(3),
   description: z.string().optional(),
@@ -39,8 +47,8 @@ const createMeetingBody = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  meetingUrl: z.string().url().optional(),
-  meeting_url: z.string().url().optional(),
+  meetingUrl: safeUrlSchema,
+  meeting_url: safeUrlSchema,
   startTime: z.string().optional(),
   start_time: z.string().optional(),
   endTime: z.string().optional(),
@@ -62,8 +70,8 @@ const updateMeetingBody = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  meetingUrl: z.string().url().optional(),
-  meeting_url: z.string().url().optional(),
+  meetingUrl: safeUrlSchema,
+  meeting_url: safeUrlSchema,
   startTime: z.string().optional(),
   start_time: z.string().optional(),
   endTime: z.string().optional(),
@@ -79,17 +87,30 @@ async function routes(fastify) {
         tags: ['Meetings'],
         description: 'List meetings',
         querystring: toSchema(
-          z.object({ from: z.string().optional(), to: z.string().optional() })
+          z.object({
+            from: z.string().optional(),
+            to: z.string().optional(),
+            departmentId: z.string().uuid().optional(),
+          })
         ),
       },
       preHandler: [auth],
     },
     async (req) => {
-      const { from, to } = req.query;
-      const departmentId = await repo.getUserDepartmentId(req.user.id);
+      const { from, to, departmentId: requestedDeptId } = req.query;
+      const ownDepartmentId = await repo.getUserDepartmentId(req.user.id);
+
+      const effectiveDepartmentId =
+        req.user.role === 'ADMIN' && requestedDeptId
+          ? requestedDeptId
+          : req.user.role !== 'INTERN'
+            ? ownDepartmentId
+            : null;
+
       const result = await repo.listMeetings({
         userId: req.user.id,
-        departmentId: req.user.role !== 'INTERN' ? departmentId : null,
+        departmentId: effectiveDepartmentId,
+        requestedDepartmentId: requestedDeptId,
         fromDate: from,
         toDate: to,
       });

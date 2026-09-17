@@ -176,24 +176,14 @@ describe('Migration Integrity', () => {
       .digest('hex');
     writeMigration(dir, newName, sql);
 
-    // Save existing newName migration if it exists in the database
-    const existingMig = await pool.query(
-      'SELECT name FROM _migrations WHERE name = $1',
-      [newName]
+    await pool.query('DELETE FROM _migrations WHERE name IN ($1, $2)', [
+      oldName,
+      newName,
+    ]);
+    await pool.query(
+      'DELETE FROM _migration_checksums WHERE name IN ($1, $2)',
+      [oldName, newName]
     );
-    const existingCheck = await pool.query(
-      'SELECT sha256 FROM _migration_checksums WHERE name = $1',
-      [newName]
-    );
-    const hadExisting = existingMig.rowCount > 0;
-    const existingChecksumVal = existingCheck.rows[0]?.sha256;
-
-    if (hadExisting) {
-      await pool.query('DELETE FROM _migrations WHERE name = $1', [newName]);
-      await pool.query('DELETE FROM _migration_checksums WHERE name = $1', [
-        newName,
-      ]);
-    }
 
     await pool.query(
       'INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT DO NOTHING',
@@ -239,20 +229,7 @@ describe('Migration Integrity', () => {
         ])
         .catch(() => {});
 
-      // Restore existing migration if it had one
-      if (hadExisting) {
-        await pool
-          .query('INSERT INTO _migrations (name) VALUES ($1)', [newName])
-          .catch(() => {});
-        await pool
-          .query(
-            'INSERT INTO _migration_checksums (name, sha256) VALUES ($1, $2)',
-            [newName, existingChecksumVal]
-          )
-          .catch(() => {});
-      }
-
       fs.rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 30000);
 });

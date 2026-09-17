@@ -43,12 +43,28 @@ async function trackActiveRequests(request, reply) {
 }
 
 function observeHttpRequest(req, res, startTime) {
-  const route = req.route ? req.route.path : req.url;
-  const duration = Date.now() - startTime;
-
+  const route = req.routeOptions?.url || req.routerPath || req.url;
+  const start = Number(startTime);
+  if (!Number.isFinite(start)) {
+    req.log?.warn(
+      { method: req.method, route },
+      'Skipping HTTP duration metric because request start time is missing'
+    );
+    return false;
+  }
+  const duration =
+    Number(process.hrtime.bigint() - BigInt(Math.trunc(start))) / 1e6;
+  if (!Number.isFinite(duration) || duration < 0) {
+    req.log?.warn(
+      { method: req.method, route, duration },
+      'Skipping invalid HTTP duration metric'
+    );
+    return false;
+  }
   httpRequestDurationMicroseconds
     .labels(req.method, route, res.statusCode)
     .observe(duration);
+  return true;
 }
 
 // Custom wrapper functions exposed for use in ai.service.js

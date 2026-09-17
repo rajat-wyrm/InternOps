@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import useAuthStore from '../../store/auth';
 import api from '../../lib/axios';
-import { PageHeader, Card, Badge, Spinner } from '../../components/ui';
+import { PageHeader, Card, Badge } from '../../components/ui';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 import CustomDatePicker from '../../components/CustomDatePicker';
+import { getApiErrorMessage } from '../../lib/apiError';
 
 const ROLE_COLOR = {
   ADMIN: 'purple',
@@ -19,9 +22,13 @@ const STATUS_COLOR = {
 };
 
 export default function Reports() {
+  const hydrated = useAuthStore((s) => s.hydrated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const today = new Date().toISOString().slice(0, 10);
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
+
+  const isRangeInvalid = !!from && !!to && from > to;
 
   const attendanceQuery = useQuery({
     queryKey: ['reportAttendance', from, to],
@@ -29,7 +36,7 @@ export default function Reports() {
       api
         .get(`/reports/attendance-summary?from=${from}&to=${to}`)
         .then((r) => r.data),
-    enabled: !!from && !!to,
+    enabled: !!from && !!to && !isRangeInvalid,
   });
 
   const ratingsQuery = useQuery({
@@ -38,14 +45,22 @@ export default function Reports() {
       api
         .get(`/reports/ratings-summary?from=${from}&to=${to}`)
         .then((r) => r.data),
-    enabled: !!from && !!to,
+    enabled: !!from && !!to && !isRangeInvalid,
   });
 
   const tasksQuery = useQuery({
     queryKey: ['reportTasks'],
     queryFn: () => api.get('/reports/task-completion').then((r) => r.data),
+    enabled: hydrated && !!accessToken,
   });
 
+  useRouteInitialLoading(
+    !hydrated ||
+      !accessToken ||
+      attendanceQuery.isLoading ||
+      ratingsQuery.isLoading ||
+      tasksQuery.isLoading
+  );
   const attendanceData = attendanceQuery.data || [];
   const ratingsData = ratingsQuery.data || [];
   const tasksData = tasksQuery.data || [];
@@ -88,14 +103,32 @@ export default function Reports() {
         </div>
       </Card>
 
+      {isRangeInvalid && (
+        <div className="mb-5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
+          <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+            "From" date must be on or before "To" date. Please adjust the
+            selected range to see report data.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Card className="p-5">
           <h3 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
             📅 Attendance Summary
           </h3>
 
-          {attendanceQuery.isLoading ? (
-            <Spinner />
+          {isRangeInvalid ? (
+            <p className="text-gray-400 dark:text-slate-500 text-sm">
+              Fix the date range above to view this report.
+            </p>
+          ) : attendanceQuery.isError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+                Failed to load attendance data:{' '}
+                {getApiErrorMessage(attendanceQuery.error, 'Unknown error')}
+              </p>
+            </div>
           ) : !attendanceData?.length ? (
             <p className="text-gray-400 dark:text-slate-500 text-sm">
               No data for selected period.
@@ -104,18 +137,18 @@ export default function Reports() {
             <div className="space-y-2">
               {attendanceData.map((row) => (
                 <div
-                  key={row.role + row.status}
-                  className="flex items-center justify-between text-sm"
+                  key={`${row.user_id}-${row.status}`}
+                  className="flex items-center justify-between text-sm border-b border-gray-100 dark:border-slate-700 pb-2"
                 >
-                  <span className="flex items-center gap-2">
-                    <Badge color={ROLE_COLOR[row.role] || 'gray'}>
-                      {row.role}
-                    </Badge>
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-gray-800 dark:text-white">
+                      {row.intern_name}
+                    </span>
 
                     <Badge color={STATUS_COLOR[row.status] || 'gray'}>
                       {row.status}
                     </Badge>
-                  </span>
+                  </div>
 
                   <span className="font-bold text-gray-800 dark:text-white">
                     {row.count}
@@ -131,8 +164,17 @@ export default function Reports() {
             ⭐ Ratings Summary
           </h3>
 
-          {ratingsQuery.isLoading ? (
-            <Spinner />
+          {isRangeInvalid ? (
+            <p className="text-gray-400 dark:text-slate-500 text-sm">
+              Fix the date range above to view this report.
+            </p>
+          ) : ratingsQuery.isError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+                Failed to load ratings data:{' '}
+                {getApiErrorMessage(ratingsQuery.error, 'Unknown error')}
+              </p>
+            </div>
           ) : !ratingsData?.length ? (
             <p className="text-gray-400 dark:text-slate-500 text-sm">
               No data for selected period.
@@ -141,15 +183,23 @@ export default function Reports() {
             <div className="space-y-2">
               {ratingsData.map((row) => (
                 <div
-                  key={row.role}
-                  className="flex items-center justify-between text-sm"
+                  key={row.user_id}
+                  className="flex items-center justify-between text-sm border-b border-gray-100 dark:border-slate-700 pb-2"
                 >
-                  <Badge color={ROLE_COLOR[row.role] || 'gray'}>
-                    {row.role}
-                  </Badge>
+                  <div>
+                    <div className="font-semibold text-gray-800 dark:text-white">
+                      {row.intern_name}
+                    </div>
+
+                    {row.email && (
+                      <div className="text-xs text-gray-400 dark:text-slate-500">
+                        {row.email}
+                      </div>
+                    )}
+                  </div>
 
                   <span className="text-gray-700 dark:text-slate-300">
-                    ⭐ {parseFloat(row.avg_score).toFixed(2)}{' '}
+                    ⭐ {Number(row.avg_score || 0).toFixed(2)}{' '}
                     <span className="text-gray-400 dark:text-slate-500">
                       ({row.total})
                     </span>
@@ -165,8 +215,13 @@ export default function Reports() {
             🎯 Task Completion
           </h3>
 
-          {tasksQuery.isLoading ? (
-            <Spinner />
+          {tasksQuery.isError ? (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
+              <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+                Failed to load tasks data:{' '}
+                {getApiErrorMessage(tasksQuery.error, 'Unknown error')}
+              </p>
+            </div>
           ) : !tasksData?.length ? (
             <p className="text-gray-400 dark:text-slate-500 text-sm">
               No tasks.

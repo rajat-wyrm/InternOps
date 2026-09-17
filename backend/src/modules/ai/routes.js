@@ -9,6 +9,7 @@ const aiRepo = require('./repository');
 const config = require('../../config');
 const {
   generateAIResponse,
+  generateAIImage,
   getProviderHealth,
 } = require('../../services/aiProviderService');
 
@@ -36,8 +37,7 @@ async function routes(fastify) {
         body: toSchema(chatBodySchema),
       },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
-      // Keep Fastify's parser limit aligned with the maximum payload we accept.
-      bodyLimit: 2 * 1024 * 1024, // 2 MB
+      bodyLimit: 2 * 1024 * 1024,
       config: {
         rateLimit: {
           max: AI_CHAT_RATE_LIMIT,
@@ -58,8 +58,6 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      //Requests larger than 2 MB are rejected by Fastify via `bodyLimit`
-
       const ALLOWED_ROLES = ['user', 'assistant', 'system'];
 
       let finalMessages = [];
@@ -102,6 +100,7 @@ async function routes(fastify) {
       const MAX_MESSAGES = 32;
       const MAX_MESSAGE_CHARS = 4000;
       const MAX_TOTAL_CHARS = 32000;
+
       if (finalMessages.length > MAX_MESSAGES) {
         return reply.status(413).send({
           error: 'Too many messages',
@@ -134,9 +133,12 @@ async function routes(fastify) {
         });
       }
 
-      const usage = await aiRepo.getTodayUsage(req.user.id);
+      const usageRecord = await aiRepo.tryIncrementUsage(
+        req.user.id,
+        config.ai.dailyLimit
+      );
 
-      if (usage >= config.ai.dailyLimit) {
+      if (!usageRecord) {
         return reply.status(429).send({
           error: 'Daily AI usage limit exceeded',
         });
@@ -146,9 +148,13 @@ async function routes(fastify) {
         const result = await generateAIResponse({
           userId: req.user.id,
           messages: finalMessages,
+          authorization: req.headers.authorization,
         });
 
-        await aiRepo.incrementUsage(req.user.id);
+        if (result.fallback) {
+          req.log.error({ error: result.error }, 'AI service unavailable');
+          return reply.status(503).send(result);
+        }
 
         return {
           provider: result.provider,
@@ -166,8 +172,82 @@ async function routes(fastify) {
           { err: error.message, code: error.statusCode },
           'AI provider failed'
         );
+
         return reply.status(503).send({
           error: 'AI service unavailable',
+        });
+      }
+    }
+  );
+
+  fastify.post(
+    '/generate-image',
+    {
+      schema: {
+        tags: ['AI'],
+        description: 'Generate an AI image from a task description',
+        body: {
+          type: 'object',
+          required: ['prompt'],
+          properties: {
+            prompt: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 4000,
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
+      bodyLimit: 2 * 1024 * 1024,
+      config: {
+        rateLimit: {
+          max: AI_CHAT_RATE_LIMIT,
+          timeWindow: '1 minute',
+          keyGenerator: (req) => req.user?.id || req.ip,
+        },
+      },
+    },
+    async (req, reply) => {
+      const prompt = String(req.body?.prompt || '').trim();
+
+      if (!prompt) {
+        return reply.status(400).send({
+          error: 'Prompt is required',
+        });
+      }
+
+      try {
+        const result = await generateAIImage({
+          prompt,
+          authorization: req.headers.authorization,
+        });
+
+        return {
+          provider: result.provider,
+          image_base64: result.image_base64,
+        };
+      } catch (error) {
+        if (error.statusCode === 429) {
+          return reply.status(429).send({
+            error: 'AI provider rate limit exceeded',
+          });
+        }
+
+        if (error.statusCode === 413) {
+          return reply.status(413).send({
+            error: 'AI provider response too large',
+          });
+        }
+
+        req.log.error(
+          { err: error.message, code: error.statusCode },
+          'AI image generation failed'
+        );
+
+        return reply.status(503).send({
+          error: 'Image generation service unavailable',
         });
       }
     }

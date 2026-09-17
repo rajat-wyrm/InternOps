@@ -1,5 +1,5 @@
 const pool = require('../../config/db');
-const { getRedisClient } = require('../../config/redis');
+const { runRedisOperation } = require('../../config/redis');
 
 // ─── getUserSessions ──────────────────────────────────────────────────────────
 // WHY: The original only queried Postgres refresh_tokens. When Redis is active,
@@ -8,46 +8,62 @@ const { getRedisClient } = require('../../config/redis');
 // FIX: Check Redis first. If available, read the user's token set and map each
 // surviving hash to a session object. Fall back to Postgres when Redis is off.
 async function getUserSessions(userId) {
-  const redis = await getRedisClient();
+  const cachedSessions = await runRedisOperation(
+    'session list cache',
+    'loading active sessions from PostgreSQL',
+    async (redis) => {
+      const tokenHashes = await redis.sMembers(`user_tokens:${userId}`);
 
-  if (redis) {
-    const tokenHashes = await redis.sMembers(`user_tokens:${userId}`);
-    const sessions = [];
-    for (const hash of tokenHashes) {
-      const raw = await redis.get(`refresh_token:${hash}`);
-      if (raw) {
+      if (tokenHashes.length === 0) return [];
+
+      const keys = tokenHashes.map((hash) => `refresh_token:${hash}`);
+      const values = await redis.mGet(keys);
+      const sessions = [];
+
+      values.forEach((raw, index) => {
+        if (!raw) return;
+
+        const hash = tokenHashes[index];
         let createdAt = 'N/A';
+
         try {
           const parsed = JSON.parse(raw);
+
           if (parsed.createdAt) {
             createdAt = new Date(parsed.createdAt).toISOString();
           }
         } catch {}
+
         sessions.push({
           sessionId: hash,
           createdAt,
         });
-      }
-    }
+      });
 
-    // Only return if we actually found something in Redis
-    if (sessions.length > 0) {
       return sessions;
-    }
+    },
+    []
+  );
+
+  if (cachedSessions.length > 0) {
+    return cachedSessions;
   }
 
-  // If Redis was disabled OR Redis returned no sessions, fall back to Postgres
+  // Fall back to Postgres when Redis is unavailable
+  // or contains no valid sessions.
   const res = await pool.query(
     `SELECT id, token_hash, created_at, expires_at, revoked
      FROM refresh_tokens
-     WHERE user_id = $1 AND revoked = FALSE AND expires_at > NOW()
+     WHERE user_id = $1
+       AND revoked = FALSE
+       AND expires_at > NOW()
      ORDER BY created_at DESC`,
     [userId]
   );
 
   return res.rows.map((row) => ({
     sessionId: row.id,
-    createdAt: row.created_at || 'N/A', // Handle Postgres dates safely too
+    createdAt: row.created_at || 'N/A',
     expiresAt: row.expires_at,
   }));
 }
@@ -59,11 +75,10 @@ async function getUserSessions(userId) {
 // The Postgres side stays a soft revoke (UPDATE revoked = TRUE), not a
 // hard DELETE, so revoked sessions remain in the audit trail (#507).
 async function revokeSession(sessionId, userId) {
-  const redis = await getRedisClient();
-  let redisSuccess = false;
-
-  if (redis) {
-    try {
+  const redisSuccess = await runRedisOperation(
+    'session cache revocation',
+    'revoking the session in PostgreSQL only',
+    async (redis) => {
       // Atomic Lua script: verify ownership AND delete in a single operation.
       const script = `
         local key = KEYS[1]
@@ -94,14 +109,10 @@ async function revokeSession(sessionId, userId) {
         keys: [`refresh_token:${sessionId}`],
         arguments: [String(userId), sessionId],
       });
-      redisSuccess = result === 1;
-    } catch (err) {
-      console.error(
-        `Failed to clean up Redis session ${sessionId} for user ${userId}:`,
-        err
-      );
-    }
-  }
+      return result === 1;
+    },
+    false
+  );
 
   // Update Postgres — soft revoke, preserves the row for audit purposes.
   const isUuid =
@@ -124,32 +135,59 @@ async function revokeSession(sessionId, userId) {
   return redisSuccess || pgRes.rowCount > 0;
 }
 
+function isRetryableDatabaseError(err) {
+  const message = err?.message || '';
+  return (
+    err?.code === '57P01' ||
+    err?.code === '08006' ||
+    err?.code === '08001' ||
+    message.includes('terminated unexpectedly') ||
+    message.includes('Connection terminated unexpectedly') ||
+    message.includes('server closed the connection unexpectedly') ||
+    message.includes('connection terminated')
+  );
+}
+
 // ─── revokeAllUserSessions ───────────────────────────────────────────────────
 // WHY: Postgres is the source of truth and must always commit the revocation,
 // even if Redis is unreachable. Redis cleanup is deliberately kept OUTSIDE
 // the Postgres transaction and wrapped in its own try/catch so a Redis
 // failure can never roll back — or block — the Postgres revocation (#507).
 async function revokeAllUserSessions(userId) {
-  // 1. Postgres UPDATE first inside a transaction — must succeed
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(
-      'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
-      [userId]
-    );
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
+  let lastError;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query('BEGIN');
+      await client.query(
+        'UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
+        [userId]
+      );
+      await client.query('COMMIT');
+      break;
+    } catch (err) {
+      lastError = err;
+      if (client) {
+        await client.query('ROLLBACK').catch(() => {});
+      }
+      if (!isRetryableDatabaseError(err) || attempt === 3) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    } finally {
+      if (client) {
+        client.release();
+      }
+    }
   }
 
   // 2. Redis cleanup (best-effort)
-  try {
-    const redis = await getRedisClient();
-    if (redis) {
+  await runRedisOperation(
+    'session cache revocation',
+    'keeping the PostgreSQL revocation and skipping Redis cleanup',
+    async (redis) => {
       const tokens = await redis.sMembers(`user_tokens:${userId}`);
       if (tokens.length > 0) {
         const multi = redis.multi();
@@ -159,12 +197,13 @@ async function revokeAllUserSessions(userId) {
         multi.del(`user_tokens:${userId}`);
         await multi.exec();
       }
-    }
-  } catch (err) {
-    console.error(
-      `Failed to clean up Redis sessions for user ${userId} in revokeAllUserSessions:`,
-      err
-    );
+      return true;
+    },
+    false
+  );
+
+  if (lastError) {
+    throw lastError;
   }
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Download,
   CalendarDays,
@@ -7,8 +7,10 @@ import {
   ArrowDownToLine,
   AlertCircle,
   FileSpreadsheet,
+  Users,
 } from 'lucide-react';
 import { Card } from '../../components/ui';
+import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import api from '../../lib/axios';
 
@@ -46,16 +48,42 @@ const EXPORTS = [
 ];
 
 export default function Exports() {
+  const [departments, setDepartments] = useState([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(true);
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [downloading, setDownloading] = useState(null);
   const [error, setError] = useState('');
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        const res = await api.get('/departments');
+
+        console.log('DEPARTMENT DATA:', res.data);
+
+        setDepartments(res.data);
+      } catch (err) {
+        console.error('DEPARTMENT API ERROR:', err);
+        setError('Failed to load departments');
+      } finally {
+        setDepartmentsLoading(false);
+      }
+    };
+
+    fetchDepartments();
+  }, []);
+  useRouteInitialLoading(departmentsLoading);
+
   const download = async (endpoint, requiresDates) => {
     setError('');
+
     if (requiresDates && (!from || !to)) {
       setError('Please select both a From and To date before downloading.');
       return;
     }
+
     try {
       setDownloading(endpoint);
 
@@ -68,17 +96,21 @@ export default function Exports() {
       });
 
       const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement('a');
 
+      const a = document.createElement('a');
       a.href = url;
       a.download = requiresDates
         ? `${endpoint}-${from}-${to}.csv`
         : `${endpoint}.csv`;
 
+      document.body.appendChild(a);
       a.click();
+      a.remove();
 
-      // Delay revoke to allow download to start (#950)
-      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+      // Delay revoke to allow download to start
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 1000);
     } catch (err) {
       setError(err.response?.data?.error || 'Download failed');
     } finally {
@@ -87,7 +119,7 @@ export default function Exports() {
   };
 
   return (
-    <div className="animate-fade-in-up">
+    <div>
       {/* Professional Header Block */}
       <div className="mb-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -110,7 +142,50 @@ export default function Exports() {
           </div>
         </div>
       </div>
+      {/* Department Filter Card */}
+      <Card className="p-6 md:p-7 mb-7 border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5 mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center border border-indigo-100 dark:border-indigo-900/60">
+              <Users className="w-5 h-5" />
+            </div>
 
+            <div>
+              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                Department
+              </h2>
+
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Select a department to view and export its data.
+              </p>
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 w-fit">
+            {departments.length} Departments
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+            Select Department
+          </label>
+
+          <select
+            value={selectedDepartment}
+            onChange={(e) => setSelectedDepartment(e.target.value)}
+            className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3.5 text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">Select a department</option>
+
+            {departments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </Card>
       {/* Date Range Filter Card */}
       <Card className="p-6 md:p-7 mb-7 border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5 mb-5">

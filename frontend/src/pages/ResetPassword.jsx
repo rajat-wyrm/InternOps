@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
+import { getApiErrorMessage } from '../lib/apiError';
 
 export default function ResetPassword() {
   const [token, setToken] = useState('');
@@ -28,7 +29,7 @@ export default function ResetPassword() {
       setMessage(res.data.message);
       setError('');
     },
-    onError: (err) => setError(err.response?.data?.error || 'Reset failed'),
+    onError: (err) => setError(getApiErrorMessage(err, 'Reset failed')),
   });
 
   const handleSubmit = (e) => {
@@ -91,20 +92,26 @@ export default function ResetPassword() {
             <input type="hidden" value={token} readOnly />
 
             <div>
-              <label className="block text-xs font-extrabold uppercase tracking-wider text-white/70 mb-2">
+              <label
+                htmlFor="newPassword"
+                className="block text-xs font-extrabold uppercase tracking-wider text-white/70 mb-2"
+              >
                 New Password
               </label>
-
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/55">
                   🔒
                 </span>
 
                 <input
+                  id="newPassword"
                   type="password"
+                  maxLength={128}
                   placeholder="New password (min 8)"
+                  autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                  minLength={8}
                   required
                   className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-white/12 border border-white/20 text-white placeholder-white/45 focus:bg-white/18 focus:border-white/50 focus:ring-2 focus:ring-white/25 outline-none transition shadow-inner"
                 />

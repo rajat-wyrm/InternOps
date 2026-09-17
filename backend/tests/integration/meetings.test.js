@@ -112,6 +112,7 @@ function authHeaders() {
     Authorization: `Bearer ${accessToken}`,
     'X-CSRF-Token': cookies['csrf-token'] || csrfToken,
     'Content-Type': 'application/json',
+    Origin: 'http://localhost:5173',
   };
 }
 
@@ -188,7 +189,7 @@ describe('Meetings Integration Tests', () => {
         password: 'Manager@123',
         role: 'TL',
         departmentId: dept1Id,
-        fullName: 'Team Lead',
+        full_name: 'Team Lead',
       });
       const subordinate = await createUserAsAdmin({
         email: TEST_USERS[1],
@@ -196,14 +197,14 @@ describe('Meetings Integration Tests', () => {
         role: 'CAPTAIN',
         managerId: manager.id,
         departmentId: dept1Id,
-        fullName: 'Captain User',
+        full_name: 'Captain User',
       });
       const outsider = await createUserAsAdmin({
         email: TEST_USERS[2],
         password: 'Outsider@123',
         role: 'CAPTAIN',
         departmentId: dept2Id,
-        fullName: 'Outside User',
+        full_name: 'Outside User',
       });
 
       // login as manager
@@ -312,7 +313,11 @@ describe('Meetings Integration Tests', () => {
 
   describe('Attendee Management', () => {
     it('should add an attendee to the meeting and create an audit log entry', async () => {
-      const userRes = await pool.query('SELECT id FROM users LIMIT 1');
+      const userRes = await pool.query(
+        `SELECT id FROM users
+         WHERE suspended = FALSE AND deleted_at IS NULL
+         ORDER BY created_at ASC LIMIT 1`
+      );
       const userId = userRes.rows[0].id;
 
       const res = await inject(
@@ -338,7 +343,11 @@ describe('Meetings Integration Tests', () => {
     });
 
     it('should remove an attendee from the meeting and create an audit log entry', async () => {
-      const userRes = await pool.query('SELECT id FROM users LIMIT 1');
+      const userRes = await pool.query(
+        `SELECT id FROM users
+         WHERE suspended = FALSE AND deleted_at IS NULL
+         ORDER BY created_at ASC LIMIT 1`
+      );
       const userId = userRes.rows[0].id;
 
       const res = await inject(

@@ -14,8 +14,8 @@ async function getTodayUsage(userId) {
   return result.rows[0]?.successful_requests || 0;
 }
 
-async function incrementUsage(userId) {
-  await pool.query(
+async function tryIncrementUsage(userId, dailyLimit) {
+  const result = await pool.query(
     `
       INSERT INTO ai_usage (
         user_id,
@@ -33,9 +33,14 @@ async function incrementUsage(userId) {
       SET
         successful_requests = ai_usage.successful_requests + 1,
         updated_at = NOW()
+      WHERE ai_usage.successful_requests < $2
+
+      RETURNING successful_requests
     `,
-    [userId]
+    [userId, dailyLimit]
   );
+
+  return result.rows[0] || null;
 }
 
 async function getDailyUsageReport() {
@@ -59,6 +64,6 @@ async function getDailyUsageReport() {
 
 module.exports = {
   getTodayUsage,
-  incrementUsage,
+  tryIncrementUsage,
   getDailyUsageReport,
 };

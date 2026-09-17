@@ -132,6 +132,30 @@ async function routes(fastify) {
     }
   );
 
+  fastify.get(
+    '/:id/download',
+    {
+      schema: {
+        tags: ['Certificates'],
+        description: 'Download certificate PDF',
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+          },
+          required: ['id'],
+        },
+      },
+    },
+    async (req, reply) => {
+      const cert = await service.getCertificate(req.params.id);
+      if (!cert || !cert.pdf_path) {
+        return reply.code(404).send({ error: 'Certificate PDF not found' });
+      }
+      return reply.redirect(`/uploads/certificates/${cert.pdf_path}`);
+    }
+  );
+
   fastify.post(
     '/generate',
     {
@@ -166,24 +190,32 @@ async function routes(fastify) {
     {
       schema: {
         tags: ['Certificates'],
-        description: 'Delete/revoke certificate',
+        description: 'Revoke certificate (soft revoke — preserves audit trail)',
+        body: {
+          type: 'object',
+          properties: {
+            reason: { type: 'string', maxLength: 500 },
+          },
+          additionalProperties: false,
+        },
       },
     },
     async (req, reply) => {
-      const result = await service.deleteCertificate(req.params.id);
+      const reason = req.body?.reason || null;
+      const result = await service.revokeCertificate(req.params.id, reason);
       if (!result)
         return reply.code(404).send({ error: 'Certificate not found' });
 
       req.auditOnResponse = {
         userId: req.user.id,
-        action: 'CERTIFICATE_DELETE',
+        action: 'CERTIFICATE_REVOKE',
         resourceType: 'certificate',
         resourceId: req.params.id,
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
       };
 
-      return { success: true, message: 'Certificate deleted' };
+      return { success: true, message: 'Certificate revoked' };
     }
   );
 

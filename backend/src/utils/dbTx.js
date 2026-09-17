@@ -1,3 +1,5 @@
+const pool = require('../config/db');
+
 async function dbTx(fn) {
   let client;
   let destroyClient = false;
@@ -67,3 +69,5 @@ async function withHierarchyTx(userIdsToLock, fn) {
     }
   }
 }
+
+module.exports = { dbTx, withHierarchyTx };

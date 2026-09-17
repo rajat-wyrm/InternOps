@@ -1,5 +1,5 @@
 ALTER TABLE social_tasks
-  ADD COLUMN reminder_sent_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_social_tasks_deadline_reminder
   ON social_tasks (deadline)
