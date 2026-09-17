@@ -164,6 +164,20 @@ test('source allows the optimized transactional import to finish', () => {
   expect(source).toContain('disabled={!canImport}');
 });
 
+test('source includes admin override toggle for blocked write permissions', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../components/admin/WorkbookImportModal.jsx'),
+    'utf8'
+  );
+  expect(source).toContain('adminOverride');
+  expect(source).toContain('Enable Override');
+  expect(source).toContain('Admin Override: Force Import Active Interns');
+  expect(source).toContain('preview.accountPlan?.writesAllowed || adminOverride');
+  expect(source).toContain('!preview.accountPlan?.writesAllowed && (');
+});
+
 test('source displays privacy-safe duplicate review details', () => {
   const fs = require('fs');
   const path = require('path');
