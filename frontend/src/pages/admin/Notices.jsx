@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getApiErrorMessage } from '../../lib/apiError';
 import {
@@ -15,12 +15,12 @@ import {
   Clock,
   AlertTriangle,
   Newspaper,
-  Upload,
-  Link as LinkIcon,
+  Sparkles,
+  Wand2,
+  CalendarClock,
+  Link2,
   Star,
-  Briefcase,
-  CalendarDays,
-  FileWarning,
+  Link as LinkIcon,
 } from 'lucide-react';
 import api from '../../lib/axios';
 import useAuthStore from '../../store/auth';
@@ -40,11 +40,10 @@ const CATEGORIES = [
   'REMINDER',
   'ALERT',
   'NEWS',
-  'INTERNSHIP',
+  'IMPORTANT',
   'ANNOUNCEMENT',
   'EVENT',
-  'IMPORTANT',
-  'DEADLINE',
+  'INTERNSHIP',
 ];
 
 const CATEGORY_STYLES = {
@@ -55,16 +54,6 @@ const CATEGORY_STYLES = {
   ALERT:
     'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-100 dark:border-rose-900/60',
   NEWS: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-900/60',
-  INTERNSHIP:
-    'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-100 dark:border-purple-900/60',
-  ANNOUNCEMENT:
-    'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-100 dark:border-blue-900/60',
-  EVENT:
-    'bg-fuchsia-50 dark:bg-fuchsia-950/40 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-100 dark:border-fuchsia-900/60',
-  IMPORTANT:
-    'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-100 dark:border-red-900/60',
-  DEADLINE:
-    'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-100 dark:border-orange-900/60',
 };
 
 const CATEGORY_META = {
@@ -72,19 +61,22 @@ const CATEGORY_META = {
   REMINDER: { Icon: Clock, color: 'text-amber-500', label: 'Reminder' },
   ALERT: { Icon: AlertTriangle, color: 'text-rose-500', label: 'Alert' },
   NEWS: { Icon: Newspaper, color: 'text-emerald-500', label: 'News' },
-  INTERNSHIP: {
-    Icon: Briefcase,
-    color: 'text-purple-500',
-    label: 'Internship',
+  IMPORTANT: {
+    Icon: AlertTriangle,
+    color: 'text-rose-500',
+    label: 'Important',
   },
   ANNOUNCEMENT: {
     Icon: Megaphone,
-    color: 'text-blue-500',
+    color: 'text-violet-500',
     label: 'Announcement',
   },
-  EVENT: { Icon: CalendarDays, color: 'text-fuchsia-500', label: 'Event' },
-  IMPORTANT: { Icon: FileWarning, color: 'text-red-500', label: 'Important' },
-  DEADLINE: { Icon: Clock, color: 'text-orange-500', label: 'Deadline' },
+  EVENT: { Icon: CalendarClock, color: 'text-cyan-500', label: 'Event' },
+  INTERNSHIP: {
+    Icon: Sparkles,
+    color: 'text-emerald-500',
+    label: 'Internship',
+  },
 };
 
 const CATEGORY_OPTIONS = CATEGORIES.map((category) => ({
@@ -127,42 +119,90 @@ function NoticeForm({
     initial.action_button_link ?? ''
   );
   const [is_featured, setIsFeatured] = useState(initial.is_featured ?? false);
+
+  const [suggestion, setSuggestion] = useState(null);
+  const [isSuggesting, setIsSuggesting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState('');
   const [uploadError, setUploadError] = useState('');
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const suggestionSummary = useMemo(
+    () =>
+      [
+        suggestion?.summary,
+        suggestion?.deadline && suggestion.deadline !== 'Not specified'
+          ? `Deadline: ${suggestion.deadline}`
+          : null,
+        suggestion?.eligibility && suggestion.eligibility !== 'Not specified'
+          ? `Eligibility: ${suggestion.eligibility}`
+          : null,
+        suggestion?.action ? `Action: ${suggestion.action}` : null,
+      ].filter(Boolean),
+    [suggestion]
+  );
 
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError('Image size must be less than 5MB');
+  const handleSuggest = async () => {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      setSuggestionError('Add notice content before generating suggestions.');
       return;
     }
 
-    setIsUploading(true);
-    setUploadError('');
-    const formData = new FormData();
-    formData.append('file', file);
+    setSuggestionError('');
+    setIsSuggesting(true);
 
     try {
-      const res = await api.post('/uploads/notice-image', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const { data } = await api.post('/notices/ai-suggest', {
+        content: trimmed,
       });
-      setImageUrl(res.data.image_url);
-    } catch (err) {
-      setUploadError(getApiErrorMessage(err, 'Failed to upload image'));
+      setSuggestion(data);
+      if (data?.title) setTitle(data.title);
+      if (data?.category) setCategory(data.category);
+      if (data?.improvedContent) setContent(data.improvedContent);
+    } catch (error) {
+      setSuggestionError(
+        error?.response?.data?.error ||
+          'AI suggestion failed. Please review and edit manually.'
+      );
     } finally {
-      setIsUploading(false);
+      setIsSuggesting(false);
     }
+  };
+
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    if (suggestion.title) setTitle(suggestion.title);
+    if (suggestion.category) setCategory(suggestion.category);
+    if (suggestion.improvedContent) setContent(suggestion.improvedContent);
   };
 
   return (
     <div className="flex flex-col gap-3">
-      {uploadError && (
-        <div className="text-sm text-red-500 p-2 bg-red-50 rounded-lg">
-          {uploadError}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex-1">
+          <Input
+            placeholder="Notice title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={isPending}
+            className="dark:!border-slate-700 dark:!bg-slate-800/70"
+          />
         </div>
-      )}
+
+        <button
+          type="button"
+          onClick={handleSuggest}
+          disabled={isPending || isSuggesting || !content.trim()}
+          className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:text-indigo-200"
+        >
+          {isSuggesting ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Wand2 className="w-3.5 h-3.5" />
+          )}
+          AI Suggest
+        </button>
+      </div>
 
       <div className="flex items-center gap-4">
         {image_url && (
@@ -172,50 +212,56 @@ function NoticeForm({
             className="h-16 w-32 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
           />
         )}
-        <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700/80 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-          {isUploading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Upload className="w-4 h-4 text-slate-500" />
-          )}
-          <span className="text-sm text-slate-600 dark:text-slate-400">
-            {image_url ? 'Change Image' : 'Upload Image (Optional)'}
-          </span>
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleImageUpload}
-            disabled={isPending || isUploading}
-          />
-        </label>
-        {image_url && (
-          <button
-            type="button"
-            onClick={() => setImageUrl('')}
-            className="text-rose-500 text-sm hover:underline"
-          >
-            Remove
-          </button>
-        )}
       </div>
-
-      <Input
-        placeholder="Notice title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        disabled={isPending}
-        className="dark:!border-slate-700 dark:!bg-slate-800/70"
-      />
 
       <textarea
         placeholder="Notice content…"
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        rows={3}
+        rows={4}
         disabled={isPending}
         className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700/80 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none transition disabled:opacity-60 disabled:cursor-not-allowed"
       />
+
+      {suggestionError && (
+        <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-200">
+          <AlertCircle className="w-3.5 h-3.5" />
+          {suggestionError}
+        </div>
+      )}
+
+      {suggestion && (
+        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 dark:border-indigo-900/60 dark:bg-indigo-950/20">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-indigo-700 dark:text-indigo-200">
+              <Sparkles className="w-3.5 h-3.5" /> AI Suggestion
+            </div>
+            <button
+              type="button"
+              onClick={applySuggestion}
+              className="text-xs font-semibold text-indigo-700 hover:text-indigo-800 dark:text-indigo-200 dark:hover:text-indigo-100"
+            >
+              Apply all
+            </button>
+          </div>
+
+          <div className="space-y-2 text-xs text-slate-700 dark:text-slate-200">
+            {suggestionSummary.map((item) => (
+              <div key={item} className="flex items-start gap-2">
+                <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                <span>{item}</span>
+              </div>
+            ))}
+
+            {suggestion.link && (
+              <div className="flex items-start gap-2 break-all text-sky-700 dark:text-sky-300">
+                <Link2 className="mt-0.5 h-3.5 w-3.5" />
+                <span>{suggestion.link}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
@@ -252,8 +298,7 @@ function NoticeForm({
           htmlFor="is_featured"
           className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1"
         >
-          Mark as Featured{' '}
-          <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+          Mark as Featured <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
         </label>
       </div>
 
@@ -335,7 +380,6 @@ export default function Notices() {
     data: noticesData,
     isLoading,
     isError,
-    error: queryError,
     refetch,
   } = useQuery({
     queryKey: ['notices-admin', page],
@@ -349,9 +393,8 @@ export default function Notices() {
 
   const notices = Array.isArray(noticesData)
     ? noticesData
-    : noticesData?.data || [];
-  // Backend se humein list mil rahi hai, toh array length se total items calculate kar lete hain
-  const totalNotices = noticesData?.total || notices.length || 0;
+    : noticesData?.notices || [];
+  const totalNotices = noticesData?.count || notices.length || 0;
 
   const createMut = useMutation({
     mutationFn: (body) => api.post('/notices', body),
@@ -362,44 +405,22 @@ export default function Notices() {
     },
     onError: (err) =>
       setFormError(getApiErrorMessage(err, 'Failed to create notice')),
-    enabled: hydrated && !!accessToken,
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...body }) => api.patch(`/notices/${id}`, body),
-
     onSuccess: () => {
       setEditingId(null);
-      setFormError('');
       inv();
-    },
-
-    onError: (err) => {
-      setFormError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          'Failed to update notice'
-      );
     },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/notices/${id}`),
-
     onSuccess: () => {
-      setFormError('');
       inv();
       setNoticeToDelete(null);
     },
-
-    onError: (err) => {
-      setFormError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          'Failed to delete notice'
-      );
-    },
-
     onSettled: () => setDeletingId(null),
   });
 
@@ -507,13 +528,15 @@ export default function Notices() {
                       )}
                     </div>
 
-                    <p className="font-bold text-slate-900 dark:text-white text-lg mt-1">
-                      {n.title}
-                    </p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-900 dark:text-white">
+                        {n.title}
+                      </p>
 
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 line-clamp-2">
-                      {n.content}
-                    </p>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 line-clamp-2">
+                        {n.content}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">

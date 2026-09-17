@@ -1,14 +1,14 @@
 require('dotenv').config();
 const validateEnv = require('./config/validateEnv');
 validateEnv();
+
 const {
   initSentry,
   captureException: sentryCaptureException,
   flushSentry,
 } = require('./config/sentry');
 initSentry();
-const auth = require('./middleware/auth');
-const rbac = require('./middleware/rbac');
+
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
@@ -133,6 +133,9 @@ app.get(
     reply.status(healthy ? 200 : 503).send({
       status: healthy ? 'healthy' : 'degraded',
       checks,
+      uptime: Math.floor(process.uptime()),
+      version: require('../package.json').version,
+      timestamp: new Date().toISOString(),
     });
   }
 );
@@ -472,6 +475,7 @@ app.setErrorHandler((error, request, reply) => {
   if (statusCode >= 500) {
     request.log.error(logPayload, 'Unhandled server error');
 
+    // Report error to Sentry with updated tags format
     sentryCaptureException(error, {
       userId: request.user?.id || null,
       tags: {
@@ -626,26 +630,20 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 process.on('unhandledRejection', (reason) => {
   app.log.error({ err: reason }, 'Unhandled promise rejection');
-
   sentryCaptureException(
     reason instanceof Error ? reason : new Error(String(reason)),
-    { extra: { type: 'unhandledRejection' } }
+    {
+      extra: { type: 'unhandledRejection' },
+    }
   );
 });
 
 process.on('uncaughtException', (error) => {
-  app.log.error({ err: error }, 'Uncaught exception - process will exit');
-
+  app.log.error({ err: error }, 'Uncaught exception — process will exit');
   sentryCaptureException(error, {
     extra: { type: 'uncaughtException' },
   });
-
-  const forceExit = setTimeout(() => process.exit(1), 3000);
-
-  flushSentry(2000).finally(() => {
-    clearTimeout(forceExit);
-    process.exit(1);
-  });
+  flushSentry(2000).finally(() => process.exit(1));
 });
 
 if (require.main === module) {

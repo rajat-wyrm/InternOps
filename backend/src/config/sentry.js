@@ -6,43 +6,50 @@ try {
 }
 const config = require('./index');
 
-const SENSITIVE_KEYS = new Set([
-  'password',
-  'currentpassword',
-  'newpassword',
-  'confirmpassword',
-  'token',
-  'refreshtoken',
-  'accesstoken',
-  'secret',
-  'apikey',
-  'authorization',
-]);
-
-function redactSensitiveData(value, seen = new WeakSet()) {
-  if (!value || typeof value !== 'object' || seen.has(value)) return value;
-  seen.add(value);
-
-  for (const key of Object.keys(value)) {
-    if (SENSITIVE_KEYS.has(key.toLowerCase())) {
-      value[key] = '[REDACTED]';
-    } else {
-      redactSensitiveData(value[key], seen);
-    }
-  }
-  return value;
-}
-
 function initSentry() {
-  if (!Sentry || !config.sentry?.dsn) return;
+  const dsn = config.sentry.dsn;
+
+  if (!dsn || !Sentry) {
+    return;
+  }
 
   Sentry.init({
-    dsn: config.sentry.dsn,
+    dsn,
     environment: config.nodeEnv || 'development',
     tracesSampleRate: config.sentry.tracesSampleRate,
+
     beforeSend(event) {
-      if (event.request?.data) redactSensitiveData(event.request.data);
-      if (event.request?.headers) redactSensitiveData(event.request.headers);
+      if (event.request && event.request.data) {
+        const data = event.request.data;
+        const sensitiveKeys = [
+          'password',
+          'currentPassword',
+          'newPassword',
+          'confirmPassword',
+          'token',
+          'refreshToken',
+          'accessToken',
+          'secret',
+          'apiKey',
+          'authorization',
+        ];
+
+        for (const key of sensitiveKeys) {
+          if (typeof data === 'object' && data !== null && key in data) {
+            data[key] = '[REDACTED]';
+          }
+        }
+      }
+
+      if (event.request && event.request.headers) {
+        if (event.request.headers.authorization) {
+          event.request.headers.authorization = '[REDACTED]';
+        }
+        if (event.request.headers.cookie) {
+          event.request.headers.cookie = '[REDACTED]';
+        }
+      }
+
       return event;
     },
   });
@@ -53,12 +60,22 @@ function captureException(error, context = {}) {
 
   Sentry.withScope((scope) => {
     if (context.userId) scope.setUser({ id: context.userId });
+    if (context.requestId) scope.setTag('requestId', context.requestId);
+    if (context.route) scope.setTag('route', context.route);
+    if (context.method) scope.setTag('method', context.method);
+    if (context.statusCode)
+      scope.setTag('statusCode', String(context.statusCode));
+
+    // Support tags dictionary if passed via context.tags
     for (const [key, value] of Object.entries(context.tags || {})) {
       scope.setTag(key, value);
     }
+
+    // Support extra data if passed via context.extra
     for (const [key, value] of Object.entries(context.extra || {})) {
       scope.setExtra(key, value);
     }
+
     Sentry.captureException(error);
   });
 }

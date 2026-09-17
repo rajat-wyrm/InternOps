@@ -167,6 +167,54 @@ async def chat(
             detail="AI service unavailable",
         )
 
+
+# ---------------------------------------------------------------------------
+# POST /ai/generate
+# ---------------------------------------------------------------------------
+@router.post(
+    "/generate",
+    summary="Generate text from a prompt or a structured conversation history",
+    response_model=ProviderResult,
+    dependencies=[Depends(require_permission("AI_GENERATION"))],
+)
+async def generate_text(
+    request: GenerationRequest,
+    current_user: User = Depends(get_current_user),
+    _rate_limited: None = Depends(enforce_rate_limit),
+):
+    try:
+        if request.prompt:
+            request.prompt = sanitize_prompt(request.prompt)
+        if request.messages:
+            for message in request.messages:
+                message.content = sanitize_prompt(message.content)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        )
+
+    if request.messages:
+        # Preserve role/content structure instead of flattening the
+        # conversation into a single prompt string.
+        conversation = [
+            {"role": msg.role.value, "content": msg.content}
+            for msg in request.messages
+        ]
+        content, provider_name = await ai_orchestrator.generate_chat_with_fallback(
+            conversation,
+            temperature=request.temperature,
+        )
+    else:
+        content, provider_name = await ai_orchestrator.generate_text_with_fallback(
+            request.prompt,
+            temperature=request.temperature,
+        )
+    return ProviderResult(
+        provider=provider_name,
+        cached=False,
+        content=content,
+    )
 # ---------------------------------------------------------------------------
 # POST /ai/generate-image
 # ---------------------------------------------------------------------------

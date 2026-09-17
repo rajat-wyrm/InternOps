@@ -53,10 +53,15 @@ export async function initSentry() {
       sentry.init({
         dsn,
         environment: import.meta.env.MODE || 'development',
-        integrations: [sentry.browserTracingIntegration()],
+        integrations: [
+          sentry.browserTracingIntegration(),
+          sentry.replayIntegration({ maskAllText: false, blockAllMedia: false }),
+        ],
         tracesSampleRate: parseFloat(
           import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE || '0.1'
         ),
+        replaysSessionSampleRate: 0,
+        replaysOnErrorSampleRate: 1.0,
       });
 
       initState = 'ready';
@@ -79,12 +84,18 @@ function performCaptureException(error, context = {}) {
   if (!Sentry || !getSentryClient()) return;
 
   Sentry.withScope((scope) => {
-    for (const [key, value] of Object.entries(context.tags || {})) {
-      scope.setTag(key, value);
+    if (context.tags) {
+      for (const [key, value] of Object.entries(context.tags)) {
+        scope.setTag(key, value);
+      }
     }
-    for (const [key, value] of Object.entries(context.extra || {})) {
-      scope.setExtra(key, value);
+
+    if (context.extra) {
+      for (const [key, value] of Object.entries(context.extra)) {
+        scope.setExtra(key, value);
+      }
     }
+
     Sentry.captureException(error);
   });
 }
@@ -114,9 +125,15 @@ export function captureException(error, context = {}) {
 function performSetSentryUser(user) {
   if (!Sentry || !getSentryClient()) return;
 
-  Sentry.setUser(
-    user ? { id: user.id, email: user.email, role: user.role } : null
-  );
+  if (user) {
+    Sentry.setUser({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    });
+  } else {
+    Sentry.setUser(null);
+  }
 }
 
 export function setSentryUser(user) {

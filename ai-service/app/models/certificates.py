@@ -2,6 +2,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.security import sanitize_prompt
+
 
 class CertificateRequest(BaseModel):
     task: str = Field(..., min_length=1, max_length=2000)
@@ -9,10 +11,10 @@ class CertificateRequest(BaseModel):
     @field_validator("task")
     @classmethod
     def strip_task(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("Task cannot be empty.")
-        return value
+        try:
+            return sanitize_prompt(value)
+        except ValueError as error:
+            raise ValueError(str(error)) from error
 
 
 def _require_non_empty(value: Optional[str], field_name: str) -> str:

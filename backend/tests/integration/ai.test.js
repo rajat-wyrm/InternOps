@@ -587,4 +587,81 @@ describe('AI Chat Integration Tests (#498)', () => {
       expect(dbUsage.rows[0]?.successful_requests || 0).toBeLessThanOrEqual(5);
     });
   });
+
+  describe('Notice AI suggestion generation', () => {
+    beforeAll(async () => {
+      process.env.AI_CACHE_MAX_ENTRIES = '100';
+      process.env.AI_CHAT_RATE_LIMIT_PER_MIN = '100';
+      process.env.AI_PROVIDER_ORDER = 'groq';
+      process.env.GROQ_API_KEY = 'test-key';
+      process.env.AI_TIMEOUT = '5000';
+
+      jest.resetModules();
+      app = require('../../src/app');
+      await app.ready();
+      await resetSeededAdminPassword();
+
+      cookies = {};
+      const csrfRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/csrf-token',
+      });
+      csrfToken = JSON.parse(csrfRes.body).csrfToken;
+      mergeCookies(cookies, parseSetCookie(csrfRes.headers['set-cookie']));
+      mergeCookies(cookies, csrfRes.cookies);
+
+      await login();
+    });
+
+    afterAll(async () => {
+      await app.close();
+      const pool = require('../../src/config/db');
+      await pool.end();
+      delete global.fetch;
+    });
+
+    it('should return structured notice suggestions when valid content is provided', async () => {
+      global.fetch = jest.fn().mockImplementation(async () => ({
+        ok: true,
+        status: 200,
+        headers: {
+          get: () => null,
+        },
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  title: 'AI Product Internship – Applications Open',
+                  category: 'INTERNSHIP',
+                  summary:
+                    'Applications are open for the AI Product Internship. Apply before 30 August.',
+                  deadline: '30 August',
+                  eligibility: 'Knowledge of Python and AI/ML preferred',
+                  action: 'Apply Now',
+                  improvedContent:
+                    'We are inviting all students to apply for the AI Product Internship...',
+                }),
+              },
+            },
+          ],
+        }),
+      }));
+
+      const res = await inject('POST', '/api/v1/notices/ai-suggest', {
+        payload: {
+          content:
+            'We are inviting all students to apply for our AI Product Internship. Interested candidates should fill out the application form before 30 August. Students with knowledge of Python and AI/ML are preferred.',
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body);
+      expect(body.title).toContain('Internship');
+      expect(body.category).toBe('INTERNSHIP');
+      expect(body.summary).toContain('Apply before 30 August');
+      expect(body.deadline).toBe('30 August');
+      expect(body.action).toBe('Apply Now');
+    });
+  });
 });

@@ -14,7 +14,11 @@
     "doctor:score": "npx -y react-doctor@0.9.2 . --score"
   },
   "dependencies": {
+<<<<<<< HEAD
+    "@sentry/react": "^10.65.0",
+=======
     "@sentry/react": "^10.73.0",
+>>>>>>> upstream/master
     "@tanstack/react-query": "^5.51.0",
     "axios": "^1.7.2",
     "exceljs": "^4.4.0",
