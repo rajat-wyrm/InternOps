@@ -80,15 +80,23 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           git diff --name-status --find-renames "$BASE_SHA"...HEAD -- backend/migrations > /tmp/migration-diff.txt
-          cat /tmp/migration-diff.txt
-          allowed_correction='R000 backend/migrations/055_keyset_pagination_indexes.sql backend/migrations/056_keyset_pagination_indexes.sql'
+          allowed_corrections=$(printf '%s\n%s' \
+            'R000 backend/migrations/055_keyset_pagination_indexes.sql backend/migrations/056_keyset_pagination_indexes.sql' \
+            'R000 backend/migrations/057_task_prerequisites.sql backend/migrations/058_task_prerequisites.sql')
           normalized_diff=$(tr '\t' ' ' < /tmp/migration-diff.txt | tr -s ' ' | sed '/^$/d')
-          disallowed_diff=$(printf '%s\n' "$normalized_diff" | awk -v allowed="$allowed_correction" '
+          disallowed_diff=$(printf '%s\n' "$normalized_diff" | awk -v allowed="$allowed_corrections" '
+            BEGIN {
+              split(allowed, lines, "\n")
+              for (i in lines) {
+                gsub(/^[ \t\r]+|[ \t\r]+$/, "", lines[i])
+                if (lines[i] != "") ok[lines[i]] = 1
+              }
+            }
             $1 == "A" { next }
             $0 ~ /^R[0-9][0-9][0-9] / {
               candidate = $0
               sub(/^R[0-9][0-9][0-9] /, "R000 ", candidate)
-              if (candidate == allowed) next
+              if (candidate in ok) next
             }
             { print }
           ')
@@ -99,6 +107,9 @@ jobs:
           fi
           if printf '%s\n' "$normalized_diff" | grep -Eq '^R[0-9]{3} backend/migrations/055_keyset_pagination_indexes.sql backend/migrations/056_keyset_pagination_indexes.sql$'; then
             echo "Allowed one-time corrective rename of the duplicate 055 keyset migration to 056."
+          fi
+          if printf '%s\n' "$normalized_diff" | grep -Eq '^R[0-9]{3} backend/migrations/057_task_prerequisites.sql backend/migrations/058_task_prerequisites.sql$'; then
+            echo "Allowed one-time corrective rename of the duplicate 057 task prerequisites migration to 058."
           fi
 
       - name: Run backend lint

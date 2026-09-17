@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 import api from '../lib/axios';
 import {
@@ -37,6 +37,15 @@ export default function PerformanceIntelligence() {
   const [expandedEvidence, setExpandedEvidence] = useState({});
   const [activeTab, setActiveTab] = useState('overview'); // overview, recommendations, history, manager
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Mock user role simulation
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const isManager = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'].includes(
@@ -44,55 +53,97 @@ export default function PerformanceIntelligence() {
   );
 
   useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchInterns = async () => {
+      try {
+        const res = await api.get('/team/members?role=INTERN', {
+          signal: controller.signal,
+        });
+
+        if (controller.signal.aborted || !isMountedRef.current) return;
+
+        const data = res.data;
+        const list = data.members || data || [];
+
+        setInterns(list);
+
+        if (list.length > 0) {
+          setSelectedInternId(list[0].id);
+        } else if (currentUser.id) {
+          setSelectedInternId(currentUser.id);
+        }
+      } catch (err) {
+        if (
+          controller.signal.aborted ||
+          !isMountedRef.current ||
+          err?.name === 'CanceledError' ||
+          err?.name === 'AbortError' ||
+          err?.code === 'ERR_CANCELED'
+        ) {
+          return;
+        }
+        console.warn('Using demo intern list fallback:', err);
+        setSelectedInternId(currentUser.id || 'demo-user');
+      }
+    };
+
     fetchInterns();
+
+    return () => {
+      controller.abort();
+    };
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+
     if (selectedInternId) {
-      fetchReviewData(selectedInternId);
+      fetchReviewData(selectedInternId, controller.signal);
     }
+
+    return () => {
+      controller.abort();
+    };
   }, [selectedInternId]);
 
-  const fetchInterns = async () => {
-    try {
-      const res = await api.get('/team/members?role=INTERN');
-
-      const data = res.data;
-      const list = data.members || data || [];
-
-      setInterns(list);
-
-      if (list.length > 0) {
-        setSelectedInternId(list[0].id);
-      } else if (currentUser.id) {
-        setSelectedInternId(currentUser.id);
-      }
-    } catch (err) {
-      console.warn('Using demo intern list fallback:', err);
-      setSelectedInternId(currentUser.id || 'demo-user');
-    }
-  };
-
-  const fetchReviewData = async (internId) => {
+  const fetchReviewData = async (internId, signal) => {
     setLoading(true);
     setError(null);
 
     try {
       const [reviewRes, historyRes] = await Promise.all([
-        api.get(`/ai/performance/${internId}`),
-        api.get(`/ai/performance/${internId}/history`),
+        api.get(`/ai/performance/${internId}`, signal ? { signal } : {}),
+        api.get(
+          `/ai/performance/${internId}/history`,
+          signal ? { signal } : {}
+        ),
       ]);
 
+      if (signal?.aborted || !isMountedRef.current) return;
+
       setReview(reviewRes.data);
-      setHistory(historyRes.data.history || []);
+      setHistory(historyRes.data?.history || []);
     } catch (err) {
+      if (
+        signal?.aborted ||
+        !isMountedRef.current ||
+        err?.name === 'CanceledError' ||
+        err?.name === 'AbortError' ||
+        err?.code === 'ERR_CANCELED'
+      ) {
+        return;
+      }
       console.warn('API connection offline, rendering local evidence model');
       setReview(getMockReview(internId));
       setHistory(getMockHistory());
     } finally {
-      setLoading(false);
+      if (!signal?.aborted && isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
+
   const handleGenerateReview = async () => {
     setGenerating(true);
 
@@ -105,13 +156,17 @@ export default function PerformanceIntelligence() {
         }
       );
 
+      if (!isMountedRef.current) return;
       setReview(res.data);
       fetchReviewData(selectedInternId);
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.warn('Generation completed with mock fallback');
       setReview(getMockReview(selectedInternId));
     } finally {
-      setGenerating(false);
+      if (isMountedRef.current) {
+        setGenerating(false);
+      }
     }
   };
 

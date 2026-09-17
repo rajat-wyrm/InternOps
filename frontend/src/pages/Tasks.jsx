@@ -112,10 +112,24 @@ export default function Tasks({
   });
   const [deletingProofId, setDeletingProofId] = useState(null);
 
-  // Cleanup objectURLs to prevent memory leak (#932)
+  const revokePreviewUrls = (urls) => {
+    if (Array.isArray(urls)) {
+      urls.forEach((url) => {
+        if (
+          url &&
+          typeof URL !== 'undefined' &&
+          typeof URL.revokeObjectURL === 'function'
+        ) {
+          URL.revokeObjectURL(url);
+        }
+      });
+    }
+  };
+
+  // Cleanup objectURLs to prevent memory leak (#932, #2068)
   useEffect(() => {
     return () => {
-      draftFiles.previews.forEach((url) => URL.revokeObjectURL(url));
+      revokePreviewUrls(draftFiles.previews);
     };
   }, [draftFiles.previews]);
 
@@ -209,6 +223,7 @@ export default function Tasks({
     },
 
     onSuccess: (_, variables) => {
+      revokePreviewUrls(draftFiles.previews);
       setDraftFiles({ taskId: null, files: [], previews: [] });
       setDraftEngagement({
         didComment: false,
@@ -450,6 +465,10 @@ export default function Tasks({
         showNotification('Each file size must be under 5MB.');
         return;
       }
+    }
+
+    if (draftFiles.previews?.length) {
+      revokePreviewUrls(draftFiles.previews);
     }
 
     const previews = files.map((f) => URL.createObjectURL(f));
@@ -983,6 +1002,7 @@ export default function Tasks({
                               variant="outline"
                               className="text-sm rounded-2xl py-1.5"
                               onClick={() => {
+                                revokePreviewUrls(draftFiles.previews);
                                 setDraftFiles({
                                   taskId: null,
                                   files: [],
