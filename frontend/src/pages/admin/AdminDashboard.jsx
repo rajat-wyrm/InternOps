@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
 import {
   useQuery,
   useMutation,
   useQueryClient,
   keepPreviousData,
 } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Search,
   ChevronLeft,
@@ -15,18 +15,15 @@ import {
   Filter,
 } from 'lucide-react';
 import api from '../../lib/axios';
-import useAuthStore from '../../store/auth';
-import { ROLE_LABEL } from '../../constants/roles';
 import { Card, Spinner, EmptyState } from '../../components/ui';
+import { ROLE_LABEL } from '../../constants/roles';
 import UserActionMenu from '../../components/UserActionMenu';
 import CreateUserModal from '../../components/admin/CreateUserModal';
 import EditUserModal from '../../components/admin/EditUserModal';
-import DeleteUserModal from '../../components/admin/DeleteUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
 import WorkbookImportModal from '../../components/admin/WorkbookImportModal';
 import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
-
 const ROLE_COLOR = {
   ADMIN:
     'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60',
@@ -53,6 +50,7 @@ const AVATAR_COLOR = {
 
 const ROLE_OPTIONS = [
   { value: '', label: 'All roles' },
+  { value: 'ADMIN', label: 'Admin' },
   { value: 'SENIOR_TL', label: 'Senior TL' },
   { value: 'TL', label: 'TL' },
   { value: 'CAPTAIN', label: 'Captain' },
@@ -78,30 +76,20 @@ function initials(u) {
 }
 
 export default function AdminDashboard() {
-  const hydrated = useAuthStore((s) => s.hydrated);
-  const accessToken = useAuthStore((s) => s.accessToken);
-  const currentUser = useAuthStore((state) => state.user);
-  const isAdmin = currentUser?.role === 'ADMIN';
   const queryClient = useQueryClient();
-  const [searchParams] = useSearchParams();
+  const parentRef = useRef(null);
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState(
-    () => searchParams.get('departmentId') || ''
-  );
   const [deletingUserId, setDeletingUserId] = useState(null);
-  const [deletingUser, setDeletingUser] = useState(null);
-  const [actionError, setActionError] = useState('');
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [bulkUserOpen, setBulkUserOpen] = useState(false);
   const [workbookImportOpen, setWorkbookImportOpen] = useState(false);
-
-  const limit = 10;
+  const limit = 100;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -112,19 +100,6 @@ export default function AdminDashboard() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data: departments = [] } = useQuery({
-    queryKey: ['departments'],
-    queryFn: () => api.get('/departments').then((res) => res.data || []),
-    enabled: hydrated && !!accessToken && isAdmin,
-  });
-  const departmentOptions = [
-    { value: '', label: 'All departments' },
-    ...departments.map((department) => ({
-      value: department.id,
-      label: department.name,
-    })),
-    { value: 'unassigned', label: 'Not assigned' },
-  ];
   const suspendedFilter =
     statusFilter === 'active'
       ? false
@@ -140,7 +115,6 @@ export default function AdminDashboard() {
       debouncedSearch,
       roleFilter,
       statusFilter,
-      departmentFilter,
     ],
     queryFn: () =>
       api
@@ -151,73 +125,63 @@ export default function AdminDashboard() {
             search: debouncedSearch || undefined,
             role: roleFilter || undefined,
             suspended: suspendedFilter,
-            department_id: isAdmin ? departmentFilter || undefined : undefined,
           },
         })
         .then((res) => res.data),
     placeholderData: keepPreviousData,
   });
 
+  const routeInitialLoading = useRouteInitialLoading(isLoading && !data);
+
   const invalidateUsers = () =>
     queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
 
   const suspendMut = useMutation({
     mutationFn: (id) => api.patch(`/users/${id}/suspend`),
-    onSuccess: () => {
-      setActionError('');
-      invalidateUsers();
-    },
-    onError: (requestError) =>
-      setActionError(
-        requestError.response?.data?.error || 'User action failed'
-      ),
+    onSuccess: invalidateUsers,
   });
 
   const activateMut = useMutation({
     mutationFn: (id) => api.patch(`/users/${id}/activate`),
-    onSuccess: () => {
-      setActionError('');
-      invalidateUsers();
-    },
-    onError: (requestError) =>
-      setActionError(
-        requestError.response?.data?.error || 'User action failed'
-      ),
+    onSuccess: invalidateUsers,
   });
 
   const deleteMut = useMutation({
-    mutationFn: ({ id, confirmation }) =>
-      api.delete(`/users/${id}`, {
-        data: { confirmation },
-        _suppressGlobalError: true,
-      }),
-    onSuccess: () => {
-      setActionError('');
-      invalidateUsers();
-    },
-    onError: (requestError) =>
-      setActionError(
-        requestError.response?.data?.error || 'User deletion failed'
-      ),
+    mutationFn: (id) => api.delete(`/users/${id}`),
+    onSuccess: invalidateUsers,
     onSettled: () => setDeletingUserId(null),
   });
 
-  const canManageUser = (target) =>
-    isAdmin ? target.id !== currentUser?.id : target.can_manage === true;
-  const rows = data?.data ?? data?.users ?? data?.items ?? [];
-  const total = data?.total ?? data?.count ?? rows.length;
+  const rows = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.data)
+      ? data.data
+      : Array.isArray(data?.users)
+        ? data.users
+        : Array.isArray(data?.items)
+          ? data.items
+          : [];
+
+  const total = Array.isArray(data)
+    ? data.length
+    : Number(data?.total ?? data?.count ?? rows.length);
+
   const totalPages = Math.max(Math.ceil(total / limit), 1);
-  useRouteInitialLoading(isLoading && !data);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 82,
+    overscan: 8,
+  });
+
+  const virtualRows = rowVirtualizer.getVirtualItems();
 
   const handleRoleFilterChange = (value) => {
     setRoleFilter(value);
     setPage(1);
   };
 
-  const handleDepartmentFilterChange = (value) => {
-    setDepartmentFilter(value);
-    setPage(1);
-  };
   const handleStatusFilterChange = (value) => {
     setStatusFilter(value);
     setPage(1);
@@ -225,53 +189,56 @@ export default function AdminDashboard() {
 
   const handleDelete = (user) => {
     if (deleteMut.isPending || deletingUserId === user.id) return;
-    setActionError('');
-    setDeletingUser(user);
+
+    if (
+      confirm(`Delete ${user.full_name || user.email}? This cannot be undone.`)
+    ) {
+      setDeletingUserId(user.id);
+      deleteMut.mutate(user.id);
+    }
   };
 
   return (
-    <div className="max-w-7xl mx-auto">
-      {/* User Directory Header */}
-      <div className="mb-7 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="max-w-7xl mx-auto animate-fade-in-up">
+      {/* Header */}
+      <div className="mb-7 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
         <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 text-white shadow-lg shadow-indigo-200/70 dark:shadow-none">
-            <ShieldCheck className="h-6 w-6" />
+          <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200/70 dark:shadow-none">
+            <ShieldCheck className="w-6 h-6" />
           </div>
+
           <div>
-            <p className="mb-1 text-xs font-extrabold uppercase tracking-[0.22em] text-indigo-600 dark:text-indigo-300">
+            <p className="text-xs md:text-sm uppercase tracking-[0.22em] text-indigo-600 dark:text-indigo-300 font-extrabold mb-1">
               Admin Panel
             </p>
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white md:text-5xl">
+
+            <h1 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight">
               User Directory
             </h1>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 md:text-base">
+
+            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400 mt-2">
               Manage all platform accounts, roles, and account status.
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setWorkbookImportOpen(true)}
-            className="flex items-center gap-2 rounded-lg bg-brand-green px-4 py-2 text-sm font-bold text-slate-950 shadow-md transition hover:opacity-90"
+            onClick={() => setBulkUserOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
           >
-            <span>Preview Workbook</span>
+            <span>+ Bulk Add</span>
           </button>
-          {isAdmin && (
-            <button
-              onClick={() => setBulkUserOpen(true)}
-              className="flex items-center gap-2 rounded-lg bg-brand-green px-4 py-2 text-sm font-bold text-slate-950 shadow-md transition hover:opacity-90"
-            >
-              <span>+ Bulk Add</span>
-            </button>
-          )}
+
           <button
             onClick={() => setCreateUserOpen(true)}
-            className="flex items-center gap-2 rounded-lg bg-brand-green px-4 py-2 text-sm font-bold text-slate-950 shadow-md transition hover:opacity-90"
+            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
           >
             <span>+ Add User</span>
           </button>
         </div>
       </div>
+
       {/* Search and Filters */}
       <Card className="p-5 md:p-6 mb-6 border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-white via-slate-50 to-indigo-50/60 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
@@ -286,7 +253,7 @@ export default function AdminDashboard() {
               </h2>
 
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Search users and refine by role, department, or account status.
+                Search users and refine by role or account status.
               </p>
             </div>
           </div>
@@ -300,6 +267,7 @@ export default function AdminDashboard() {
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+
             <input
               type="search"
               placeholder="Search by name or email..."
@@ -317,15 +285,6 @@ export default function AdminDashboard() {
             className="w-full sm:w-44"
           />
 
-          {isAdmin && (
-            <CustomSelect
-              value={departmentFilter}
-              onChange={handleDepartmentFilterChange}
-              options={departmentOptions}
-              placeholder="All departments"
-              className="w-full sm:w-52"
-            />
-          )}
           <CustomSelect
             value={statusFilter}
             onChange={handleStatusFilterChange}
@@ -335,6 +294,8 @@ export default function AdminDashboard() {
           />
         </div>
       </Card>
+
+      {/* Error Message */}
       {isError && (
         <div className="mb-5 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-800 px-4 py-3 flex items-center justify-between">
           <div>
@@ -343,6 +304,7 @@ export default function AdminDashboard() {
                 ? "Couldn't refresh the users list."
                 : 'Failed to load users.'}
             </p>
+
             <p className="text-sm text-red-600 dark:text-red-400">
               {error?.response?.data?.message ||
                 error?.message ||
@@ -358,204 +320,170 @@ export default function AdminDashboard() {
           </button>
         </div>
       )}
-      {actionError && (
-        <div className="mb-5 flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
-          <span>{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError('')}
-            className="ml-4 font-extrabold"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-      {/* Users Table */}
+
+      {/* Virtualized Users Table */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 overflow-hidden shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        {rows.length === 0 ? (
+        {routeInitialLoading ? (
+          <Spinner />
+        ) : rows.length === 0 ? (
           <EmptyState
             title={
-              search || roleFilter || statusFilter || departmentFilter
+              search || roleFilter || statusFilter
                 ? 'No users found'
                 : 'No users yet'
             }
             text={
-              search || roleFilter || statusFilter || departmentFilter
+              search || roleFilter || statusFilter
                 ? 'No users were found matching those criteria.'
                 : 'New users will appear here.'
             }
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-600">
-                <tr>
-                  <th className="px-6 py-4 font-extrabold whitespace-nowrap">
-                    User
-                  </th>
-                  <th className="px-6 py-4 text-center font-extrabold whitespace-nowrap">
-                    Role
-                  </th>
-                  {isAdmin && (
-                    <th className="px-6 py-4 text-center font-extrabold whitespace-nowrap">
-                      Department
-                    </th>
-                  )}
-                  <th className="px-6 py-4 text-center font-extrabold whitespace-nowrap">
-                    Status
-                  </th>
-                  <th className="px-6 py-4 text-right font-extrabold whitespace-nowrap">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
+            <div className="min-w-[850px] text-sm">
+              {/* Table Header */}
+              <div className="grid grid-cols-[2fr_1fr_1fr_130px] bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-600">
+                <div className="px-6 py-4 font-extrabold">User</div>
+                <div className="px-6 py-4 font-extrabold">Role</div>
+                <div className="px-6 py-4 font-extrabold">Status</div>
+                <div className="px-6 py-4 font-extrabold text-right">
+                  Actions
+                </div>
+              </div>
 
-              <tbody>
-                {rows.map((u, index) => (
-                  <tr
-                    key={u.id}
-                    className={`group transition-colors border-b border-slate-100 dark:border-slate-700 last:border-b-0 ${
-                      index % 2 === 0
-                        ? 'bg-white dark:bg-slate-900'
-                        : 'bg-slate-50/50 dark:bg-slate-800/40'
-                    } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-4">
-                        <div
-                          className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xs font-extrabold border ${
-                            AVATAR_COLOR[u.role] || AVATAR_COLOR.INTERN
-                          }`}
-                        >
-                          {initials(u)}
-                        </div>
+              {/* Scrollable Virtualized Rows */}
+              <div ref={parentRef} className="h-[600px] overflow-y-auto">
+                <div
+                  className="relative w-full"
+                  style={{
+                    height: `${rowVirtualizer.getTotalSize()}px`,
+                  }}
+                >
+                  {virtualRows.map((virtualRow) => {
+                    const u = rows[virtualRow.index];
 
-                        <div className="min-w-0">
-                          <div className="font-extrabold text-slate-900 dark:text-white truncate">
-                            {u.full_name || '—'}
+                    return (
+                      <div
+                        key={String(u?.id ?? virtualRow.index)}
+                        className={`absolute left-0 top-0 grid w-full grid-cols-[2fr_1fr_1fr_130px] border-b border-slate-100 dark:border-slate-700 ${
+                          virtualRow.index % 2 === 0
+                            ? 'bg-white dark:bg-slate-900'
+                            : 'bg-slate-50/50 dark:bg-slate-800/40'
+                        } hover:bg-indigo-50/50 dark:hover:bg-slate-800 transition-colors`}
+                        style={{
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        {/* User */}
+                        <div className="px-6 py-4 flex items-center gap-4 min-w-0">
+                          <div
+                            className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xs font-extrabold border ${
+                              AVATAR_COLOR[u.role] || AVATAR_COLOR.INTERN
+                            }`}
+                          >
+                            {initials(u)}
                           </div>
 
-                          <div className="text-xs md:text-sm text-slate-500 dark:text-slate-400 truncate">
-                            {u.email}
+                          <div className="min-w-0">
+                            <div className="font-extrabold text-slate-900 dark:text-white truncate">
+                              {u.full_name || '—'}
+                            </div>
+
+                            <div className="text-xs md:text-sm text-slate-500 dark:text-slate-400 truncate">
+                              {u.email}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Role */}
+                        <div className="px-6 py-4 flex items-center">
+                          <span
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
+                              ROLE_COLOR[u.role] || ROLE_COLOR.INTERN
+                            }`}
+                          >
+                            {ROLE_LABEL[u.role] || u.role}
+                          </span>
+                        </div>
+
+                        {/* Status */}
+                        <div className="px-6 py-4 flex items-center">
+                          <span
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
+                              u.suspended
+                                ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-800/80'
+                                : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/80'
+                            }`}
+                          >
+                            {u.suspended ? 'Suspended' : 'Active'}
+                          </span>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="px-6 py-4 flex items-center justify-end">
+                          <div className="inline-flex text-slate-500 dark:text-slate-400">
+                            <UserActionMenu
+                              user={u}
+                              busy={
+                                deletingUserId === u.id ||
+                                deleteMut.isPending ||
+                                suspendMut.isPending ||
+                                activateMut.isPending
+                              }
+                              onEdit={setEditingUser}
+                              onSuspend={(target) =>
+                                suspendMut.mutate(target.id)
+                              }
+                              onActivate={(target) =>
+                                activateMut.mutate(target.id)
+                              }
+                              onDelete={handleDelete}
+                            />
                           </div>
                         </div>
                       </div>
-                    </td>
-
-                    <td className="px-6 py-4 text-center">
-                      <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
-                          ROLE_COLOR[u.role] || ROLE_COLOR.INTERN
-                        }`}
-                      >
-                        {ROLE_LABEL[u.role] || u.role}
-                      </span>
-                    </td>
-                    {isAdmin && (
-                      <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap text-center">
-                        {u.role === 'ADMIN'
-                          ? 'Platform-wide'
-                          : u.department_name || 'Not assigned'}
-                      </td>
-                    )}
-
-                    <td className="px-6 py-4 text-center">
-                      <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
-                          u.suspended
-                            ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-800/80'
-                            : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/80'
-                        }`}
-                      >
-                        {u.suspended ? 'Suspended' : 'Active'}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 text-right">
-                      <div className="inline-flex text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 transition">
-                        {canManageUser(u) && (
-                          <UserActionMenu
-                            user={u}
-                            busy={
-                              deletingUserId === u.id ||
-                              deleteMut.isPending ||
-                              suspendMut.isPending ||
-                              activateMut.isPending
-                            }
-                            onEdit={(target) => {
-                              setActionError('');
-                              setEditingUser(target);
-                            }}
-                            onSuspend={(target) => {
-                              setActionError('');
-                              suspendMut.mutate(target.id);
-                            }}
-                            onActivate={(target) => {
-                              setActionError('');
-                              activateMut.mutate(target.id);
-                            }}
-                            onDelete={handleDelete}
-                          />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
-      {/* Pagination summary */}
+
+      {/* Pagination */}
       {total > 0 && (
-        <div className="mt-3 flex items-center justify-between px-1 text-sm text-slate-500 dark:text-slate-400">
+        <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
           <span>
             {total} user{total === 1 ? '' : 's'} · page {page} of {totalPages}
           </span>
 
-          {totalPages > 1 && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-                aria-label="Previous page"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
 
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-                aria-label="Next page"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+              aria-label="Next page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
-      <DeleteUserModal
-        user={deletingUser}
-        pending={deleteMut.isPending}
-        error={actionError}
-        onClose={() => {
-          if (!deleteMut.isPending) {
-            setDeletingUser(null);
-            setActionError('');
-          }
-        }}
-        onConfirm={(confirmation) => {
-          setDeletingUserId(deletingUser.id);
-          deleteMut.mutate(
-            { id: deletingUser.id, confirmation },
-            { onSuccess: () => setDeletingUser(null) }
-          );
-        }}
-      />
+
+      {/* Modals */}
       <CreateUserModal
         open={createUserOpen}
         onClose={() => setCreateUserOpen(false)}
@@ -571,6 +499,7 @@ export default function AdminDashboard() {
         open={bulkUserOpen}
         onClose={() => setBulkUserOpen(false)}
       />
+
       <WorkbookImportModal
         open={workbookImportOpen}
         onClose={() => setWorkbookImportOpen(false)}

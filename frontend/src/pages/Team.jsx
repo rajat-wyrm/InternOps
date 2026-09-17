@@ -21,6 +21,42 @@ import { getTeamRoleBreakdown } from '../utils/teamRoleBreakdown';
 import { useRouteInitialLoading } from '../components/loading/RouteInitialLoading';
 import { getApiErrorMessage } from '../lib/apiError';
 
+function safeStorageGet(key) {
+  try {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    const storage = window.localStorage;
+
+    if (typeof storage?.getItem !== 'function') {
+      return null;
+    }
+
+    return storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeStorageSet(key, value) {
+  try {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const storage = window.localStorage;
+
+    if (typeof storage?.setItem !== 'function') {
+      return;
+    }
+
+    storage.setItem(key, value);
+  } catch {
+    // Storage unavailable during tests or private browsing
+  }
+}
+
 const ROLE_LABEL = {
   SENIOR_TL: 'Senior TL',
   TL: 'TL',
@@ -1947,11 +1983,13 @@ export default function Team() {
   const [statusFilter, setStatusFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [ratingFilter, setRatingFilter] = useState('');
+
   const [eligibilityFilter, setEligibilityFilter] = useState('');
   const [view, setView] = useState(() => {
-    const storedView = window.localStorage.getItem('internops-team-view');
+    const storedView = safeStorageGet('internops-team-view');
     return storedView === 'cards' ? 'cards' : 'table';
   });
+
   const [selected, setSelected] = useState(null);
   const [adding, setAdding] = useState(false);
   const tableScrollRef = useRef(null);
@@ -1961,7 +1999,7 @@ export default function Team() {
   });
 
   useEffect(() => {
-    window.localStorage.setItem('internops-team-view', view);
+    safeStorageSet('internops-team-view', view);
   }, [view]);
 
   const user = useAuthStore((s) => s.user);
