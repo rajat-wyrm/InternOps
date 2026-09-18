@@ -1,7 +1,7 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const service = require('./service');
-const pool = require('../../config/db');
+const repository = require('./repository');
 
 async function assertAccess(req, reply, internId) {
   const user = req.user;
@@ -21,19 +21,12 @@ async function assertAccess(req, reply, internId) {
 
   // TL or Captain can access subordinates
   if (user.role === 'TL' || user.role === 'CAPTAIN') {
-    const subRes = await pool.query(
-      `WITH RECURSIVE subordinates AS (
-         SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
-         UNION ALL
-         SELECT u.id FROM users u
-         JOIN subordinates s ON u.manager_id = s.id
-         WHERE u.deleted_at IS NULL
-       )
-       SELECT id FROM subordinates WHERE id = $2`,
-      [user.id, internId]
+    const isSubordinate = await repository.isInternSubordinate(
+      user.id,
+      internId
     );
 
-    if (subRes.rows.length > 0) {
+    if (isSubordinate) {
       return true;
     }
   }

@@ -46,7 +46,53 @@ async function logEvent(data) {
     ]
   );
 }
+async function getFilteredAuditLogs({
+  conditions = [],
+  params = [],
+  limit,
+  offset,
+}) {
+  const whereClause = conditions.length
+    ? `WHERE ${conditions.join(' AND ')}`
+    : '';
+
+  const countJoin = conditions.some(
+    (condition) =>
+      condition.includes('u.email') || condition.includes('u.full_name')
+  )
+    ? 'LEFT JOIN users u ON al.user_id = u.id'
+    : '';
+
+  const totalResult = await pool.query(
+    `SELECT COUNT(*) FROM audit_logs al ${countJoin} ${whereClause}`,
+    params
+  );
+
+  const total = Number(totalResult.rows[0].count);
+
+  const dataParams = [...params, limit, offset];
+  const limitIndex = dataParams.length - 1;
+  const offsetIndex = dataParams.length;
+
+  const logs = await pool.query(
+    `
+    SELECT al.*, u.full_name AS actor_name, u.email AS actor_email
+    FROM audit_logs al
+    LEFT JOIN users u ON al.user_id = u.id
+    ${whereClause}
+    ORDER BY al.created_at DESC
+    LIMIT $${limitIndex} OFFSET $${offsetIndex}
+    `,
+    dataParams
+  );
+
+  return {
+    logs: logs.rows,
+    total,
+  };
+}
 module.exports = {
   getAuditLogs,
   logEvent,
+  getFilteredAuditLogs,
 };

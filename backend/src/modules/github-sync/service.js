@@ -219,7 +219,6 @@ async function handleIssueOpened(payload) {
   try {
     const notificationsRepo = require('../../modules/notifications/repository');
     const notifiedUsers = new Set();
-    const pool = require('../../config/db');
     if (issue.assignees && issue.assignees.length > 0) {
       for (const assignee of issue.assignees) {
         const matchedUser = await repo.findOrCreateAssignee(assignee);
@@ -232,10 +231,7 @@ async function handleIssueOpened(payload) {
         }
       }
     }
-    const assignees = await pool.query(
-      `SELECT ta.user_id FROM task_assignments ta WHERE ta.task_id = $1 AND ta.deleted_at IS NULL`,
-      [task.id]
-    );
+    const assignees = await repo.getTaskAssigneeIds(task.id);
     for (const row of assignees.rows) {
       if (!notifiedUsers.has(row.user_id)) {
         notifiedUsers.add(row.user_id);
@@ -538,11 +534,7 @@ async function handleIssueMilestoned(payload) {
   }
   const milestone = payload.milestone || issue.milestone;
   if (milestone && milestone.due_on) {
-    const pool = require('../../config/db');
-    await pool.query(
-      `UPDATE social_tasks SET deadline = $1, last_synced_at = NOW() WHERE id = $2`,
-      [milestone.due_on, existingTask.id]
-    );
+    await repo.updateTaskDeadline(existingTask.id, milestone.due_on);
   }
   await repo.logSyncEvent({
     eventType: 'issues',
@@ -618,13 +610,8 @@ async function handleIssueLabeled(payload) {
   });
 
   if (targetPlatform) {
-    const pool = require('../../config/db');
-    await pool.query(
-      `UPDATE social_tasks SET target_platform = $1 WHERE id = $2`,
-      [targetPlatform, existingTask.id]
-    );
+    await repo.updateTaskTargetPlatform(existingTask.id, targetPlatform);
   }
-
   const labelName = payload.label?.name || 'unknown';
 
   await repo.logSyncEvent({
@@ -1159,11 +1146,7 @@ async function syncTaskToGithub(taskId, userId) {
   const result = await githubApiRequest(issueRef, 'PATCH', updates);
 
   const success = result.status >= 200 && result.status < 300;
-  const pool = require('../../config/db');
-  await pool.query(
-    `UPDATE social_tasks SET last_synced_at = NOW() WHERE id = $1`,
-    [task.id]
-  );
+  await repo.updateTaskLastSyncedAt(task.id);
 
   await repo.logSyncEvent({
     eventType: 'two_way_sync',
@@ -1325,35 +1308,17 @@ async function fetchIssueComments(repo, issueNumber) {
 async function syncIssueComments(taskId, repo, issueNumber) {
   const comments = await fetchIssueComments(repo, issueNumber);
   if (comments.count > 0) {
-    const pool = require('../../config/db');
-    const existing = await pool.query(
-      `SELECT github_labels FROM social_tasks WHERE id = $1`,
-      [taskId]
-    );
-    const labels = existing.rows[0]?.github_labels || {};
-    const updated = {
-      ...(typeof labels === 'object' ? labels : {}),
-      commentCount: comments.count,
-      commentParticipants: comments.participants,
-    };
-    await pool.query(
-      `UPDATE social_tasks SET github_labels = $1::jsonb, last_synced_at = NOW() WHERE id = $2`,
-      [JSON.stringify(updated), taskId]
+    await repo.updateTaskCommentMetadata(
+      taskId,
+      comments.count,
+      comments.participants
     );
   }
   return comments;
 }
 
 async function getTwoWaySyncLog(limit = 50) {
-  const pool = require('../../config/db');
-  const res = await pool.query(
-    `SELECT * FROM github_sync_log
-     WHERE event_type = 'two_way_sync'
-     ORDER BY created_at DESC
-     LIMIT $1`,
-    [limit]
-  );
-  return res.rows;
+  return repo.getTwoWaySyncLogs(limit);
 }
 
 module.exports = {

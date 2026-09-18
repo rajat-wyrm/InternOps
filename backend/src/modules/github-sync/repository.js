@@ -416,7 +416,119 @@ async function getSyncAnalytics(days = 30) {
     periodDays: days,
   };
 }
+async function getGithubTaskCountSummary() {
+  const [githubTasks, totalTasks, byRepo, byPlatform] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM social_tasks
+       WHERE source = 'github' AND deleted_at IS NULL`
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM social_tasks
+       WHERE deleted_at IS NULL`
+    ),
+    pool.query(
+      `SELECT github_repo, COUNT(*)::int AS count
+       FROM social_tasks
+       WHERE source = 'github' AND deleted_at IS NULL
+       GROUP BY github_repo
+       ORDER BY count DESC`
+    ),
+    pool.query(
+      `SELECT target_platform, COUNT(*)::int AS count
+       FROM social_tasks
+       WHERE source = 'github' AND deleted_at IS NULL
+       GROUP BY target_platform
+       ORDER BY count DESC`
+    ),
+  ]);
 
+  return {
+    totalGithubTasks: githubTasks.rows[0].count,
+    totalAllTasks: totalTasks.rows[0].count,
+    githubPercentage:
+      totalTasks.rows[0].count > 0
+        ? Math.round(
+            (githubTasks.rows[0].count / totalTasks.rows[0].count) * 100
+          )
+        : 0,
+    byRepo: byRepo.rows,
+    byPlatform: byPlatform.rows,
+  };
+}
+async function getTaskAssigneeIds(taskId) {
+  const res = await pool.query(
+    `SELECT ta.user_id
+     FROM task_assignments ta
+     WHERE ta.task_id = $1 AND ta.deleted_at IS NULL`,
+    [taskId]
+  );
+
+  return res;
+}
+async function updateTaskDeadline(taskId, deadline) {
+  await pool.query(
+    `UPDATE social_tasks
+     SET deadline = $1, last_synced_at = NOW()
+     WHERE id = $2`,
+    [deadline, taskId]
+  );
+}
+async function updateTaskTargetPlatform(taskId, targetPlatform) {
+  await pool.query(
+    `UPDATE social_tasks
+     SET target_platform = $1
+     WHERE id = $2`,
+    [targetPlatform, taskId]
+  );
+}
+async function updateTaskLastSyncedAt(taskId) {
+  await pool.query(
+    `UPDATE social_tasks
+     SET last_synced_at = NOW()
+     WHERE id = $1`,
+    [taskId]
+  );
+}
+async function updateTaskCommentMetadata(
+  taskId,
+  commentCount,
+  commentParticipants
+) {
+  const existing = await pool.query(
+    `SELECT github_labels FROM social_tasks WHERE id = $1`,
+    [taskId]
+  );
+
+  const labels = existing.rows[0]?.github_labels || {};
+
+  const updated = {
+    ...(typeof labels === 'object' ? labels : {}),
+    commentCount,
+    commentParticipants,
+  };
+
+  await pool.query(
+    `UPDATE social_tasks
+     SET github_labels = $1::jsonb, last_synced_at = NOW()
+     WHERE id = $2`,
+    [JSON.stringify(updated), taskId]
+  );
+
+  return updated;
+}
+async function getTwoWaySyncLogs(limit = 50) {
+  const res = await pool.query(
+    `SELECT * FROM github_sync_log
+     WHERE event_type = 'two_way_sync'
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+  return res.rows;
+}
 module.exports = {
   findTaskByIssueId,
   createTaskFromIssue,
@@ -446,4 +558,11 @@ module.exports = {
   getWebhookRegistration,
   getGithubTaskInfo,
   getSyncAnalytics,
+  getGithubTaskCountSummary,
+  getTaskAssigneeIds,
+  updateTaskDeadline,
+  updateTaskTargetPlatform,
+  updateTaskLastSyncedAt,
+  updateTaskCommentMetadata,
+  getTwoWaySyncLogs,
 };

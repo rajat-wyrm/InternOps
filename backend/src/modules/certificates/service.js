@@ -500,19 +500,15 @@ Return only valid JSON in this exact format:
 // ============================================================
 
 async function quickGenerate(data, userId) {
-  const pool = require('../../config/db');
-
   // 1. Auto-generate certificate number: CERT/DOMAIN/YYYY/NNNN
   const domainCode = (data.domain || 'GEN')
     .replace(/[^a-zA-Z]/g, '')
     .substring(0, 4)
     .toUpperCase();
+
   const year = new Date().getFullYear();
-  const countResult = await pool.query(
-    `SELECT COUNT(*) as cnt FROM certificates WHERE EXTRACT(YEAR FROM created_at) = $1`,
-    [year]
-  );
-  const seq = String(parseInt(countResult.rows[0].cnt) + 1).padStart(4, '0');
+  const count = await repo.getCertificateCountByYear(year);
+  const seq = String(count + 1).padStart(4, '0');
   const certificateNumber = `CERT/${domainCode}/${year}/${seq}`;
 
   // 2. Get template styling

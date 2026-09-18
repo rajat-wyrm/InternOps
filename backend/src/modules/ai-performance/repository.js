@@ -234,11 +234,26 @@ async function getReviewById(reviewId) {
   );
   return res.rows[0] || null;
 }
+async function isInternSubordinate(managerId, internId) {
+  const res = await pool.query(
+    `WITH RECURSIVE subordinates AS (
+       SELECT id FROM users WHERE manager_id = $1 AND deleted_at IS NULL
+       UNION ALL
+       SELECT u.id FROM users u
+       JOIN subordinates s ON u.manager_id = s.id
+       WHERE u.deleted_at IS NULL
+     )
+     SELECT id FROM subordinates WHERE id = $2`,
+    [managerId, internId]
+  );
 
+  return res.rows.length > 0;
+}
 module.exports = {
   gatherInternPerformanceData,
   savePerformanceReview,
   getLatestReview,
   getReviewHistory,
   getReviewById,
+  isInternSubordinate,
 };

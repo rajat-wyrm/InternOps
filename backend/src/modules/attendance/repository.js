@@ -383,7 +383,28 @@ async function markAnomalyViewed(anomalyId, managerId, isAdmin) {
 
   return res.rows[0];
 }
+async function getAdminAuthorizedMembers(departmentId) {
+  const query = `
+    SELECT id, full_name, email, role, department_id
+    FROM users
+    WHERE deleted_at IS NULL
+      ${departmentId ? 'AND department_id = $1' : ''}
+    ORDER BY CASE role
+      WHEN 'ADMIN' THEN 0
+      WHEN 'SENIOR_TL' THEN 1
+      WHEN 'TL' THEN 2
+      WHEN 'CAPTAIN' THEN 3
+      WHEN 'INTERN' THEN 4
+      ELSE 5
+    END,
+    LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
+    LOWER(email), id
+  `;
 
+  const res = await pool.query(query, departmentId ? [departmentId] : []);
+
+  return res.rows;
+}
 module.exports = {
   markAttendance,
   getAttendance,
@@ -395,4 +416,5 @@ module.exports = {
   getAnomalies,
   markAnomalyViewed,
   memberAppliesToRange,
+  getAdminAuthorizedMembers,
 };
