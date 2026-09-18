@@ -4,6 +4,7 @@ const {
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const repo = require('./repository');
+const service = require('./service');
 const { extractRequestInfo } = require('../../utils/audit');
 const { z } = require('zod');
 const { toSchema } = require('../../utils/schemaHelper');
@@ -156,6 +157,28 @@ async function noticesRoutes(fastify) {
         ...extractRequestInfo(req),
       };
       return reply.status(201).send(notice);
+    }
+  );
+
+  fastify.post(
+    '/notices/ai-analyze',
+    {
+      schema: {
+        tags: ['Notices', 'AI'],
+        description:
+          'Analyze notice content using AI to suggest title, category, and summary',
+        body: toSchema(
+          z.object({
+            content: z.string().trim().min(1, 'Content is required'),
+          })
+        ),
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+    },
+    async (req, reply) => {
+      const { content } = req.body;
+      const result = await service.analyzeNoticeContent(content, req.user.id);
+      return reply.send(result);
     }
   );
 

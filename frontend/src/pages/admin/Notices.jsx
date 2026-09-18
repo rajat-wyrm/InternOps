@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getApiErrorMessage } from '../../lib/apiError';
 import {
   Megaphone,
   Plus,
@@ -21,6 +20,7 @@ import {
   Briefcase,
   CalendarDays,
   FileWarning,
+  Sparkles,
 } from 'lucide-react';
 import api from '../../lib/axios';
 import useAuthStore from '../../store/auth';
@@ -33,7 +33,6 @@ import {
   ConfirmationModal,
 } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
-import { useRouteInitialLoading } from '../../components/loading/RouteInitialLoading';
 
 const CATEGORIES = [
   'GENERAL',
@@ -119,7 +118,7 @@ function NoticeForm({
   const [title, setTitle] = useState(initial.title ?? '');
   const [content, setContent] = useState(initial.content ?? '');
   const [category, setCategory] = useState(initial.category ?? 'GENERAL');
-  const [image_url, setImageUrl] = useState(initial.image_url ?? '');
+  const [imageUrl, setImageUrl] = useState(initial.image_url ?? '');
   const [action_button_text, setActionButtonText] = useState(
     initial.action_button_text ?? ''
   );
@@ -129,6 +128,33 @@ function NoticeForm({
   const [is_featured, setIsFeatured] = useState(initial.is_featured ?? false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+
+  const handleAiAnalyze = async () => {
+    if (!content.trim()) return;
+    setIsAiLoading(true);
+    setUploadError('');
+    try {
+      const res = await api.post('/notices/ai-analyze', {
+        content: content.trim(),
+      });
+      const data = res.data.data;
+      if (data.title && !title) setTitle(data.title);
+      if (data.category) setCategory(data.category);
+      if (data.action_button_text && !action_button_text)
+        setActionButtonText(data.action_button_text);
+      setAiAnalysis(data);
+    } catch (err) {
+      setUploadError(
+        err.response?.data?.error ||
+          err.message ||
+          'Failed to analyze notice with AI'
+      );
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
 
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -150,7 +176,7 @@ function NoticeForm({
       });
       setImageUrl(res.data.image_url);
     } catch (err) {
-      setUploadError(getApiErrorMessage(err, 'Failed to upload image'));
+      setUploadError(err.response?.data?.error || 'Failed to upload image');
     } finally {
       setIsUploading(false);
     }
@@ -165,21 +191,21 @@ function NoticeForm({
       )}
 
       <div className="flex items-center gap-4">
-        {image_url && (
+        {imageUrl && (
           <img
-            src={image_url}
+            src={imageUrl}
             alt="Notice Preview"
             className="h-16 w-32 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
           />
         )}
-        <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700/80 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+        <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
           {isUploading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
             <Upload className="w-4 h-4 text-slate-500" />
           )}
           <span className="text-sm text-slate-600 dark:text-slate-400">
-            {image_url ? 'Change Image' : 'Upload Image (Optional)'}
+            {imageUrl ? 'Change Image' : 'Upload Image (Optional)'}
           </span>
           <input
             type="file"
@@ -189,7 +215,7 @@ function NoticeForm({
             disabled={isPending || isUploading}
           />
         </label>
-        {image_url && (
+        {imageUrl && (
           <button
             type="button"
             onClick={() => setImageUrl('')}
@@ -205,17 +231,86 @@ function NoticeForm({
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         disabled={isPending}
-        className="dark:!border-slate-700 dark:!bg-slate-800/70"
       />
 
       <textarea
         placeholder="Notice content…"
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        rows={3}
-        disabled={isPending}
+        disabled={isPending || isAiLoading}
         className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700/80 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 resize-none transition disabled:opacity-60 disabled:cursor-not-allowed"
       />
+
+      <div className="flex justify-end -mt-1 mb-2">
+        <button
+          type="button"
+          disabled={!content.trim() || isAiLoading || isPending}
+          onClick={handleAiAnalyze}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isAiLoading ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="w-3.5 h-3.5" />
+          )}
+          AI Assistant
+        </button>
+      </div>
+
+      {aiAnalysis && (
+        <div className="bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl p-4 text-sm mb-2 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1 h-full bg-indigo-400 dark:bg-indigo-600"></div>
+          <h4 className="font-semibold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5 mb-2">
+            <Sparkles className="w-4 h-4 text-indigo-500" /> AI Insights
+          </h4>
+          <p className="text-slate-700 dark:text-slate-300 mb-3 leading-relaxed">
+            <strong>Summary:</strong> {aiAnalysis.summary}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 mb-4">
+            {aiAnalysis.deadline && (
+              <div className="text-slate-600 dark:text-slate-400">
+                <strong className="text-slate-700 dark:text-slate-300">
+                  Deadline:
+                </strong>{' '}
+                {aiAnalysis.deadline}
+              </div>
+            )}
+            {aiAnalysis.date_time && (
+              <div className="text-slate-600 dark:text-slate-400">
+                <strong className="text-slate-700 dark:text-slate-300">
+                  Date/Time:
+                </strong>{' '}
+                {aiAnalysis.date_time}
+              </div>
+            )}
+            {aiAnalysis.eligibility && (
+              <div className="text-slate-600 dark:text-slate-400 col-span-full">
+                <strong className="text-slate-700 dark:text-slate-300">
+                  Eligibility:
+                </strong>{' '}
+                {aiAnalysis.eligibility}
+              </div>
+            )}
+          </div>
+          {aiAnalysis.improved_content && (
+            <div className="border-t border-indigo-100 dark:border-indigo-900/50 pt-3 flex flex-col gap-2">
+              <p className="text-xs text-indigo-700 dark:text-indigo-400 font-medium uppercase tracking-wide">
+                Suggested Content Revision
+              </p>
+              <p className="text-slate-600 dark:text-slate-400 italic bg-white/50 dark:bg-black/20 p-2 rounded-lg border border-indigo-50 dark:border-indigo-900/30 whitespace-pre-wrap">
+                {aiAnalysis.improved_content}
+              </p>
+              <button
+                type="button"
+                onClick={() => setContent(aiAnalysis.improved_content)}
+                className="self-start mt-1 text-xs font-semibold px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow-sm transition-colors"
+              >
+                Use Suggested Content
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
@@ -235,12 +330,12 @@ function NoticeForm({
             value={action_button_link}
             onChange={(e) => setActionButtonLink(e.target.value)}
             disabled={isPending}
-            className="h-[52px] w-full min-w-0 rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-700/80 dark:text-slate-200 dark:placeholder:text-slate-500"
+            className="h-[52px] w-full min-w-0 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 pl-11 pr-4 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 transition disabled:opacity-60 disabled:cursor-not-allowed"
           />
         </div>
       </div>
 
-      <div className="ml-1 mt-1 flex items-center gap-2">
+      <div className="flex items-center gap-2 ml-1 mb-2">
         <input
           type="checkbox"
           id="is_featured"
@@ -257,15 +352,15 @@ function NoticeForm({
         </label>
       </div>
 
-      <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="h-[52px] w-full sm:w-72">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="w-full sm:w-64">
           <CustomSelect
             value={category}
             onChange={setCategory}
             options={CATEGORY_OPTIONS}
             placeholder="Select category"
             disabled={isPending}
-            className="h-[52px] w-full dark:!border-slate-700 dark:!bg-slate-800/70"
+            className="w-full"
           />
         </div>
 
@@ -280,15 +375,14 @@ function NoticeForm({
               category,
               is_featured,
             };
-            const imageUrl = image_url.trim();
-            const actionButtonText = action_button_text.trim();
-            const actionButtonLink = action_button_link.trim();
             if (imageUrl) payload.image_url = imageUrl;
-            if (actionButtonText) payload.action_button_text = actionButtonText;
-            if (actionButtonLink) payload.action_button_link = actionButtonLink;
+            if (action_button_text)
+              payload.action_button_text = action_button_text;
+            if (action_button_link)
+              payload.action_button_link = action_button_link;
             onSubmit(payload);
           }}
-          className="h-[52px] min-w-[180px] rounded-2xl px-5"
+          className="rounded-2xl"
         >
           {isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -361,7 +455,7 @@ export default function Notices() {
       inv();
     },
     onError: (err) =>
-      setFormError(getApiErrorMessage(err, 'Failed to create notice')),
+      setFormError(err.response?.data?.error || 'Failed to create notice'),
     enabled: hydrated && !!accessToken,
   });
 
@@ -404,7 +498,7 @@ export default function Notices() {
   });
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="">
       <ConfirmationModal
         open={!!noticeToDelete}
         title="Delete Notice"
@@ -418,24 +512,24 @@ export default function Notices() {
         danger={true}
       />
 
-      <div className="mb-7 flex items-center gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-amber-100 text-amber-600 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300 rounded-lg shadow-sm border border-amber-100 dark:border-amber-900/60">
           <Megaphone className="w-6 h-6" />
         </div>
 
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">
             Notice Board
           </h1>
 
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
             Manage announcements visible on the login page
           </p>
         </div>
       </div>
 
-      <Card className="mb-6 border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-6">
-        <h3 className="mb-4 flex items-center gap-2 text-xl font-extrabold text-slate-900 dark:text-white">
+      <Card className="p-6 mb-6 shadow-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
           <Plus className="w-4 h-4 text-amber-500" /> New Notice
         </h3>
 
@@ -465,6 +559,15 @@ export default function Notices() {
             </Btn>
           </div>
         </Card>
+      ) : isLoading ? (
+        <div className="flex flex-col gap-3">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-32 bg-slate-100 dark:bg-slate-800 rounded-xl animate-pulse"
+            />
+          ))}
+        </div>
       ) : notices.length === 0 ? (
         <EmptyState
           icon="📭"
@@ -476,7 +579,7 @@ export default function Notices() {
           {notices.map((n) => (
             <Card
               key={n.id}
-              className={`group border border-slate-200 bg-white p-4 transition-all dark:border-slate-700 dark:bg-slate-900 md:p-5 ${
+              className={`p-5 transition-all group border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 ${
                 !n.is_active ? 'opacity-60' : ''
               }`}
             >
@@ -489,7 +592,7 @@ export default function Notices() {
                   submitLabel="Save Changes"
                 />
               ) : (
-                <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+                <div className="flex flex-col sm:flex-row items-start gap-4">
                   {n.image_url && (
                     <img
                       src={n.image_url}
@@ -560,7 +663,7 @@ export default function Notices() {
           ))}
 
           {/* Pagination Buttons */}
-          <div className="mt-1 flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-700">
+          <div className="flex items-center justify-between pt-4 mt-2 border-t border-slate-200 dark:border-slate-700">
             <button
               onClick={() => setPage((p) => p - 1)}
               disabled={page === 1}
