@@ -22,7 +22,7 @@ npm run migrate --workspace=backend
 ```
 
 In production (via Docker), this is run automatically by
-`start-production.ps1`, or manually:
+`docker-compose.prod.yml`, or manually:
 
 ```bash
 docker-compose exec backend npm run migrate

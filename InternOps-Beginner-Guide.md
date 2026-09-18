@@ -277,8 +277,8 @@ InternOps/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── project-structure.txt   # Detailed folder breakdown
-├── start-production.ps1
-├── stop-production.ps1
+├── docker-compose.prod.yml
+├── docker-compose.prod.yml
 └── README.md
 ```
 

@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ### Changed
 
-- Configured production deployment files (`start-production.ps1`, `stop-production.ps1`).
+- Configured production deployment files (`docker-compose.prod.yml`, `docker-compose.prod.yml`).
 - Cleaned up root-level database testing scripts (`_dbtest.js`).
 
 ## [v1.0.0] - 2026-06-15

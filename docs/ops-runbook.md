@@ -61,7 +61,9 @@ InternOps includes a production startup script that automates deployment.
 Run:
 
 ```powershell
-.\start-production.ps1
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml run --rm migrate
+docker compose -f docker-compose.prod.yml run --rm seed
 ```
 
 The script performs the following tasks:
@@ -440,5 +442,5 @@ docker-compose down
 - `docker-compose.yml`
 - `docker-compose.monitoring.yml`
 - `Dockerfile`
-- `start-production.ps1`
+- `docker-compose.prod.yml`
 - `backend/.env.example`
