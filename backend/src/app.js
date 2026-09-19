@@ -393,7 +393,7 @@ function validationPayload(details, requestId) {
     : 'Please check the submitted values.';
 
   return {
-    error: 'Validation error',
+    success: false,
     message: validationMessage,
     code: 'VALIDATION_ERROR',
     details: validationDetails,
@@ -486,9 +486,10 @@ app.setErrorHandler((error, request, reply) => {
   }
 
   return reply.status(statusCode).send({
-    error: clientMessage,
+    success: false,
     message: clientMessage,
     code: responseCode,
+    details: [],
     requestId: request.id,
   });
 });
