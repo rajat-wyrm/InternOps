@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<aiml version="1.0.1">
+
+  <!-- ================================================================= -->
+  <!-- InternOps Intent: Dashboard Usage                                 -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I USE THE INTERNOPS DASHBOARD</pattern>
+    <template>
+      The InternOps dashboard is your central workspace:
+      1. Overview: View today's attendance status, pending tasks, and recent notifications.
+      2. Navigation: Access Tasks, Attendance, Ratings, Meetings, and Sessions from the left sidebar.
+      3. Quick Actions: Mark attendance, upload task proofs, or review incoming feedback directly from cards.
+      4. Support: Use the Assistant icon anytime you need guidance on platform procedures.
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW TO USE INTERNOPS DASHBOARD</pattern>
+    <template><srai>HOW DO I USE THE INTERNOPS DASHBOARD</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I USE THE DASHBOARD</pattern>
+    <template><srai>HOW DO I USE THE INTERNOPS DASHBOARD</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW TO USE THE DASHBOARD</pattern>
+    <template><srai>HOW DO I USE THE INTERNOPS DASHBOARD</srai></template>
+  </category>
+
+  <category>
+    <pattern>INTERNOPS DASHBOARD GUIDE</pattern>
+    <template><srai>HOW DO I USE THE INTERNOPS DASHBOARD</srai></template>
+  </category>
+
+  <category>
+    <pattern>* INTERNOPS DASHBOARD *</pattern>
+    <template><srai>HOW DO I USE THE INTERNOPS DASHBOARD</srai></template>
+  </category>
+
+  <category>
+    <pattern>* USE THE DASHBOARD *</pattern>
+    <template><srai>HOW DO I USE THE INTERNOPS DASHBOARD</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- InternOps Intent: Profile Update & Password Change                -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I UPDATE MY PROFILE</pattern>
+    <template>
+      To update your profile:
+      1. Click on Profile in the navigation sidebar.
+      2. You can update your display name, phone number, and avatar image.
+      3. To change your password, enter your current password followed by your new password in the Security section.
+      4. Click 'Save Changes'.
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW TO UPDATE PROFILE</pattern>
+    <template><srai>HOW DO I UPDATE MY PROFILE</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I CHANGE MY PROFILE</pattern>
+    <template><srai>HOW DO I UPDATE MY PROFILE</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I CHANGE MY PASSWORD</pattern>
+    <template><srai>HOW DO I UPDATE MY PROFILE</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW TO CHANGE PASSWORD</pattern>
+    <template><srai>HOW DO I UPDATE MY PROFILE</srai></template>
+  </category>
+
+  <category>
+    <pattern>UPDATE PROFILE</pattern>
+    <template><srai>HOW DO I UPDATE MY PROFILE</srai></template>
+  </category>
+
+  <category>
+    <pattern>* UPDATE MY PROFILE *</pattern>
+    <template><srai>HOW DO I UPDATE MY PROFILE</srai></template>
+  </category>
+
+  <category>
+    <pattern>* UPDATE MY PROFILE</pattern>
+    <template><srai>HOW DO I UPDATE MY PROFILE</srai></template>
+  </category>
+
+  <category>
+    <pattern>* CHANGE MY PASSWORD *</pattern>
+    <template><srai>HOW DO I UPDATE MY PROFILE</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- InternOps Intent: Internship Status & Certificates                -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I CHECK MY INTERNSHIP STATUS</pattern>
+    <template>
+      You can check your internship status directly on your InternOps Profile or Dashboard. It displays your current duration, completed tasks count, cumulative attendance percentage, and certificate clearance status.
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW TO CHECK INTERNSHIP STATUS</pattern>
+    <template><srai>HOW DO I CHECK MY INTERNSHIP STATUS</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHAT IS MY INTERNSHIP STATUS</pattern>
+    <template><srai>HOW DO I CHECK MY INTERNSHIP STATUS</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHERE IS MY CERTIFICATE</pattern>
+    <template>
+      Certificates are issued upon successful completion of your internship tenure, meeting the 80% attendance requirement, and receiving approved ratings for assigned tasks. Once generated, your certificate will appear under Profile / Certificates for download and verification.
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I GET MY CERTIFICATE</pattern>
+    <template><srai>WHERE IS MY CERTIFICATE</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHEN WILL I GET MY CERTIFICATE</pattern>
+    <template><srai>WHERE IS MY CERTIFICATE</srai></template>
+  </category>
+
+  <category>
+    <pattern>* CHECK MY INTERNSHIP STATUS *</pattern>
+    <template><srai>HOW DO I CHECK MY INTERNSHIP STATUS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* CHECK MY INTERNSHIP STATUS</pattern>
+    <template><srai>HOW DO I CHECK MY INTERNSHIP STATUS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* GET MY CERTIFICATE *</pattern>
+    <template><srai>WHERE IS MY CERTIFICATE</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- InternOps Intent: Ratings & Feedback                              -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I CHECK MY RATINGS</pattern>
+    <template>
+      You can view your performance ratings and mentor feedback by going to Ratings in the sidebar. Ratings reflect your task execution, consistency, and teamwork. Note that ratings are permanent and submitted by your direct lead.
+    </template>
+  </category>
+
+  <category>
+    <pattern>WHERE CAN I SEE MY RATINGS</pattern>
+    <template><srai>HOW DO I CHECK MY RATINGS</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DOES THE RATING SYSTEM WORK</pattern>
+    <template><srai>HOW DO I CHECK MY RATINGS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* CHECK MY RATINGS *</pattern>
+    <template><srai>HOW DO I CHECK MY RATINGS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SEE MY RATINGS *</pattern>
+    <template><srai>HOW DO I CHECK MY RATINGS</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- InternOps Intent: Platform Hierarchy                              -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHAT IS THE PLATFORM HIERARCHY</pattern>
+    <template>
+      InternOps operates on a clear hierarchical structure:
+      Admin -> Senior TL -> Team Lead (TL) -> Captain -> Intern.
+      Each role has defined responsibilities, and team members can view and rate users directly within their branch.
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW DOES THE HIERARCHY WORK</pattern>
+    <template><srai>WHAT IS THE PLATFORM HIERARCHY</srai></template>
+  </category>
+
+  <category>
+    <pattern>ORGANIZATIONAL HIERARCHY</pattern>
+    <template><srai>WHAT IS THE PLATFORM HIERARCHY</srai></template>
+  </category>
+
+  <category>
+    <pattern>* PLATFORM HIERARCHY *</pattern>
+    <template><srai>WHAT IS THE PLATFORM HIERARCHY</srai></template>
+  </category>
+
+</aiml>

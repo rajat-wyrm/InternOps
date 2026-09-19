@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<aiml version="1.0.1">
+
+  <!-- ================================================================= -->
+  <!-- Policy Intent: Attendance Policy                                  -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHAT IS THE ATTENDANCE POLICY</pattern>
+    <template>
+      <random>
+        <li>Our attendance policy requires interns to mark attendance daily through the InternOps portal under Attendance. You must maintain at least 80% cumulative attendance to remain eligible for internship completion and certification. If you are unable to attend, notify your Team Lead in advance.</li>
+        <li>Attendance Policy: Daily attendance must be logged via InternOps under the Attendance section. Minimum 80% attendance is mandatory for certification. In case of unexpected absence, inform your Captain/TL before 10:00 AM.</li>
+      </random>
+    </template>
+  </category>
+
+  <category>
+    <pattern>ATTENDANCE POLICY</pattern>
+    <template><srai>WHAT IS THE ATTENDANCE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>TELL ME ABOUT THE ATTENDANCE POLICY</pattern>
+    <template><srai>WHAT IS THE ATTENDANCE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DOES ATTENDANCE WORK</pattern>
+    <template><srai>WHAT IS THE ATTENDANCE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW MUCH ATTENDANCE IS REQUIRED</pattern>
+    <template><srai>WHAT IS THE ATTENDANCE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>MINIMUM ATTENDANCE REQUIRED</pattern>
+    <template><srai>WHAT IS THE ATTENDANCE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>* ATTENDANCE POLICY *</pattern>
+    <template><srai>WHAT IS THE ATTENDANCE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>* ATTENDANCE POLICY</pattern>
+    <template><srai>WHAT IS THE ATTENDANCE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHAT IS ATTENDANCE POLICY</pattern>
+    <template><srai>WHAT IS THE ATTENDANCE POLICY</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Policy Intent: Working Hours                                      -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHAT ARE THE WORKING HOURS</pattern>
+    <template>
+      Standard working hours are Monday through Friday, 9:30 AM to 6:30 PM IST (with a 1-hour lunch break). Core collaboration hours are 11:00 AM to 5:00 PM IST when all team members are expected to be online for standups and syncs. Flexible hours can be coordinated with your Team Lead.
+    </template>
+  </category>
+
+  <category>
+    <pattern>WORKING HOURS</pattern>
+    <template><srai>WHAT ARE THE WORKING HOURS</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHAT ARE THE WORK HOURS</pattern>
+    <template><srai>WHAT ARE THE WORKING HOURS</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHAT ARE THE OFFICE TIMINGS</pattern>
+    <template><srai>WHAT ARE THE WORKING HOURS</srai></template>
+  </category>
+
+  <category>
+    <pattern>OFFICE TIMINGS</pattern>
+    <template><srai>WHAT ARE THE WORKING HOURS</srai></template>
+  </category>
+
+  <category>
+    <pattern>WORK TIMINGS</pattern>
+    <template><srai>WHAT ARE THE WORKING HOURS</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHEN DO WE WORK</pattern>
+    <template><srai>WHAT ARE THE WORKING HOURS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* WORKING HOURS *</pattern>
+    <template><srai>WHAT ARE THE WORKING HOURS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* WORKING HOURS</pattern>
+    <template><srai>WHAT ARE THE WORKING HOURS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* OFFICE TIMINGS *</pattern>
+    <template><srai>WHAT ARE THE WORKING HOURS</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Policy Intent: Leave Policy                                       -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHAT IS THE LEAVE POLICY</pattern>
+    <template>
+      Leave Policy:
+      1. Planned Leaves: Submit a leave request at least 24-48 hours in advance through the Requests section in InternOps and inform your mentor/TL.
+      2. Sick Leaves: Notify your TL by 10:00 AM on the day of illness.
+      3. Exam Leaves: Submit college exam schedules at least 1 week in advance for approval.
+      Excess unexcused leaves may affect your completion evaluation.
+    </template>
+  </category>
+
+  <category>
+    <pattern>LEAVE POLICY</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I APPLY FOR LEAVE</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW TO APPLY FOR LEAVE</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>CAN I TAKE LEAVE</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW MANY LEAVES DO I GET</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>SICK LEAVE POLICY</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>EXAM LEAVE POLICY</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>* LEAVE POLICY *</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>* LEAVE POLICY</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>* APPLY FOR LEAVE *</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <category>
+    <pattern>* APPLY FOR LEAVE</pattern>
+    <template><srai>WHAT IS THE LEAVE POLICY</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Policy Intent: Workplace Rules & Code of Conduct                  -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHAT ARE THE WORKPLACE RULES</pattern>
+    <template>
+      Workplace Rules and Code of Conduct:
+      1. Professionalism: Maintain respectful and inclusive communication across all platforms.
+      2. Data Security: Never share internal company credentials, API keys, student data, or confidential materials outside.
+      3. Integrity: Plagiarism or submitting unauthorized work results in immediate termination.
+      4. Punctuality: Attend scheduled standups and team meetings on time.
+      5. Zero Tolerance: Strict zero-tolerance policy against any form of harassment, discrimination, or misconduct.
+    </template>
+  </category>
+
+  <category>
+    <pattern>WORKPLACE RULES</pattern>
+    <template><srai>WHAT ARE THE WORKPLACE RULES</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHAT IS THE CODE OF CONDUCT</pattern>
+    <template><srai>WHAT ARE THE WORKPLACE RULES</srai></template>
+  </category>
+
+  <category>
+    <pattern>CODE OF CONDUCT</pattern>
+    <template><srai>WHAT ARE THE WORKPLACE RULES</srai></template>
+  </category>
+
+  <category>
+    <pattern>COMPANY RULES</pattern>
+    <template><srai>WHAT ARE THE WORKPLACE RULES</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHAT ARE THE COMPANY POLICIES</pattern>
+    <template><srai>WHAT ARE THE WORKPLACE RULES</srai></template>
+  </category>
+
+  <category>
+    <pattern>* WORKPLACE RULES *</pattern>
+    <template><srai>WHAT ARE THE WORKPLACE RULES</srai></template>
+  </category>
+
+  <category>
+    <pattern>* CODE OF CONDUCT *</pattern>
+    <template><srai>WHAT ARE THE WORKPLACE RULES</srai></template>
+  </category>
+
+  <category>
+    <pattern>* CODE OF CONDUCT</pattern>
+    <template><srai>WHAT ARE THE WORKPLACE RULES</srai></template>
+  </category>
+
+  <category>
+    <pattern>* WORKPLACE RULES</pattern>
+    <template><srai>WHAT ARE THE WORKPLACE RULES</srai></template>
+  </category>
+
+</aiml>

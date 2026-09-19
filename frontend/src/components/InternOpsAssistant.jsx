@@ -625,38 +625,66 @@ ${perms.cannotDo.map((item) => `- ${item}`).join('\n')}`;
       }
 
       try {
-        const systemPrompt = `You are the InternOps Assistant. The user's current role is: ${role}. Give concise, role-aware answers about InternOps modules, permissions, ratings, attendance, tasks, reports, sessions, meetings, and audit logs.`;
+        // 1️⃣ Query AIML Chatbot endpoint first
+        let chatbotResponse = null;
+        try {
+          const cbRes = await api.post(
+            '/chatbot/message',
+            { message: msg },
+            { _suppressGlobalError: true }
+          );
+          chatbotResponse = cbRes.data;
+          if (
+            chatbotResponse?.response &&
+            chatbotResponse.source !== 'fallback'
+          ) {
+            setIsTyping(false);
+            addBotMessage(chatbotResponse.response);
+            return;
+          }
+        } catch (cbErr) {
+          // Fall through to AI chat if available
+        }
 
-        const response = await api.post(
-          '/ai/chat',
-          {
-            messages: [
-              {
-                role: 'system',
-                content: systemPrompt,
-              },
-              ...history.slice(-6).map((item) => ({
-                role: item.role === 'bot' ? 'assistant' : item.role,
-                content: item.content,
-              })),
-              {
-                role: 'user',
-                content: msg,
-              },
-            ],
-          },
-          // The failure is already surfaced as an in-chat message below, so
-          // suppress the global error toast to avoid showing the user two
-          // separate error messages for the same failed request (#1795).
-          { _suppressGlobalError: true }
-        );
+        // 2️⃣ Fall back to AI chat for manager roles if needed
+        const roleKey = role.toUpperCase().replace(/\s+/g, '_');
+        if (['ADMIN', 'SENIOR_TL', 'TL'].includes(roleKey)) {
+          const systemPrompt = `You are the InternOps Assistant. The user's current role is: ${role}. Give concise, role-aware answers about InternOps modules, permissions, ratings, attendance, tasks, reports, sessions, meetings, and audit logs.`;
 
-        const answer =
-          response.data?.content ||
-          "Sorry, I couldn't process that. Please try rephrasing.";
+          const response = await api.post(
+            '/ai/chat',
+            {
+              messages: [
+                {
+                  role: 'system',
+                  content: systemPrompt,
+                },
+                ...history.slice(-6).map((item) => ({
+                  role: item.role === 'bot' ? 'assistant' : item.role,
+                  content: item.content,
+                })),
+                {
+                  role: 'user',
+                  content: msg,
+                },
+              ],
+            },
+            { _suppressGlobalError: true }
+          );
+
+          const answer = response.data?.content;
+          if (answer) {
+            setIsTyping(false);
+            addBotMessage(answer);
+            return;
+          }
+        }
 
         setIsTyping(false);
-        addBotMessage(answer);
+        addBotMessage(
+          chatbotResponse?.response ||
+            'I’m not sure about that yet. Please try rephrasing your question or contact your mentor/support team.'
+        );
       } catch (err) {
         setIsTyping(false);
         const { message, retryable } = getAiChatErrorMessage(err);

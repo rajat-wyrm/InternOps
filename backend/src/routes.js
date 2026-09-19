@@ -120,6 +120,10 @@ module.exports = async function routes(fastify, opts) {
     prefix: '/internops',
   });
 
+  fastify.register(require('./modules/chatbot/routes'), {
+    prefix: '/chatbot',
+  });
+
   // Public certificate verification (no auth)
   const { verifyCertificate } = require('./modules/certificates/verify');
   verifyCertificate(fastify);

@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<aiml version="1.0.1">
+
+  <!-- ================================================================= -->
+  <!-- Workflow Intent: Submitting Work / Assignments / Proofs           -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I SUBMIT MY WORK</pattern>
+    <template>
+      <random>
+        <li>You can submit your work through InternOps: 1. Go to Tasks in the sidebar. 2. Select your assigned task. 3. Click 'Upload Proof' or 'Submit Work'. 4. Attach your screenshot/link/file and click Submit for verification by your Captain or Team Lead.</li>
+        <li>To submit work: Navigate to Tasks in InternOps, open the specific task or assignment, attach the required proof (screenshot/repository link/document), and click Submit. Your submission will be queued for review.</li>
+      </random>
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW CAN I SUBMIT MY WORK</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHERE DO I SUBMIT MY ASSIGNMENT</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW CAN I SUBMIT MY TASK</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHERE CAN I UPLOAD MY WORK</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW TO SUBMIT WORK</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I UPLOAD PROOF</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW TO UPLOAD PROOF</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>UPLOAD PROOF FOR TASK</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHERE DO I SUBMIT MY WORK</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I SUBMIT AN ASSIGNMENT</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>SUBMITTING WORK</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SUBMIT MY WORK *</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SUBMIT MY WORK</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SUBMIT MY ASSIGNMENT *</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SUBMIT MY ASSIGNMENT</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>* UPLOAD PROOF *</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>* UPLOAD PROOF</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>* UPLOAD MY WORK *</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <category>
+    <pattern>* UPLOAD MY WORK</pattern>
+    <template><srai>HOW DO I SUBMIT MY WORK</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Workflow Intent: Updating Task Status                             -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I UPDATE MY TASK STATUS</pattern>
+    <template>
+      To update task status: Go to Tasks in InternOps, open your active task, and change the status dropdown (e.g., In Progress, Blocked, or Completed). When completing a task that requires proof, upload the required screenshot or link.
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW TO UPDATE TASK STATUS</pattern>
+    <template><srai>HOW DO I UPDATE MY TASK STATUS</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I CHANGE TASK STATUS</pattern>
+    <template><srai>HOW DO I UPDATE MY TASK STATUS</srai></template>
+  </category>
+
+  <category>
+    <pattern>UPDATE TASK STATUS</pattern>
+    <template><srai>HOW DO I UPDATE MY TASK STATUS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* UPDATE TASK STATUS *</pattern>
+    <template><srai>HOW DO I UPDATE MY TASK STATUS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* UPDATE TASK STATUS</pattern>
+    <template><srai>HOW DO I UPDATE MY TASK STATUS</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Workflow Intent: Contacting Mentor                                -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I CONTACT MY MENTOR</pattern>
+    <template>
+      You can contact your mentor by:
+      1. Finding their contact email and chat handle in the Team section of InternOps.
+      2. Messaging them on the official team Slack / Discord / WhatsApp group.
+      3. Requesting a 1:1 meeting using the Meetings section in InternOps.
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW TO CONTACT MENTOR</pattern>
+    <template><srai>HOW DO I CONTACT MY MENTOR</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW CAN I CONTACT MY MENTOR</pattern>
+    <template><srai>HOW DO I CONTACT MY MENTOR</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I REACH MY MENTOR</pattern>
+    <template><srai>HOW DO I CONTACT MY MENTOR</srai></template>
+  </category>
+
+  <category>
+    <pattern>CONTACT MENTOR</pattern>
+    <template><srai>HOW DO I CONTACT MY MENTOR</srai></template>
+  </category>
+
+  <category>
+    <pattern>CONTACT MY TEAM LEAD</pattern>
+    <template><srai>HOW DO I CONTACT MY MENTOR</srai></template>
+  </category>
+
+  <category>
+    <pattern>* CONTACT MY MENTOR *</pattern>
+    <template><srai>HOW DO I CONTACT MY MENTOR</srai></template>
+  </category>
+
+  <category>
+    <pattern>* CONTACT MY MENTOR</pattern>
+    <template><srai>HOW DO I CONTACT MY MENTOR</srai></template>
+  </category>
+
+  <category>
+    <pattern>* REACH MY MENTOR *</pattern>
+    <template><srai>HOW DO I CONTACT MY MENTOR</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Workflow Intent: Viewing Assigned Tasks                           -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHERE CAN I SEE MY ASSIGNED TASKS</pattern>
+    <template>
+      You can view all your assigned tasks by clicking on Tasks in the left sidebar navigation, or directly from the My Active Tasks widget on your main Dashboard.
+    </template>
+  </category>
+
+  <category>
+    <pattern>WHERE ARE MY TASKS</pattern>
+    <template><srai>WHERE CAN I SEE MY ASSIGNED TASKS</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I SEE MY TASKS</pattern>
+    <template><srai>WHERE CAN I SEE MY ASSIGNED TASKS</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHERE DO I FIND MY TASKS</pattern>
+    <template><srai>WHERE CAN I SEE MY ASSIGNED TASKS</srai></template>
+  </category>
+
+  <category>
+    <pattern>VIEW MY TASKS</pattern>
+    <template><srai>WHERE CAN I SEE MY ASSIGNED TASKS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SEE MY ASSIGNED TASKS *</pattern>
+    <template><srai>WHERE CAN I SEE MY ASSIGNED TASKS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SEE MY ASSIGNED TASKS</pattern>
+    <template><srai>WHERE CAN I SEE MY ASSIGNED TASKS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SEE MY TASKS *</pattern>
+    <template><srai>WHERE CAN I SEE MY ASSIGNED TASKS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SEE MY TASKS</pattern>
+    <template><srai>WHERE CAN I SEE MY ASSIGNED TASKS</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Workflow Intent: Project Submissions                              -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I SUBMIT A PROJECT</pattern>
+    <template>
+      To submit a project:
+      1. Ensure your repository (GitHub/GitLab) is public or shared with your mentors.
+      2. Include a comprehensive README and project demo video link.
+      3. Navigate to Tasks or Assessments in InternOps.
+      4. Submit the repository URL and deployment link for final review.
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW TO SUBMIT PROJECT</pattern>
+    <template><srai>HOW DO I SUBMIT A PROJECT</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW CAN I SUBMIT A PROJECT</pattern>
+    <template><srai>HOW DO I SUBMIT A PROJECT</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHERE DO I SUBMIT MY FINAL PROJECT</pattern>
+    <template><srai>HOW DO I SUBMIT A PROJECT</srai></template>
+  </category>
+
+  <category>
+    <pattern>PROJECT SUBMISSION</pattern>
+    <template><srai>HOW DO I SUBMIT A PROJECT</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SUBMIT A PROJECT *</pattern>
+    <template><srai>HOW DO I SUBMIT A PROJECT</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SUBMIT A PROJECT</pattern>
+    <template><srai>HOW DO I SUBMIT A PROJECT</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SUBMIT MY PROJECT *</pattern>
+    <template><srai>HOW DO I SUBMIT A PROJECT</srai></template>
+  </category>
+
+  <category>
+    <pattern>* SUBMIT MY PROJECT</pattern>
+    <template><srai>HOW DO I SUBMIT A PROJECT</srai></template>
+  </category>
+
+</aiml>

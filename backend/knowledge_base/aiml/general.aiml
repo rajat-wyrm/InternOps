@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<aiml version="1.0.1">
+
+  <!-- ================================================================= -->
+  <!-- General Intent: Greetings & Introductions                         -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HELLO</pattern>
+    <template>
+      <random>
+        <li>Hello! 👋 I'm your InternOps Assistant. How can I help you with your onboarding, policies, workflow, or tasks today?</li>
+        <li>Hi there! 👋 Welcome to InternOps. Feel free to ask me anything about your internship, policies, or daily tasks!</li>
+        <li>Greetings! How may I assist you with your internship journey today?</li>
+      </random>
+    </template>
+  </category>
+
+  <category>
+    <pattern>HI</pattern>
+    <template><srai>HELLO</srai></template>
+  </category>
+
+  <category>
+    <pattern>HEY</pattern>
+    <template><srai>HELLO</srai></template>
+  </category>
+
+  <category>
+    <pattern>HI THERE</pattern>
+    <template><srai>HELLO</srai></template>
+  </category>
+
+  <category>
+    <pattern>GOOD MORNING</pattern>
+    <template><srai>HELLO</srai></template>
+  </category>
+
+  <category>
+    <pattern>GOOD AFTERNOON</pattern>
+    <template><srai>HELLO</srai></template>
+  </category>
+
+  <category>
+    <pattern>GOOD EVENING</pattern>
+    <template><srai>HELLO</srai></template>
+  </category>
+
+  <category>
+    <pattern>GREETINGS</pattern>
+    <template><srai>HELLO</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- General Intent: Bot Capability & Identity                         -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHO ARE YOU</pattern>
+    <template>
+      I am the InternOps AI Support Assistant! 🤖 I am here to help interns navigate onboarding procedures, company policies, workflow requirements, and InternOps platform features.
+    </template>
+  </category>
+
+  <category>
+    <pattern>WHAT ARE YOU</pattern>
+    <template><srai>WHO ARE YOU</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHAT CAN YOU DO</pattern>
+    <template>
+      I can help you with:
+      - 🚀 Onboarding: Starting your internship, required documents, checklist completion.
+      - 📜 Policies: Attendance rules, working hours, leave policies, and code of conduct.
+      - 📋 Workflow: How to submit assignments, upload task proofs, update statuses, and contact mentors.
+      - 🏢 InternOps: Dashboard navigation, profile updates, checking ratings, and certification status.
+    </template>
+  </category>
+
+  <category>
+    <pattern>WHAT CAN I ASK YOU</pattern>
+    <template><srai>WHAT CAN YOU DO</srai></template>
+  </category>
+
+  <category>
+    <pattern>HELP</pattern>
+    <template><srai>WHAT CAN YOU DO</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- General Intent: About UptoSkills                                  -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHAT IS UPTOSKILLS</pattern>
+    <template>
+      UptoSkills is an AI-powered ecosystem connecting Candidates, Colleges, and Corporates. It empowers learners through gamified skill assessments, hackathons, internships, AI Practice Hubs, Aura rewards, and verified industry credentials.
+    </template>
+  </category>
+
+  <category>
+    <pattern>ABOUT UPTOSKILLS</pattern>
+    <template><srai>WHAT IS UPTOSKILLS</srai></template>
+  </category>
+
+  <category>
+    <pattern>TELL ME ABOUT UPTOSKILLS</pattern>
+    <template><srai>WHAT IS UPTOSKILLS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* ABOUT UPTOSKILLS *</pattern>
+    <template><srai>WHAT IS UPTOSKILLS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* ABOUT UPTOSKILLS</pattern>
+    <template><srai>WHAT IS UPTOSKILLS</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- General Intent: Support Contacts & Escalation                     -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I CONTACT SUPPORT</pattern>
+    <template>
+      For technical issues with InternOps or administrative assistance:
+      1. Email support at support@uptoskills.com.
+      2. Post in the #helpdesk channel on the team workspace.
+      3. Contact your assigned Team Lead or Captain directly.
+    </template>
+  </category>
+
+  <category>
+    <pattern>CONTACT SUPPORT</pattern>
+    <template><srai>HOW DO I CONTACT SUPPORT</srai></template>
+  </category>
+
+  <category>
+    <pattern>SUPPORT TEAM</pattern>
+    <template><srai>HOW DO I CONTACT SUPPORT</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I REACH HR</pattern>
+    <template>
+      You can reach the HR department by emailing hr@uptoskills.com or submitting a query through the Requests section in your InternOps portal.
+    </template>
+  </category>
+
+  <category>
+    <pattern>CONTACT HR</pattern>
+    <template><srai>HOW DO I REACH HR</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- General Intent: Gratitude & Polite Closing                        -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>THANK YOU</pattern>
+    <template>
+      <random>
+        <li>You're very welcome! Feel free to ask if you have any more questions. Good luck with your internship! 🌟</li>
+        <li>Glad I could help! Have a great day and happy learning! 🚀</li>
+        <li>Anytime! Let me know if you need anything else.</li>
+      </random>
+    </template>
+  </category>
+
+  <category>
+    <pattern>THANKS</pattern>
+    <template><srai>THANK YOU</srai></template>
+  </category>
+
+  <category>
+    <pattern>THANK YOU SO MUCH</pattern>
+    <template><srai>THANK YOU</srai></template>
+  </category>
+
+  <category>
+    <pattern>THANKS A LOT</pattern>
+    <template><srai>THANK YOU</srai></template>
+  </category>
+
+</aiml>

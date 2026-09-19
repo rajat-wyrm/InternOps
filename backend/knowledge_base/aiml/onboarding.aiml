@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<aiml version="1.0.1">
+
+  <!-- ================================================================= -->
+  <!-- Onboarding Intent: Starting the Internship                        -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I START MY INTERNSHIP</pattern>
+    <template>
+      <random>
+        <li>To start your internship: 1. Log in to your InternOps portal. 2. Complete your profile details. 3. Review your onboarding checklist under the Onboarding section. 4. Connect with your assigned mentor or Team Lead for your initial orientation.</li>
+        <li>Welcome aboard! Start by logging in to InternOps, verifying your profile information, checking your assigned onboarding tasks on your dashboard, and reaching out to your mentor for your orientation schedule.</li>
+      </random>
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW TO START MY INTERNSHIP</pattern>
+    <template><srai>HOW DO I START MY INTERNSHIP</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW CAN I START MY INTERNSHIP</pattern>
+    <template><srai>HOW DO I START MY INTERNSHIP</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I BEGIN MY INTERNSHIP</pattern>
+    <template><srai>HOW DO I START MY INTERNSHIP</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHERE DO I START MY INTERNSHIP</pattern>
+    <template><srai>HOW DO I START MY INTERNSHIP</srai></template>
+  </category>
+
+  <category>
+    <pattern>STARTING MY INTERNSHIP</pattern>
+    <template><srai>HOW DO I START MY INTERNSHIP</srai></template>
+  </category>
+
+  <category>
+    <pattern>GETTING STARTED WITH INTERNSHIP</pattern>
+    <template><srai>HOW DO I START MY INTERNSHIP</srai></template>
+  </category>
+
+  <category>
+    <pattern>* START MY INTERNSHIP *</pattern>
+    <template><srai>HOW DO I START MY INTERNSHIP</srai></template>
+  </category>
+
+  <category>
+    <pattern>* START MY INTERNSHIP</pattern>
+    <template><srai>HOW DO I START MY INTERNSHIP</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Onboarding Intent: Post-Joining Actions                           -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHAT SHOULD I DO AFTER JOINING</pattern>
+    <template>
+      After joining, please follow these steps:
+      1. Complete and submit any pending onboarding documents.
+      2. Review the company policies and code of conduct.
+      3. Check your assigned onboarding checklist in InternOps.
+      4. Join the official team communication channels (Slack/Discord/Email).
+      5. Attend the welcome orientation call with your Team Lead or mentor.
+    </template>
+  </category>
+
+  <category>
+    <pattern>WHAT TO DO AFTER JOINING</pattern>
+    <template><srai>WHAT SHOULD I DO AFTER JOINING</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHAT ARE THE NEXT STEPS AFTER JOINING</pattern>
+    <template><srai>WHAT SHOULD I DO AFTER JOINING</srai></template>
+  </category>
+
+  <category>
+    <pattern>FIRST STEPS AFTER JOINING</pattern>
+    <template><srai>WHAT SHOULD I DO AFTER JOINING</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHAT DO I DO FIRST</pattern>
+    <template><srai>WHAT SHOULD I DO AFTER JOINING</srai></template>
+  </category>
+
+  <category>
+    <pattern>* AFTER JOINING *</pattern>
+    <template><srai>WHAT SHOULD I DO AFTER JOINING</srai></template>
+  </category>
+
+  <category>
+    <pattern>* AFTER JOINING</pattern>
+    <template><srai>WHAT SHOULD I DO AFTER JOINING</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Onboarding Intent: Required Documents                             -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHAT DOCUMENTS ARE REQUIRED</pattern>
+    <template>
+      The standard onboarding documents required for verification are:
+      1. Government-issued photo ID (e.g., Aadhaar, Passport, or Driver's License).
+      2. College ID card or Bonafide / NOC letter from your institution.
+      3. Updated resume / CV.
+      4. Signed internship offer letter and NDA agreement.
+      5. Bank details for stipend disbursement (if applicable).
+      You can upload these under Profile / Documents in InternOps.
+    </template>
+  </category>
+
+  <category>
+    <pattern>WHICH DOCUMENTS DO I NEED TO SUBMIT</pattern>
+    <template><srai>WHAT DOCUMENTS ARE REQUIRED</srai></template>
+  </category>
+
+  <category>
+    <pattern>WHAT DOCUMENTS DO I NEED</pattern>
+    <template><srai>WHAT DOCUMENTS ARE REQUIRED</srai></template>
+  </category>
+
+  <category>
+    <pattern>DOCUMENTS REQUIRED FOR ONBOARDING</pattern>
+    <template><srai>WHAT DOCUMENTS ARE REQUIRED</srai></template>
+  </category>
+
+  <category>
+    <pattern>REQUIRED ONBOARDING DOCUMENTS</pattern>
+    <template><srai>WHAT DOCUMENTS ARE REQUIRED</srai></template>
+  </category>
+
+  <category>
+    <pattern>* REQUIRED DOCUMENTS *</pattern>
+    <template><srai>WHAT DOCUMENTS ARE REQUIRED</srai></template>
+  </category>
+
+  <category>
+    <pattern>* DOCUMENTS REQUIRED *</pattern>
+    <template><srai>WHAT DOCUMENTS ARE REQUIRED</srai></template>
+  </category>
+
+  <category>
+    <pattern>* DOCUMENTS REQUIRED</pattern>
+    <template><srai>WHAT DOCUMENTS ARE REQUIRED</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Onboarding Intent: Onboarding Instructions                        -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHERE CAN I FIND ONBOARDING INSTRUCTIONS</pattern>
+    <template>
+      You can find onboarding instructions in the InternOps portal under the Onboarding section on your navigation sidebar, in the welcome email sent to your registered address, and in the beginner's guide shared in the team workspace.
+    </template>
+  </category>
+
+  <category>
+    <pattern>WHERE ARE THE ONBOARDING INSTRUCTIONS</pattern>
+    <template><srai>WHERE CAN I FIND ONBOARDING INSTRUCTIONS</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW TO FIND ONBOARDING INSTRUCTIONS</pattern>
+    <template><srai>WHERE CAN I FIND ONBOARDING INSTRUCTIONS</srai></template>
+  </category>
+
+  <category>
+    <pattern>ONBOARDING GUIDE</pattern>
+    <template><srai>WHERE CAN I FIND ONBOARDING INSTRUCTIONS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* ONBOARDING INSTRUCTIONS *</pattern>
+    <template><srai>WHERE CAN I FIND ONBOARDING INSTRUCTIONS</srai></template>
+  </category>
+
+  <category>
+    <pattern>* ONBOARDING GUIDE *</pattern>
+    <template><srai>WHERE CAN I FIND ONBOARDING INSTRUCTIONS</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Onboarding Intent: Completing Onboarding Checklist                -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>HOW DO I COMPLETE MY ONBOARDING</pattern>
+    <template>
+      To complete your onboarding:
+      1. Navigate to the Onboarding tab in InternOps.
+      2. Mark each checklist item as completed once finished (profile setup, doc upload, orientation call).
+      3. Once all items are checked off, notify your mentor or Team Lead for final clearance.
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW TO COMPLETE ONBOARDING</pattern>
+    <template><srai>HOW DO I COMPLETE MY ONBOARDING</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I FINISH MY ONBOARDING</pattern>
+    <template><srai>HOW DO I COMPLETE MY ONBOARDING</srai></template>
+  </category>
+
+  <category>
+    <pattern>COMPLETE ONBOARDING CHECKLIST</pattern>
+    <template><srai>HOW DO I COMPLETE MY ONBOARDING</srai></template>
+  </category>
+
+  <category>
+    <pattern>* COMPLETE MY ONBOARDING *</pattern>
+    <template><srai>HOW DO I COMPLETE MY ONBOARDING</srai></template>
+  </category>
+
+  <category>
+    <pattern>* COMPLETE MY ONBOARDING</pattern>
+    <template><srai>HOW DO I COMPLETE MY ONBOARDING</srai></template>
+  </category>
+
+  <category>
+    <pattern>* ONBOARDING CHECKLIST *</pattern>
+    <template><srai>HOW DO I COMPLETE MY ONBOARDING</srai></template>
+  </category>
+
+  <!-- ================================================================= -->
+  <!-- Onboarding Intent: Mentor Assignment                              -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>WHO IS MY MENTOR</pattern>
+    <template>
+      Your mentor / Team Lead is displayed on your InternOps dashboard and under the Team section. If you don't see an assigned mentor, please contact your Captain or HR coordinator.
+    </template>
+  </category>
+
+  <category>
+    <pattern>HOW IS MY MENTOR ASSIGNED</pattern>
+    <template><srai>WHO IS MY MENTOR</srai></template>
+  </category>
+
+  <category>
+    <pattern>HOW DO I KNOW MY MENTOR</pattern>
+    <template><srai>WHO IS MY MENTOR</srai></template>
+  </category>
+
+</aiml>

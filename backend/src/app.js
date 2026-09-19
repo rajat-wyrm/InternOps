@@ -321,6 +321,9 @@ app.register(require('./modules/proof-submissions/routes'), {
 app.register(require('./modules/github-sync/routes'), {
   prefix: '/api/v1/github',
 });
+app.register(require('./modules/chatbot/routes'), {
+  prefix: '/api/chatbot',
+});
 
 app.get('/', async (req, reply) => {
   reply.redirect('/api-docs');

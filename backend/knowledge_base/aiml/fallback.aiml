@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<aiml version="1.0.1">
+
+  <!-- ================================================================= -->
+  <!-- Safe Fallback for Unmatched Inquiries                             -->
+  <!-- ================================================================= -->
+  <category>
+    <pattern>*</pattern>
+    <template>I’m not sure about that yet. Please try rephrasing your question or contact your mentor/support team.</template>
+  </category>
+
+</aiml>
