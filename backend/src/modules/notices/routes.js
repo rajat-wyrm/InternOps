@@ -136,16 +136,24 @@ async function noticesRoutes(fastify) {
       if (!content?.trim())
         return reply.status(400).send({ error: 'content is required' });
 
-      const notice = await repo.createNotice({
-        title: title.trim(),
-        content: content.trim(),
-        category: category ?? 'GENERAL',
-        image_url,
-        action_button_text,
-        action_button_link,
-        is_featured,
-        createdBy: req.user.id,
-      });
+      let notice;
+      try {
+        notice = await repo.createNotice({
+          title: title.trim(),
+          content: content.trim(),
+          category: category ?? 'GENERAL',
+          image_url,
+          action_button_text,
+          action_button_link,
+          is_featured,
+          createdBy: req.user.id,
+        });
+      } catch (err) {
+        req.log.error({ err }, 'Failed to create notice');
+        return reply.status(500).send({
+          error: 'Failed to create notice',
+        });
+      }
 
       req.auditOnResponse = {
         userId: req.user.id,
