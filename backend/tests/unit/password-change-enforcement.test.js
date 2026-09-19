@@ -7,6 +7,7 @@ jest.mock('../../src/config/redis', () => ({
 }));
 jest.mock('../../src/modules/auth/repository', () => ({
   getPasswordAccessState: jest.fn(),
+  isAccessTokenRevoked: jest.fn(async () => false),
 }));
 
 const { verifyAccessToken } = require('../../src/utils/tokens');
