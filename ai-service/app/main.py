@@ -23,13 +23,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await get_pool()
 
-    try:
-        await connect_redis()
-    except Exception as exc:
-        logger.warning(
-            "Redis is unavailable. Continuing without cache: %s",
-            exc,
-        )
+    await connect_redis()
 
     try:
         yield

@@ -8,7 +8,7 @@ async def connect_redis() -> None:
     global redis_client
 
     if not settings.REDIS_URL:
-        return
+        raise RuntimeError("REDIS_URL is required for the AI service.")
 
     redis_client = Redis.from_url(
         settings.REDIS_URL,
