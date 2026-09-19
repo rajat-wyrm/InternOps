@@ -51,6 +51,7 @@ const MIGRATION_RENAMES = {
   '037_add_hr_management_roles.sql': '047_add_hr_management_roles.sql',
   '046_add_hr_management_roles.sql': '047_add_hr_management_roles.sql',
   '051_refresh_token_recovery.sql': '052_refresh_token_recovery.sql',
+  '054_performance_risk_alerts.sql': '057_performance_risk_alerts.sql',
 };
 
 const fsPromises = fs.promises;

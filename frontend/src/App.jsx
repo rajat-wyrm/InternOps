@@ -36,6 +36,8 @@ const PerformanceIntelligence = lazy(
   () => import('./pages/PerformanceIntelligence')
 );
 
+const RiskIntelligence = lazy(() => import('./pages/RiskIntelligence'));
+
 const HR = lazy(() => import('./pages/HR'));
 
 const PrivilegedRoutes = lazy(() => import('./PrivilegedRoutes'));
@@ -340,6 +342,17 @@ export default function App() {
           <Route
             path="performance-intelligence"
             element={<PerformanceIntelligence />}
+          />
+
+          <Route
+            path="risk-intelligence"
+            element={
+              <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN']}>
+                <Suspense fallback={<PageLoader />}>
+                  <RiskIntelligence />
+                </Suspense>
+              </RoleGuard>
+            }
           />
 
           {/* HR remains here for the existing routing contract */}

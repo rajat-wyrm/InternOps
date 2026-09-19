@@ -394,6 +394,84 @@ function setupCronJobs() {
       'Failed to initialize cron jobs'
     );
   }
+
+  // -------------------------------------------------------------------------
+  // Performance Risk Refresh Job — Nightly at 3:00 AM
+  // Refreshes risk scores for all active interns in batches.
+  // -------------------------------------------------------------------------
+  let riskRunning = false;
+
+  cron.schedule('0 3 * * *', async () => {
+    const jobLogger = logger.child({
+      correlationId: `cron-${Date.now()}`,
+      job: 'performance-risk-refresh',
+    });
+
+    if (riskRunning) {
+      jobLogger.warn('Risk refresh job already running. Skipping...');
+      return;
+    }
+
+    riskRunning = true;
+    const startTime = Date.now();
+
+    jobLogger.info({ startedAt: new Date(startTime) }, 'Cron job started');
+
+    try {
+      const riskService = require('../modules/ai-performance/risk.service');
+      const alertService = require('../modules/ai-performance/alert.service');
+
+      let offset = 0;
+      const batchSize = 50;
+      let processed = 0;
+      let errors = 0;
+
+      while (true) {
+        const { rows } = await pool.query(
+          `SELECT id FROM users
+           WHERE role IN ('INTERN','CAPTAIN') AND deleted_at IS NULL AND suspended = FALSE
+           ORDER BY id LIMIT $1 OFFSET $2`,
+          [batchSize, offset]
+        );
+
+        if (rows.length === 0) break;
+
+        const results = await Promise.allSettled(
+          rows.map(async (row) => {
+            const riskResult = await riskService.computeAndSaveRisk(row.id, 30);
+            await alertService.processRiskAlerts(
+              riskResult,
+              riskResult.raw_features || {},
+              riskResult.feature_snapshot || {}
+            );
+          })
+        );
+
+        for (const result of results) {
+          if (result.status === 'fulfilled') processed++;
+          else {
+            errors++;
+            jobLogger.warn(
+              { reason: result.reason?.message },
+              'Risk compute failed for intern'
+            );
+          }
+        }
+
+        offset += batchSize;
+        if (rows.length < batchSize) break;
+      }
+
+      jobLogger.info(
+        { durationMs: Date.now() - startTime, processed, errors },
+        'Cron job completed'
+      );
+    } catch (err) {
+      jobLogger.error({ err: err.message }, 'Cron job failed');
+    } finally {
+      riskRunning = false;
+    }
+  });
 }
 
 function shutdownCronJobs() {
