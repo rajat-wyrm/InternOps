@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getApiErrorMessage } from '../../lib/apiError';
 import {
   Building2,
   Plus,
@@ -83,7 +84,7 @@ export default function Departments() {
       }
     },
     onError: (err) =>
-      setError(err.response?.data?.error || 'Failed to create department'),
+      setError(getApiErrorMessage(err, 'Failed to create department')),
   });
 
   const deleteMut = useMutation({

@@ -18,6 +18,12 @@ module.exports = {
   // Load environment variables before Jest starts tests
   setupFiles: ['<rootDir>/tests/envSetup.js'],
 
+  moduleDirectories: [
+    'node_modules',
+    '<rootDir>/node_modules',
+    '<rootDir>/../node_modules',
+  ],
+
   // Existing mocks and Jest setup
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
 

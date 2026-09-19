@@ -1,13 +1,27 @@
 import hashlib
 import json
 import time
-from typing import Any, Awaitable, Callable, Dict, Tuple
+from collections import OrderedDict
+from typing import Any, Awaitable, Callable, Tuple
 
 from app.core.config import settings
 from app.core.redis_client import get_redis
 
-# In-memory TTL cache storage: key -> (value, expire_at_timestamp)
-_memory_cache: Dict[str, Tuple[Any, float]] = {}
+# In-memory TTL cache storage: key -> (value, expire_at_timestamp).
+# Backed by an OrderedDict so it can also act as an LRU: entries are moved
+# to the end on access, and the oldest entries are evicted once the cache
+# exceeds AI_MEMORY_CACHE_MAX_SIZE, even if nothing has expired yet. This is
+# the fallback cache used when Redis isn't configured, so without a hard
+# size cap it grows without bound under sustained/concurrent traffic and can
+# OOM the process (see issue #2060).
+_memory_cache: "OrderedDict[str, Tuple[Any, float]]" = OrderedDict()
+
+
+def _enforce_max_size() -> None:
+    """Evict least-recently-used entries until the cache is within its cap."""
+    max_size = getattr(settings, "AI_MEMORY_CACHE_MAX_SIZE", 500) or 500
+    while len(_memory_cache) > max_size:
+        _memory_cache.popitem(last=False)
 
 
 def cache_key(
@@ -53,6 +67,24 @@ def clear_cache() -> None:
     _memory_cache.clear()
 
 
+async def delete_cached(key: str) -> None:
+    """
+    Remove a single key from the in-memory cache and Redis (if configured).
+
+    Used when a write path needs to invalidate one cached entry immediately
+    instead of waiting for its TTL to expire (e.g. a policy update, see
+    issue #2062, which must be reflected without a restart).
+    """
+    _memory_cache.pop(key, None)
+
+    redis = get_redis()
+    if redis is not None:
+        try:
+            await redis.delete(key)
+        except Exception:
+            pass
+
+
 def _cleanup_expired() -> None:
     """Remove expired items from in-memory cache."""
     now = time.time()
@@ -72,6 +104,7 @@ async def get_cached(key: str) -> Any | None:
     if key in _memory_cache:
         value, exp = _memory_cache[key]
         if now < exp:
+            _memory_cache.move_to_end(key)
             return value
         else:
             _memory_cache.pop(key, None)
@@ -84,6 +117,8 @@ async def get_cached(key: str) -> Any | None:
                 parsed = json.loads(cached)
                 ttl = getattr(settings, "AI_CACHE_TTL", 3600) or 3600
                 _memory_cache[key] = (parsed, now + ttl)
+                _memory_cache.move_to_end(key)
+                _enforce_max_size()
                 return parsed
         except Exception:
             pass
@@ -101,10 +136,11 @@ async def set_cached(key: str, value: Any, ttl: int | None = None) -> None:
     ttl_seconds = ttl if ttl is not None else (getattr(settings, "AI_CACHE_TTL", 3600) or 3600)
     expire_at = time.time() + ttl_seconds
 
-    if len(_memory_cache) > 500:
-        _cleanup_expired()
+    _cleanup_expired()
 
     _memory_cache[key] = (value, expire_at)
+    _memory_cache.move_to_end(key)
+    _enforce_max_size()
 
     redis = get_redis()
     if redis is not None:

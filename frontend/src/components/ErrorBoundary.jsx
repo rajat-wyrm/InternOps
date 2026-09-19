@@ -25,9 +25,18 @@ class ErrorBoundary extends React.Component {
   }
 
   handleReload = () => window.location.reload();
+  handleReset = () =>
+    this.setState({ hasError: false, error: null, errorInfo: null });
 
   render() {
     if (this.state.hasError) {
+      if (this.props.fallback) {
+        if (typeof this.props.fallback === 'function') {
+          return this.props.fallback(this.state.error, this.handleReset);
+        }
+        return this.props.fallback;
+      }
+
       return (
         <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
           <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 text-center border border-red-100">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getApiErrorMessage } from '../../lib/apiError';
 import {
   Mail,
   Lock,
@@ -150,7 +151,7 @@ export default function CreateUserModal({ open, onClose }) {
       }, 1400);
     },
     onError: (err) => {
-      setError(err.response?.data?.error || 'Registration failed');
+      setError(getApiErrorMessage(err, 'Registration failed'));
       setSuccessMsg('');
     },
   });
@@ -269,6 +270,7 @@ export default function CreateUserModal({ open, onClose }) {
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
                     type="email"
+                    maxLength={254}
                     required
                     placeholder="johndoe@company.com"
                     value={email}
@@ -285,6 +287,7 @@ export default function CreateUserModal({ open, onClose }) {
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    maxLength={128}
                     required
                     placeholder="Minimum 8 characters"
                     value={password}

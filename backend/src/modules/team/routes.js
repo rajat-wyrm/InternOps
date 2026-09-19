@@ -10,6 +10,10 @@ const { createAuditLog, extractRequestInfo } = require('../../utils/audit');
 const { toSchema } = require('../../utils/schemaHelper');
 const { checkHierarchyAccess, ROLE_RANK } = require('../../utils/hierarchy');
 const { z } = require('zod');
+const {
+  EMAIL_MAX_LENGTH,
+  PASSWORD_MAX_LENGTH,
+} = require('../auth/passwordPolicy');
 
 // Roles that manage a team (Interns have no reports).
 const MANAGER_ROLES = ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN'];
@@ -73,10 +77,11 @@ const updateSchema = z.object(detailFields).superRefine((data, ctx) => {
     });
 });
 const createSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().max(EMAIL_MAX_LENGTH),
   password: z
     .string()
     .min(8)
+    .max(PASSWORD_MAX_LENGTH)
     .regex(
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/,
       'Password is too weak. Use at least 8 characters with uppercase, lowercase, number, and special character.'
@@ -113,9 +118,51 @@ function toCsv(rows) {
     'joining_date',
     'internship_status',
   ];
+
+  const extraHeaders = [
+    'Domain',
+    'Attendance',
+    'Rating',
+    'Tasks',
+    'Proofs Pending',
+    'Status',
+  ];
+
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const header = cols.join(',');
-  const body = rows.map((r) => cols.map((c) => esc(r[c])).join(',')).join('\n');
+  const header = [...cols, ...extraHeaders].join(',');
+
+  const body = rows
+    .map((r) => {
+      const total = Number(r.attendance_total);
+      const present = Number(r.present_count);
+
+      const attendance =
+        Number.isFinite(total) && total > 0 && Number.isFinite(present)
+          ? `${Math.round((present / total) * 100)}%`
+          : 'No data';
+
+      const rawRating = r.rating ?? r.avg_rating;
+      const rating =
+        rawRating == null ||
+        rawRating === '' ||
+        !Number.isFinite(Number(rawRating))
+          ? '—'
+          : Math.round(Number(rawRating));
+
+      const values = [
+        ...cols.map((c) => r[c]),
+        r.internship_domain || '—',
+        attendance,
+        rating,
+        `${r.verified_tasks ?? 0}/${r.total_tasks ?? 0}`,
+        Number(r.pending_proofs) || 0,
+        r.suspended ? 'Suspended' : r.internship_status || 'ACTIVE',
+      ];
+
+      return values.map(esc).join(',');
+    })
+    .join('\n');
+
   return `${header}\n${body}\n`;
 }
 
@@ -183,8 +230,16 @@ async function routes(fastify) {
           type: 'object',
           required: ['email', 'password', 'role'],
           properties: {
-            email: { type: 'string', format: 'email' },
-            password: { type: 'string', minLength: 8 },
+            email: {
+              type: 'string',
+              format: 'email',
+              maxLength: EMAIL_MAX_LENGTH,
+            },
+            password: {
+              type: 'string',
+              minLength: 8,
+              maxLength: PASSWORD_MAX_LENGTH,
+            },
             role: {
               type: 'string',
               enum: ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
@@ -197,6 +252,7 @@ async function routes(fastify) {
             course: { type: 'string', maxLength: 255 },
             year_of_study: { type: 'string', maxLength: 50 },
             position: { type: 'string', maxLength: 255 },
+            internship_domain: { type: 'string', maxLength: 255 },
             joining_date: { type: 'string', maxLength: 20 },
             internship_status: {
               type: 'string',
@@ -599,14 +655,18 @@ async function routes(fastify) {
           type: 'object',
           required: ['password'],
           properties: {
-            password: { type: 'string', minLength: 8 },
+            password: {
+              type: 'string',
+              minLength: 8,
+              maxLength: PASSWORD_MAX_LENGTH,
+            },
           },
         },
       },
     },
     async (req, reply) => {
       const { password } = z
-        .object({ password: z.string().min(8) })
+        .object({ password: z.string().min(8).max(PASSWORD_MAX_LENGTH) })
         .parse(req.body);
 
       const before = await repo.getMemberById(req.params.id);

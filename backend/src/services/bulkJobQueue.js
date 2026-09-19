@@ -1,4 +1,9 @@
-const { Queue, Worker } = require('bullmq');
+let Queue, Worker;
+try {
+  ({ Queue, Worker } = require('bullmq'));
+} catch (e) {
+  // BullMQ dependency not available
+}
 const config = require('../config');
 const logger = require('../logger');
 const repo = require('../modules/certificates/repository');
@@ -63,8 +68,10 @@ class BulkJobQueueService {
       const bullmqEnabled = process.env.BULLMQ_ENABLED !== 'false';
 
       if (
+        Queue &&
+        Worker &&
         this.connection &&
-        config.redis.available &&
+        config.redis?.available &&
         process.env.NODE_ENV !== 'test' &&
         bullmqEnabled
       ) {

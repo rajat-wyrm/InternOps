@@ -82,7 +82,7 @@ describe('attendance grid contracts', () => {
     expect(usersRepository.indexOf('ORDER BY')).toBeLessThan(
       usersRepository.indexOf('LIMIT $')
     );
-    expect(attendanceRoutes).toContain("WHEN 'SENIOR_TL' THEN 1");
+    expect(usersRepository).toContain("WHEN 'SENIOR_TL' THEN 1");
   });
 
   test('sticky identity columns are opaque and isolated', () => {

@@ -49,6 +49,13 @@ function integrationStatus(config) {
   };
 }
 
+function createBackgroundServiceDiagnostic() {
+  return {
+    state: 'not_started',
+    durationMs: 0,
+  };
+}
+
 function writeStartupSummary({
   logger,
   database,
@@ -116,5 +123,6 @@ module.exports = {
   sanitizeDatabaseTarget,
   checkDatabase,
   integrationStatus,
+  createBackgroundServiceDiagnostic,
   writeStartupSummary,
 };

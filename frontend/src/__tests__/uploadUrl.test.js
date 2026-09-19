@@ -46,6 +46,23 @@ describe('resolveUploadUrl', () => {
     );
   });
 
+  it('strips bare /api suffix from VITE_API_URL', () => {
+    import.meta.env.VITE_API_URL = 'https://api.example.com/api';
+    expect(resolveUploadUrl('/uploads/a.png')).toBe(
+      'https://api.example.com/uploads/a.png'
+    );
+    import.meta.env.VITE_API_URL = 'https://api.example.com/api/';
+    expect(resolveUploadUrl('/uploads/a.png')).toBe(
+      'https://api.example.com/uploads/a.png'
+    );
+  });
+
+  it('normalizes upload paths lacking a leading slash', () => {
+    expect(resolveUploadUrl('uploads/avatar_1.png')).toBe(
+      'https://api.example.com/uploads/avatar_1.png'
+    );
+  });
+
   it('keeps paths relative when VITE_API_URL is unset (dev proxy)', () => {
     import.meta.env.VITE_API_URL = '';
     expect(resolveUploadUrl('/uploads/a.png')).toBe('/uploads/a.png');

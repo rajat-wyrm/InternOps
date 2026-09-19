@@ -1,4 +1,9 @@
-const cheerio = require('cheerio');
+let cheerio;
+try {
+  cheerio = require('cheerio');
+} catch (e) {
+  // cheerio optional
+}
 const { normalizeText, parseCount } = require('./utils');
 
 // Selectors are tried in order, most-specific first. X/Twitter's markup is
@@ -92,7 +97,7 @@ function extractCount($, selectors) {
  * } | null}
  */
 function parse(rawHtml) {
-  if (typeof rawHtml !== 'string' || !rawHtml.trim()) {
+  if (!cheerio || typeof rawHtml !== 'string' || !rawHtml.trim()) {
     return null;
   }
 

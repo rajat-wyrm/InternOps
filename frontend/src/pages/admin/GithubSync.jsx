@@ -288,6 +288,28 @@ function SetupGuide() {
   );
 }
 
+const mapDailyCounts = (dailyCounts = [], days = 30) => {
+  const map = new Map(
+    (dailyCounts || []).map((d) => [
+      d?.date
+        ? typeof d.date === 'string'
+          ? d.date.slice(0, 10)
+          : new Date(d.date).toISOString().slice(0, 10)
+        : '',
+      Number(d?.count) || 0,
+    ])
+  );
+  const now = new Date();
+  return Array.from({ length: Number(days) || 30 }, (_, i) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - (Number(days) - 1 - i));
+    return {
+      date: d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+      count: map.get(d.toISOString().slice(0, 10)) || 0,
+    };
+  });
+};
+
 export default function GithubSync() {
   const hydrated = useAuthStore((s) => s.hydrated);
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -959,7 +981,7 @@ export default function GithubSync() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <StatusCard
                   icon={BarChart3}
-                  label="Total Events ({analyticsDays}d)"
+                  label={`Total Events (${analyticsDays}d)`}
                   value={analytics.syncRate?.total ?? 0}
                   color="indigo"
                 />
@@ -968,7 +990,7 @@ export default function GithubSync() {
                   label="Successful"
                   value={analytics.syncRate?.successful ?? 0}
                   color="green"
-                  sub={`${analytics.syncRate?.success_rate ?? 0}% rate`}
+                  sub={`${analytics.syncRate?.success_rate ?? analytics.syncRate?.successRate ?? 0}% rate`}
                 />
                 <StatusCard
                   icon={TrendingUp}
@@ -983,16 +1005,13 @@ export default function GithubSync() {
                   <h3 className="font-semibold text-gray-700 text-sm mb-4 flex items-center gap-2">
                     <TrendingUp className="w-4 h-4" /> Daily Sync Events
                   </h3>
-                  {analytics.dailyCounts?.length > 0 ? (
+                  {analytics ? (
                     <ResponsiveContainer width="100%" height={260}>
                       <AreaChart
-                        data={analytics.dailyCounts.map((d) => ({
-                          ...d,
-                          date: new Date(d.date).toLocaleDateString('en-IN', {
-                            month: 'short',
-                            day: 'numeric',
-                          }),
-                        }))}
+                        data={mapDailyCounts(
+                          analytics.dailyCounts,
+                          analyticsDays
+                        )}
                       >
                         <defs>
                           <linearGradient
@@ -1056,9 +1075,10 @@ export default function GithubSync() {
                   {analytics.topRepos?.length > 0 ? (
                     <ResponsiveContainer width="100%" height={260}>
                       <BarChart
-                        data={analytics.topRepos.map((r) => ({
+                        data={(analytics.topRepos || []).map((r) => ({
                           ...r,
-                          repo: (r.github_repo || 'Unknown').split('/').pop(),
+                          repo: (r?.github_repo || 'Unknown').split('/').pop(),
+                          count: Number(r?.count) || 0,
                         }))}
                         layout="vertical"
                       >
@@ -1126,7 +1146,13 @@ export default function GithubSync() {
                     <ResponsiveContainer width="100%" height={260}>
                       <PieChart>
                         <Pie
-                          data={analytics.eventDistribution}
+                          data={(analytics.eventDistribution || []).map(
+                            (e) => ({
+                              ...e,
+                              event_type: e?.event_type || 'Unknown',
+                              count: Number(e?.count) || 0,
+                            })
+                          )}
                           cx="50%"
                           cy="50%"
                           innerRadius={60}
@@ -1178,7 +1204,13 @@ export default function GithubSync() {
                     <ResponsiveContainer width="100%" height={260}>
                       <PieChart>
                         <Pie
-                          data={analytics.statusDistribution}
+                          data={(analytics.statusDistribution || []).map(
+                            (s) => ({
+                              ...s,
+                              status: s?.status || 'Unknown',
+                              count: Number(s?.count) || 0,
+                            })
+                          )}
                           cx="50%"
                           cy="50%"
                           innerRadius={60}

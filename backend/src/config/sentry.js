@@ -1,4 +1,9 @@
-const Sentry = require('@sentry/node');
+let Sentry;
+try {
+  Sentry = require('@sentry/node');
+} catch (e) {
+  // Optional Sentry dependency
+}
 const config = require('./index');
 
 const SENSITIVE_KEYS = new Set([
@@ -29,7 +34,7 @@ function redactSensitiveData(value, seen = new WeakSet()) {
 }
 
 function initSentry() {
-  if (!config.sentry.dsn) return;
+  if (!Sentry || !config.sentry?.dsn) return;
 
   Sentry.init({
     dsn: config.sentry.dsn,
@@ -44,7 +49,7 @@ function initSentry() {
 }
 
 function captureException(error, context = {}) {
-  if (!Sentry.getClient()) return;
+  if (!Sentry || !Sentry.getClient()) return;
 
   Sentry.withScope((scope) => {
     if (context.userId) scope.setUser({ id: context.userId });
@@ -59,7 +64,7 @@ function captureException(error, context = {}) {
 }
 
 async function flushSentry(timeoutMs = 2000) {
-  if (!Sentry.getClient()) return;
+  if (!Sentry || !Sentry.getClient()) return;
   await Sentry.flush(timeoutMs);
 }
 

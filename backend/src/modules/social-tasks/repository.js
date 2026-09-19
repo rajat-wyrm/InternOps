@@ -514,6 +514,91 @@ async function getTaskAnalytics(taskId) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Task-prerequisite graph helpers (DAG)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch every prerequisite edge that currently exists across ALL tasks.
+ * Used by the DAG validator to build the full graph in memory before
+ * checking whether a proposed new edge would introduce a cycle.
+ *
+ * @returns {Promise<Array<{task_id: string, prereq_id: string}>>}
+ */
+async function getAllPrerequisiteEdges() {
+  const res = await pool.query(
+    `SELECT task_id, prereq_id
+     FROM task_prerequisites
+     ORDER BY created_at ASC`
+  );
+  return res.rows;
+}
+
+/**
+ * Fetch prerequisite task details for a single task.
+ *
+ * @param {string} taskId
+ * @returns {Promise<Array>}  Rows from social_tasks joined with the edge metadata.
+ */
+async function getTaskPrerequisites(taskId) {
+  const res = await pool.query(
+    `SELECT
+       st.id,
+       st.title,
+       st.description,
+       st.deadline,
+       st.target_platform,
+       st.created_at,
+       tp.created_at AS prereq_added_at
+     FROM task_prerequisites tp
+     JOIN social_tasks st
+       ON st.id = tp.prereq_id
+      AND st.deleted_at IS NULL
+     WHERE tp.task_id = $1
+     ORDER BY tp.created_at ASC`,
+    [taskId]
+  );
+  return res.rows;
+}
+
+/**
+ * Insert a single prerequisite edge.
+ * Callers MUST validate that the edge is cycle-free before calling this.
+ *
+ * @param {string} taskId    Task that requires the prerequisite.
+ * @param {string} prereqId  Task that must be completed first.
+ * @param {string} createdBy User ID performing the operation.
+ * @returns {Promise<{task_id: string, prereq_id: string, created_at: Date}>}
+ */
+async function addPrerequisite(taskId, prereqId, createdBy) {
+  const res = await pool.query(
+    `INSERT INTO task_prerequisites (task_id, prereq_id, created_by)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (task_id, prereq_id) DO NOTHING
+     RETURNING task_id, prereq_id, created_at`,
+    [taskId, prereqId, createdBy]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Remove a single prerequisite edge.
+ *
+ * @param {string} taskId
+ * @param {string} prereqId
+ * @returns {Promise<boolean>}  true if a row was deleted, false if not found.
+ */
+async function removePrerequisite(taskId, prereqId) {
+  const res = await pool.query(
+    `DELETE FROM task_prerequisites
+     WHERE task_id = $1
+       AND prereq_id = $2
+     RETURNING task_id`,
+    [taskId, prereqId]
+  );
+  return res.rowCount > 0;
+}
+
 module.exports = {
   createTask,
   getTaskById,
@@ -536,4 +621,8 @@ module.exports = {
   deleteProofImage,
   getAllInternEmails,
   getInternEmailCount,
+  getAllPrerequisiteEdges,
+  getTaskPrerequisites,
+  addPrerequisite,
+  removePrerequisite,
 };

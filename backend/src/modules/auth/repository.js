@@ -136,7 +136,51 @@ async function updateProfile(userId, fields) {
 }
 
 // Redis integration fallback functions
-const { runRedisOperation } = require('../../config/redis');
+const {
+  runRedisOperation,
+  blacklistAccessToken,
+  isAccessTokenBlacklisted,
+} = require('../../config/redis');
+
+async function revokeAccessToken(jti, userId, expiresAt) {
+  await pool.query(
+    `INSERT INTO revoked_access_tokens (jti, user_id, expires_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (jti) DO UPDATE SET
+       user_id = EXCLUDED.user_id,
+       expires_at = EXCLUDED.expires_at`,
+    [jti, userId, expiresAt]
+  );
+
+  await pool.query(
+    'DELETE FROM revoked_access_tokens WHERE expires_at <= NOW()'
+  );
+
+  const ttl = Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / 1000));
+
+  await blacklistAccessToken(jti, ttl);
+}
+
+async function isAccessTokenRevoked(jti) {
+  const redisResult = await isAccessTokenBlacklisted(jti);
+
+  if (redisResult === true) {
+    return true;
+  }
+
+  // PostgreSQL is authoritative. A Redis miss may result from a restart,
+  // eviction, flush, or failed best-effort cache write.
+  const result = await pool.query(
+    `SELECT 1
+     FROM revoked_access_tokens
+     WHERE jti = $1
+       AND expires_at > NOW()
+     LIMIT 1`,
+    [jti]
+  );
+
+  return result.rowCount > 0;
+}
 
 async function storeRefreshTokenRedis(userId, tokenHash, expiresAt) {
   await runRedisOperation(
@@ -511,6 +555,8 @@ module.exports = {
   findById,
   findByIdRaw,
   getPasswordAccessState,
+  revokeAccessToken,
+  isAccessTokenRevoked,
   listUsersByRole,
   verifyPassword,
   storeRefreshToken,

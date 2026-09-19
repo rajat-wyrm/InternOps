@@ -18,6 +18,8 @@ describe('Redis configuration', () => {
       NODE_ENV: 'development',
       JWT_SECRET: 'test-secret',
       DATABASE_URL: 'postgresql://localhost/internops',
+      REDIS_HOST: '',
+      REDIS_URL: '',
       ...redisEnv,
     };
     jest.resetModules();
@@ -67,6 +69,8 @@ describe('Redis configuration', () => {
   });
 
   test('disables Redis when no supported configuration is present', () => {
+    delete process.env.REDIS_HOST;
+    delete process.env.REDIS_URL;
     const redis = loadRedisConfig();
 
     expect(redis).toMatchObject({

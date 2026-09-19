@@ -16,13 +16,20 @@ const testEmails = [
   `hierarchy-tl-${runId}@test.internops.local`,
   `hierarchy-captain-${runId}@test.internops.local`,
   `hierarchy-other-tl-${runId}@test.internops.local`,
+  `hierarchy-intern-nodept-${runId}@test.internops.local`,
+  `hierarchy-captain-nodept-${runId}@test.internops.local`,
 ];
 
 const ids = Object.fromEntries(
-  ['admin', 'senior', 'tl', 'captain', 'otherTl'].map((role) => [
-    role,
-    crypto.randomUUID(),
-  ])
+  [
+    'admin',
+    'senior',
+    'tl',
+    'captain',
+    'otherTl',
+    'internNoDept',
+    'captainNoDept',
+  ].map((role) => [role, crypto.randomUUID()])
 );
 
 let departmentId;
@@ -30,6 +37,7 @@ let otherDepartmentId;
 let adminToken;
 let seniorToken;
 let tlToken;
+let captainToken;
 
 describe('Department Hierarchy API Filtering (#1347)', () => {
   beforeAll(async () => {
@@ -71,9 +79,43 @@ describe('Department Hierarchy API Filtering (#1347)', () => {
       ]
     );
 
+    // Regression seed data (#XXXX): a blank-department Intern reporting to the
+    // existing Captain, and a blank-department Captain reporting to the
+    // existing TL. These exist purely to prove that team visibility and
+    // manager-reassignment access are decided by manager_id, not
+    // department_id, for Senior TL requesters.
+    await pool.query(
+      `INSERT INTO users
+        (id, email, password_hash, role, manager_id, department_id, full_name)
+       VALUES
+        ($1, $2, 'test-password-hash', 'INTERN', $3, NULL, 'Intern No Department'),
+        ($4, $5, 'test-password-hash', 'CAPTAIN', $6, NULL, 'Captain No Department')`,
+      [
+        ids.internNoDept,
+        testEmails[5],
+        ids.captain,
+        ids.captainNoDept,
+        testEmails[6],
+        ids.tl,
+      ]
+    );
+
     adminToken = generateAccessToken({ id: ids.admin, role: 'ADMIN' });
-    seniorToken = generateAccessToken({ id: ids.senior, role: 'SENIOR_TL' });
-    tlToken = generateAccessToken({ id: ids.tl, role: 'TL' });
+    seniorToken = generateAccessToken({
+      id: ids.senior,
+      role: 'SENIOR_TL',
+      department_id: departmentId,
+    });
+    tlToken = generateAccessToken({
+      id: ids.tl,
+      role: 'TL',
+      department_id: departmentId,
+    });
+    captainToken = generateAccessToken({
+      id: ids.captain,
+      role: 'CAPTAIN',
+      department_id: departmentId,
+    });
   });
 
   afterAll(async () => {
@@ -144,6 +186,50 @@ describe('Department Hierarchy API Filtering (#1347)', () => {
     expect(res.statusCode).toBe(401);
   });
 
+  describe('Attendance department-sheet authorization (#2122)', () => {
+    const sheetRange = '?from=2026-09-01&to=2026-09-30';
+
+    test('Senior TL can request the attendance sheet for their own department', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/v1/attendance/department/${departmentId}/sheet${sheetRange}`,
+        headers: { Authorization: `Bearer ${seniorToken}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+    });
+
+    test.each([
+      ['Senior TL', () => seniorToken],
+      ['TL', () => tlToken],
+      ['Captain', () => captainToken],
+    ])(
+      '%s is denied access to another department attendance sheet',
+      async (_role, getToken) => {
+        const res = await app.inject({
+          method: 'GET',
+          url: `/api/v1/attendance/department/${otherDepartmentId}/sheet${sheetRange}`,
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        const body = JSON.parse(res.body);
+
+        expect(res.statusCode).toBe(403);
+        expect(body.error).toMatch(/outside.*authorized scope/i);
+        expect(body.members).toBeUndefined();
+        expect(body.records).toBeUndefined();
+      }
+    );
+
+    test('Admin can request another department attendance sheet', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/v1/attendance/department/${otherDepartmentId}/sheet${sheetRange}`,
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+    });
+  });
   test('GET /attendance/authorized-members requires authentication', async () => {
     const res = await app.inject({
       method: 'GET',
@@ -166,5 +252,47 @@ describe('Department Hierarchy API Filtering (#1347)', () => {
       url: '/api/v1/ratings/department/00000000-0000-0000-0000-000000000001',
     });
     expect([401, 403]).toContain(res.statusCode);
+  });
+
+  // ─── Regression: Senior TL "My Team" must not exclude blank-department
+  // members, and manager reassignment must key off manager_id, not
+  // department_id (#XXXX — replace with the actual ticket number). ──────────
+  describe('Regression: manager_id (not department_id) is the source of truth for Senior TL', () => {
+    test('Senior TL sees a team member with blank department_id via /team/members', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/team/members',
+        headers: { Authorization: `Bearer ${seniorToken}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body);
+      const memberIds = body.map((member) => member.id);
+      expect(memberIds).toEqual(expect.arrayContaining([ids.internNoDept]));
+    });
+
+    test('Senior TL can reassign a member to a manager with blank department, via a valid manager chain', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/team/members/${ids.internNoDept}/manager`,
+        headers: { Authorization: `Bearer ${seniorToken}` },
+        payload: { manager_id: ids.captainNoDept },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body);
+      expect(body.manager_id).toBe(ids.captainNoDept);
+    });
+
+    test('Senior TL is still denied reassigning to a manager with no department match and no manager chain (no over-permissive fix)', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/team/members/${ids.internNoDept}/manager`,
+        headers: { Authorization: `Bearer ${seniorToken}` },
+        payload: { manager_id: ids.otherTl },
+      });
+
+      expect(res.statusCode).toBe(403);
+    });
   });
 });

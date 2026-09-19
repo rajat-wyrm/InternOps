@@ -38,18 +38,18 @@ async function checkHierarchyAccess(requesterId, targetUserId, client = pool) {
   const requester = usersRes.rows.find((u) => u.id === requesterId);
   const target = usersRes.rows.find((u) => u.id === targetUserId);
 
-  if (requester.role !== 'ADMIN' && target.role !== 'ADMIN') {
-    if (
-      !requester.department_id ||
-      !target.department_id ||
-      requester.department_id !== target.department_id
-    ) {
-      return false;
-    }
-    // Senior TL is the department-wide leader. The role can access every
-    // non-admin account in the same department without changing manager_id.
-    if (requester.role === 'SENIOR_TL') return true;
+  if (
+    requester.role === 'SENIOR_TL' &&
+    target.role !== 'ADMIN' &&
+    requester.department_id &&
+    target.department_id &&
+    requester.department_id === target.department_id
+  ) {
+    return true;
   }
+  // Senior TL is the department-wide leader: grant access when both share
+  // a real, matching department. This is only an extra allowance — it must
+  // never block access; the manager-chain check below is the fallback
 
   const query = `WITH RECURSIVE chain AS (
     SELECT id, manager_id, 0 AS depth, ARRAY[id] AS path

@@ -519,6 +519,17 @@ async function failPendingBulkJobItems(bulkJobId, errorMessage) {
   return res.rows;
 }
 
+async function getCertificateCountByYear(year) {
+  const result = await pool.query(
+    `SELECT COUNT(*) AS cnt
+     FROM certificates
+     WHERE EXTRACT(YEAR FROM created_at) = $1`,
+    [year]
+  );
+
+  return Number(result.rows[0].cnt);
+}
+
 module.exports = {
   createTemplate,
   getTemplates,
@@ -529,6 +540,7 @@ module.exports = {
   createCertificate,
   getCertificateById,
   getCertificateByVerificationToken,
+  getCertificateCountByYear,
   listCertificates,
   updateCertificate,
   revokeCertificate,

@@ -1,66 +1,68 @@
 require('dotenv').config();
-
 const validateEnv = require('./config/validateEnv');
 validateEnv();
-
+const {
+  initSentry,
+  captureException: sentryCaptureException,
+  flushSentry,
+} = require('./config/sentry');
+initSentry();
+const auth = require('./middleware/auth');
+const rbac = require('./middleware/rbac');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Fastify = require('fastify');
-
 const config = require('./config');
 const pool = require('./config/db');
 const metrics = require('./utils/metrics');
-
 const { initializeWebSocket, getIO } = require('./websocket');
-
 const noticesRoutes = require('./modules/notices/routes');
-
 const {
   getRedisStatus,
-  initializeRedis,
-  closeRedis,
+  getRedisClient,
+  getRedisDegradedFeatures,
 } = require('./config/redis');
-
-const authenticate = require('./middleware/auth');
-const rbac = require('./middleware/rbac');
 const { csrfMiddleware } = require('./middleware/csrf');
 const { sanitizationMiddleware } = require('./middleware/sanitize');
 const { createAuditLog } = require('./utils/audit');
-const { setupCronJobs } = require('./utils/cron');
+const { setupCronJobs, shutdownCronJobs } = require('./utils/cron');
+const githubSyncOrchestrator = require('./modules/github-sync/orchestrator');
+const { normalizeValidationDetails } = require('./utils/validationError');
 
 const app = Fastify({
   trustProxy: config.nodeEnv === 'production' ? true : 'loopback',
-
   logger:
     config.nodeEnv === 'development'
       ? {
-          transport: {
-            target: 'pino-pretty',
-          },
+          transport: { target: 'pino-pretty' },
           level: process.env.LOG_LEVEL || 'info',
         }
-      : {
-          level: process.env.LOG_LEVEL || 'info',
-        },
-
+      : { level: process.env.LOG_LEVEL || 'info' },
   bodyLimit: 1048576,
-
   genReqId: () => uuidv4(),
 });
 
-/*
-|--------------------------------------------------------------------------
-| Monitoring Routes
-|--------------------------------------------------------------------------
-| These routes are registered before global middleware so that
-| observability endpoints remain available even when other services
-| are degraded.
-|--------------------------------------------------------------------------
-*/
+// Layer 1: Register monitoring routes BEFORE global middleware to ensure observability
+app.addHook('onRequest', metrics.trackActiveRequests);
+app.addHook('onRequest', async (request) => {
+  request.metricsStartTime = process.hrtime.bigint().toString();
+});
 
 app.get(
   '/metrics',
   {
+    preHandler: [
+      auth,
+      rbac('ADMIN'),
+      async (req, reply) => {
+        const authHeader = req.headers.authorization;
+        const expectedToken = `Bearer ${process.env.METRICS_TOKEN}`;
+
+        if (authHeader !== expectedToken) {
+          return reply.status(404).send();
+        }
+      },
+    ],
     config: {
       rateLimit: false,
     },
@@ -76,35 +78,7 @@ app.get(
     },
   },
   async (req, reply) => {
-    const redisStatus = getRedisStatus();
-
-    // Tests should always receive a simple healthy response.
-    if (process.env.NODE_ENV === 'test') {
-      return reply.send({
-        status: 'ok',
-      });
-    }
-
-    /*
-     * Redis is optional.
-     *
-     * Therefore Redis being disabled should NOT make the
-     * application unhealthy.
-     *
-     * Redis being configured but disconnected means the
-     * application is running in degraded mode.
-     */
-    if (redisStatus === 'disconnected') {
-      return reply.status(503).send({
-        status: 'degraded',
-        redis: redisStatus,
-      });
-    }
-
-    return reply.send({
-      status: 'ok',
-      redis: redisStatus,
-    });
+    return reply.send({ status: 'ok' });
   }
 );
 
@@ -118,13 +92,12 @@ app.get(
   async (req, reply) => {
     try {
       await pool.query('SELECT 1');
-
-      return reply.send({
+      reply.send({
         status: 'ok',
         db: 'connected',
       });
     } catch {
-      return reply.status(503).send({
+      reply.status(503).send({
         status: 'error',
         db: 'disconnected',
       });
@@ -133,36 +106,23 @@ app.get(
 );
 
 app.get(
-  '/health/full',
+  '/health/detailed',
   {
+    preHandler: [auth, rbac('ADMIN')],
     config: {
       rateLimit: false,
     },
   },
   async (req, reply) => {
-    const checks = {
-      db: false,
-      redis: false,
-    };
+    const checks = { db: false, redis: false };
 
-    // Database check
     try {
       await pool.query('SELECT 1');
       checks.db = true;
     } catch {}
 
-    // Redis check
     const redisStatus = getRedisStatus();
 
-    /*
-     * Redis is optional.
-     *
-     * These states are considered acceptable:
-     * - connected
-     * - disabled
-     *
-     * Only configured-but-unavailable Redis is degraded.
-     */
     checks.redis =
       process.env.NODE_ENV === 'test' ||
       redisStatus === 'connected' ||
@@ -170,25 +130,15 @@ app.get(
 
     const healthy = checks.db && checks.redis;
 
-    return reply.status(healthy ? 200 : 503).send({
+    reply.status(healthy ? 200 : 503).send({
       status: healthy ? 'healthy' : 'degraded',
-
       checks,
-
-      redisStatus,
     });
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| CORS
-|--------------------------------------------------------------------------
-*/
-
 app.register(require('@fastify/cors'), {
   origin: (origin, cb) => {
-    // Development: allow localhost / 127.0.0.1
     if (config.nodeEnv !== 'production') {
       if (
         !origin ||
@@ -208,21 +158,14 @@ app.register(require('@fastify/cors'), {
       return cb(null, true);
     }
 
-    return cb(new Error('Not allowed by CORS'), false);
+    const corsError = new Error('Not allowed by CORS');
+    corsError.statusCode = 403;
+    return cb(corsError, false);
   },
-
   credentials: true,
-
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 });
-
-/*
-|--------------------------------------------------------------------------
-| Security
-|--------------------------------------------------------------------------
-*/
 
 app.register(require('@fastify/helmet'), {
   contentSecurityPolicy: {
@@ -238,29 +181,17 @@ app.register(require('@fastify/helmet'), {
   },
 });
 
-/*
-|--------------------------------------------------------------------------
-| Compression
-|--------------------------------------------------------------------------
-*/
+app.register(require('fastify-raw-body'), {
+  field: 'rawBody',
+  global: false,
+  encoding: 'utf8',
+  runFirst: true,
+});
 
 app.register(require('@fastify/compress'), {
   global: true,
   encodings: ['gzip', 'deflate', 'br'],
 });
-
-/*
-|--------------------------------------------------------------------------
-| Rate Limiting
-|--------------------------------------------------------------------------
-|
-| IMPORTANT:
-| The current rate limiter is intentionally left unchanged here.
-|
-| It currently uses Fastify's default in-memory store.
-| We will modify this separately after app.js.
-|
-*/
 
 app.register(require('@fastify/rate-limit'), {
   global: true,
@@ -268,43 +199,16 @@ app.register(require('@fastify/rate-limit'), {
   timeWindow: config.rateLimit.timeWindow,
 });
 
-/*
-|--------------------------------------------------------------------------
-| Cookies
-|--------------------------------------------------------------------------
-*/
-
 app.register(require('@fastify/cookie'));
 
-/*
-|--------------------------------------------------------------------------
-| CSRF
-|--------------------------------------------------------------------------
-*/
-
 app.addHook('preHandler', async (request, reply) => {
-  const routePath = request.routerPath ?? request.routeOptions?.url;
-
-  if (routePath === '/api/v1/auth/logout') {
-    return;
-  }
+  const path = request.routerPath ?? request.routeOptions?.url;
+  if (path === '/api/v1/auth/logout') return;
 
   return csrfMiddleware(request, reply);
 });
 
-/*
-|--------------------------------------------------------------------------
-| Sanitization
-|--------------------------------------------------------------------------
-*/
-
 app.addHook('preHandler', sanitizationMiddleware);
-
-/*
-|--------------------------------------------------------------------------
-| Multipart
-|--------------------------------------------------------------------------
-*/
 
 app.register(require('@fastify/multipart'), {
   limits: {
@@ -312,23 +216,13 @@ app.register(require('@fastify/multipart'), {
   },
 });
 
-/*
-|--------------------------------------------------------------------------
-| Static Files
-|--------------------------------------------------------------------------
-*/
-
 app.register(require('@fastify/static'), {
   root: path.join(__dirname, '..', config.uploadDir),
-
   prefix: '/uploads/',
+  setHeaders: (res) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  },
 });
-
-/*
-|--------------------------------------------------------------------------
-| Swagger
-|--------------------------------------------------------------------------
-*/
 
 if (process.env.NODE_ENV !== 'test') {
   app.register(require('@fastify/swagger'), {
@@ -339,20 +233,14 @@ if (process.env.NODE_ENV !== 'test') {
         description:
           'All business routes are versioned under /api/v1/. Future breaking changes will be introduced under /api/v2/ alongside the existing version.',
       },
-
       servers: [
-        {
-          url: '/api/v1',
-          description: 'Current stable API (v1)',
-        },
-
+        { url: '/api/v1', description: 'Current stable API (v1)' },
         {
           url: '/api/v2',
           description:
             'Next API version (v2) — see CONTRIBUTING.md for migration guide',
         },
       ],
-
       components: {
         securitySchemes: {
           bearerAuth: {
@@ -362,7 +250,6 @@ if (process.env.NODE_ENV !== 'test') {
           },
         },
       },
-
       security: [
         {
           bearerAuth: [],
@@ -373,11 +260,8 @@ if (process.env.NODE_ENV !== 'test') {
 
   const authMiddleware = require('./middleware/auth');
 
-  const rbac = require('./middleware/rbac');
-
   app.register(require('@fastify/swagger-ui'), {
     routePrefix: '/api-docs',
-
     uiHooks: {
       onRequest: function (request, reply, next) {
         authMiddleware(request, reply)
@@ -391,38 +275,22 @@ if (process.env.NODE_ENV !== 'test') {
     },
   });
 
-  /*
-  |--------------------------------------------------------------------------
-  | Route Schema Defaults
-  |--------------------------------------------------------------------------
-  */
-
   app.addHook('onRoute', (routeOptions) => {
-    if (!routeOptions.url.startsWith('/api/')) {
-      return;
-    }
+    if (!routeOptions.url.startsWith('/api/')) return;
 
     routeOptions.schema = routeOptions.schema || {};
-
     if (!routeOptions.schema.response) {
       routeOptions.schema.response = {
         200: {
           description: 'Successful response',
         },
-
         400: {
           description: 'Validation error',
-
           type: 'object',
-
           properties: {
-            error: {
-              type: 'string',
-            },
-
+            error: { type: 'string' },
             details: {
               type: 'array',
-
               items: {
                 type: 'object',
                 additionalProperties: true,
@@ -430,80 +298,43 @@ if (process.env.NODE_ENV !== 'test') {
             },
           },
         },
-
         401: {
           description: 'Unauthorized',
-
           type: 'object',
-
-          properties: {
-            error: {
-              type: 'string',
-            },
-          },
+          properties: { error: { type: 'string' } },
         },
-
         500: {
           description: 'Internal Server Error',
-
           type: 'object',
-
-          properties: {
-            error: {
-              type: 'string',
-            },
-          },
+          properties: { error: { type: 'string' } },
         },
       };
     }
   });
 }
 
-/*
-|--------------------------------------------------------------------------
-| API Routes
-|--------------------------------------------------------------------------
-*/
-
-app.register(require('./routes'), {
-  prefix: '/api/v1',
+app.register(require('./routes'), { prefix: '/api/v1' });
+app.register(require('./routes.v2'), { prefix: '/api/v2' });
+app.register(require('./modules/proof-submissions/routes'), {
+  prefix: '/api/proofs',
 });
-
-app.register(require('./routes.v2'), {
-  prefix: '/api/v2',
+app.register(require('./modules/github-sync/routes'), {
+  prefix: '/api/v1/github',
 });
-
-/*
-|--------------------------------------------------------------------------
-| Root / Fallback
-|--------------------------------------------------------------------------
-*/
 
 app.get('/', async (req, reply) => {
-  return reply.redirect('/api-docs');
+  reply.redirect('/api-docs');
 });
 
 app.get('/fallback', async (req, reply) => {
-  return reply.type('text/html').send(`
-        <html>
-          <body style="font-family:sans-serif;padding:2em">
-            <h1>InternOps API</h1>
-            <a href="/api-docs">Swagger Docs</a>
-          </body>
-        </html>
-      `);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Monitoring Hooks
-|--------------------------------------------------------------------------
-*/
-
-app.addHook('onRequest', metrics.trackActiveRequests);
-
-app.addHook('onRequest', async (request) => {
-  request.startTime = Date.now();
+  reply.type('text/html').send(`
+    <html>
+      <body style="font-family:sans-serif;padding:2em">
+        <h1>InternOps API</h1>
+        <a href="/api-docs">Swagger Docs</a>
+      </body>
+    </html>
+  `);
 });
 
 app.addHook('onRequest', async (request) => {
@@ -518,53 +349,65 @@ app.addHook('onRequest', async (request) => {
 });
 
 app.addHook('onResponse', async (request, reply) => {
-  metrics.observeHttpRequest(request, reply, request.startTime);
+  metrics.observeHttpRequest(request, reply, request.metricsStartTime);
 
-  if (!request?.auditOnResponse) {
-    return;
-  }
-
-  /*
-   * Only emit audit log for successful
-   * 2xx responses.
-   */
+  if (!request?.auditOnResponse) return;
   if (reply.statusCode >= 200 && reply.statusCode < 300) {
     try {
       await createAuditLog(request.auditOnResponse);
     } catch (err) {
       request.log.error(
-        {
-          err,
-          audit: request.auditOnResponse,
-        },
+        { err, audit: request.auditOnResponse },
         'Failed to write deferred audit log'
       );
     }
   }
 });
 
-/*
-|--------------------------------------------------------------------------
-| Error Handler
-|--------------------------------------------------------------------------
-*/
+function formatValidationPath(value) {
+  const parts = Array.isArray(value)
+    ? value
+    : String(value || '')
+        .replace(/^\//, '')
+        .split(/[./]/);
+  const field = parts.filter(Boolean).at(-1);
+  if (!field) return null;
+  return field
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/^./, (character) => character.toUpperCase());
+}
+
+function validationDetailMessage(detail) {
+  const message = detail?.message || 'is invalid';
+  const field = formatValidationPath(
+    detail?.path || detail?.instancePath || detail?.dataPath
+  );
+  return field ? `${field}: ${message}` : message;
+}
+
+function validationPayload(details, requestId) {
+  const validationDetails = details || [];
+  const validationMessage = validationDetails.length
+    ? validationDetailMessage(validationDetails[0])
+    : 'Please check the submitted values.';
+
+  return {
+    success: false,
+    message: validationMessage,
+    code: 'VALIDATION_ERROR',
+    details: validationDetails,
+    requestId,
+  };
+}
 
 app.setErrorHandler((error, request, reply) => {
-  /*
-   * Fastify AJV validation errors.
-   */
   if (error.validation) {
-    const details = error.validation.map((v) => ({
-      path: v.instancePath || v.dataPath || '',
-      message: v.message,
-      keyword: v.keyword,
-    }));
-
     request.log.warn(
       {
         statusCode: 400,
-        code: 'VALIDATION_ERROR',
-        validation: details,
+        message: error.message,
+        validation: error.validation,
         method: request.method,
         url: request.url,
         params: request.params,
@@ -574,30 +417,17 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Validation error'
     );
-
-    return reply.status(400).send({
-      success: false,
-      message: 'Validation failed',
-      code: 'VALIDATION_ERROR',
-      details,
-    });
+    const validationDetails = normalizeValidationDetails(error.validation);
+    const payload = validationPayload(validationDetails, request.id);
+    return reply.status(400).send(payload);
   }
 
-  /*
-   * Zod validation errors.
-   */
   if (error.name === 'ZodError' || Array.isArray(error.issues)) {
-    const details = (error.issues || []).map((issue) => ({
-      path: Array.isArray(issue.path) ? issue.path.join('.') : issue.path || '',
-      message: issue.message,
-      code: issue.code,
-    }));
-
     request.log.warn(
       {
         statusCode: 400,
-        code: 'VALIDATION_ERROR',
-        issues: details,
+        message: error.message,
+        issues: error.issues || [],
         method: request.method,
         url: request.url,
         params: request.params,
@@ -607,60 +437,27 @@ app.setErrorHandler((error, request, reply) => {
       },
       'Zod validation error'
     );
-
-    return reply.status(400).send({
-      success: false,
-      message: 'Validation failed',
-      code: 'VALIDATION_ERROR',
-      details,
-    });
+    const validationDetails = normalizeValidationDetails(error.issues || []);
+    const payload = validationPayload(validationDetails, request.id);
+    return reply.status(400).send(payload);
   }
 
-  /*
-   * Determine the HTTP status.
-   */
-  const statusCode =
-    Number.isInteger(error.statusCode) && error.statusCode >= 400
-      ? error.statusCode
-      : 500;
-
-  /*
-   * Application-level error codes.
-   */
-  const statusCodes = {
-    400: 'BAD_REQUEST',
-    401: 'UNAUTHORIZED',
-    403: 'FORBIDDEN',
-    404: 'NOT_FOUND',
-    409: 'CONFLICT',
-    413: 'PAYLOAD_TOO_LARGE',
-    429: 'RATE_LIMIT_EXCEEDED',
-    500: 'INTERNAL_SERVER_ERROR',
-  };
-  const frameworkErrorCode = String(error.code || '');
-
-  const code = frameworkErrorCode.startsWith('FST_')
-    ? statusCodes[statusCode] || 'INTERNAL_SERVER_ERROR'
-    : error.code || statusCodes[statusCode] || 'INTERNAL_SERVER_ERROR';
-
-  /*
-   * Only expose application/client errors.
-   * Unexpected 5xx errors must never expose internal details.
-   */
+  const statusCode = error.statusCode || 500;
   const isClientError = statusCode >= 400 && statusCode < 500;
   const isOperational = error.isOperational === true;
 
-  const message =
+  let clientMessage =
     isClientError || isOperational
       ? error.message || 'Request failed'
       : 'Internal Server Error';
 
-  /*
-   * Always log unexpected server errors with internal details.
-   */
+  const responseCode =
+    isClientError || isOperational
+      ? error.code || 'REQUEST_ERROR'
+      : 'INTERNAL_ERROR';
+
   const logPayload = {
     statusCode,
-    code,
     message: error.message,
     internalMessage: error.internalMessage || null,
     stack: error.stack,
@@ -674,228 +471,149 @@ app.setErrorHandler((error, request, reply) => {
 
   if (statusCode >= 500) {
     request.log.error(logPayload, 'Unhandled server error');
+
+    sentryCaptureException(error, {
+      userId: request.user?.id || null,
+      tags: {
+        requestId: request.id,
+        route: request.url,
+        method: request.method,
+        statusCode: String(statusCode),
+      },
+    });
   } else {
     request.log.warn(logPayload, 'Request error');
   }
 
   return reply.status(statusCode).send({
     success: false,
-    message,
-    code,
+    message: clientMessage,
+    code: responseCode,
     details: [],
+    requestId: request.id,
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| Cron Jobs
-|--------------------------------------------------------------------------
-*/
-
-if (process.env.NODE_ENV !== 'test') {
-  setupCronJobs();
-}
-
-/*
-|--------------------------------------------------------------------------
-| Application Startup
-|--------------------------------------------------------------------------
-*/
+const bulkJobQueue = require('./services/bulkJobQueue');
+const verificationService = require('./modules/proof-submissions/verification.service');
+const {
+  checkDatabase,
+  integrationStatus,
+  writeStartupSummary,
+  createBackgroundServiceDiagnostic,
+} = require('./utils/startupDiagnostics');
 
 const start = async () => {
   try {
-    /*
-     * ---------------------------------------------------------------
-     * Redis initialization
-     * ---------------------------------------------------------------
-     *
-     * Redis is OPTIONAL.
-     *
-     * We initialize it before the server starts so that all
-     * Redis-dependent modules can know whether Redis is available.
-     */
-    const redisResult = await initializeRedis();
-
-    /*
-     * Redis connected successfully.
-     */
-    if (redisResult.available) {
-      app.log.info(
-        {
-          redisStatus: redisResult.status,
-        },
-        'Redis available. Redis-dependent features are enabled.'
-      );
-    }
-
-    /*
-     * Redis is disabled or unavailable.
-     *
-     * The application MUST NOT crash.
-     *
-     * Instead, clearly tell the developer what is degraded.
-     */
-    else {
-      app.log.warn(
-        {
-          redisStatus: redisResult.status,
-
-          degradedFeatures: [
-            'Rate limiting may use memory storage',
-            'Session cache may be disabled or use fallback storage',
-            'WebSocket coordination may run in local/in-process mode',
-          ],
-        },
-        'Redis unavailable. Application is running in degraded mode.'
-      );
-    }
-
-    /*
-     * ---------------------------------------------------------------
-     * Start HTTP server
-     * ---------------------------------------------------------------
-     */
+    const database = await checkDatabase(pool, config.databaseUrl);
 
     await app.listen({
       port: config.port,
       host: config.host,
     });
 
-    /*
-     * ---------------------------------------------------------------
-     * Initialize WebSocket
-     * ---------------------------------------------------------------
-     *
-     * The WebSocket module will later check Redis availability
-     * and decide whether to use Redis coordination or local mode.
-     */
     initializeWebSocket(app.server, app.log);
+    await getRedisClient();
+    await bulkJobQueue.init();
+    await verificationService.initQueue();
 
-    /*
-     * Final startup message.
-     */
-    app.log.info(
-      {
-        port: config.port,
+    if (process.env.NODE_ENV !== 'test') {
+      const backgroundServices = {
+        cron: createBackgroundServiceDiagnostic(),
+        githubSync: createBackgroundServiceDiagnostic(),
+      };
 
-        host: config.host,
+      const cronStart = Date.now();
+      try {
+        setupCronJobs();
+        backgroundServices.cron.state = 'ready';
+        backgroundServices.cron.durationMs = Date.now() - cronStart;
+      } catch (err) {
+        backgroundServices.cron.state = 'failed';
+        backgroundServices.cron.durationMs = Date.now() - cronStart;
+        throw err;
+      }
 
-        redisStatus: getRedisStatus(),
-      },
-      `Server listening on port ${config.port}`
-    );
+      const githubSyncStart = Date.now();
+      try {
+        await githubSyncOrchestrator.initialize();
+        backgroundServices.githubSync.state = 'ready';
+        backgroundServices.githubSync.durationMs = Date.now() - githubSyncStart;
+      } catch (err) {
+        backgroundServices.githubSync.state = 'failed';
+        backgroundServices.githubSync.durationMs = Date.now() - githubSyncStart;
+        throw err;
+      }
+
+      app.log.info(
+        { backgroundServices },
+        '[STARTUP] Background services initialized'
+      );
+    }
+
+    writeStartupSummary({
+      logger: app.log,
+      database,
+      redis: getRedisStatus(),
+      degradedFeatures: getRedisDegradedFeatures(),
+      queue: bulkJobQueue.getStatus(),
+      integrations: integrationStatus(config),
+      port: config.port,
+    });
   } catch (err) {
-    app.log.error(
-      {
-        err,
-      },
-      'Failed to start server'
-    );
-
+    app.log.error(err);
     process.exit(1);
   }
 };
 
-/*
-|--------------------------------------------------------------------------
-| Graceful Shutdown
-|--------------------------------------------------------------------------
-*/
-
 const SHUTDOWN_TIMEOUT = 20000;
 
 const gracefulShutdown = async (signal) => {
-  app.log.info(
-    {
-      signal,
-    },
-    `Received ${signal}, shutting down gracefully...`
-  );
+  app.log.info({ signal }, `Received ${signal}, shutting down gracefully...`);
 
   const forceShutdown = setTimeout(() => {
     console.error('Shutdown timed out. Forcing exit.');
-
     process.exit(1);
   }, SHUTDOWN_TIMEOUT);
 
   try {
-    /*
-     * Stop accepting new requests
-     * and finish in-flight requests.
-     */
     await app.close();
 
-    /*
-     * Close WebSocket server.
-     */
     try {
       const io = getIO();
 
       if (io) {
         app.log.info('Closing WebSocket server...');
-
-        await new Promise((resolve) => {
-          io.close(resolve);
-        });
-
+        await new Promise((resolve) => io.close(resolve));
         app.log.info('WebSocket server closed');
       }
     } catch (wsErr) {
-      app.log.warn(
-        {
-          err: wsErr,
-        },
-        'Error closing WebSocket server'
-      );
+      app.log.warn({ err: wsErr }, 'Error closing WebSocket server');
     }
 
-    /*
-     * Close database connections.
-     */
     try {
-      await pool.end();
-
-      app.log.info('Database connection pool closed');
-    } catch (dbErr) {
-      app.log.warn(
-        {
-          err: dbErr,
-        },
-        'Error closing database connection pool'
-      );
+      githubSyncOrchestrator.shutdown();
+      shutdownCronJobs();
+    } catch (syncErr) {
+      app.log.warn({ err: syncErr }, 'Error shutting down background services');
     }
 
-    /*
-     * Close Redis connection.
-     */
     try {
-      await closeRedis();
-
-      app.log.info('Redis connection closed');
-    } catch (redisErr) {
-      app.log.warn(
-        {
-          err: redisErr,
-        },
-        'Error closing Redis connection'
-      );
+      await verificationService.closeQueue();
+    } catch (qErr) {
+      app.log.warn({ err: qErr }, 'Error closing verification queue');
     }
 
+    await pool.end();
+    await flushSentry(2000);
     clearTimeout(forceShutdown);
-
     app.log.info('Cleanup completed. Exiting now.');
 
     if (process.env.NODE_ENV !== 'test') {
       process.exit(0);
     }
   } catch (err) {
-    app.log.error(
-      {
-        err,
-      },
-      'Error during shutdown'
-    );
-
+    app.log.error({ err }, 'Error during shutdown');
     clearTimeout(forceShutdown);
 
     if (process.env.NODE_ENV !== 'test') {
@@ -904,21 +622,32 @@ const gracefulShutdown = async (signal) => {
   }
 };
 
-/*
-|--------------------------------------------------------------------------
-| Process Signals
-|--------------------------------------------------------------------------
-*/
-
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-/*
-|--------------------------------------------------------------------------
-| Start Application
-|--------------------------------------------------------------------------
-*/
+process.on('unhandledRejection', (reason) => {
+  app.log.error({ err: reason }, 'Unhandled promise rejection');
+
+  sentryCaptureException(
+    reason instanceof Error ? reason : new Error(String(reason)),
+    { extra: { type: 'unhandledRejection' } }
+  );
+});
+
+process.on('uncaughtException', (error) => {
+  app.log.error({ err: error }, 'Uncaught exception - process will exit');
+
+  sentryCaptureException(error, {
+    extra: { type: 'uncaughtException' },
+  });
+
+  const forceExit = setTimeout(() => process.exit(1), 3000);
+
+  flushSentry(2000).finally(() => {
+    clearTimeout(forceExit);
+    process.exit(1);
+  });
+});
 
 if (require.main === module) {
   start();

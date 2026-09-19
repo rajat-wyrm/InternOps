@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [master]
 
+  merge_group:
+    branches: [master]
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -69,6 +71,14 @@ jobs:
         run: |
           psql -h localhost -p 5432 -U postgres -d internops_test \
             -c "SELECT current_user, current_database();"
+
+      - name: Validate migration filenames
+
+        run: |
+
+          cd backend
+
+          node -e "const fs=require('fs'); const files=fs.readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort(); const seen=new Map(); for(const f of files){if(!/^\d{3}_[a-z0-9_]+\.sql$/.test(f)) throw new Error('Invalid migration filename: '+f); const p=f.slice(0,3); if(seen.has(p)) throw new Error('Duplicate migration prefix '+p+': '+seen.get(p)+' and '+f); seen.set(p,f);} console.log('Validated '+files.length+' migration filenames');"
 
       - name: Run migrations
         env:

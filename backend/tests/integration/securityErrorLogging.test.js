@@ -228,6 +228,37 @@ describe('Security Error Logging (#1012)', () => {
     expect(JSON.stringify(warnDetails)).not.toContain('malformed.jwt.token');
   });
 
+  it('rejects malformed CSRF session cookies without returning a server error', async () => {
+    jest.resetModules();
+
+    const { csrfMiddleware } = require('../../src/middleware/csrf');
+
+    const request = {
+      method: 'POST',
+      url: '/api/v1/users/me',
+      headers: {
+        cookie: 'csrf-sid=%',
+        origin: 'http://localhost:5173',
+      },
+      log: {
+        warn: jest.fn(),
+      },
+    };
+
+    const reply = {
+      setCookie: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+      send: jest.fn().mockReturnThis(),
+    };
+
+    await expect(csrfMiddleware(request, reply)).resolves.not.toThrow();
+
+    expect(reply.status).toHaveBeenCalledWith(403);
+    expect(reply.send).toHaveBeenCalledWith({
+      error: 'CSRF validation failed',
+    });
+  });
+
   it('logs warning and does not short-circuit when bearer verification fails during check', async () => {
     jest.resetModules();
     jest.doMock('../../src/utils/tokens', () => ({

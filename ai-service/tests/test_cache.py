@@ -179,7 +179,14 @@ async def test_provider_failure_not_cached():
 
 
 def test_ai_route_integration_cache_hit_and_miss(monkeypatch):
-    import app.api.ai_routes as ai_routes_module
+    """
+    /ai/chat no longer keeps its own cache (see #1894) — it relies entirely
+    on the orchestrator's single caching layer. So this drives the real
+    orchestrator (with a fake provider standing in for the network call)
+    instead of mocking generate_chat_with_fallback(), which would bypass
+    the very caching path this test is meant to exercise.
+    """
+    import app.providers.orchestrator as orchestrator_module
     from app.core.rate_limiter import chat_rate_limiter
 
     app = FastAPI()
@@ -188,36 +195,96 @@ def test_ai_route_integration_cache_hit_and_miss(monkeypatch):
     app.dependency_overrides[chat_rate_limiter.check_rate_limit] = lambda: None
     client = TestClient(app)
 
+    orchestrator_module._circuit_breakers.clear()
+    clear_cache()
+
     calls = 0
 
-    async def mock_generate_chat(messages, temperature=0.7, **kwargs):
-        nonlocal calls
-        calls += 1
-        return f"Response #{calls}", "mock-provider"
+    class FakeProvider:
+        provider_name = "mock-provider"
+        model_name = "mock-model"
 
-    monkeypatch.setattr(
-        ai_routes_module.ai_orchestrator,
-        "generate_chat_with_fallback",
-        mock_generate_chat,
-    )
+        async def generate_chat(self, messages, temperature=0.7, **kwargs):
+            nonlocal calls
+            calls += 1
+            return f"Response #{calls}"
 
-    payload = {"prompt": "Integration test prompt"}
+    monkeypatch.setattr(orchestrator_module, "get_provider", lambda name=None: FakeProvider())
 
-    # First request: Cache MISS
-    resp1 = client.post("/ai/chat", json=payload)
-    assert resp1.status_code == 200
-    b1 = resp1.json()
-    assert b1["content"] == "Response #1"
-    assert b1["cached"] is False
-    assert calls == 1
+    try:
+        payload = {"prompt": "Integration test prompt"}
 
-    # Second request: Cache HIT
-    resp2 = client.post("/ai/chat", json=payload)
-    assert resp2.status_code == 200
-    b2 = resp2.json()
-    assert b2["content"] == "Response #1"
-    assert b2["cached"] is True
-    assert calls == 1
+        # First request: Cache MISS
+        resp1 = client.post("/ai/chat", json=payload)
+        assert resp1.status_code == 200
+        b1 = resp1.json()
+        assert b1["content"] == "Response #1"
+        assert b1["cached"] is False
+        assert calls == 1
+
+        # Second request: Cache HIT
+        resp2 = client.post("/ai/chat", json=payload)
+        assert resp2.status_code == 200
+        b2 = resp2.json()
+        assert b2["content"] == "Response #1"
+        assert b2["cached"] is True
+        assert calls == 1
+    finally:
+        orchestrator_module._circuit_breakers.clear()
+        clear_cache()
+
+
+@pytest.mark.asyncio
+async def test_memory_cache_evicts_oldest_when_over_capacity(monkeypatch):
+    """
+    Regression test for #2060: without Redis configured, the in-memory
+    fallback cache used to grow without bound as long as entries hadn't
+    expired yet, since eviction only ever removed already-expired keys.
+    Under sustained/concurrent traffic with a long TTL this leaks memory
+    and can OOM the process. The cache must now enforce a hard size cap
+    (AI_MEMORY_CACHE_MAX_SIZE) by evicting the least-recently-used entries,
+    independent of whether anything has expired.
+    """
+    import app.core.cache as cache_module
+
+    monkeypatch.setattr(cache_module.settings, "AI_MEMORY_CACHE_MAX_SIZE", 3)
+
+    await set_cached("key1", "value1", ttl=3600)
+    await set_cached("key2", "value2", ttl=3600)
+    await set_cached("key3", "value3", ttl=3600)
+
+    assert len(cache_module._memory_cache) == 3
+
+    # Adding a 4th entry, none of which have expired, must evict the
+    # least-recently-used one (key1) rather than let the cache grow.
+    await set_cached("key4", "value4", ttl=3600)
+
+    assert len(cache_module._memory_cache) == 3
+    assert await get_cached("key1") is None
+    assert await get_cached("key2") == "value2"
+    assert await get_cached("key3") == "value3"
+    assert await get_cached("key4") == "value4"
+
+
+@pytest.mark.asyncio
+async def test_memory_cache_lru_access_order_protects_hot_keys(monkeypatch):
+    """Recently accessed entries should survive eviction over stale ones."""
+    import app.core.cache as cache_module
+
+    monkeypatch.setattr(cache_module.settings, "AI_MEMORY_CACHE_MAX_SIZE", 2)
+
+    await set_cached("hot", "hot_value", ttl=3600)
+    await set_cached("cold", "cold_value", ttl=3600)
+
+    # Touch "hot" so it becomes the most-recently-used entry.
+    assert await get_cached("hot") == "hot_value"
+
+    # This push should evict "cold" (least-recently-used), not "hot".
+    await set_cached("new", "new_value", ttl=3600)
+
+    assert await get_cached("cold") is None
+    assert await get_cached("hot") == "hot_value"
+    assert await get_cached("new") == "new_value"
 
 
 @pytest.mark.asyncio

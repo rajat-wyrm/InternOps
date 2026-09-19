@@ -37,8 +37,7 @@ async function routes(fastify) {
         body: toSchema(chatBodySchema),
       },
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
-      // Keep Fastify's parser limit aligned with the maximum payload we accept.
-      bodyLimit: 2 * 1024 * 1024, // 2 MB
+      bodyLimit: 2 * 1024 * 1024,
       config: {
         rateLimit: {
           max: AI_CHAT_RATE_LIMIT,
@@ -59,8 +58,6 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
-      //Requests larger than 2 MB are rejected by Fastify via `bodyLimit`
-
       const ALLOWED_ROLES = ['user', 'assistant', 'system'];
 
       let finalMessages = [];
@@ -103,6 +100,7 @@ async function routes(fastify) {
       const MAX_MESSAGES = 32;
       const MAX_MESSAGE_CHARS = 4000;
       const MAX_TOTAL_CHARS = 32000;
+
       if (finalMessages.length > MAX_MESSAGES) {
         return reply.status(413).send({
           error: 'Too many messages',
@@ -150,6 +148,7 @@ async function routes(fastify) {
         const result = await generateAIResponse({
           userId: req.user.id,
           messages: finalMessages,
+          authorization: req.headers.authorization,
         });
 
         if (result.fallback) {
@@ -173,12 +172,14 @@ async function routes(fastify) {
           { err: error.message, code: error.statusCode },
           'AI provider failed'
         );
+
         return reply.status(503).send({
           error: 'AI service unavailable',
         });
       }
     }
   );
+
   fastify.post(
     '/generate-image',
     {
@@ -251,6 +252,7 @@ async function routes(fastify) {
       }
     }
   );
+
   fastify.get(
     '/health',
     {

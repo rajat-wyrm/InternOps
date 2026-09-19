@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getApiErrorMessage } from '../../lib/apiError';
 import {
   Megaphone,
   Plus,
@@ -149,7 +150,7 @@ function NoticeForm({
       });
       setImageUrl(res.data.image_url);
     } catch (err) {
-      setUploadError(err.response?.data?.error || 'Failed to upload image');
+      setUploadError(getApiErrorMessage(err, 'Failed to upload image'));
     } finally {
       setIsUploading(false);
     }
@@ -360,7 +361,7 @@ export default function Notices() {
       inv();
     },
     onError: (err) =>
-      setFormError(err.response?.data?.error || 'Failed to create notice'),
+      setFormError(getApiErrorMessage(err, 'Failed to create notice')),
     enabled: hydrated && !!accessToken,
   });
 

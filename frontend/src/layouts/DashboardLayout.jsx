@@ -50,6 +50,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import api from '../lib/axios';
 import { resolveUploadUrl } from '../lib/uploadUrl';
 import { connectSocket, disconnectSocket } from '../lib/socket';
+import useBackgroundCacheInvalidation from '../hooks/useBackgroundCacheInvalidation';
 import { UserAvatar, ConfirmationModal } from '../components/ui';
 import useAuthStore from '../store/auth';
 import useFeatureFlagsStore from '../store/featureFlags';
@@ -343,6 +344,12 @@ export default function DashboardLayout() {
   const exitImpersonation = useAuthStore((s) => s.exitImpersonation);
   const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
+
+  const socket =
+    accessToken && !user?.mustChangePassword
+      ? connectSocket(accessToken)
+      : null;
+  useBackgroundCacheInvalidation(socket);
 
   useEffect(() => {
     if (!accessToken || user?.mustChangePassword) return undefined;

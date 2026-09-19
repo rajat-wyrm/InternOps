@@ -99,6 +99,48 @@ async function verifyProof(proofId, verifierId, verifierRole) {
 }
 
 /**
+ * Reject a proof submission.  Enforces hierarchy check for non-admins
+ * and prevents self-rejection.
+ */
+async function rejectProof(proofId, verifierId, verifierRole) {
+  const proofRes = await pool.query(
+    'SELECT intern_id FROM proof_submissions WHERE id = $1',
+    [proofId]
+  );
+
+  if (proofRes.rowCount === 0) {
+    throw new Error('Proof not found');
+  }
+
+  if (verifierId === proofRes.rows[0].intern_id) {
+    throw new Error('Forbidden: you cannot reject your own proof submission');
+  }
+
+  if (verifierRole !== 'ADMIN') {
+    const { checkHierarchyAccess } = require('../../utils/hierarchy');
+    const allowed = await checkHierarchyAccess(
+      verifierId,
+      proofRes.rows[0].intern_id
+    );
+    if (!allowed) {
+      throw new Error('Forbidden: not in intern hierarchy');
+    }
+  }
+
+  const res = await pool.query(
+    `UPDATE proof_submissions
+     SET verified_by = $1,
+         verified_at = NOW(),
+         status = 'REJECTED'
+     WHERE id = $2
+     RETURNING *`,
+    [verifierId, proofId]
+  );
+
+  return res.rows[0];
+}
+
+/**
  * Check whether a task is assigned to the given user (or unassigned).
  */
 async function isTaskAssignedToUser(taskId, userId) {
@@ -224,6 +266,7 @@ module.exports = {
   submitProof,
   submitProofWithImages,
   verifyProof,
+  rejectProof,
   isTaskAssignedToUser,
   getProofsByTask,
   getProofsByIntern,

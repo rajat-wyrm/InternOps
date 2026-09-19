@@ -85,6 +85,8 @@ export default function Profile() {
   const [error, setError] = useState('');
   const [nameError, setNameError] = useState('');
   const [showRemoveAvatarModal, setShowRemoveAvatarModal] = useState(false);
+  const [customAvatarError, setCustomAvatarError] = useState(false);
+  const [defaultAvatarError, setDefaultAvatarError] = useState(false);
   const {
     data: profile,
     isLoading,
@@ -96,6 +98,36 @@ export default function Profile() {
     queryFn: () => api.get('/users/me').then((res) => res.data),
     enabled: hydrated && !!accessToken,
   });
+
+  const effectiveRole = (profile?.role || user?.role || '').toUpperCase();
+  const isAdmin = effectiveRole === 'ADMIN';
+  const rawAvatar = profile?.avatar_url ?? user?.avatar_url ?? null;
+  const customAvatarUrl = rawAvatar ? resolveUploadUrl(rawAvatar) : null;
+  const adminDefaultAvatarUrl = isAdmin
+    ? resolveUploadUrl('/admin-default-avatar.svg')
+    : null;
+
+  useEffect(() => {
+    setCustomAvatarError(false);
+  }, [customAvatarUrl]);
+
+  useEffect(() => {
+    setDefaultAvatarError(false);
+  }, [adminDefaultAvatarUrl]);
+
+  const activeAvatarUrl =
+    (customAvatarUrl && !customAvatarError ? customAvatarUrl : null) ||
+    (adminDefaultAvatarUrl && !defaultAvatarError
+      ? adminDefaultAvatarUrl
+      : null);
+
+  const handleAvatarError = () => {
+    if (customAvatarUrl && !customAvatarError) {
+      setCustomAvatarError(true);
+    } else {
+      setDefaultAvatarError(true);
+    }
+  };
 
   useEffect(() => {
     if (!profile) return;
@@ -272,16 +304,14 @@ export default function Profile() {
           year: 'numeric',
         });
   };
-  const isAdmin = profile?.role === 'ADMIN';
-  const profileAvatarUrl = resolveUploadUrl(
-    profile?.avatar_url || (isAdmin ? '/admin-default-avatar.svg' : null)
-  );
   const scopeLabel = isAdmin ? 'Access scope' : 'Department';
   const accessScope = isAdmin
     ? 'Platform-wide'
     : profile?.department_name || 'No department';
   const positionLabel =
-    POSITION_LABEL[profile?.role] || profile?.position || 'Not added';
+    POSITION_LABEL[profile?.role || user?.role] ||
+    profile?.position ||
+    'Not added';
   const accountDetails = [
     { label: scopeLabel, value: accessScope, icon: Building2 },
     ...(!isAdmin
@@ -358,18 +388,22 @@ export default function Profile() {
           <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
             <div className="w-32 shrink-0">
               <div className="relative mx-auto w-fit">
-                {profileAvatarUrl ? (
+                {activeAvatarUrl ? (
                   <img
-                    src={profileAvatarUrl}
+                    src={activeAvatarUrl}
                     alt="avatar"
+                    onError={handleAvatarError}
                     className="h-24 w-24 rounded-3xl border-4 border-white bg-white object-cover shadow-xl dark:border-slate-900 dark:bg-slate-900"
                   />
                 ) : (
                   <div className="flex h-24 w-24 items-center justify-center rounded-3xl border-4 border-white bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-3xl font-extrabold text-white shadow-xl dark:border-slate-900">
-                    {initials(profile?.full_name, profile?.email)}
+                    {initials(
+                      profile?.full_name || user?.full_name,
+                      profile?.email || user?.email
+                    )}
                   </div>
                 )}
-                {profile?.avatar_url && (
+                {Boolean(rawAvatar) && (
                   <button
                     type="button"
                     onClick={() => setShowRemoveAvatarModal(true)}
@@ -596,6 +630,7 @@ export default function Profile() {
                 type="password"
                 name="current-password"
                 autoComplete="section-security current-password"
+                maxLength={128}
                 value={oldPassword}
                 onChange={(event) => setOldPassword(event.target.value)}
                 placeholder="Enter current password"

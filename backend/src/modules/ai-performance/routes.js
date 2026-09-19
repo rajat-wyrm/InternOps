@@ -1,7 +1,7 @@
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const service = require('./service');
-const pool = require('../../config/db');
+const repo = require('./repository');
 const { MAX_HIERARCHY_DEPTH } = require('../../utils/hierarchy');
 
 async function assertAccess(req, reply, internId) {
@@ -22,25 +22,13 @@ async function assertAccess(req, reply, internId) {
 
   // TL or Captain can access subordinates
   if (user.role === 'TL' || user.role === 'CAPTAIN') {
-    const subRes = await pool.query(
-      `WITH RECURSIVE subordinates AS (
-         SELECT u.id, u.manager_id, 1 AS depth, ARRAY[$1::uuid, u.id] AS path
-         FROM users u
-         WHERE u.manager_id = $1 AND u.deleted_at IS NULL
-         UNION ALL
-         SELECT u.id, u.manager_id, s.depth + 1, s.path || u.id
-         FROM subordinates s
-         JOIN users u
-           ON u.manager_id = s.id
-          AND u.deleted_at IS NULL
-          AND NOT u.id = ANY(s.path)
-         WHERE s.depth < $3
-       )
-       SELECT id FROM subordinates WHERE id = $2 LIMIT 1`,
-      [user.id, internId, MAX_HIERARCHY_DEPTH]
+    const hasAccess = await repo.hasSubordinateAccess(
+      user.id,
+      internId,
+      MAX_HIERARCHY_DEPTH
     );
 
-    if (subRes.rows.length > 0) {
+    if (hasAccess) {
       return true;
     }
   }

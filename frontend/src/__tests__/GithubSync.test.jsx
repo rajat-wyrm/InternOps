@@ -41,7 +41,7 @@ vi.mock('recharts', () => {
     Tooltip: Mock,
     Legend: Mock,
     ResponsiveContainer: Mock,
-    AreaChart: Mock,
+    AreaChart: ({ children }) => <svg>{children}</svg>,
     Area: Mock,
   };
 });
@@ -177,5 +177,25 @@ describe('GithubSync request cancellation', () => {
         })
       );
     });
+  });
+
+  it('renders analytical charts without crashing on null value inputs', async () => {
+    mockApiGet.mockImplementation((url) => {
+      if (url.includes('/github/stats/analytics')) {
+        return Promise.resolve({
+          data: {
+            dailyCounts: [{ date: null, count: null }],
+            topRepos: [{ github_repo: null, count: null }],
+            eventDistribution: [{ event_type: null, count: null }],
+            statusDistribution: [{ status: null, count: null }],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /analytics/i }));
+    expect(await screen.findByText('Daily Sync Events')).toBeInTheDocument();
   });
 });

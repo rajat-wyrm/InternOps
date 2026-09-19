@@ -1,7 +1,7 @@
 const { Server } = require('socket.io');
 const config = require('./config');
 const { verifyAccessToken } = require('./utils/tokens');
-const { isAccessTokenBlacklisted } = require('./config/redis');
+const authRepository = require('./modules/auth/repository');
 
 let io = null;
 let log = null;
@@ -197,7 +197,7 @@ function initializeWebSocket(server, logger) {
         return next(new Error('Authentication error'));
       }
 
-      if (await isAccessTokenBlacklisted(decoded.jti)) {
+      if (await authRepository.isAccessTokenRevoked(decoded.jti)) {
         log?.warn(
           {
             clientIp,
@@ -275,4 +275,8 @@ async function notifyUser(userId, event, data) {
   io.to(`user_${userId}`).emit(event, data);
 }
 
-module.exports = { initializeWebSocket, getIO, notifyUser };
+function broadcastMutation(type, payload = {}) {
+  if (io) io.emit('database:mutation', { type, ...payload });
+}
+
+module.exports = { initializeWebSocket, getIO, notifyUser, broadcastMutation };

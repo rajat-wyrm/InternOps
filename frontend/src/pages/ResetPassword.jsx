@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
+import { getApiErrorMessage } from '../lib/apiError';
 
 export default function ResetPassword() {
   const [token, setToken] = useState('');
@@ -28,7 +29,7 @@ export default function ResetPassword() {
       setMessage(res.data.message);
       setError('');
     },
-    onError: (err) => setError(err.response?.data?.error || 'Reset failed'),
+    onError: (err) => setError(getApiErrorMessage(err, 'Reset failed')),
   });
 
   const handleSubmit = (e) => {
@@ -105,6 +106,7 @@ export default function ResetPassword() {
                 <input
                   id="newPassword"
                   type="password"
+                  maxLength={128}
                   placeholder="New password (min 8)"
                   autoComplete="new-password"
                   value={newPassword}

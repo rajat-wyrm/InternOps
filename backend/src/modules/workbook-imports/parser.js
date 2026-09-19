@@ -1,4 +1,9 @@
-const XLSX = require('xlsx');
+let XLSX;
+try {
+  XLSX = require('xlsx');
+} catch (e) {
+  // Optional dependency
+}
 
 const ATTENDANCE_MAP = {
   PRESENT: { status: 'PRESENT', remarks: null },
@@ -24,7 +29,7 @@ function excelDate(value) {
   if (value instanceof Date && !Number.isNaN(value.valueOf())) {
     return value.toISOString().slice(0, 10);
   }
-  if (typeof value === 'number' && value > 20000 && value < 80000) {
+  if (XLSX && typeof value === 'number' && value > 20000 && value < 80000) {
     const parsed = XLSX.SSF.parse_date_code(value);
     if (!parsed) return null;
     return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;

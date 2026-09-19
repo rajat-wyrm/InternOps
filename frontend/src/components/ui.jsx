@@ -53,11 +53,18 @@ export function UserAvatar({
   size = 'w-9 h-9',
   text = 'text-sm',
 }) {
-  if (src) {
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [src]);
+
+  if (src && !imageError) {
     return (
       <img
         src={src}
         alt=""
+        onError={() => setImageError(true)}
         className={`${size} rounded-full object-cover border border-white/70 dark:border-slate-700 shadow-sm`}
       />
     );
@@ -239,6 +246,7 @@ export function StatCard({
   value,
   sub,
   icon,
+  badge,
   gradient = 'from-indigo-500 to-blue-600',
 }) {
   return (
@@ -262,6 +270,8 @@ export function StatCard({
               {sub}
             </p>
           )}
+
+          {badge && <div className="mt-2">{badge}</div>}
         </div>
 
         {icon && (

@@ -4,6 +4,7 @@ import api from '../lib/axios';
 import { Card, Btn, Input, Textarea } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDateTimePicker from './CustomDateTimePicker';
+import { getApiErrorMessage } from '../lib/apiError';
 
 const PLATFORMS = [
   'LinkedIn',
@@ -46,7 +47,8 @@ export default function CreateTaskForm({ departmentId } = {}) {
       });
       setTimeout(() => setMsg(''), 2000);
     },
-    onError: (err) => setError(err.response?.data?.error || 'Failed'),
+    onError: (err) =>
+      setError(getApiErrorMessage(err, 'Failed to create task')),
   });
 
   const handleGenerateImage = async () => {

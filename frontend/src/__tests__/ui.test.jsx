@@ -11,6 +11,7 @@ import {
   EmptyState,
   Spinner,
   Stars,
+  StatCard,
 } from '../components/ui';
 
 describe('Shared UI Components Test Suite', () => {
@@ -35,6 +36,21 @@ describe('Shared UI Components Test Suite', () => {
   it('renders UserAvatar with initials when src is not provided', () => {
     render(<UserAvatar name="John Doe" email="john@example.com" />);
     expect(screen.getByText('JD')).toBeInTheDocument();
+  });
+
+  it('renders UserAvatar with initials when image fails to load', () => {
+    const { container } = render(
+      <UserAvatar
+        name="John Doe"
+        email="john@example.com"
+        src="broken-avatar.jpg"
+      />
+    );
+    const img = container.querySelector('img');
+    expect(img).toBeInTheDocument();
+    fireEvent.error(img);
+    expect(screen.getByText('JD')).toBeInTheDocument();
+    expect(container.querySelector('img')).toBeNull();
   });
 
   // 4. Card
@@ -118,5 +134,23 @@ describe('Shared UI Components Test Suite', () => {
     const starContainer = screen.getByTitle('3');
     expect(starContainer).toBeInTheDocument();
     expect(starContainer.textContent).toBe('★★★★★');
+  });
+
+  // 12. StatCard
+  it('renders StatCard with value, label, sub, icon, and badge', () => {
+    render(
+      <StatCard
+        value="42"
+        label="Active Users"
+        sub="Updated recently"
+        badge={<span>+15%</span>}
+        icon={<span data-testid="test-icon">Icon</span>}
+      />
+    );
+    expect(screen.getByText('42')).toBeInTheDocument();
+    expect(screen.getByText('Active Users')).toBeInTheDocument();
+    expect(screen.getByText('Updated recently')).toBeInTheDocument();
+    expect(screen.getByText('+15%')).toBeInTheDocument();
+    expect(screen.getByTestId('test-icon')).toBeInTheDocument();
   });
 });

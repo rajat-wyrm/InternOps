@@ -12,6 +12,7 @@ import api from '../../lib/axios';
 import { Badge, Card } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
 import AnalyticsWorkspace from '../../components/analytics/AnalyticsWorkspace';
+import { getApiErrorMessage } from '../../lib/apiError';
 
 const MEDAL = ['🥇', '🥈', '🥉'];
 const UUID_REGEX =
@@ -255,7 +256,10 @@ export default function Analytics() {
       </Card>
       {workspaceQuery.isError ? (
         <InlineError
-          message="Analytics summary could not be loaded."
+          message={getApiErrorMessage(
+            workspaceQuery.error,
+            'Analytics summary could not be loaded.'
+          )}
           retry={workspaceQuery.refetch}
         />
       ) : workspaceQuery.isPending ? (
@@ -295,7 +299,10 @@ export default function Analytics() {
           </div>
           {performersQuery.isError ? (
             <InlineError
-              message="Top performers could not be loaded."
+              message={getApiErrorMessage(
+                performersQuery.error,
+                'Top performers could not be loaded.'
+              )}
               retry={performersQuery.refetch}
             />
           ) : performersQuery.isPending ? (
@@ -335,7 +342,10 @@ export default function Analytics() {
           </div>
           {trendsQuery.isError ? (
             <InlineError
-              message="Attendance trends could not be loaded."
+              message={getApiErrorMessage(
+                trendsQuery.error,
+                'Attendance trends could not be loaded.'
+              )}
               retry={trendsQuery.refetch}
             />
           ) : trendsQuery.isPending ? (
@@ -480,7 +490,10 @@ export default function Analytics() {
           </p>
         ) : attendanceQuery.isError ? (
           <InlineError
-            message="Department attendance could not be loaded."
+            message={getApiErrorMessage(
+              attendanceQuery.error,
+              'Department attendance could not be loaded.'
+            )}
             retry={attendanceQuery.refetch}
           />
         ) : attendanceQuery.isPending ? (

@@ -11,6 +11,10 @@ const { runWithConcurrencyLimit } = require('../../utils/concurrency');
 const aiDraftService = require('./ai-draft.service');
 const aiRepo = require('../ai/repository');
 const config = require('../../config');
+const {
+  wouldCreateCycle,
+  validateFullGraph,
+} = require('../../utils/dagValidator');
 
 const EMAIL_BATCH_SIZE = 500;
 const EMAIL_CONCURRENCY = 10;
@@ -521,6 +525,197 @@ module.exports = async function socialTasksRoutes(fastify) {
         return reply.status(404).send({ error: 'Task not found' });
       }
       return analytics;
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // Task prerequisites – DAG management
+  // ---------------------------------------------------------------------------
+
+  // Zod schema for the prerequisite body.
+  const addPrereqSchema = z.object({
+    prereqId: z.string().uuid({ message: 'prereqId must be a valid UUID' }),
+  });
+
+  /**
+   * GET /tasks/:id/prerequisites
+   * List all prerequisite tasks for a given task.
+   */
+  fastify.get(
+    '/:id/prerequisites',
+    {
+      schema: {
+        tags: ['Tasks'],
+        description: 'List prerequisite tasks for a given task',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+    },
+    async (req, reply) => {
+      const task = await repo.getTaskById(req.params.id);
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+
+      const prerequisites = await repo.getTaskPrerequisites(req.params.id);
+      return { taskId: req.params.id, prerequisites };
+    }
+  );
+
+  /**
+   * POST /tasks/:id/prerequisites
+   * Add a prerequisite to a task after validating no cycle would be created.
+   *
+   * Flow:
+   *   1. Validate body (prereqId is a UUID)
+   *   2. Confirm both tasks exist in the DB
+   *   3. Fetch ALL current prerequisite edges from DB
+   *   4. Run DFS cycle check (in-memory, no DB writes)
+   *   5. If cycle detected → 409 with the cycle path
+   *   6. Otherwise → INSERT edge → 201
+   */
+  fastify.post(
+    '/:id/prerequisites',
+    {
+      schema: {
+        tags: ['Tasks'],
+        description:
+          'Add a prerequisite to a task. Blocked if it would create a dependency cycle (DAG validation).',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL'), sanitize],
+    },
+    async (req, reply) => {
+      // 1. Validate request body.
+      const parsed = addPrereqSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
+      }
+
+      const taskId = req.params.id;
+      const { prereqId } = parsed.data;
+
+      // 2. Confirm both tasks exist.
+      const [task, prereqTask] = await Promise.all([
+        repo.getTaskById(taskId),
+        repo.getTaskById(prereqId),
+      ]);
+
+      if (!task) {
+        return reply.status(404).send({ error: 'Task not found' });
+      }
+      if (!prereqTask) {
+        return reply.status(404).send({ error: 'Prerequisite task not found' });
+      }
+
+      // 3. Load the full graph from the database.
+      const edges = await repo.getAllPrerequisiteEdges();
+
+      // 4. Run the DFS cycle check.
+      const { hasCycle, cycle } = wouldCreateCycle(edges, taskId, prereqId);
+
+      if (hasCycle) {
+        // 5. Reject — a circular dependency would be created.
+        return reply.status(409).send({
+          error:
+            'Adding this prerequisite would create a circular dependency. ' +
+            'Task workflows must form a Directed Acyclic Graph (DAG).',
+          cycle,
+        });
+      }
+
+      // 6. Safe to insert — no cycle detected.
+      const edge = await repo.addPrerequisite(taskId, prereqId, req.user.id);
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        ...extractRequestInfo(req),
+        action: 'TASK_PREREQ_ADDED',
+        resourceType: 'task_prerequisite',
+        resourceId: taskId,
+        details: { taskId, prereqId },
+      };
+
+      return reply.status(201).send({
+        message: 'Prerequisite added successfully',
+        edge: edge ?? { task_id: taskId, prereq_id: prereqId },
+      });
+    }
+  );
+
+  /**
+   * DELETE /tasks/:id/prerequisites/:prereqId
+   * Remove a prerequisite link between two tasks.
+   */
+  fastify.delete(
+    '/:id/prerequisites/:prereqId',
+    {
+      schema: {
+        tags: ['Tasks'],
+        description: 'Remove a prerequisite from a task',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+    },
+    async (req, reply) => {
+      const { id: taskId, prereqId } = req.params;
+
+      const deleted = await repo.removePrerequisite(taskId, prereqId);
+
+      if (!deleted) {
+        return reply
+          .status(404)
+          .send({ error: 'Prerequisite relationship not found' });
+      }
+
+      req.auditOnResponse = {
+        userId: req.user.id,
+        ...extractRequestInfo(req),
+        action: 'TASK_PREREQ_REMOVED',
+        resourceType: 'task_prerequisite',
+        resourceId: taskId,
+        details: { taskId, prereqId },
+      };
+
+      return { success: true, message: 'Prerequisite removed successfully' };
+    }
+  );
+
+  /**
+   * GET /tasks/dag/validate
+   * Dry-run health check: validate the entire task-prerequisite graph.
+   * Returns graph statistics and reports any existing cycles.
+   */
+  fastify.get(
+    '/dag/validate',
+    {
+      schema: {
+        tags: ['Tasks'],
+        description:
+          'Validate the entire task-prerequisite graph for cycles (dry-run, no writes)',
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
+    },
+    async (_req, reply) => {
+      const edges = await repo.getAllPrerequisiteEdges();
+      const result = validateFullGraph(edges);
+
+      if (result.hasCycle) {
+        return reply.status(409).send({
+          valid: false,
+          error: 'The task-prerequisite graph contains a cycle.',
+          cycle: result.cycle,
+          nodeCount: result.nodeCount,
+          edgeCount: result.edgeCount,
+        });
+      }
+
+      return {
+        valid: true,
+        message: 'Task graph is a valid DAG — no cycles detected.',
+        nodeCount: result.nodeCount,
+        edgeCount: result.edgeCount,
+      };
     }
   );
 };

@@ -23,11 +23,11 @@ const REDIS_DEGRADED_FEATURES = Object.freeze([
   },
   {
     feature: 'access-token revocation',
-    fallback: 'JWT validation only until the access token expires',
+    fallback: 'PostgreSQL revocation fallback',
   },
   {
     feature: 'WebSocket token coordination',
-    fallback: 'JWT validation without shared revocation state',
+    fallback: 'PostgreSQL revocation fallback',
   },
   {
     feature: 'bulk job queue',
@@ -234,26 +234,27 @@ function getRedisDegradedFeatures() {
 }
 
 async function blacklistAccessToken(jti, ttl) {
-  await runRedisOperation(
-    'access-token revocation',
-    'the access token remains valid until it expires',
-    (redisClient) => redisClient.set(`blacklist:${jti}`, '1', { EX: ttl })
-  );
-  return undefined;
-}
-
-async function isAccessTokenBlacklisted(jti) {
-  // Fail open: the token is still cryptographically verified by
-  // verifyAccessToken(). Failing closed would block every authenticated user
-  // during a Redis outage.
   return runRedisOperation(
-    'access-token revocation check',
-    'JWT validation only until the access token expires',
-    async (redisClient) => (await redisClient.exists(`blacklist:${jti}`)) === 1,
+    'access-token revocation',
+    'PostgreSQL remains authoritative',
+    async (redisClient) => {
+      await redisClient.set(`blacklist:${jti}`, '1', { EX: ttl });
+      return true;
+    },
     false
   );
 }
 
+async function isAccessTokenBlacklisted(jti) {
+  // A null result means Redis could not determine the revocation state.
+  // Callers must consult PostgreSQL instead of treating unknown as safe.
+  return runRedisOperation(
+    'access-token revocation check',
+    'PostgreSQL revocation fallback',
+    async (redisClient) => (await redisClient.exists(`blacklist:${jti}`)) === 1,
+    null
+  );
+}
 module.exports = {
   getRedisClient,
   getRedisStatus,

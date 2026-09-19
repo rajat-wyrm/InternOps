@@ -4,6 +4,7 @@ import api from '../lib/axios';
 import { Card, Btn, Input } from './ui';
 import CustomSelect from './CustomSelect';
 import CustomDatePicker from './CustomDatePicker';
+import { getApiErrorMessage } from '../lib/apiError';
 
 const INITIAL_FORM = {
   userId: '',
@@ -67,7 +68,8 @@ export default function AttendanceMarkForm({
       setForm((f) => ({ ...f, userId: '', remarks: '' }));
       setTimeout(() => setMsg(''), 2000);
     },
-    onError: (err) => setError(err.response?.data?.error || 'Failed'),
+    onError: (err) =>
+      setError(getApiErrorMessage(err, 'Failed to mark attendance')),
   });
 
   const today = new Date().toISOString().slice(0, 10);

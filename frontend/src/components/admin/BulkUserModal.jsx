@@ -5,6 +5,7 @@ import Papa from 'papaparse';
 import api from '../../lib/axios';
 import { createPortal } from 'react-dom';
 import useBodyScrollLock from '../../hooks/useBodyScrollLock';
+import { getApiErrorMessage } from '../../lib/apiError';
 
 const ROLES = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
@@ -69,7 +70,11 @@ export default function BulkUserModal({ open, onClose }) {
       api.post('/auth/register/bulk', { users }).then((r) => r.data),
     onSuccess: (data) => {
       setResults(data);
+      setParseError('');
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+    },
+    onError: (err) => {
+      setParseError(getApiErrorMessage(err, 'Failed to create users'));
     },
   });
 

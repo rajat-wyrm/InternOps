@@ -35,6 +35,7 @@ async def get_current_user(
     - Token payload is missing required fields
     """
     if not authorization:
+        print("Auth error: Missing authorization header", flush=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header is required",
@@ -43,6 +44,7 @@ async def get_current_user(
 
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
+        print(f"Auth error: Invalid scheme or empty token. Scheme: {scheme}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header must be 'Bearer <token>'",
@@ -55,16 +57,18 @@ async def get_current_user(
             settings.JWT_SECRET,
             algorithms=["HS256"],
         )
-    except jwt.ExpiredSignatureError:
+    except jwt.ExpiredSignatureError as e:
+        print(f"Auth error: {e}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
+        print(f"Auth error: {e}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or malformed token",
+            detail=f"Invalid or malformed token: {e}",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

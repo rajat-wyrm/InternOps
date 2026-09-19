@@ -1,11 +1,11 @@
 name: Auto Format Code
-
 on:
+  pull_request:
+    branches: [master]
   push:
     # Run on all branches so formatting happens on your fork before/during PR
     branches:
       - '**'
-
 jobs:
   format:
     runs-on: ubuntu-latest
@@ -14,19 +14,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          # On push, github.ref is the branch that was pushed
-          ref: ${{ github.ref }}
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Run Prettier
+      - name: Check formatting on pull requests
+        if: github.event_name == 'pull_request'
+        run: npx prettier --check .
+      - name: Format code on branch pushes
+        if: github.event_name == 'push'
         run: npx prettier --write .
-
-      - name: Commit formatted code
+      - name: Commit formatted code on branch pushes
+        if: github.event_name == 'push'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'style: automatically format code with Prettier'

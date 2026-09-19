@@ -235,10 +235,33 @@ async function getReviewById(reviewId) {
   return res.rows[0] || null;
 }
 
+async function hasSubordinateAccess(userId, internId, maxDepth) {
+  const res = await pool.query(
+    `WITH RECURSIVE subordinates AS (
+       SELECT u.id, u.manager_id, 1 AS depth, ARRAY[$1::uuid, u.id] AS path
+       FROM users u
+       WHERE u.manager_id = $1 AND u.deleted_at IS NULL
+       UNION ALL
+       SELECT u.id, u.manager_id, s.depth + 1, s.path || u.id
+       FROM subordinates s
+       JOIN users u
+         ON u.manager_id = s.id
+        AND u.deleted_at IS NULL
+        AND NOT u.id = ANY(s.path)
+       WHERE s.depth < $3
+     )
+     SELECT id FROM subordinates WHERE id = $2 LIMIT 1`,
+    [userId, internId, maxDepth]
+  );
+
+  return res.rows.length > 0;
+}
+
 module.exports = {
   gatherInternPerformanceData,
   savePerformanceReview,
   getLatestReview,
   getReviewHistory,
   getReviewById,
+  hasSubordinateAccess,
 };

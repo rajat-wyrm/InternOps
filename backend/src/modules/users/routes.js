@@ -10,6 +10,7 @@ const { z } = require('zod');
 const authRepo = require('../auth/repository');
 const { toSchema } = require('../../utils/schemaHelper');
 const { isValidStep, checkHierarchyAccess } = require('../../utils/hierarchy');
+const { PASSWORD_MAX_LENGTH } = require('../auth/passwordPolicy');
 
 const SENIOR_TL_MANAGEABLE_ROLES = new Set(['TL', 'CAPTAIN', 'INTERN']);
 const TL_MANAGEABLE_ROLES = new Set(['CAPTAIN', 'INTERN']);
@@ -119,8 +120,8 @@ const isValidAvatarUrl = (val) => {
 };
 
 const changePasswordSchema = z.object({
-  oldPassword: z.string(),
-  newPassword: z.string().min(8),
+  oldPassword: z.string().max(PASSWORD_MAX_LENGTH),
+  newPassword: z.string().min(8).max(PASSWORD_MAX_LENGTH),
 });
 
 const updateProfileSchema = z.object({
@@ -744,7 +745,7 @@ async function routes(fastify) {
     async (req, reply) => {
       const schema = z.object({
         oldPassword: z.string(),
-        newPassword: z.string().min(8),
+        newPassword: z.string().min(8).max(PASSWORD_MAX_LENGTH),
       });
 
       const { oldPassword, newPassword } = schema.parse(req.body);

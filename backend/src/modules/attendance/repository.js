@@ -8,6 +8,7 @@ const {
 
 function assertWithinHierarchyRowLimit(rows) {
   if (rows.length <= MAX_HIERARCHY_ROWS) return;
+
   const err = new Error('Team too large');
   err.statusCode = 416;
   throw err;
@@ -19,18 +20,22 @@ function dateOnly(value) {
 
 function memberAppliesToRange(member, from, to) {
   const joinedOn = dateOnly(member.joining_date);
+
   if (joinedOn && joinedOn > to) return false;
 
   const status = member.internship_status || 'ACTIVE';
+
   if (status === 'COMPLETED') {
     const completedOn = dateOnly(
       member.extended_completion_date || member.completion_date
     );
+
     return !completedOn || completedOn >= from;
   }
 
   if (['TERMINATED', 'DISCONTINUED'].includes(status)) {
     const endedOn = dateOnly(member.lifecycle_effective_date);
+
     return !endedOn || endedOn >= from;
   }
 
@@ -46,6 +51,7 @@ async function markAttendance(
   client = pool
 ) {
   await assertActivityAllowed(client, userId, date);
+
   const res = await client.query(
     `INSERT INTO attendance (user_id, marked_by, date, status, remarks)
      VALUES ($1,$2,$3,$4,$5)
@@ -58,45 +64,91 @@ async function markAttendance(
   return res.rows[0];
 }
 
-async function getAttendance(userId, { from, to, page = 1, limit = 30 } = {}) {
+/**
+ * Get attendance records using keyset pagination.
+ *
+ * Cursor contains:
+ * {
+ *   date: 'YYYY-MM-DD',
+ *   id: '<attendance UUID>'
+ * }
+ *
+ * Results are ordered by date DESC, id DESC.
+ */
+async function getAttendance(userId, { from, to, limit = 30, cursor } = {}) {
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 30, 1), 100);
-  const safePage = Math.max(parseInt(page, 10) || 1, 1);
-  const offset = (safePage - 1) * safeLimit;
 
-  const where = ['user_id=$1', 'a.deleted_at IS NULL'];
+  const where = ['a.user_id = $1', 'a.deleted_at IS NULL'];
   const params = [userId];
 
   if (from) {
     params.push(from);
-    where.push(`date >= $${params.length}`);
+    where.push(`a.date >= $${params.length}`);
   }
 
   if (to) {
     params.push(to);
-    where.push(`date <= $${params.length}`);
+    where.push(`a.date <= $${params.length}`);
+  }
+
+  if (cursor) {
+    params.push(cursor.date);
+    const cursorDateIndex = params.length;
+
+    params.push(cursor.id);
+    const cursorIdIndex = params.length;
+
+    where.push(
+      `(a.date < $${cursorDateIndex}
+        OR (
+          a.date = $${cursorDateIndex}
+          AND a.id < $${cursorIdIndex}
+        ))`
+    );
   }
 
   const whereClause = where.join(' AND ');
 
-  const countRes = await pool.query(
-    `SELECT COUNT(*)::int AS total FROM attendance a WHERE ${whereClause}`,
-    params
-  );
-
-  const total = countRes.rows[0].total;
-
-  params.push(safeLimit, offset);
-
   const res = await pool.query(
-    `SELECT a.*, m.full_name AS marked_by_name
+    `SELECT
+       a.id,
+       a.user_id,
+       a.marked_by,
+       a.date::text AS date,
+       a.status,
+       a.remarks,
+       a.created_at,
+       a.updated_at,
+       a.deleted_at,
+       a.arrival_time,
+       m.full_name AS marked_by_name
      FROM attendance a
      LEFT JOIN users m ON m.id = a.marked_by
      WHERE ${whereClause}
-     ORDER BY a.date DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
-    params
+     ORDER BY a.date DESC, a.id DESC
+     LIMIT $${params.length + 1}`,
+    [...params, safeLimit + 1]
   );
 
-  return { records: res.rows, total, page: safePage, limit: safeLimit };
+  const hasNextPage = res.rows.length > safeLimit;
+
+  const records = hasNextPage ? res.rows.slice(0, safeLimit) : res.rows;
+
+  const lastRecord = records[records.length - 1];
+
+  const nextCursor =
+    hasNextPage && lastRecord
+      ? {
+          date: lastRecord.date,
+          id: lastRecord.id,
+        }
+      : null;
+
+  return {
+    records,
+    limit: safeLimit,
+    nextCursor,
+  };
 }
 
 async function getDepartmentAttendanceSheet({
@@ -108,10 +160,13 @@ async function getDepartmentAttendanceSheet({
   to,
 }) {
   const departmentWide = isAdmin || requesterRole === 'SENIOR_TL';
+
   const memberScope = departmentWide
     ? `SELECT u.id, u.full_name, u.email, u.intern_code, u.role, u.department_id, u.joining_date::text, u.internship_status, u.lifecycle_effective_date::text, u.completion_date::text, u.extended_completion_date::text
        FROM users u
-       WHERE u.department_id = $1 AND u.deleted_at IS NULL AND u.role <> 'ADMIN'
+       WHERE u.department_id = $1
+         AND u.deleted_at IS NULL
+         AND u.role <> 'ADMIN'
        ORDER BY ${roleRankSql('u')},
          LOWER(COALESCE(NULLIF(TRIM(u.full_name), ''), u.email)),
          LOWER(u.email), u.id`
@@ -120,10 +175,14 @@ async function getDepartmentAttendanceSheet({
                 0 AS depth, ARRAY[u.id] AS path,
                 ${roleRankSql('u')} AS structural_rank
          FROM users u
-         WHERE u.id = $2 AND u.deleted_at IS NULL
+         WHERE u.id = $2
+           AND u.deleted_at IS NULL
+
          UNION ALL
+
          SELECT u.id, u.full_name, u.email, u.intern_code, u.role, u.department_id, u.manager_id, u.joining_date, u.internship_status, u.lifecycle_effective_date, u.completion_date, u.extended_completion_date,
-                visible_users.depth + 1, visible_users.path || u.id,
+                visible_users.depth + 1,
+                visible_users.path || u.id,
                 ${roleRankSql('u')} AS structural_rank
          FROM visible_users
          INNER JOIN users u
@@ -132,20 +191,37 @@ async function getDepartmentAttendanceSheet({
           AND NOT u.id = ANY(visible_users.path)
          WHERE visible_users.depth < $3
        )
-       SELECT id, full_name, email, intern_code, role, department_id, joining_date::text, internship_status, lifecycle_effective_date::text, completion_date::text, extended_completion_date::text
+
+       SELECT
+         id,
+         full_name,
+         email,
+         intern_code,
+         role,
+         department_id,
+         joining_date::text,
+         internship_status,
+         lifecycle_effective_date::text,
+         completion_date::text,
+         extended_completion_date::text
        FROM visible_users
        WHERE department_id = $1
-       ORDER BY depth, structural_rank,
+       ORDER BY depth,
+         structural_rank,
          LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
-         LOWER(email), id`;
+         LOWER(email),
+         id`;
 
   const memberParams = departmentWide
     ? [departmentId]
     : [departmentId, requesterId, MAX_HIERARCHY_DEPTH];
 
   const membersResult = await pool.query(memberScope, memberParams);
+
   const scopedMemberIds = membersResult.rows.map((member) => member.id);
+
   let availableMonths = [];
+
   if (scopedMemberIds.length > 0) {
     const availableMonthsResult = await pool.query(
       `SELECT DISTINCT TO_CHAR(a.date, 'YYYY-MM') AS month
@@ -155,8 +231,10 @@ async function getDepartmentAttendanceSheet({
        ORDER BY month ASC`,
       [scopedMemberIds]
     );
+
     availableMonths = availableMonthsResult.rows.map((row) => row.month);
   }
+
   const members = membersResult.rows
     .filter((member) => memberAppliesToRange(member, from, to))
     .sort((a, b) => {
@@ -167,15 +245,19 @@ async function getDepartmentAttendanceSheet({
         CAPTAIN: 3,
         INTERN: 4,
       };
+
       const roleDifference =
         (roleOrder[a.role] ?? 99) - (roleOrder[b.role] ?? 99);
+
       if (roleDifference) return roleDifference;
+
       return String(a.full_name || a.email || '').localeCompare(
         String(b.full_name || b.email || ''),
         undefined,
         { sensitivity: 'base' }
       );
     });
+
   const memberIds = members.map((member) => member.id);
 
   if (memberIds.length === 0) {
@@ -188,8 +270,14 @@ async function getDepartmentAttendanceSheet({
   }
 
   const recordsResult = await pool.query(
-    `SELECT a.id, a.user_id, TO_CHAR(a.date, 'YYYY-MM-DD') AS date, a.status, a.remarks,
-            a.marked_by, marker.full_name AS marked_by_name
+    `SELECT
+       a.id,
+       a.user_id,
+       TO_CHAR(a.date, 'YYYY-MM-DD') AS date,
+       a.status,
+       a.remarks,
+       a.marked_by,
+       marker.full_name AS marked_by_name
      FROM attendance a
      LEFT JOIN users marker ON marker.id = a.marked_by
      WHERE a.user_id = ANY($1::uuid[])
@@ -202,7 +290,11 @@ async function getDepartmentAttendanceSheet({
 
   const datesResult = await pool.query(
     `SELECT TO_CHAR(day, 'YYYY-MM-DD') AS date
-     FROM generate_series($1::date, $2::date, interval '1 day') AS day
+     FROM generate_series(
+       $1::date,
+       $2::date,
+       interval '1 day'
+     ) AS day
      WHERE EXTRACT(ISODOW FROM day) <> 7`,
     [from, to]
   );
@@ -216,11 +308,14 @@ async function getDepartmentAttendanceSheet({
 }
 
 async function getMonthlyStats(userId, month, year) {
-  // SARGable date-range form: avoid EXTRACT() on a date column, which would
-  // force a sequential scan. With the date range we can use a btree index.
+  // SARGable date-range form: avoid EXTRACT() on a date column,
+  // which would force a sequential scan.
+  // With the date range we can use a btree index.
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+
   const nextMonth = month === 12 ? 1 : month + 1;
   const nextYear = month === 12 ? year + 1 : year;
+
   const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
   const res = await pool.query(
@@ -228,7 +323,7 @@ async function getMonthlyStats(userId, month, year) {
      FROM attendance
      WHERE user_id = $1
        AND date >= $2
-       AND date <  $3
+       AND date < $3
        AND deleted_at IS NULL
      GROUP BY status`,
     [userId, startDate, endDate]
@@ -242,6 +337,7 @@ async function bulkMark(entries, markedBy, client = pool) {
 
   for (const e of entries) {
     await assertActivityAllowed(client, e.user_id, e.date);
+
     const r = await client.query(
       `INSERT INTO attendance (user_id, marked_by, date, status, remarks)
        VALUES ($1,$2,$3,$4,$5)
@@ -267,11 +363,22 @@ async function listHierarchySubordinates(managerId, targetIds) {
 
   const res = await pool.query(
     `WITH RECURSIVE chain AS (
-       SELECT u.id, u.manager_id, 1 AS depth, ARRAY[$1::uuid, u.id] AS path
+       SELECT
+         u.id,
+         u.manager_id,
+         1 AS depth,
+         ARRAY[$1::uuid, u.id] AS path
        FROM users u
-       WHERE u.manager_id = $1 AND u.deleted_at IS NULL
+       WHERE u.manager_id = $1
+         AND u.deleted_at IS NULL
+
        UNION ALL
-       SELECT u.id, u.manager_id, chain.depth + 1, chain.path || u.id
+
+       SELECT
+         u.id,
+         u.manager_id,
+         chain.depth + 1,
+         chain.path || u.id
        FROM chain
        INNER JOIN users u
          ON u.manager_id = chain.id
@@ -279,7 +386,9 @@ async function listHierarchySubordinates(managerId, targetIds) {
         AND NOT u.id = ANY(chain.path)
        WHERE chain.depth < $3
      )
-     SELECT id FROM chain WHERE id = ANY($2::uuid[])`,
+     SELECT id
+     FROM chain
+     WHERE id = ANY($2::uuid[])`,
     [managerId, targetIds, MAX_HIERARCHY_DEPTH]
   );
 
@@ -293,29 +402,54 @@ async function getAuthorizedSubordinates(
 ) {
   if (requesterRole === 'SENIOR_TL') {
     const { rows } = await pool.query(
-      `SELECT u.id, u.full_name, u.email, u.role FROM users u
-       WHERE u.department_id = $1 AND u.id <> $2 AND u.role <> 'ADMIN'
+      `SELECT
+         u.id,
+         u.full_name,
+         u.email,
+         u.role
+       FROM users u
+       WHERE u.department_id = $1
+         AND u.id <> $2
+         AND u.role <> 'ADMIN'
          AND u.deleted_at IS NULL
        ORDER BY ${roleRankSql('u')},
          LOWER(COALESCE(NULLIF(TRIM(u.full_name), ''), u.email)),
-         LOWER(u.email), u.id
+         LOWER(u.email),
+         u.id
        LIMIT $3`,
       [departmentId, managerId, MAX_HIERARCHY_ROWS + 1]
     );
+
     assertWithinHierarchyRowLimit(rows);
     return rows;
   }
+
   const res = await pool.query(
     `WITH RECURSIVE subordinates AS (
-       SELECT u.id, u.full_name, u.email, u.role, u.manager_id,
-              1 AS depth, ARRAY[$1::uuid, u.id] AS path,
-              ${roleRankSql('u')} AS structural_rank
+       SELECT
+         u.id,
+         u.full_name,
+         u.email,
+         u.role,
+         u.manager_id,
+         1 AS depth,
+         ARRAY[$1::uuid, u.id] AS path,
+         ${roleRankSql('u')} AS structural_rank
        FROM users u
-       WHERE u.manager_id = $1 AND u.deleted_at IS NULL
+       WHERE u.manager_id = $1
+         AND u.deleted_at IS NULL
+
        UNION ALL
-       SELECT u.id, u.full_name, u.email, u.role, u.manager_id,
-              s.depth + 1, s.path || u.id,
-              ${roleRankSql('u')} AS structural_rank
+
+       SELECT
+         u.id,
+         u.full_name,
+         u.email,
+         u.role,
+         u.manager_id,
+         s.depth + 1,
+         s.path || u.id,
+         ${roleRankSql('u')} AS structural_rank
        FROM subordinates s
        INNER JOIN users u
          ON u.manager_id = s.id
@@ -323,40 +457,64 @@ async function getAuthorizedSubordinates(
         AND NOT u.id = ANY(s.path)
        WHERE s.depth < $2
      )
-     SELECT id, full_name, email, role FROM subordinates
-     ORDER BY structural_rank, depth,
-     LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
-     LOWER(email), id
+     SELECT
+       id,
+       full_name,
+       email,
+       role
+     FROM subordinates
+     ORDER BY structural_rank,
+       depth,
+       LOWER(COALESCE(NULLIF(TRIM(full_name), ''), email)),
+       LOWER(email),
+       id
      LIMIT $3`,
     [managerId, MAX_HIERARCHY_DEPTH, MAX_HIERARCHY_ROWS + 1]
   );
+
   assertWithinHierarchyRowLimit(res.rows);
+
   return res.rows;
 }
 
 async function getAnomalies(managerId, isAdmin, filters = {}) {
   const { intern_id, flag_type, viewed } = filters;
+
   let query = `
-    SELECT a.*, 
-           u.full_name AS intern_name, 
-           u.email AS intern_email,
-           v.full_name AS viewed_by_name
+    SELECT
+      a.*,
+      u.full_name AS intern_name,
+      u.email AS intern_email,
+      v.full_name AS viewed_by_name
     FROM attendance_anomalies a
     JOIN users u ON u.id = a.intern_id
     LEFT JOIN users v ON v.id = a.viewed_by
     WHERE 1=1
   `;
+
   const params = [];
 
   if (!isAdmin) {
     params.push(managerId, MAX_HIERARCHY_DEPTH);
+
     query += ` AND a.intern_id IN (
       WITH RECURSIVE subordinates AS (
-        SELECT u.id, u.manager_id, 1 AS depth, ARRAY[$1::uuid, u.id] AS path
+        SELECT
+          u.id,
+          u.manager_id,
+          1 AS depth,
+          ARRAY[$1::uuid, u.id] AS path
         FROM users u
-        WHERE u.manager_id = $1 AND u.deleted_at IS NULL
+        WHERE u.manager_id = $1
+          AND u.deleted_at IS NULL
+
         UNION ALL
-        SELECT u.id, u.manager_id, s.depth + 1, s.path || u.id
+
+        SELECT
+          u.id,
+          u.manager_id,
+          s.depth + 1,
+          s.path || u.id
         FROM subordinates s
         INNER JOIN users u
           ON u.manager_id = s.id
@@ -364,7 +522,8 @@ async function getAnomalies(managerId, isAdmin, filters = {}) {
          AND NOT u.id = ANY(s.path)
         WHERE s.depth < $2
       )
-      SELECT id FROM subordinates
+      SELECT id
+      FROM subordinates
     )`;
   }
 
@@ -389,21 +548,29 @@ async function getAnomalies(managerId, isAdmin, filters = {}) {
   query += ` ORDER BY a.created_at DESC`;
 
   const res = await pool.query(query, params);
+
   return res.rows;
 }
 
 async function markAnomalyViewed(anomalyId, managerId, isAdmin) {
   if (!isAdmin) {
     const checkRes = await pool.query(
-      `SELECT intern_id FROM attendance_anomalies WHERE id = $1`,
+      `SELECT intern_id
+       FROM attendance_anomalies
+       WHERE id = $1`,
       [anomalyId]
     );
+
     if (checkRes.rows.length === 0) {
       throw new Error('Anomaly not found');
     }
+
     const internId = checkRes.rows[0].intern_id;
+
     const subordinates = await getAuthorizedSubordinates(managerId);
+
     const subIds = new Set(subordinates.map((s) => s.id));
+
     if (!subIds.has(internId)) {
       throw new Error('Access denied: Intern is not in your hierarchy');
     }
@@ -411,7 +578,10 @@ async function markAnomalyViewed(anomalyId, managerId, isAdmin) {
 
   const res = await pool.query(
     `UPDATE attendance_anomalies
-     SET viewed_by = $1, viewed_at = NOW(), updated_at = NOW()
+     SET
+       viewed_by = $1,
+       viewed_at = NOW(),
+       updated_at = NOW()
      WHERE id = $2
      RETURNING *`,
     [managerId, anomalyId]

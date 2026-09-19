@@ -133,6 +133,74 @@ function buildRedisConfig() {
   };
 }
 
+function buildStorageConfig() {
+  const driver = (process.env.STORAGE_DRIVER || 'local').toLowerCase();
+
+  // Cloudinary credentials
+  const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
+  const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY?.trim();
+  const cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
+  const isCloudinaryConfigured = Boolean(
+    cloudinaryCloudName && cloudinaryApiKey && cloudinaryApiSecret
+  );
+
+  // R2 / S3 credentials
+  const accountId = process.env.R2_ACCOUNT_ID?.trim();
+  const accessKeyId =
+    process.env.R2_ACCESS_KEY_ID?.trim() ||
+    process.env.AWS_ACCESS_KEY_ID?.trim();
+  const secretAccessKey =
+    process.env.R2_SECRET_ACCESS_KEY?.trim() ||
+    process.env.AWS_SECRET_ACCESS_KEY?.trim();
+  const bucketName =
+    process.env.R2_BUCKET_NAME?.trim() || process.env.AWS_BUCKET_NAME?.trim();
+  const publicUrl =
+    process.env.R2_PUBLIC_URL?.trim() || process.env.AWS_PUBLIC_URL?.trim();
+  const endpoint =
+    process.env.R2_ENDPOINT?.trim() ||
+    (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : undefined);
+  const region = process.env.AWS_REGION || 'auto';
+
+  const isS3Configured = Boolean(accessKeyId && secretAccessKey && bucketName);
+
+  let activeDriver = 'local';
+  if (
+    (driver === 'cloudinary' || driver === 'cloud') &&
+    isCloudinaryConfigured
+  ) {
+    activeDriver = 'cloudinary';
+  } else if (
+    isCloudinaryConfigured &&
+    !isS3Configured &&
+    driver !== 's3' &&
+    driver !== 'r2'
+  ) {
+    activeDriver = 'cloudinary';
+  } else if (['r2', 's3'].includes(driver) && isS3Configured) {
+    activeDriver = driver;
+  } else if (isS3Configured) {
+    activeDriver = 'r2';
+  }
+
+  return {
+    driver: activeDriver,
+    cloudinary: {
+      cloudName: cloudinaryCloudName,
+      apiKey: cloudinaryApiKey,
+      apiSecret: cloudinaryApiSecret,
+      isConfigured: isCloudinaryConfigured,
+    },
+    isCloudConfigured: isS3Configured || isCloudinaryConfigured,
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    bucketName,
+    publicUrl: publicUrl ? publicUrl.replace(/\/+$/, '') : null,
+    endpoint,
+    region,
+  };
+}
+
 function parseDurationToSeconds(value, fallbackSeconds) {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
     return Math.floor(value);
@@ -226,6 +294,7 @@ module.exports = {
     process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
   cookie: buildCookieConfig(),
   redis: buildRedisConfig(),
+  storage: buildStorageConfig(),
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,

@@ -18,16 +18,23 @@ function getApiOrigin() {
     url = `http://${url}`;
   }
 
-  return url.replace(/\/+$/, '').replace(/\/api\/v\d+$/i, '');
+  return url
+    .replace(/\/+$/, '')
+    .replace(/\/api(?:\/v\d+)?$/i, '')
+    .replace(/\/+$/, '');
 }
 
 export function resolveUploadUrl(path) {
-  if (!path) return null;
-  if (/^(https?:|data:|blob:)/i.test(path)) return path; // already absolute
-  if (!path.startsWith('/uploads/')) return path; // keep frontend public assets like /admin-default-avatar.svg relative
+  if (!path || typeof path !== 'string') return null;
+  const trimmed = path.trim();
+  if (!trimmed) return null;
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) return trimmed; // already absolute
+
+  const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  if (!normalizedPath.startsWith('/uploads/')) return trimmed; // keep frontend public assets like /admin-default-avatar.svg relative
 
   const origin = getApiOrigin();
-  return origin ? `${origin}${path}` : path;
+  return origin ? `${origin}${normalizedPath}` : normalizedPath;
 }
 
 export default resolveUploadUrl;

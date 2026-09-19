@@ -14,6 +14,7 @@ const { fetchProofContent } = require('../social-tasks/crawler.service');
 const { verifyClaim } = require('../social-tasks/ai-verify.service');
 const { checkHierarchyAccess } = require('../../utils/hierarchy');
 const verificationService = require('./verification.service');
+const { broadcastMutation } = require('../../websocket');
 
 async function routes(fastify) {
   // Submit proof (intern only)
@@ -211,29 +212,91 @@ async function routes(fastify) {
       preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
       schema: {
         tags: ['Proofs'],
-        description: 'Verify a proof submission',
+        description: 'Verify or review a proof submission',
         params: toSchema(z.object({ id: z.string() })),
+        body: toSchema(
+          z
+            .object({
+              status: z.enum(['VERIFIED', 'APPROVED', 'REJECTED']).optional(),
+            })
+            .optional()
+        ),
       },
     },
     async (req, reply) => {
       try {
-        const verified = await repo.verifyProof(
-          req.params.id,
-          req.user.id,
-          req.user.role
-        );
-        if (!verified) {
+        const isRejection = req.body?.status === 'REJECTED';
+        const result = isRejection
+          ? await repo.rejectProof(req.params.id, req.user.id, req.user.role)
+          : await repo.verifyProof(req.params.id, req.user.id, req.user.role);
+        if (!result) {
           return reply.status(404).send({ error: 'Proof not found' });
         }
 
         req.auditOnResponse = {
           userId: req.user.id,
-          action: 'PROOF_VERIFIED',
+          action: isRejection ? 'PROOF_REJECTED' : 'PROOF_VERIFIED',
           resourceType: 'proof',
-          resourceId: verified.id,
+          resourceId: result.id,
         };
 
-        return verified;
+        broadcastMutation('proof', {
+          id: result.id,
+          intern_id: result.intern_id,
+          task_id: result.task_id,
+          status: result.status,
+        });
+
+        return result;
+      } catch (err) {
+        if (err.message === 'Proof not found') {
+          return reply.status(404).send({ error: 'Proof not found' });
+        }
+        if (err.message.startsWith('Forbidden')) {
+          return reply.status(403).send({ error: err.message });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // Reject proof (Captain, TL, Senior TL) with ownership over the intern
+  fastify.patch(
+    '/:id/reject',
+    {
+      preHandler: [auth, rbac('CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'), sanitize],
+      schema: {
+        tags: ['Proofs'],
+        description: 'Reject a proof submission',
+        params: toSchema(z.object({ id: z.string() })),
+      },
+    },
+    async (req, reply) => {
+      try {
+        const rejected = await repo.rejectProof(
+          req.params.id,
+          req.user.id,
+          req.user.role
+        );
+        if (!rejected) {
+          return reply.status(404).send({ error: 'Proof not found' });
+        }
+
+        req.auditOnResponse = {
+          userId: req.user.id,
+          action: 'PROOF_REJECTED',
+          resourceType: 'proof',
+          resourceId: rejected.id,
+        };
+
+        broadcastMutation('proof', {
+          id: rejected.id,
+          intern_id: rejected.intern_id,
+          task_id: rejected.task_id,
+          status: rejected.status,
+        });
+
+        return rejected;
       } catch (err) {
         if (err.message === 'Proof not found') {
           return reply.status(404).send({ error: 'Proof not found' });

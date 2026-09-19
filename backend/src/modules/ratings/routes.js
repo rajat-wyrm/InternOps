@@ -1,7 +1,7 @@
 const {
   sanitizationMiddleware: sanitize,
 } = require('../../middleware/sanitize');
-const { notifyUser } = require('../../websocket');
+const { notifyUser, broadcastMutation } = require('../../websocket');
 const auth = require('../../middleware/auth');
 const rbac = require('../../middleware/rbac');
 const ownership = require('../../middleware/ownership');
@@ -99,6 +99,12 @@ module.exports = async function ratingsRoutes(fastify) {
       await notifyUser(rating.rated_user_id, 'rating-received', {
         rating,
       }).catch(() => {});
+
+      broadcastMutation('rating', {
+        id: rating.id,
+        rated_user_id: rating.rated_user_id,
+        score: rating.score,
+      });
 
       return reply.status(201).send(rating);
     }

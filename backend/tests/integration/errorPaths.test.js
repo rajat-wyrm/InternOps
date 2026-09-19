@@ -25,6 +25,50 @@ describe('API error-path integration tests', () => {
     await app.close();
   });
 
+  it('accepts unauthenticated client error reports without CSRF', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/client-error',
+      payload: {
+        message: 'Test client error',
+        stack: 'Error: Test client error',
+        componentStack: 'at TestComponent',
+        url: 'http://localhost:5173/dashboard',
+        userAgent: 'test-agent',
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    expect(res.statusCode).toBe(204);
+  });
+
+  it('handles malformed CSRF cookies without server errors or delays', async () => {
+    const cases = [
+      'csrf-sid=abc%',
+      'csrf-token=abc%',
+      'csrf-sid=1%20AND%20SLEEP(5)',
+      'csrf-token=1%20AND%20SLEEP(5)',
+    ];
+
+    for (const cookie of cases) {
+      const startedAt = Date.now();
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/csrf-token',
+        headers: { cookie },
+      });
+      const durationMs = Date.now() - startedAt;
+      const body = JSON.parse(res.body);
+
+      expect(res.statusCode).toBe(200);
+      expect(durationMs).toBeLessThan(2000);
+      expect(body.csrfToken).toEqual(expect.any(String));
+      expect(body.csrfToken).not.toHaveLength(0);
+      expect(res.body).not.toMatch(
+        /stack|sql|select|sleep\s*\(|node_modules|internal server error/i
+      );
+    }
+  });
   it('returns a sanitized 500 when a database operation fails', async () => {
     const dbError = new Error('database connection refused');
     const query = jest.spyOn(pool, 'query').mockRejectedValueOnce(dbError);
@@ -131,17 +175,28 @@ describe('API error-path integration tests', () => {
 });
 
 describe('Redis unavailability fallback', () => {
-  it('continues token checks when Redis is unavailable', async () => {
-    const {
-      getRedisClient,
-      isAccessTokenBlacklisted,
-      blacklistAccessToken,
-    } = require('../../src/config/redis');
+  it('uses PostgreSQL revocation when Redis is unavailable', async () => {
+    const repository = require('../../src/modules/auth/repository');
+    const { getRedisClient } = require('../../src/config/redis');
+    const jti = `revocation-fallback-${Date.now()}`;
+    const user = await pool.query(
+      `SELECT id FROM users WHERE deleted_at IS NULL ORDER BY created_at LIMIT 1`
+    );
+    const userId = user.rows[0].id;
+    const expiresAt = new Date(Date.now() + 60_000);
 
-    // Test mode intentionally makes the Redis client unavailable. The
-    // application must treat that the same as a failed optional connection.
     await expect(getRedisClient()).resolves.toBeNull();
-    await expect(isAccessTokenBlacklisted('token-id')).resolves.toBe(false);
-    await expect(blacklistAccessToken('token-id', 60)).resolves.toBeUndefined();
+
+    try {
+      await repository.revokeAccessToken(jti, userId, expiresAt);
+      await expect(repository.isAccessTokenRevoked(jti)).resolves.toBe(true);
+      await expect(
+        repository.isAccessTokenRevoked(`${jti}-not-revoked`)
+      ).resolves.toBe(false);
+    } finally {
+      await pool.query('DELETE FROM revoked_access_tokens WHERE jti = $1', [
+        jti,
+      ]);
+    }
   });
 });

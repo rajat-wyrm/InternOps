@@ -672,21 +672,8 @@ module.exports = async function githubSyncRoutes(fastify) {
       preHandler: [auth, rbac('ADMIN')],
     },
     async (req) => {
-      const pool = require('../../config/db');
-      const [githubTasks, totalTasks, byRepo, byPlatform] = await Promise.all([
-        pool.query(
-          `SELECT COUNT(*)::int AS count FROM social_tasks WHERE source = 'github' AND deleted_at IS NULL`
-        ),
-        pool.query(
-          `SELECT COUNT(*)::int AS count FROM social_tasks WHERE deleted_at IS NULL`
-        ),
-        pool.query(
-          `SELECT github_repo, COUNT(*)::int AS count FROM social_tasks WHERE source = 'github' AND deleted_at IS NULL GROUP BY github_repo ORDER BY count DESC`
-        ),
-        pool.query(
-          `SELECT target_platform, COUNT(*)::int AS count FROM social_tasks WHERE source = 'github' AND deleted_at IS NULL GROUP BY target_platform ORDER BY count DESC`
-        ),
-      ]);
+      const stats = await repo.getSyncCountStats();
+      return stats;
       return {
         totalGithubTasks: githubTasks.rows[0].count,
         totalAllTasks: totalTasks.rows[0].count,

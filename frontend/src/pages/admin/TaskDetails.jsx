@@ -25,7 +25,9 @@ import {
   GitPullRequest as GithubIcon,
   BarChart3,
   CheckCircle2,
+  XCircle,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import api from '../../lib/axios';
 import useAuthStore from '../../store/auth';
 import {
@@ -37,6 +39,7 @@ import {
   ApiErrorState,
 } from '../../components/ui';
 import CustomSelect from '../../components/CustomSelect';
+import ErrorBoundary from '../../components/ErrorBoundary';
 
 const PLATFORM_ICON = {
   LinkedIn: <Briefcase className="w-5 h-5" />,
@@ -97,25 +100,111 @@ export default function TaskDetails() {
     enabled: hydrated && !!accessToken,
   });
 
-  const verifyMutation = useMutation({
-    mutationFn: ({ proofId }) => api.patch(`/proofs/${proofId}/verify`),
-    onSuccess: () => {
-      showNotification('Proof verified successfully!');
+  const reviewProofMutation = useMutation({
+    mutationFn: async ({ proofId, action = 'approve' }) => {
+      if (action === 'reject') {
+        return api.patch(`/proofs/${proofId}/reject`);
+      }
+      return api.patch(`/proofs/${proofId}/verify`);
+    },
+    onMutate: async ({ proofId, action = 'approve' }) => {
+      const newStatus = action === 'reject' ? 'REJECTED' : 'VERIFIED';
+      await queryClient.cancelQueries({ queryKey: ['taskAnalytics', taskId] });
+      await queryClient.cancelQueries({ queryKey: ['proofs'] });
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+
+      const previousAnalytics = queryClient.getQueryData([
+        'taskAnalytics',
+        taskId,
+      ]);
+      const previousActiveProofIntern = activeProofIntern;
+
+      // Optimistically update activeProofIntern
+      setActiveProofIntern((prev) =>
+        prev && (prev.proof_id === proofId || prev.id === proofId)
+          ? { ...prev, proof_status: newStatus }
+          : prev
+      );
+
+      // Optimistically update taskAnalytics data
+      if (previousAnalytics) {
+        queryClient.setQueryData(['taskAnalytics', taskId], (old) => {
+          if (!old) return old;
+          const oldInterns = Array.isArray(old.interns) ? old.interns : [];
+          const targetIntern = oldInterns.find(
+            (i) => i.proof_id === proofId || i.id === proofId
+          );
+          const wasPending = targetIntern?.proof_status === 'PENDING';
+
+          const updatedInterns = oldInterns.map((i) =>
+            i.proof_id === proofId || i.id === proofId
+              ? { ...i, proof_status: newStatus }
+              : i
+          );
+
+          const oldSummary = old.summary || {};
+          const newPendingCount = wasPending
+            ? Math.max(0, (oldSummary.pending_count || 0) - 1)
+            : oldSummary.pending_count || 0;
+          const newVerifiedCount =
+            action === 'approve'
+              ? (oldSummary.verified_count || 0) + 1
+              : oldSummary.verified_count || 0;
+          const newRejectedCount =
+            action === 'reject'
+              ? (oldSummary.rejected_count || 0) + 1
+              : oldSummary.rejected_count || 0;
+          const total = oldSummary.total_interns || 0;
+          const newRate =
+            total > 0 ? Math.round((newVerifiedCount / total) * 100) : 0;
+
+          return {
+            ...old,
+            summary: {
+              ...oldSummary,
+              pending_count: newPendingCount,
+              verified_count: newVerifiedCount,
+              rejected_count: newRejectedCount,
+              completion_rate: newRate,
+            },
+            interns: updatedInterns,
+          };
+        });
+      }
+
+      return { previousAnalytics, previousActiveProofIntern, action };
+    },
+    onSuccess: (_, variables) => {
+      const label = variables.action === 'reject' ? 'rejected' : 'verified';
+      toast.success(`Proof ${label} successfully!`);
+      showNotification(`Proof ${label} successfully!`);
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousAnalytics) {
+        queryClient.setQueryData(
+          ['taskAnalytics', taskId],
+          context.previousAnalytics
+        );
+      }
+      if (context?.previousActiveProofIntern !== undefined) {
+        setActiveProofIntern(context.previousActiveProofIntern);
+      }
+      const errorMsg =
+        err.response?.data?.error ||
+        err.userMessage ||
+        err.message ||
+        `Failed to ${variables.action === 'reject' ? 'reject' : 'verify'} proof. Changes have been rolled back.`;
+      toast.error(errorMsg);
+      showNotification(errorMsg);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['taskAnalytics', taskId] });
       queryClient.invalidateQueries({ queryKey: ['proofs'] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      if (activeProofIntern) {
-        setActiveProofIntern((prev) =>
-          prev ? { ...prev, proof_status: 'VERIFIED' } : null
-        );
-      }
-    },
-    onError: (err) => {
-      showNotification(
-        err.response?.data?.error || err.message || 'Failed to verify proof'
-      );
     },
   });
+
+  const verifyMutation = reviewProofMutation;
 
   const task = analyticsData?.task;
   const summary = analyticsData?.summary;
@@ -562,332 +651,388 @@ export default function TaskDetails() {
       </Card>
 
       {/* Intern Completion Roster & Filter Controls */}
-      <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
-          <div>
-            <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
-              Intern Task Submissions
-            </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Track completion status and view proofs submitted by individual
-              interns.
+      <ErrorBoundary
+        fallback={(err, reset) => (
+          <Card className="p-6 border border-red-200 dark:border-red-900/60 bg-red-50/50 dark:bg-red-950/20 text-center">
+            <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+            <h4 className="text-base font-bold text-red-900 dark:text-red-200 mb-1">
+              Failed to load intern submission details
+            </h4>
+            <p className="text-xs text-red-700 dark:text-red-400 mb-4">
+              {err?.message || 'An unexpected rendering error occurred.'}
             </p>
+            <Btn variant="outline" onClick={reset} className="text-xs">
+              Retry Section
+            </Btn>
+          </Card>
+        )}
+      >
+        <Card className="p-6 md:p-7 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
+            <div>
+              <h3 className="font-extrabold text-xl text-slate-900 dark:text-white">
+                Intern Task Submissions
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Track completion status and view proofs submitted by individual
+                interns.
+              </p>
+            </div>
+
+            <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
+              Showing {filteredInterns.length} of {interns.length} intern
+              {interns.length === 1 ? '' : 's'}
+            </div>
           </div>
 
-          <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
-            Showing {filteredInterns.length} of {interns.length} intern
-            {interns.length === 1 ? '' : 's'}
-          </div>
-        </div>
+          {/* Filter Controls Bar */}
+          <div className="flex flex-wrap gap-3 items-center mb-6 p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="search"
+                placeholder="Search by intern name, email, or domain..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/30"
+              />
+            </div>
 
-        {/* Filter Controls Bar */}
-        <div className="flex flex-wrap gap-3 items-center mb-6 p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
-          <div className="relative flex-1 min-w-[240px]">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="search"
-              placeholder="Search by intern name, email, or domain..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/30"
+            <div className="w-full sm:w-56">
+              <CustomSelect
+                value={selectedDeptId}
+                onChange={setSelectedDeptId}
+                options={departmentOptions}
+                placeholder="Filter by Department"
+                className="w-full"
+              />
+            </div>
+
+            <div className="w-full sm:w-56">
+              <CustomSelect
+                value={selectedStatus}
+                onChange={setSelectedStatus}
+                options={statusOptions}
+                placeholder="Filter by Status"
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          {/* Intern Roster Table */}
+          {!filteredInterns.length ? (
+            <EmptyState
+              icon={<Users className="w-12 h-12 text-slate-400" />}
+              title="No interns found"
+              text={
+                searchQuery || selectedDeptId || selectedStatus
+                  ? 'No interns match the selected filters.'
+                  : 'No target interns found for this task.'
+              }
             />
-          </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                  <tr>
+                    <th className="px-5 py-3.5 font-extrabold">Intern</th>
+                    <th className="px-5 py-3.5 font-extrabold">Department</th>
+                    <th className="px-5 py-3.5 font-extrabold">
+                      Domain / Role
+                    </th>
+                    <th className="px-5 py-3.5 font-extrabold">Status</th>
+                    <th className="px-5 py-3.5 font-extrabold">
+                      Submitted Date
+                    </th>
+                    <th className="px-5 py-3.5 font-extrabold text-right">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
 
-          <div className="w-full sm:w-56">
-            <CustomSelect
-              value={selectedDeptId}
-              onChange={setSelectedDeptId}
-              options={departmentOptions}
-              placeholder="Filter by Department"
-              className="w-full"
-            />
-          </div>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredInterns.map((intern, idx) => {
+                    const hasProof = !!intern.proof_id;
+                    const isVerified =
+                      intern.proof_status === 'VERIFIED' ||
+                      intern.proof_status === 'APPROVED';
+                    const isRejected = intern.proof_status === 'REJECTED';
+                    const isPending = intern.proof_status === 'PENDING';
+                    const isOverdueState = !hasProof && isTaskOverdue;
 
-          <div className="w-full sm:w-56">
-            <CustomSelect
-              value={selectedStatus}
-              onChange={setSelectedStatus}
-              options={statusOptions}
-              placeholder="Filter by Status"
-              className="w-full"
-            />
-          </div>
-        </div>
+                    return (
+                      <tr
+                        key={intern.id}
+                        className={`transition-colors ${
+                          idx % 2 === 0
+                            ? 'bg-white dark:bg-slate-900'
+                            : 'bg-slate-50/50 dark:bg-slate-800/30'
+                        } hover:bg-indigo-50/50 dark:hover:bg-slate-800/80`}
+                      >
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center text-xs font-extrabold border border-indigo-100 dark:border-indigo-900/60">
+                              {initials(intern.full_name, intern.email)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-extrabold text-slate-900 dark:text-white truncate">
+                                {intern.full_name || '—'}
+                              </p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                {intern.email}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
 
-        {/* Intern Roster Table */}
-        {!filteredInterns.length ? (
-          <EmptyState
-            icon={<Users className="w-12 h-12 text-slate-400" />}
-            title="No interns found"
-            text={
-              searchQuery || selectedDeptId || selectedStatus
-                ? 'No interns match the selected filters.'
-                : 'No target interns found for this task.'
-            }
-          />
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="px-5 py-3.5 font-extrabold">Intern</th>
-                  <th className="px-5 py-3.5 font-extrabold">Department</th>
-                  <th className="px-5 py-3.5 font-extrabold">Domain / Role</th>
-                  <th className="px-5 py-3.5 font-extrabold">Status</th>
-                  <th className="px-5 py-3.5 font-extrabold">Submitted Date</th>
-                  <th className="px-5 py-3.5 font-extrabold text-right">
-                    Action
-                  </th>
-                </tr>
-              </thead>
+                        <td className="px-5 py-4 font-semibold text-slate-700 dark:text-slate-300">
+                          {intern.department_name || 'Unassigned'}
+                        </td>
 
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredInterns.map((intern, idx) => {
-                  const hasProof = !!intern.proof_id;
-                  const isVerified = intern.proof_status === 'VERIFIED';
-                  const isPending = intern.proof_status === 'PENDING';
-                  const isOverdueState = !hasProof && isTaskOverdue;
+                        <td className="px-5 py-4 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                          {intern.position || 'Intern'}
+                        </td>
 
-                  return (
-                    <tr
-                      key={intern.id}
-                      className={`transition-colors ${
-                        idx % 2 === 0
-                          ? 'bg-white dark:bg-slate-900'
-                          : 'bg-slate-50/50 dark:bg-slate-800/30'
-                      } hover:bg-indigo-50/50 dark:hover:bg-slate-800/80`}
+                        <td className="px-5 py-4">
+                          {isVerified ? (
+                            <Badge color="green">Verified / Completed</Badge>
+                          ) : isRejected ? (
+                            <Badge color="red">Rejected</Badge>
+                          ) : isPending ? (
+                            <Badge color="yellow">Pending Review</Badge>
+                          ) : isOverdueState ? (
+                            <Badge color="red">Overdue</Badge>
+                          ) : (
+                            <Badge color="gray">Not Submitted</Badge>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                          {intern.submitted_at
+                            ? new Date(intern.submitted_at).toLocaleString(
+                                'en-IN',
+                                {
+                                  dateStyle: 'medium',
+                                  timeStyle: 'short',
+                                  timeZone: 'Asia/Kolkata',
+                                }
+                              )
+                            : '—'}
+                        </td>
+
+                        <td className="px-5 py-4 text-right">
+                          {hasProof ? (
+                            <button
+                              type="button"
+                              onClick={() => setActiveProofIntern(intern)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 transition"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> View Proof
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">
+                              No proof
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        {/* Proof Inspection Modal */}
+        {activeProofIntern && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">
+            <div className="w-full max-w-2xl rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+              <button
+                onClick={() => setActiveProofIntern(null)}
+                className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
+                <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-extrabold">
+                  {initials(
+                    activeProofIntern.full_name,
+                    activeProofIntern.email
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
+                    {activeProofIntern.full_name || activeProofIntern.email}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {activeProofIntern.department_name} ·{' '}
+                    {activeProofIntern.position || 'Intern'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                {/* Status and Actions */}
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500">
+                      Status:
+                    </span>
+                    <Badge
+                      color={
+                        activeProofIntern.proof_status === 'VERIFIED' ||
+                        activeProofIntern.proof_status === 'APPROVED'
+                          ? 'green'
+                          : activeProofIntern.proof_status === 'REJECTED'
+                            ? 'red'
+                            : 'yellow'
+                      }
                     >
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 flex items-center justify-center text-xs font-extrabold border border-indigo-100 dark:border-indigo-900/60">
-                            {initials(intern.full_name, intern.email)}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-extrabold text-slate-900 dark:text-white truncate">
-                              {intern.full_name || '—'}
-                            </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                              {intern.email}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
+                      {activeProofIntern.proof_status || 'PENDING'}
+                    </Badge>
+                  </div>
 
-                      <td className="px-5 py-4 font-semibold text-slate-700 dark:text-slate-300">
-                        {intern.department_name || 'Unassigned'}
-                      </td>
+                  {activeProofIntern.proof_status === 'PENDING' && (
+                    <div className="flex items-center gap-2">
+                      <Btn
+                        variant="danger"
+                        className="rounded-2xl py-1.5 text-xs"
+                        disabled={reviewProofMutation.isPending}
+                        onClick={() =>
+                          reviewProofMutation.mutate({
+                            proofId: activeProofIntern.proof_id,
+                            action: 'reject',
+                          })
+                        }
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <XCircle className="w-4 h-4" />
+                          {reviewProofMutation.isPending &&
+                          reviewProofMutation.variables?.action === 'reject'
+                            ? 'Rejecting...'
+                            : 'Reject Proof'}
+                        </span>
+                      </Btn>
 
-                      <td className="px-5 py-4 text-xs font-semibold text-slate-600 dark:text-slate-400">
-                        {intern.position || 'Intern'}
-                      </td>
+                      <Btn
+                        variant="success"
+                        className="rounded-2xl py-1.5 text-xs"
+                        disabled={reviewProofMutation.isPending}
+                        onClick={() =>
+                          reviewProofMutation.mutate({
+                            proofId: activeProofIntern.proof_id,
+                            action: 'approve',
+                          })
+                        }
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <CheckCircle className="w-4 h-4" />
+                          {reviewProofMutation.isPending &&
+                          reviewProofMutation.variables?.action === 'approve'
+                            ? 'Approving...'
+                            : 'Approve Proof'}
+                        </span>
+                      </Btn>
+                    </div>
+                  )}
+                </div>
 
-                      <td className="px-5 py-4">
-                        {isVerified ? (
-                          <Badge color="green">Verified / Completed</Badge>
-                        ) : isPending ? (
-                          <Badge color="yellow">Pending Review</Badge>
-                        ) : isOverdueState ? (
-                          <Badge color="red">Overdue</Badge>
-                        ) : (
-                          <Badge color="gray">Not Submitted</Badge>
-                        )}
-                      </td>
+                {/* Engagement Badges */}
+                <div>
+                  <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-2">
+                    Reported Engagement Actions
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {activeProofIntern.did_comment && (
+                      <Badge color="blue">✓ Commented</Badge>
+                    )}
+                    {activeProofIntern.did_repost && (
+                      <Badge color="purple">✓ Reposted</Badge>
+                    )}
+                    {activeProofIntern.did_share && (
+                      <Badge color="green">✓ Shared</Badge>
+                    )}
+                    {!activeProofIntern.did_comment &&
+                      !activeProofIntern.did_repost &&
+                      !activeProofIntern.did_share && (
+                        <span className="text-xs text-slate-400">
+                          No specific social action flags checked.
+                        </span>
+                      )}
+                  </div>
+                </div>
 
-                      <td className="px-5 py-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                        {intern.submitted_at
-                          ? new Date(intern.submitted_at).toLocaleString(
-                              'en-IN',
-                              {
-                                dateStyle: 'medium',
-                                timeStyle: 'short',
-                                timeZone: 'Asia/Kolkata',
-                              }
-                            )
-                          : '—'}
-                      </td>
+                {/* Uploaded Proof Images */}
+                <div>
+                  <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-2">
+                    Submitted Proof Images (
+                    {activeProofIntern.images?.length || 0})
+                  </label>
 
-                      <td className="px-5 py-4 text-right">
-                        {hasProof ? (
-                          <button
-                            type="button"
-                            onClick={() => setActiveProofIntern(intern)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 transition"
+                  {!activeProofIntern.images?.length ? (
+                    <p className="text-xs text-slate-400 italic">
+                      No image files attached.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {activeProofIntern.images.map((imgObj, i) => {
+                        const imgPath = imgObj.image_path || imgObj;
+                        const normalized = imgPath
+                          .replace(/\\/g, '/')
+                          .replace(/^\/+/, '');
+                        const base = (
+                          import.meta.env.VITE_API_URL ||
+                          import.meta.env.VITE_API_BASE_URL ||
+                          ''
+                        ).replace(/\/+$/, '');
+                        const src = base
+                          ? `${base}/${normalized}`
+                          : `/${normalized}`;
+
+                        return (
+                          <div
+                            key={i}
+                            className="relative group rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
                           >
-                            <Eye className="w-3.5 h-3.5" /> View Proof
-                          </button>
-                        ) : (
-                          <span className="text-xs text-slate-400 italic">
-                            No proof
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            <img
+                              src={src}
+                              alt={`Proof ${i + 1}`}
+                              className="w-full h-36 object-cover cursor-pointer hover:opacity-90 transition"
+                              onClick={() => window.open(src, '_blank')}
+                              onError={(e) => {
+                                e.currentTarget.style.visibility = 'hidden';
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => window.open(src, '_blank')}
+                              className="absolute bottom-2 right-2 px-2 py-1 rounded-lg bg-black/60 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition"
+                            >
+                              Open Full
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+                  <Btn
+                    variant="outline"
+                    onClick={() => setActiveProofIntern(null)}
+                    className="rounded-2xl"
+                  >
+                    Close
+                  </Btn>
+                </div>
+              </div>
+            </div>
           </div>
         )}
-      </Card>
-
-      {/* Proof Inspection Modal */}
-      {activeProofIntern && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-2xl rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setActiveProofIntern(null)}
-              className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-slate-200 dark:border-slate-700">
-              <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-extrabold">
-                {initials(activeProofIntern.full_name, activeProofIntern.email)}
-              </div>
-              <div>
-                <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
-                  {activeProofIntern.full_name || activeProofIntern.email}
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {activeProofIntern.department_name} ·{' '}
-                  {activeProofIntern.position || 'Intern'}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-5">
-              {/* Status and Actions */}
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500">
-                    Status:
-                  </span>
-                  <Badge
-                    color={
-                      activeProofIntern.proof_status === 'VERIFIED'
-                        ? 'green'
-                        : 'yellow'
-                    }
-                  >
-                    {activeProofIntern.proof_status || 'PENDING'}
-                  </Badge>
-                </div>
-
-                {activeProofIntern.proof_status === 'PENDING' && (
-                  <Btn
-                    variant="success"
-                    className="rounded-2xl py-1.5 text-xs"
-                    disabled={verifyMutation.isPending}
-                    onClick={() =>
-                      verifyMutation.mutate({
-                        proofId: activeProofIntern.proof_id,
-                      })
-                    }
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <CheckCircle className="w-4 h-4" />
-                      {verifyMutation.isPending
-                        ? 'Verifying...'
-                        : 'Verify Proof'}
-                    </span>
-                  </Btn>
-                )}
-              </div>
-
-              {/* Engagement Badges */}
-              <div>
-                <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-2">
-                  Reported Engagement Actions
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {activeProofIntern.did_comment && (
-                    <Badge color="blue">✓ Commented</Badge>
-                  )}
-                  {activeProofIntern.did_repost && (
-                    <Badge color="purple">✓ Reposted</Badge>
-                  )}
-                  {activeProofIntern.did_share && (
-                    <Badge color="green">✓ Shared</Badge>
-                  )}
-                  {!activeProofIntern.did_comment &&
-                    !activeProofIntern.did_repost &&
-                    !activeProofIntern.did_share && (
-                      <span className="text-xs text-slate-400">
-                        No specific social action flags checked.
-                      </span>
-                    )}
-                </div>
-              </div>
-
-              {/* Uploaded Proof Images */}
-              <div>
-                <label className="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-2">
-                  Submitted Proof Images (
-                  {activeProofIntern.images?.length || 0})
-                </label>
-
-                {!activeProofIntern.images?.length ? (
-                  <p className="text-xs text-slate-400 italic">
-                    No image files attached.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {activeProofIntern.images.map((imgObj, i) => {
-                      const imgPath = imgObj.image_path || imgObj;
-                      const normalized = imgPath
-                        .replace(/\\/g, '/')
-                        .replace(/^\/+/, '');
-                      const base = (
-                        import.meta.env.VITE_API_URL ||
-                        import.meta.env.VITE_API_BASE_URL ||
-                        ''
-                      ).replace(/\/+$/, '');
-                      const src = base
-                        ? `${base}/${normalized}`
-                        : `/${normalized}`;
-
-                      return (
-                        <div
-                          key={i}
-                          className="relative group rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-                        >
-                          <img
-                            src={src}
-                            alt={`Proof ${i + 1}`}
-                            className="w-full h-36 object-cover cursor-pointer hover:opacity-90 transition"
-                            onClick={() => window.open(src, '_blank')}
-                            onError={(e) => {
-                              e.currentTarget.style.visibility = 'hidden';
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => window.open(src, '_blank')}
-                            className="absolute bottom-2 right-2 px-2 py-1 rounded-lg bg-black/60 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition"
-                          >
-                            Open Full
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-end">
-                <Btn
-                  variant="outline"
-                  onClick={() => setActiveProofIntern(null)}
-                  className="rounded-2xl"
-                >
-                  Close
-                </Btn>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      </ErrorBoundary>
     </div>
   );
 }

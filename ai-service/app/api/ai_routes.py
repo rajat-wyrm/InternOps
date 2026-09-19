@@ -36,17 +36,13 @@ from app.models.ai import (
     ImageGenerationRequest,
     ImageGenerationResponse,
 )
-from app.core.cache import cache_key, get_or_set
 from app.providers import ai_orchestrator
 from app.providers.base import(
   AIProviderError,
   ProviderAPIError,
   ProviderRateLimitError,
 )
-from app.providers.registry import (
-  get_configured_providers_health,
-  get_provider,
-)
+from app.providers.registry import get_configured_providers_health
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -56,26 +52,17 @@ MAX_TOTAL_CHARS = 32000
 
 
 async def call_provider(user_id: str, messages: List[dict]) -> ProviderResult:
-    provider = get_provider()
-    primary_provider = provider.provider_name
-    model = provider.model_name
-    key = cache_key(primary_provider, model, messages, 0.7)
-
-    async def _compute():
-        content, used_provider = await ai_orchestrator.generate_chat_with_fallback(
-            messages
-        )
-        return {"content": content, "provider": used_provider}
-
-    res_dict, cached = await get_or_set(key, _compute)
-
-    return ProviderResult(
-        provider=res_dict["provider"],
-        cached=cached,
-        content=res_dict["content"],
+    # Caching lives entirely in the orchestrator so all AI routes
+    # share the same cache-key format, TTL, and invalidation path.
+    content, used_provider, cached = (
+        await ai_orchestrator.generate_chat_with_cache_status(messages)
     )
 
-
+    return ProviderResult(
+        provider=used_provider,
+        cached=cached,
+        content=content,
+    )
 def get_provider_health() -> list:
     return get_configured_providers_health()
 
@@ -151,13 +138,6 @@ async def chat(
             detail="Message content cannot be empty",
         )
 
-    usage = await get_today_usage(current_user.id)
-    if usage >= DAILY_AI_LIMIT:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Daily AI usage limit exceeded",
-        )
-
     try:
         result = await call_provider(current_user.id, final_messages)
         await increment_usage(current_user.id)
@@ -201,13 +181,6 @@ async def generate_image(
     current_user: User = Depends(get_current_user),
     _rate_limited: None = Depends(chat_rate_limiter.check_rate_limit),
 ):
-    usage = await get_today_usage(current_user.id)
-    if usage >= DAILY_AI_LIMIT:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Daily AI usage limit exceeded",
-        )
-
     try:
         image_base64, used_provider = await ai_orchestrator.generate_image_with_fallback(
             body.prompt
